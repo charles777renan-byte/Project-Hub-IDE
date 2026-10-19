@@ -146,3 +146,15 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Contexto:** `style-src 'self'` (item 6) recusa estilo inline. Em produção, o Vite extrai o CSS para um arquivo (`out/renderer/assets/index-<hash>.css`) e o liga por `<link>`, o que a política aceita. Em desenvolvimento, o cliente do Vite transforma o CSS importado por um módulo TS em elementos `<style>` (função `updateStyle`, em `vite/dist/client/client.mjs`). Conferido no Electron 44.9.0, com `import './styles/app.css'` em `main.tsx`: o Vite inseriu dois `<style>` (um por arquivo CSS), o Chromium registrou o erro "Applying inline style violates the following Content Security Policy directive 'style-src 'self''" e a página ficou sem estilo.
 - **Decisão:** o `index.html` liga `styles/tokens.css` e `styles/app.css` por `<link rel="stylesheet">`, e nenhum módulo do renderer importa CSS. O Vite serve esses arquivos como CSS nos dois modos, e a atualização a quente do CSS continua funcionando (conferido: "css hot updated", sem recarregar a página). Nenhuma diretiva da CSP foi afrouxada, nem em desenvolvimento, e a `<meta>` do item 6 ficou como estava.
 - **Consequência:** o `index.html` não tem `<style>` nem atributo `style`. O teste `apps/desktop/test/renderer/renderer-styles.test.ts` confere isso e confere que nenhum módulo do renderer importa CSS. CSS novo entra em `app.css` ou num arquivo novo ligado por `<link>` no `index.html`.
+
+### 2026-10-19, Tarefa 5: `schema_migrations` com o shape do Drizzle
+
+- **Contexto:** o brief descreve a tabela de controle `schema_migrations` com `id TEXT PK` e `applied_at TEXT`. O `migrate` do Drizzle aceita o nome pela opção `migrationsTable`, mas cria a tabela ele mesmo, com `id SERIAL PRIMARY KEY`, `hash text NOT NULL` e `created_at numeric`.
+- **Decisão:** a tabela usa o shape do Drizzle. Não há migrador próprio: o `migrate` do Drizzle roda as migrações numa transação, e o shape do brief exigiria reimplementá-lo.
+- **Consequência:** o nome `schema_migrations` vale, mas as colunas são outras. A regra de pendência lê `created_at` (o `when` do journal), e não `applied_at`.
+
+### 2026-10-19, Tarefa 5: tipos de `packages/domain` importados por caminho relativo
+
+- **Contexto:** `packages/database` usa os tipos `ProjectRecord` e `NewProject`, de `packages/domain`. O pacote não declara `@project-hub/domain` como dependência, e declarar exige editar o `package.json` e o lockfile e rodar `pnpm install`, o que as regras da fundação proíbem nesta etapa.
+- **Decisão:** o import é de tipo e usa caminho relativo (`../../../domain/src/project`). Ele some na compilação, então não há efeito em tempo de execução.
+- **Consequência:** é aceito até o pacote de banco consumir o domínio em tempo de execução. Nesse momento, declara-se `"@project-hub/domain": "workspace:*"` e exporta-se o domínio pelo índice dele.

@@ -45,16 +45,38 @@ function hasUserTables(db: AppDatabase): boolean {
   return (
     db.$client
       .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1",
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' LIMIT 1",
       )
       .get() !== undefined
   );
 }
 
+/** Backup padrão, ao lado do arquivo. A data usa só caracteres que o Windows aceita no nome. */
+function defaultBackupPath(file: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `${file}.pre-${stamp}.bak`;
+}
+
+/**
+ * Copia o arquivo do banco para `backupPath`. Antes leva o WAL para o arquivo principal e confere
+ * que o checkpoint não ficou ocupado: com um leitor aberto, a cópia sairia sem parte dos dados.
+ */
+function backupFile(db: AppDatabase, backupPath: string): void {
+  const [result] = db.$client.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>;
+  if (result === undefined || result.busy !== 0) {
+    throw new Error(
+      'Não foi possível fazer o checkpoint do WAL antes do backup: outra conexão está lendo o banco.',
+    );
+  }
+  copyFileSync(db.$client.name, backupPath);
+}
+
 /**
  * Aplica as migrações pendentes, cada uma numa transação (a do Drizzle). Se o banco já tinha
- * tabelas e `backupPath` foi informado, copia o arquivo para `backupPath` antes de migrar (seção
- * 18.2). Se a cópia falhar, nada é migrado.
+ * tabelas e há migração pendente, faz backup antes (seção 18.2): em `backupPath`, se informado, ou
+ * ao lado do arquivo. Se o backup falhar, nada é migrado.
+ *
+ * `filePath` vem da assinatura do brief. A cópia usa o caminho do próprio handle (`db.$client.name`).
  */
 export function migrateDatabase(
   db: AppDatabase,
@@ -65,10 +87,8 @@ export function migrateDatabase(
     return { applied: [], alreadyUpToDate: true };
   }
 
-  if (options.backupPath !== undefined && hasUserTables(db)) {
-    // Leva o conteúdo do WAL para o arquivo principal, para que a cópia saia completa.
-    db.$client.pragma('wal_checkpoint(TRUNCATE)');
-    copyFileSync(options.filePath, options.backupPath);
+  if (hasUserTables(db)) {
+    backupFile(db, options.backupPath ?? defaultBackupPath(db.$client.name));
   }
 
   migrate(db, { migrationsFolder: MIGRATIONS_FOLDER, migrationsTable: MIGRATIONS_TABLE });

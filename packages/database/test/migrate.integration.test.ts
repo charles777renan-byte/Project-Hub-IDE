@@ -1,10 +1,9 @@
 import Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openDatabase, type AppDatabase } from '../src/client';
-import { migrateDatabase } from '../src/migrate';
+import { migrateDatabase, openDatabase, type AppDatabase } from '../src/index';
 
 let dir: string;
 let dbFile: string;
@@ -101,6 +100,22 @@ describe('migrateDatabase', () => {
     expect(tables(db)).toEqual(expect.arrayContaining(['legado', 'projects']));
   });
 
+  it('sem backupPath, cria backup ao lado do arquivo quando o banco existente tem migração pendente', () => {
+    createLegacyDatabase(
+      "CREATE TABLE legado (id TEXT PRIMARY KEY); INSERT INTO legado VALUES ('antigo');",
+    );
+    const db = open();
+
+    migrateDatabase(db, { filePath: dbFile });
+
+    // Nome com data sem ':' nem '.', que o Windows não aceita em nomes de arquivo.
+    const backups = readdirSync(dir).filter((name) =>
+      /^project-hub\.sqlite\.pre-[\dTZ-]+\.bak$/.test(name),
+    );
+    expect(backups).toHaveLength(1);
+    expect(userTables(join(dir, backups[0] ?? ''))).toEqual(['legado']);
+  });
+
   it('não cria backup quando o banco ainda não existia', () => {
     const backupPath = join(dir, 'backup.sqlite');
     const db = open();
@@ -125,8 +140,32 @@ describe('migrateDatabase', () => {
     const backupPath = join(dir, 'pasta-inexistente', 'backup.sqlite');
     const db = open();
 
-    expect(() => migrateDatabase(db, { filePath: dbFile, backupPath })).toThrow();
+    expect(() => migrateDatabase(db, { filePath: dbFile, backupPath })).toThrow(/ENOENT/);
     expect(tables(db)).toEqual(['legado']);
+  });
+
+  it('não migra quando outra conexão impede o checkpoint do WAL', () => {
+    createLegacyDatabase(
+      "CREATE TABLE legado (id TEXT PRIMARY KEY); INSERT INTO legado VALUES ('antigo');",
+    );
+    const db = open();
+    // Escrita depois de ligar o WAL: sem quadros no WAL não há o que checkpointar.
+    db.$client.exec("INSERT INTO legado VALUES ('novo')");
+    const backupPath = join(dir, 'backup.sqlite');
+    const reader = new Database(dbFile);
+    try {
+      // Leitor com transação aberta: enquanto ela existir, o TRUNCATE não consegue zerar o WAL.
+      reader.exec('BEGIN');
+      reader.prepare('SELECT COUNT(*) FROM legado').pluck().get();
+
+      expect(() => migrateDatabase(db, { filePath: dbFile, backupPath })).toThrow(/checkpoint/);
+    } finally {
+      if (reader.inTransaction) reader.exec('COMMIT');
+      reader.close();
+    }
+    expect(existsSync(backupPath)).toBe(false);
+    expect(tables(db)).not.toContain('projects');
+    expect(tables(db)).not.toContain('schema_migrations');
   });
 
   it('reverte a migração inteira quando um comando falha', () => {
