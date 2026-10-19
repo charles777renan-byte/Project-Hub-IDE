@@ -5,9 +5,11 @@ import {
   addProjectInputSchema,
   CHANNELS,
   ERROR_CODES,
+  responseSchemas,
   type AppError,
   type AppResult,
   type ErrorCode,
+  type ProjectHubApi,
   type ProjectSummary,
 } from '../src/index';
 
@@ -134,6 +136,72 @@ describe('tipos públicos', () => {
       | 'UNKNOWN'
     >().toExtend<ErrorCode>();
     expectTypeOf<string>().not.toExtend<ErrorCode>();
+  });
+});
+
+describe('responseSchemas', () => {
+  it('tem um schema de resposta para cada canal, e só para eles', () => {
+    expect(Object.keys(responseSchemas).sort()).toEqual(Object.values(CHANNELS).sort());
+  });
+
+  it('aceita a lista de projetos no formato AppResult', () => {
+    const project = {
+      id: 'p1',
+      name: 'app',
+      path: 'C:\\Projetos\\app',
+      repositoryKind: 'none',
+      available: true,
+    };
+    expect(
+      responseSchemas[CHANNELS.projectsList].safeParse({ ok: true, data: [project] }).success,
+    ).toBe(true);
+  });
+
+  it('recusa a lista quando um projeto não tem o campo available', () => {
+    const { available: _available, ...withoutAvailable } = {
+      id: 'p1',
+      name: 'app',
+      path: 'C:\\Projetos\\app',
+      repositoryKind: 'none',
+      available: true,
+    };
+    expect(
+      responseSchemas[CHANNELS.projectsList].safeParse({ ok: true, data: [withoutAvailable] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('recusa falha cujo código não está em ERROR_CODES', () => {
+    const response = { ok: false, error: { code: 'INVENTADO', message: 'x', retryable: false } };
+    expect(responseSchemas[CHANNELS.projectsAdd].safeParse(response).success).toBe(false);
+  });
+
+  it('recusa resposta sem o envelope ok', () => {
+    expect(responseSchemas[CHANNELS.appPing].safeParse('pong').success).toBe(false);
+  });
+
+  it('aceita escolha de pasta cancelada (null) e escolhida ({ path })', () => {
+    const schema = responseSchemas[CHANNELS.projectsChooseDirectory];
+    expect(schema.safeParse({ ok: true, data: null }).success).toBe(true);
+    expect(schema.safeParse({ ok: true, data: { path: 'C:\\Projetos\\app' } }).success).toBe(true);
+  });
+});
+
+describe('ProjectHubApi', () => {
+  it('projects.add recebe { path } e devolve o resumo do projeto', () => {
+    expectTypeOf<ProjectHubApi['projects']['add']>().parameter(0).toEqualTypeOf<{ path: string }>();
+    expectTypeOf<ProjectHubApi['projects']['add']>().returns.toEqualTypeOf<
+      Promise<AppResult<ProjectSummary>>
+    >();
+  });
+
+  it('projects.list e projects.chooseDirectory devolvem AppResult', () => {
+    expectTypeOf<ProjectHubApi['projects']['list']>().returns.toEqualTypeOf<
+      Promise<AppResult<ProjectSummary[]>>
+    >();
+    expectTypeOf<ProjectHubApi['projects']['chooseDirectory']>().returns.toEqualTypeOf<
+      Promise<AppResult<{ path: string } | null>>
+    >();
   });
 });
 

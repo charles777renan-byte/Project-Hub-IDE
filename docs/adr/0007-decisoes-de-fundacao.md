@@ -158,3 +158,22 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Contexto:** `packages/database` usa os tipos `ProjectRecord` e `NewProject`, de `packages/domain`. O pacote não declara `@project-hub/domain` como dependência, e declarar exige editar o `package.json` e o lockfile e rodar `pnpm install`, o que as regras da fundação proíbem nesta etapa.
 - **Decisão:** o import é de tipo e usa caminho relativo (`../../../domain/src/project`). Ele some na compilação, então não há efeito em tempo de execução.
 - **Consequência:** é aceito até o pacote de banco consumir o domínio em tempo de execução. Nesse momento, declara-se `"@project-hub/domain": "workspace:*"` e exporta-se o domínio pelo índice dele.
+
+### 2026-10-19, Tarefa 6: caminhos validados no processo principal e operações por `id`
+
+- **Decisão:** `projects:add` revalida o caminho no processo principal, na aplicação (`addProject`). O caminho precisa ser absoluto (`VALIDATION_FAILED`), não pode ser vazio (o schema recusa antes) e tem de apontar para um diretório que existe (`PROJECT_PATH_UNAVAILABLE`). As operações das tarefas seguintes (Git, worktrees, remoção) identificam o projeto por `id`, nunca pelo caminho que veio do renderer. `ProjectSummary.path` serve só para exibição.
+- **Motivo:** o caminho que volta do renderer é entrada não confiável (seção 17.1), e a seção 13.1 pede versões sanitizadas. A revalidação no processo principal cobre um renderer comprometido, que o preload sozinho não cobre (seção 17.2).
+- **Consequência:** as tarefas seguintes recebem `id` nos casos de uso. Caminho relativo nunca vira projeto.
+
+### 2026-10-19, Tarefa 6: remetente do IPC e validação das respostas
+
+- **Decisão:** todo handler IPC do processo principal (`app:ping:v1` e os `projects:*`) confere o remetente antes de rodar, pelo `event.senderFrame.url` e por `isTrustedSenderUrl`, em `security.ts`. Em desenvolvimento, a origem é a do servidor do Vite, e vale `isAllowedNavigation`. Em produção, a origem é `file://`, que é opaca: o remetente confiável é o `index.html` dentro de `out/renderer` (`isFileUrlInside`). Chamada de outra origem recebe `PERMISSION_DENIED`, código que já existe em `ERROR_CODES`, e o handler não roda. O preload confere a resposta de cada canal com o schema dele (`responseSchemas`, em `packages/contracts`) e devolve `VALIDATION_FAILED` quando não bate.
+- **Motivo:** a seção 17.2 trata o renderer comprometido como ameaça, e o relatório da Tarefa 3 deixou a checagem para esta tarefa. Aplicar `isAllowedNavigation` a `file://` recusaria toda chamada em produção, porque a origem opaca nunca bate com ela.
+- **Consequência:** nenhum código de erro novo. Um canal novo passa por `registerTrustedHandler` e ganha entrada em `responseSchemas`.
+
+### 2026-10-19, Tarefa 6: `better-sqlite3` fora do bundle e migrações ao lado do bundle
+
+- **Contexto:** o electron-vite deixa de fora do bundle só o que está em `dependencies` de `apps/desktop`. Sem isso, o bundle do processo principal embute o `better-sqlite3`, e o carregador dele procura `prebuilds/` ao lado de `out/main`. Além disso, o `migrate.ts` lê as migrações em `new URL('../migrations', import.meta.url)`, que no bundle aponta para `out/migrations`, pasta que o build não criava. Os dois problemas aparecem no `electron-vite build` antes da correção.
+- **Decisão:** `better-sqlite3` 13.0.3, a mesma versão de `packages/database`, entra em `dependencies` de `apps/desktop`, como o item sobre módulos nativos manda. `electron.vite.config.ts` copia `packages/database/migrations` para `out/migrations` ao fim do build do processo principal.
+- **Motivo:** o `better-sqlite3` 13 traz um binário N-API em `prebuilds/`. Carregado pelo runtime do Electron 44.9.0 (Node 24.22, ABI 149) com `ELECTRON_RUN_AS_NODE=1`, o módulo abre um banco em memória sem erro de ABI, sem abrir janela. A cópia é a solução mais simples até a Tarefa 12 definir o empacotamento.
+- **Consequência:** a lockfile ganhou a entrada de `apps/desktop` e os links de `packages/application` e `packages/database`. A lista de versões de pacotes não mudou (502 antes e depois). Abrir o banco dentro da janela continua pendente do passo 10 do plano, que é verificação manual.

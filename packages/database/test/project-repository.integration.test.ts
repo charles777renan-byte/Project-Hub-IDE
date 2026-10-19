@@ -110,4 +110,24 @@ describe('ProjectRepository', () => {
 
     expect(repo.findByNormalizedPath('c:/dev/project-hub')?.removedAt).toBe('2026-10-19T12:00:00Z');
   });
+
+  it('restaura um projeto removido: volta à lista, sem campo de remoção e com a data nova', () => {
+    repo.insert(hub);
+    repo.markRemoved('p1', '2026-10-19T12:00:00Z');
+
+    repo.restore('p1', '2026-10-19T13:00:00Z');
+
+    expect(repo.list().map((project) => project.id)).toEqual(['p1']);
+    expect(repo.get('p1')).toStrictEqual({
+      id: 'p1',
+      name: 'Project Hub',
+      path: 'C:\\dev\\project-hub',
+      normalizedPath: 'c:/dev/project-hub',
+      repositoryKind: 'git',
+      isFavorite: false,
+      trusted: false,
+      createdAt: '2026-10-19T10:00:00Z',
+      updatedAt: '2026-10-19T13:00:00Z',
+    });
+  });
 });

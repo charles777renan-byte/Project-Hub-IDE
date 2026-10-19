@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * Códigos de erro estáveis do envelope `AppResult` (seções 13.1 e 13.7 do planejamento).
  * A lista é a fonte única: o tipo `ErrorCode` sai dela, e os testes conferem o conteúdo em execução.
@@ -37,3 +39,11 @@ export type AppError = {
   details?: Record<string, unknown>;
   retryable: boolean;
 };
+
+/** Confere um `AppError` que chegou de fora do contrato (o preload confere respostas, R28). */
+export const appErrorSchema = z.object({
+  code: z.enum(ERROR_CODES),
+  message: z.string(),
+  details: z.record(z.string(), z.unknown()).optional(),
+  retryable: z.boolean(),
+});

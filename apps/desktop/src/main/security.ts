@@ -56,6 +56,23 @@ export function isAllowedExternalUrl(url: string): boolean {
 }
 
 /**
+ * Diz se o quadro que chamou um canal IPC é do aplicativo (R65, seção 17.2). Em desenvolvimento a
+ * origem é a do servidor do Vite, e vale `isAllowedNavigation`. Em produção a origem é `file://`,
+ * opaca, que nunca passa por `isAllowedNavigation`: o remetente confiável é o `index.html` dentro
+ * de `rendererDirectory`. `appOrigin` é `file://` exatamente quando o app carrega de arquivo.
+ */
+export function isTrustedSenderUrl(
+  url: string,
+  appOrigin: string,
+  rendererDirectory: string,
+): boolean {
+  if (appOrigin === 'file://') {
+    return isFileUrlInside(url, rendererDirectory);
+  }
+  return isAllowedNavigation(url, appOrigin);
+}
+
+/**
  * Entrega a CSP completa, com `frame-ancestors`, como cabeçalho de toda resposta da sessão. Vale
  * também para o documento carregado de `file://` (conferido no Electron 44.9.0; ver ADR 0007).
  *
