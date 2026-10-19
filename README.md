@@ -40,7 +40,7 @@ Copie `.env.example` para `.env` se quiser mudar alguma variável. O `.env` não
 | `pnpm lint`             | Roda o ESLint em todo o repositório.                                                        |
 | `pnpm format`           | Roda o Prettier e reescreve os arquivos.                                                    |
 | `pnpm typecheck`        | Roda o `tsc` na raiz e o script `typecheck` de cada pacote.                                 |
-| `pnpm test`             | Testes unitários (`*.test.ts` e `*.test.tsx`).                                              |
+| `pnpm test`             | Testes unitários: `*.test.ts` no Node e `*.test.tsx` do renderer, em jsdom.                 |
 | `pnpm test:integration` | Testes com Git ou SQLite reais (`*.integration.test.ts`).                                   |
 | `pnpm test:e2e`         | Testes de ponta a ponta com Playwright. Delega ao pacote `@project-hub/desktop`.            |
 | `pnpm db:generate`      | Gera migrações. Delega ao pacote `@project-hub/database`.                                   |
@@ -61,7 +61,7 @@ docs/adr          decisões de arquitetura
 
 - **Pacotes.** Cada pasta de `apps/` e `packages/` é um pacote chamado `@project-hub/<pasta>`. Para criar um, copie `packages/domain`: `package.json` com `"private": true` e `"type": "module"`, os scripts `typecheck` e `test`, e um `tsconfig.json` que estende `../../tsconfig.base.json`.
 - **TypeScript.** Modo estrito, com `noUncheckedIndexedAccess` e `exactOptionalPropertyTypes`, em `tsconfig.base.json`. A base não inclui tipos do Node nem do DOM: um pacote que usa `node:*` declara `"types": ["node"]`, e o renderer acrescenta `"DOM"` em `lib`.
-- **Testes.** Os nomes dos arquivos e a separação entre unitários e integração estão no ADR 0007, item 8. A configuração do Vitest fica na raiz, em `vitest.config.ts`. `pnpm --filter <pacote> test` roda o Vitest dentro do pacote e inclui os testes de integração dele.
+- **Testes.** Os nomes dos arquivos e a separação entre unitários e integração estão no ADR 0007, item 8. A configuração do Vitest fica na raiz, em `vitest.config.ts`. `pnpm --filter <pacote> test` roda o Vitest dentro do pacote e inclui os testes de integração dele. Os testes do renderer (`apps/desktop/test/renderer/`) dependem do jsdom e do arquivo de setup da configuração da raiz: rode-os por `pnpm test`, ou por `pnpm exec vitest run <arquivo>` na raiz.
 - **Importações.** Os pacotes de `packages/` não importam Electron. O ESLint confere.
 - **Segredos.** Nenhum segredo entra no repositório nem no `.env.example`. Tokens reais vão para o cofre do sistema, pela interface do aplicativo.
 

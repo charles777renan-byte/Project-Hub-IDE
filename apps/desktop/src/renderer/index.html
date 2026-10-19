@@ -8,10 +8,15 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
     />
     <title>Project Hub</title>
+    <!--
+      Os estilos são arquivos ligados por <link>, nunca importados por módulo TS: em desenvolvimento
+      o Vite transformaria o CSS importado em <style>, que a CSP (style-src 'self') bloqueia.
+    -->
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/app.css" />
   </head>
   <body>
-    <main>
-      <h1>Project Hub</h1>
-    </main>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>
