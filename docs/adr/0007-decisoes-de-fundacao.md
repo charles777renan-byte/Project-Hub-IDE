@@ -77,7 +77,7 @@ Dependências novas entram com versão exata (`saveExact: true` em `pnpm-workspa
   - `base-uri 'none'`: impede que um `<base>` injetado desvie as URLs relativas.
   - `frame-ancestors 'none'`: a página não pode ser embutida em frames.
 
-- **Consequência:** Qualquer afrouxamento precisa de uma entrada em "Registros posteriores", com o motivo. O servidor de desenvolvimento do Vite pode pedir diretivas a mais; se pedir, o afrouxamento vale só em desenvolvimento.
+- **Consequência:** Qualquer afrouxamento precisa de uma entrada em "Registros posteriores", com o motivo. O servidor de desenvolvimento do Vite pode pedir diretivas a mais; se pedir, o afrouxamento vale só em desenvolvimento. Na Tarefa 4 ele não pediu nenhuma: o CSS do renderer é ligado por `<link>` (ver "Registros posteriores").
 
 ## 7. Rebuild do better-sqlite3 para o runtime do Electron
 
@@ -87,7 +87,7 @@ Dependências novas entram com versão exata (`saveExact: true` em `pnpm-workspa
 
 ## 8. Convenções de teste e de build
 
-- **Nome dos testes:** `*.test.ts` e `*.test.tsx` são unitários. Testes com recursos reais (Git ou SQLite) usam `*.integration.test.ts`. `pnpm test` roda tudo menos os de integração, e `pnpm test:integration` roda só eles. Os testes de ponta a ponta do Playwright usam `*.spec.ts`.
+- **Nome dos testes:** `*.test.ts` e `*.test.tsx` são unitários. Os do renderer ficam em `apps/desktop/test/renderer/` e rodam em jsdom (ver "Registros posteriores"). Testes com recursos reais (Git ou SQLite) usam `*.integration.test.ts`. `pnpm test` roda tudo menos os de integração, e `pnpm test:integration` roda só eles. Os testes de ponta a ponta do Playwright usam `*.spec.ts`.
 - **Build provisório:** até a Tarefa 12, `pnpm build` só confere os tipos (`pnpm typecheck`). A Tarefa 12 troca esse script pelo build real dos bundles.
 - **Pacotes:** `packages/<pasta>` e `apps/<pasta>` têm o nome `@project-hub/<pasta>`. Os pacotes de `packages/` não importam Electron (seção 8.3), e uma regra do ESLint confere isso.
 
@@ -132,3 +132,17 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Contexto:** o Electron guarda um só listener por evento de `session.webRequest` em cada sessão. Conferido no Electron 44.9.0: com dois registros de `onHeadersReceived` e dois de `onBeforeRequest` na mesma sessão, só o último de cada um rodou. Um registro novo apaga o anterior sem aviso, e nenhum teste falharia.
 - **Decisão:** os listeners de `webRequest` da sessão são registrados só pelas funções de `apps/desktop/src/main/security.ts`: `applyContentSecurityPolicy` para `onHeadersReceived` e `restrictFileRequests` para `onBeforeRequest`. Nada registra listener direto em `session.defaultSession`. Quem precisar de outro comportamento num desses eventos estende a função que já o ocupa, e um evento novo ganha sua função no mesmo arquivo.
 - **Consequência:** a CSP no cabeçalho e o filtro de arquivos não somem por um registro feito em outra parte do código.
+
+### 2026-10-19, Tarefa 4: React, roteamento por hash e testes do renderer
+
+- **Decisão:** o renderer usa React 19.3.1, React DOM 19.3.1 e React Router 8.4.0, todos em `devDependencies` de `apps/desktop`, com versão exata. Ficam em `devDependencies` porque o Vite junta o renderer inteiro no bundle, como faz com os pacotes do workspace (registro de build da Tarefa 3). Não há plugin do Vite para React: o Vite compila o JSX sozinho (conferido no build e nos testes), e o `tsconfig.json` do desktop usa `"jsx": "react-jsx"` e acrescenta `"DOM"` em `lib`.
+- **React Router 8.4.0, e não a `latest`:** a 8.5.0 foi publicada menos de um dia antes da instalação, abaixo do prazo mínimo de um dia (`minimumReleaseAge`, item 1). A 8.4.0 é a mais nova que já tinha mais de um dia.
+- **Roteamento por hash:** `main.tsx` usa `HashRouter`, e os testes usam `MemoryRouter`. `BrowserRouter` não entra em lugar nenhum: em produção o renderer carrega de `file://`, onde rotas por caminho não funcionam. Trocar só o `#` funciona e não dispara `will-navigate` (ver "navegação, janelas novas e permissões"); conferido no aplicativo, em `http://localhost:5173` e em `file://`, com o Tab e o Enter. As rotas desta etapa são `/` (Início) e `/projects` (Projetos).
+- **Testes:** o projeto `renderer` do `vitest.config.ts` roda `apps/desktop/test/renderer/**` em jsdom 30.1.3, com `@testing-library/react` 16.3.3, `@testing-library/dom` 10.4.2, `@testing-library/user-event` 14.6.8 e `@testing-library/jest-dom` 7.0.1. O arquivo `apps/desktop/test/renderer/setup.ts` registra os matchers do jest-dom e limpa o DOM entre os testes. O projeto `unit` deixa de fora essa pasta e todo `*.test.tsx`, então cada arquivo roda uma vez só, e `**/dist/**` entrou nas exclusões de todos os projetos. Um `*.test.tsx` fora de `apps/desktop/test/renderer/` não roda em projeto nenhum.
+- **Consequência:** os testes do renderer só passam pela configuração da raiz (`pnpm test`, ou `pnpm exec vitest run <arquivo>` a partir da raiz). `pnpm --filter @project-hub/desktop test` roda o Vitest do pacote com a configuração padrão, sem jsdom, e os arquivos de `test/renderer/` falham com `document is not defined`. Dentro do projeto `renderer`, `new URL('texto literal', import.meta.url)` não serve para achar arquivos: o Vite reescreve esse padrão para um endereço `http://localhost`. Os testes usam `import.meta.dirname`.
+
+### 2026-10-19, Tarefa 4: CSS ligado por `<link>`, sem afrouxar a CSP
+
+- **Contexto:** `style-src 'self'` (item 6) recusa estilo inline. Em produção, o Vite extrai o CSS para um arquivo (`out/renderer/assets/index-<hash>.css`) e o liga por `<link>`, o que a política aceita. Em desenvolvimento, o cliente do Vite transforma o CSS importado por um módulo TS em elementos `<style>` (função `updateStyle`, em `vite/dist/client/client.mjs`). Conferido no Electron 44.9.0, com `import './styles/app.css'` em `main.tsx`: o Vite inseriu dois `<style>` (um por arquivo CSS), o Chromium registrou o erro "Applying inline style violates the following Content Security Policy directive 'style-src 'self''" e a página ficou sem estilo.
+- **Decisão:** o `index.html` liga `styles/tokens.css` e `styles/app.css` por `<link rel="stylesheet">`, e nenhum módulo do renderer importa CSS. O Vite serve esses arquivos como CSS nos dois modos, e a atualização a quente do CSS continua funcionando (conferido: "css hot updated", sem recarregar a página). Nenhuma diretiva da CSP foi afrouxada, nem em desenvolvimento, e a `<meta>` do item 6 ficou como estava.
+- **Consequência:** o `index.html` não tem `<style>` nem atributo `style`. O teste `apps/desktop/test/renderer/renderer-styles.test.ts` confere isso e confere que nenhum módulo do renderer importa CSS. CSS novo entra em `app.css` ou num arquivo novo ligado por `<link>` no `index.html`.
