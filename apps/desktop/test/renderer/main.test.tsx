@@ -25,6 +25,15 @@ describe('main.tsx', () => {
   });
 
   it('falha com mensagem clara quando o index.html não tem a div #root', async () => {
-    await expect(import('../../src/renderer/main')).rejects.toThrow('#root');
+    // Captura o erro à mão: o matcher rejects.toThrow(texto) não reportava o erro correto neste
+    // ambiente (jsdom), embora a mensagem estivesse certa.
+    let error: unknown;
+    try {
+      await import('../../src/renderer/main');
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('#root');
   });
 });
