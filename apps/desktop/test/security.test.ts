@@ -1,0 +1,375 @@
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { CHANNELS, type AppResult } from '@project-hub/contracts';
+import type { Session, WebContents } from 'electron';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+import {
+  applyContentSecurityPolicy,
+  CONTENT_SECURITY_POLICY,
+  denyAllPermissions,
+  isAllowedExternalUrl,
+  isAllowedNavigation,
+  isFileUrlInside,
+  restrictFileRequests,
+  restrictNavigation,
+} from '../src/main/security';
+import { buildProjectHubApi } from '../src/preload/api';
+
+// Os módulos testados só importam tipos do Electron. Os objetos do Electron que eles recebem
+// (sessão e webContents) são substituídos por versões falsas, que guardam os ouvintes registrados.
+
+function required<T>(value: T | undefined, what: string): T {
+  if (value === undefined) {
+    throw new Error(`${what} não foi registrado`);
+  }
+  return value;
+}
+
+type NavigateEvent = { url: string; preventDefault: () => void };
+type OpenHandler = (details: { url: string }) => { action: string };
+
+function fakeWebContents() {
+  let navigateListener: ((event: NavigateEvent) => void) | undefined;
+  let openHandler: OpenHandler | undefined;
+  const contents = {
+    on(name: string, listener: (event: NavigateEvent) => void) {
+      if (name === 'will-navigate') {
+        navigateListener = listener;
+      }
+      return contents;
+    },
+    setWindowOpenHandler(handler: OpenHandler) {
+      openHandler = handler;
+    },
+  };
+  return {
+    contents: contents as unknown as WebContents,
+    /** Dispara `will-navigate` e diz se a navegação foi impedida. */
+    navigate(url: string): boolean {
+      const preventDefault = vi.fn();
+      required(navigateListener, 'will-navigate')({ url, preventDefault });
+      return preventDefault.mock.calls.length > 0;
+    },
+    /** Simula `window.open(url)` e devolve a resposta do handler. */
+    open(url: string) {
+      return required(openHandler, 'setWindowOpenHandler')({ url });
+    },
+  };
+}
+
+function setupNavigation(appOrigin: string) {
+  const openExternal = vi.fn((_url: string) => Promise.resolve());
+  const fake = fakeWebContents();
+  restrictNavigation(fake.contents, appOrigin, openExternal);
+  return { ...fake, openExternal };
+}
+
+describe('CONTENT_SECURITY_POLICY', () => {
+  it('CSP restritiva', () => {
+    expect(CONTENT_SECURITY_POLICY).toContain("default-src 'self'");
+    expect(CONTENT_SECURITY_POLICY).toContain("object-src 'none'");
+  });
+
+  it('é exatamente a política do ADR 0007', () => {
+    expect(CONTENT_SECURITY_POLICY).toBe(
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    );
+  });
+
+  it('a meta do index.html repete a política, sem frame-ancestors', () => {
+    // O navegador ignora frame-ancestors em <meta>; essa diretiva só vale no cabeçalho.
+    const html = readFileSync(new URL('../src/renderer/index.html', import.meta.url), 'utf8');
+    const meta = /<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i.exec(html);
+    const withoutFrameAncestors = CONTENT_SECURITY_POLICY.split('; ')
+      .filter((directive) => !directive.startsWith('frame-ancestors'))
+      .join('; ');
+    expect(meta?.[1]).toBe(withoutFrameAncestors);
+  });
+});
+
+describe('isAllowedNavigation', () => {
+  it('bloqueia navegação para fora do app', () => {
+    expect(isAllowedNavigation('https://evil.example', 'file://')).toBe(false);
+  });
+
+  it('em desenvolvimento, aceita a origem do servidor do Vite', () => {
+    expect(isAllowedNavigation('http://localhost:5173/#/projetos', 'http://localhost:5173')).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    'http://localhost:5174/',
+    'https://localhost:5173/',
+    'http://127.0.0.1:5173/',
+    'https://evil.example/',
+    'file:///C:/Windows/win.ini',
+    'javascript:alert(1)',
+    'data:text/html,<h1>x</h1>',
+    'about:blank',
+    'não é uma URL',
+  ])('em desenvolvimento, recusa %s', (url) => {
+    expect(isAllowedNavigation(url, 'http://localhost:5173')).toBe(false);
+  });
+
+  // Em file:// a origem é opaca: nenhuma navegação de documento é aceita. As rotas do renderer
+  // trocam só o hash, o que não dispara will-navigate.
+  it.each([
+    'file:///C:/app/out/renderer/index.html',
+    'file:///C:/Users/fulano/repositorio/pagina.html',
+    'https://evil.example/',
+  ])('em file://, recusa %s', (url) => {
+    expect(isAllowedNavigation(url, 'file://')).toBe(false);
+  });
+
+  it('duas origens opacas nunca contam como a mesma', () => {
+    expect(isAllowedNavigation('file:///C:/pagina.html', 'null')).toBe(false);
+  });
+});
+
+describe('isAllowedExternalUrl', () => {
+  it('bloqueia javascript: em links externos', () => {
+    expect(isAllowedExternalUrl('javascript:alert(1)')).toBe(false);
+  });
+
+  it.each(['https://example.com/docs', 'mailto:contato@example.com'])('aceita %s', (url) => {
+    expect(isAllowedExternalUrl(url)).toBe(true);
+  });
+
+  it.each([
+    'http://example.com/',
+    'file:///C:/Windows/System32/calc.exe',
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    'ms-settings:privacy',
+    'smb://servidor/pasta',
+    'não é uma URL',
+    '',
+  ])('recusa %s', (url) => {
+    expect(isAllowedExternalUrl(url)).toBe(false);
+  });
+});
+
+describe('restrictNavigation', () => {
+  it('impede a saída do app e abre https: no navegador do sistema', () => {
+    const { navigate, openExternal } = setupNavigation('file://');
+    expect(navigate('https://example.com/docs')).toBe(true);
+    expect(openExternal).toHaveBeenCalledWith('https://example.com/docs');
+  });
+
+  it.each(['javascript:alert(1)', 'file:///C:/Users/fulano/pagina.html', 'http://example.com/'])(
+    'impede %s sem abrir nada fora',
+    (url) => {
+      const { navigate, openExternal } = setupNavigation('file://');
+      expect(navigate(url)).toBe(true);
+      expect(openExternal).not.toHaveBeenCalled();
+    },
+  );
+
+  it('deixa seguir a navegação na origem do servidor de desenvolvimento', () => {
+    const { navigate, openExternal } = setupNavigation('http://localhost:5173');
+    expect(navigate('http://localhost:5173/')).toBe(false);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('nega toda janela nova e abre fora só https: e mailto:', () => {
+    const { open, openExternal } = setupNavigation('file://');
+    for (const url of [
+      'https://example.com/',
+      'mailto:contato@example.com',
+      'file:///C:/Windows/System32/calc.exe',
+      'javascript:alert(1)',
+    ]) {
+      expect(open(url)).toEqual({ action: 'deny' });
+    }
+    expect(openExternal.mock.calls).toEqual([
+      ['https://example.com/'],
+      ['mailto:contato@example.com'],
+    ]);
+  });
+
+  it('nega janela nova até para a origem do app', () => {
+    const { open, openExternal } = setupNavigation('http://localhost:5173');
+    expect(open('http://localhost:5173/')).toEqual({ action: 'deny' });
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('entrega ao sistema a URL normalizada', () => {
+    const { open, openExternal } = setupNavigation('file://');
+    open('https://example.com/a b');
+    expect(openExternal).toHaveBeenCalledWith('https://example.com/a%20b');
+  });
+
+  it('trata a falha ao abrir fora, sem rejeição solta', async () => {
+    // Função comum, não vi.fn: o vi.fn trata a promessa que devolve e esconderia a rejeição.
+    const opened: string[] = [];
+    const openExternal = (url: string) => {
+      opened.push(url);
+      return Promise.reject(new Error('nenhum programa para o protocolo'));
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const fake = fakeWebContents();
+      restrictNavigation(fake.contents, 'file://', openExternal);
+      fake.open('mailto:contato@example.com');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(opened).toEqual(['mailto:contato@example.com']);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+});
+
+describe('applyContentSecurityPolicy', () => {
+  type HeadersListener = (
+    details: { responseHeaders?: Record<string, string[]> },
+    callback: (response: unknown) => void,
+  ) => void;
+
+  function capture() {
+    let listener: HeadersListener | undefined;
+    const session = {
+      webRequest: {
+        onHeadersReceived(registered: HeadersListener) {
+          listener = registered;
+        },
+      },
+    } as unknown as Session;
+    applyContentSecurityPolicy(session);
+    return required(listener, 'onHeadersReceived');
+  }
+
+  it('acrescenta a política completa, com frame-ancestors, ao cabeçalho da resposta', () => {
+    const callback = vi.fn();
+    capture()({ responseHeaders: { 'Content-Type': ['text/html'] } }, callback);
+    expect(callback).toHaveBeenCalledWith({
+      responseHeaders: {
+        'Content-Type': ['text/html'],
+        'Content-Security-Policy': [CONTENT_SECURITY_POLICY],
+      },
+    });
+  });
+
+  it('funciona quando a resposta não tem cabeçalhos', () => {
+    const callback = vi.fn();
+    capture()({}, callback);
+    expect(callback).toHaveBeenCalledWith({
+      responseHeaders: { 'Content-Security-Policy': [CONTENT_SECURITY_POLICY] },
+    });
+  });
+});
+
+// Em file://, a CSP trata como 'self' qualquer arquivo local. O filtro de pedidos file: limita o
+// renderer à pasta dele. Os caminhos saem de resolve() para valer no Windows, no macOS e no Linux.
+const rendererDir = resolve('/app/out/renderer');
+const fileUrl = (...segments: string[]) => pathToFileURL(join(...segments)).href;
+
+describe('isFileUrlInside', () => {
+  it.each([
+    ['o index.html', fileUrl(rendererDir, 'index.html')],
+    ['o index.html com hash de rota', `${fileUrl(rendererDir, 'index.html')}#/projetos`],
+    ['um arquivo de subpasta', fileUrl(rendererDir, 'assets', 'index.js')],
+  ])('aceita %s', (_case, url) => {
+    expect(isFileUrlInside(url, rendererDir)).toBe(true);
+  });
+
+  it.each([
+    ['arquivo fora da pasta', fileUrl(resolve('/repositorio'), 'script.js')],
+    ['pasta irmã com o mesmo prefixo', fileUrl(resolve('/app/out/renderer-x'), 'index.html')],
+    ['subida com ..', `${pathToFileURL(rendererDir).href}/../../segredo.txt`],
+    ['barra codificada', `${pathToFileURL(rendererDir).href}/..%2F..%2Fsegredo.txt`],
+    ['a própria pasta', pathToFileURL(rendererDir).href],
+    ['arquivo em outro host', 'file://servidor/compartilhamento/index.html'],
+    ['URL que não é file:', 'http://localhost:5173/index.html'],
+    ['texto que não é URL', 'não é uma URL'],
+  ])('recusa %s', (_case, url) => {
+    expect(isFileUrlInside(url, rendererDir)).toBe(false);
+  });
+});
+
+describe('restrictFileRequests', () => {
+  type RequestListener = (
+    details: { url: string },
+    callback: (response: { cancel?: boolean }) => void,
+  ) => void;
+
+  function capture() {
+    let listener: RequestListener | undefined;
+    const session = {
+      webRequest: {
+        onBeforeRequest(registered: RequestListener) {
+          listener = registered;
+        },
+      },
+    } as unknown as Session;
+    restrictFileRequests(session, rendererDir);
+    const registered = required(listener, 'onBeforeRequest');
+    return (url: string) => {
+      const callback = vi.fn();
+      registered({ url }, callback);
+      return callback.mock.calls[0]?.[0];
+    };
+  }
+
+  it('cancela pedido file: fora da pasta do renderer', () => {
+    expect(capture()(fileUrl(resolve('/repositorio'), 'script.js'))).toEqual({ cancel: true });
+  });
+
+  it('deixa passar arquivo da pasta do renderer e pedido que não é file:', () => {
+    const request = capture();
+    expect(request(fileUrl(rendererDir, 'index.html'))).toEqual({ cancel: false });
+    expect(request('http://localhost:5173/@vite/client')).toEqual({ cancel: false });
+  });
+});
+
+describe('denyAllPermissions', () => {
+  it('nega pedidos e consultas de permissão', () => {
+    let request:
+      | ((contents: unknown, permission: string, callback: (granted: boolean) => void) => void)
+      | undefined;
+    let check: ((contents: unknown, permission: string) => boolean) | undefined;
+    const session = {
+      setPermissionRequestHandler(handler: typeof request) {
+        request = handler;
+      },
+      setPermissionCheckHandler(handler: typeof check) {
+        check = handler;
+      },
+    } as unknown as Session;
+    denyAllPermissions(session);
+
+    for (const permission of ['media', 'geolocation', 'notifications', 'openExternal']) {
+      const callback = vi.fn();
+      required(request, 'setPermissionRequestHandler')(null, permission, callback);
+      expect(callback).toHaveBeenCalledWith(false);
+      expect(required(check, 'setPermissionCheckHandler')(null, permission)).toBe(false);
+    }
+  });
+});
+
+describe('buildProjectHubApi', () => {
+  it('preload só chama canais conhecidos', async () => {
+    const calls: string[] = [];
+    const api = buildProjectHubApi(async (channel) => {
+      calls.push(channel);
+      return { ok: true, data: 'pong' };
+    });
+    await api.ping();
+    expect(calls).toEqual([CHANNELS.appPing]);
+  });
+
+  it('a API exposta tem só ping, sem envio genérico', () => {
+    const api = buildProjectHubApi(() => Promise.resolve(undefined));
+    expect(Object.keys(api)).toEqual(['ping']);
+  });
+
+  it('ping devolve a resposta do processo principal', async () => {
+    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: 'pong' }));
+    await expect(api.ping()).resolves.toEqual({ ok: true, data: 'pong' });
+    expectTypeOf(api.ping).toEqualTypeOf<() => Promise<AppResult<string>>>();
+  });
+});
