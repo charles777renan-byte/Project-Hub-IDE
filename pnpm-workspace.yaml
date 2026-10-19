@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Falha quando um --filter não encontra nenhum pacote. Sem isso, um nome digitado
+# errado (pnpm --filter @project-hub/dominio test) terminaria com código 0 sem rodar nada.
+failIfNoMatch: true
+
+# Dependências novas entram com versão exata, sem ^ (ver ADR 0007).
+saveExact: true

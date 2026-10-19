@@ -1,0 +1,5 @@
+# O Prettier já ignora o que está no .gitignore (node_modules, dist, out, .superpowers).
+# Aqui entram os arquivos versionados que `pnpm format` não deve reescrever.
+pnpm-lock.yaml
+planejamento-project-hub.md
+docs/superpowers/
