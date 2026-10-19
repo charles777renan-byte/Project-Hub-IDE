@@ -1,9 +1,22 @@
 import { join } from 'node:path';
-import { CHANNELS, type AppResult } from '@project-hub/contracts';
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
+import { CHANNELS } from '@project-hub/contracts';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  session,
+  shell,
+  type IpcMainInvokeEvent,
+} from 'electron';
+import { createProjectServices, platformOf } from './composition';
+import { chooseProjectDirectory } from './dialogs';
+import { registerProjectHandlers } from './ipc/projects';
+import { registerTrustedHandler } from './ipc/trusted-handler';
 import {
   applyContentSecurityPolicy,
   denyAllPermissions,
+  isTrustedSenderUrl,
   restrictFileRequests,
   restrictNavigation,
 } from './security';
@@ -60,13 +73,32 @@ function createMainWindow(): void {
   });
 }
 
+/** Todo canal IPC confere o remetente antes de responder (R65): só o quadro do aplicativo passa. */
+const isTrustedSender = (event: IpcMainInvokeEvent): boolean =>
+  isTrustedSenderUrl(event.senderFrame?.url ?? '', appOrigin, rendererDirectory);
+
 app
   .whenReady()
   .then(() => {
     applyContentSecurityPolicy(session.defaultSession);
     restrictFileRequests(session.defaultSession, rendererDirectory);
     denyAllPermissions(session.defaultSession);
-    ipcMain.handle(CHANNELS.appPing, (): AppResult<string> => ({ ok: true, data: 'pong' }));
+
+    const services = createProjectServices({
+      dbFile: join(app.getPath('userData'), 'database', 'project-hub.sqlite'),
+      platform: platformOf(process.platform),
+    });
+    app.once('will-quit', () => {
+      services.close();
+    });
+
+    registerTrustedHandler(ipcMain, CHANNELS.appPing, isTrustedSender, () =>
+      Promise.resolve({ ok: true, data: 'pong' }),
+    );
+    registerProjectHandlers(ipcMain, isTrustedSender, {
+      services,
+      chooseDirectory: chooseProjectDirectory,
+    });
     createMainWindow();
 
     // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.

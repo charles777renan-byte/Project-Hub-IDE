@@ -93,3 +93,43 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+.page-alert {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.project-list {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 48rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-card {
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+  border-radius: var(--radius);
+}
+
+.project-card h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 1.125rem;
+}
+
+.project-card p {
+  margin: 0;
+}
+
+/* O caminho é longo e pode não ter espaço para quebrar: quebra em qualquer ponto para caber na janela. */
+.project-path {
+  overflow-wrap: anywhere;
+}
+
+.project-unavailable {
+  margin-top: var(--space-1);
+  color: var(--color-danger);
+  font-weight: 600;
+}

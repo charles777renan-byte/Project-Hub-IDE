@@ -1,3 +1,4 @@
+import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
 
 /**
@@ -7,4 +8,12 @@ import type { AppResult } from './result';
 export type ProjectHubApi = {
   /** Confere que o processo principal responde. Devolve `'pong'`. */
   ping(): Promise<AppResult<string>>;
+  projects: {
+    /** Projetos ativos. Uma pasta que sumiu aparece com `available: false`. */
+    list(): Promise<AppResult<ProjectSummary[]>>;
+    /** Seletor nativo de pasta. Devolve `null` quando a pessoa cancela. */
+    chooseDirectory(): Promise<AppResult<{ path: string } | null>>;
+    /** Cadastra a pasta. O processo principal revalida o caminho (R66). */
+    add(input: AddProjectInput): Promise<AppResult<ProjectSummary>>;
+  };
 };

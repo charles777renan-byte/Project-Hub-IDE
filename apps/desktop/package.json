@@ -9,8 +9,13 @@
     "typecheck": "tsc",
     "test": "vitest run --passWithNoTests"
   },
+  "dependencies": {
+    "better-sqlite3": "13.0.3"
+  },
   "devDependencies": {
+    "@project-hub/application": "workspace:*",
     "@project-hub/contracts": "workspace:*",
+    "@project-hub/database": "workspace:*",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

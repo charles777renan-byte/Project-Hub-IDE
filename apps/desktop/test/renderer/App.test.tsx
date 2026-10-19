@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../src/renderer/App';
 
 // O aplicativo usa HashRouter (o renderer roda de file:// em produção). Os testes usam
@@ -91,16 +91,34 @@ describe('App', () => {
   });
 });
 
+// A página de Projetos chama a API do preload ao abrir. Aqui ela responde com lista vazia; o
+// comportamento da página está em ProjectsPage.test.tsx.
 describe('página de Projetos', () => {
-  it('mostra o estado vazio e o botão Adicionar projeto desabilitado', () => {
+  beforeEach(() => {
+    window.projectHub = {
+      ping: () => Promise.resolve({ ok: true, data: 'pong' }),
+      projects: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        chooseDirectory: () => Promise.resolve({ ok: true, data: null }),
+        add: () => Promise.reject(new Error('add não é chamado nesta página')),
+      },
+    };
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'projectHub');
+  });
+
+  it('mostra o botão Adicionar projeto habilitado, ao lado do título', async () => {
     render(
       <MemoryRouter initialEntries={['/projects']}>
         <App />
       </MemoryRouter>,
     );
+    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toBeEnabled();
     expect(
-      screen.getByText('Nenhum projeto ainda. Adicione uma pasta para começar.'),
+      await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toBeDisabled();
   });
 });

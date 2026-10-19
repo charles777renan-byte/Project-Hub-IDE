@@ -11,6 +11,7 @@ import {
   isAllowedExternalUrl,
   isAllowedNavigation,
   isFileUrlInside,
+  isTrustedSenderUrl,
   restrictFileRequests,
   restrictNavigation,
 } from '../src/main/security';
@@ -413,6 +414,37 @@ describe('denyAllPermissions', () => {
   });
 });
 
+// Quem chama um canal IPC precisa ser o aplicativo. Em desenvolvimento, a origem é a do Vite. Em
+// produção, a origem é file://, opaca, e o remetente confiável é o index.html da pasta do renderer.
+describe('isTrustedSenderUrl', () => {
+  it('em desenvolvimento, aceita o quadro na origem do servidor do Vite, com rota no hash', () => {
+    expect(
+      isTrustedSenderUrl('http://localhost:5173/#/projects', 'http://localhost:5173', rendererDir),
+    ).toBe(true);
+  });
+
+  it.each(['https://evil.example/', 'http://localhost:5174/', 'file:///C:/app/index.html', ''])(
+    'em desenvolvimento, recusa %j',
+    (url) => {
+      expect(isTrustedSenderUrl(url, 'http://localhost:5173', rendererDir)).toBe(false);
+    },
+  );
+
+  it('em produção, aceita o index.html da pasta do renderer, com rota no hash', () => {
+    expect(
+      isTrustedSenderUrl(`${fileUrl(rendererDir, 'index.html')}#/projects`, 'file://', rendererDir),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['arquivo de fora da pasta do renderer', fileUrl(resolve('/repositorio'), 'index.html')],
+    ['site externo', 'https://evil.example/'],
+    ['quadro sem endereço', ''],
+  ])('em produção, recusa %s', (_case, url) => {
+    expect(isTrustedSenderUrl(url, 'file://', rendererDir)).toBe(false);
+  });
+});
+
 describe('buildProjectHubApi', () => {
   it('preload só chama canais conhecidos', async () => {
     const calls: string[] = [];
@@ -424,10 +456,58 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só ping, sem envio genérico', () => {
+  it('a API exposta tem só ping e os métodos de projetos, sem envio genérico', () => {
     const api = buildProjectHubApi(() => Promise.resolve(undefined));
-    expect(Object.keys(api)).toEqual(['ping']);
+    expect(Object.keys(api).sort()).toEqual(['ping', 'projects']);
+    expect(Object.keys(api.projects).sort()).toEqual(['add', 'chooseDirectory', 'list']);
   });
+
+  it('projects.list e projects.add usam os canais de contracts, e add leva o caminho', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: [] });
+    });
+    await api.projects.list();
+    await api.projects.add({ path: 'C:\\Projetos\\app' });
+    expect(calls).toEqual([
+      [CHANNELS.projectsList, undefined],
+      [CHANNELS.projectsAdd, { path: 'C:\\Projetos\\app' }],
+    ]);
+  });
+
+  it('projects.chooseDirectory aceita null, que é o cancelamento da pessoa', async () => {
+    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: null }));
+    await expect(api.projects.chooseDirectory()).resolves.toEqual({ ok: true, data: null });
+  });
+
+  it.each([
+    ['ping', (api: ReturnType<typeof buildProjectHubApi>) => api.ping(), { ok: true, data: 42 }],
+    [
+      'projects.list',
+      (api: ReturnType<typeof buildProjectHubApi>) => api.projects.list(),
+      { ok: true, data: [{ id: 'p1' }] },
+    ],
+    [
+      'projects.add',
+      (api: ReturnType<typeof buildProjectHubApi>) => api.projects.add({ path: 'C:\\app' }),
+      { ok: false, error: { code: 'NAO_EXISTE', message: 'x', retryable: false } },
+    ],
+    [
+      'projects.chooseDirectory',
+      (api: ReturnType<typeof buildProjectHubApi>) => api.projects.chooseDirectory(),
+      undefined,
+    ],
+  ])(
+    '%s: resposta fora do contrato vira VALIDATION_FAILED, sem repassar o dado',
+    async (_name, call, response) => {
+      const api = buildProjectHubApi(() => Promise.resolve(response));
+      await expect(call(api)).resolves.toEqual({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED', message: expect.any(String), retryable: false },
+      });
+    },
+  );
 
   it('ping devolve a resposta do processo principal', async () => {
     const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: 'pong' }));

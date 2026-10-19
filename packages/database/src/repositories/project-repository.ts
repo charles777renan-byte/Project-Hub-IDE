@@ -11,6 +11,8 @@ export interface ProjectRepository {
   /** Inclui os removidos: o caminho continua ocupado enquanto o registro existir. */
   findByNormalizedPath(normalizedPath: string): ProjectRecord | undefined;
   markRemoved(id: string, removedAt: string): void;
+  /** Desfaz a remoção lógica: o mesmo registro volta à lista, sem inserir outro. */
+  restore(id: string, updatedAt: string): void;
 }
 
 type ProjectRow = typeof projects.$inferSelect;
@@ -79,6 +81,10 @@ export function createProjectRepository(db: AppDatabase): ProjectRepository {
 
     markRemoved(id, removedAt) {
       db.update(projects).set({ removedAt, updatedAt: removedAt }).where(eq(projects.id, id)).run();
+    },
+
+    restore(id, updatedAt) {
+      db.update(projects).set({ removedAt: null, updatedAt }).where(eq(projects.id, id)).run();
     },
   };
 }
