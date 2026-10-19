@@ -58,11 +58,30 @@ function fakeWebContents() {
   };
 }
 
-function setupNavigation(appOrigin: string) {
+/** `confirmed` é a resposta da pessoa no diálogo de confirmação: Abrir (true) ou Cancelar (false). */
+function setupNavigation(appOrigin: string, confirmed = true) {
+  const confirmExternal = vi.fn((_url: string) => Promise.resolve(confirmed));
   const openExternal = vi.fn((_url: string) => Promise.resolve());
   const fake = fakeWebContents();
-  restrictNavigation(fake.contents, appOrigin, openExternal);
-  return { ...fake, openExternal };
+  restrictNavigation(fake.contents, appOrigin, { confirmExternal, openExternal });
+  return { ...fake, confirmExternal, openExternal };
+}
+
+/** Deixa terminar a confirmação e a abertura, que são assíncronas. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** Roda `action` e devolve as rejeições que ficaram sem tratamento. */
+async function unhandledRejectionsDuring(action: () => void): Promise<unknown[]> {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    action();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+  return unhandled;
 }
 
 describe('CONTENT_SECURITY_POLICY', () => {
@@ -103,6 +122,8 @@ describe('isAllowedNavigation', () => {
     'http://localhost:5174/',
     'https://localhost:5173/',
     'http://127.0.0.1:5173/',
+    'http://localhost:5173.evil.example/',
+    'http://localhost:5173@evil.example/',
     'https://evil.example/',
     'file:///C:/Windows/win.ini',
     'javascript:alert(1)',
@@ -152,29 +173,35 @@ describe('isAllowedExternalUrl', () => {
 });
 
 describe('restrictNavigation', () => {
-  it('impede a saída do app e abre https: no navegador do sistema', () => {
-    const { navigate, openExternal } = setupNavigation('file://');
+  it('impede a saída do app e abre https: no navegador do sistema depois de Abrir', async () => {
+    const { navigate, confirmExternal, openExternal } = setupNavigation('file://');
     expect(navigate('https://example.com/docs')).toBe(true);
+    await settle();
+    expect(confirmExternal).toHaveBeenCalledWith('https://example.com/docs');
     expect(openExternal).toHaveBeenCalledWith('https://example.com/docs');
   });
 
   it.each(['javascript:alert(1)', 'file:///C:/Users/fulano/pagina.html', 'http://example.com/'])(
-    'impede %s sem abrir nada fora',
-    (url) => {
-      const { navigate, openExternal } = setupNavigation('file://');
+    'impede %s sem perguntar nem abrir nada fora',
+    async (url) => {
+      const { navigate, confirmExternal, openExternal } = setupNavigation('file://');
       expect(navigate(url)).toBe(true);
+      await settle();
+      expect(confirmExternal).not.toHaveBeenCalled();
       expect(openExternal).not.toHaveBeenCalled();
     },
   );
 
-  it('deixa seguir a navegação na origem do servidor de desenvolvimento', () => {
-    const { navigate, openExternal } = setupNavigation('http://localhost:5173');
+  it('deixa seguir a navegação na origem do servidor de desenvolvimento', async () => {
+    const { navigate, confirmExternal, openExternal } = setupNavigation('http://localhost:5173');
     expect(navigate('http://localhost:5173/')).toBe(false);
+    await settle();
+    expect(confirmExternal).not.toHaveBeenCalled();
     expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it('nega toda janela nova e abre fora só https: e mailto:', () => {
-    const { open, openExternal } = setupNavigation('file://');
+  it('nega toda janela nova e só pergunta e abre fora https: e mailto:', async () => {
+    const { open, confirmExternal, openExternal } = setupNavigation('file://');
     for (const url of [
       'https://example.com/',
       'mailto:contato@example.com',
@@ -183,44 +210,79 @@ describe('restrictNavigation', () => {
     ]) {
       expect(open(url)).toEqual({ action: 'deny' });
     }
-    expect(openExternal.mock.calls).toEqual([
-      ['https://example.com/'],
-      ['mailto:contato@example.com'],
-    ]);
+    await settle();
+    const allowed = [['https://example.com/'], ['mailto:contato@example.com']];
+    expect(confirmExternal.mock.calls).toEqual(allowed);
+    expect(openExternal.mock.calls).toEqual(allowed);
   });
 
-  it('nega janela nova até para a origem do app', () => {
-    const { open, openExternal } = setupNavigation('http://localhost:5173');
+  it('nega janela nova até para a origem do app', async () => {
+    const { open, confirmExternal, openExternal } = setupNavigation('http://localhost:5173');
     expect(open('http://localhost:5173/')).toEqual({ action: 'deny' });
+    await settle();
+    expect(confirmExternal).not.toHaveBeenCalled();
     expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it('entrega ao sistema a URL normalizada', () => {
-    const { open, openExternal } = setupNavigation('file://');
+  it.each(['https://example.com/docs', 'mailto:contato@example.com'])(
+    'não abre %s quando a pessoa escolhe Cancelar',
+    async (url) => {
+      const { navigate, open, confirmExternal, openExternal } = setupNavigation('file://', false);
+      expect(navigate(url)).toBe(true);
+      expect(open(url)).toEqual({ action: 'deny' });
+      await settle();
+      expect(confirmExternal.mock.calls).toEqual([[url], [url]]);
+      expect(openExternal).not.toHaveBeenCalled();
+    },
+  );
+
+  it('pergunta e abre com a URL normalizada', async () => {
+    const { open, confirmExternal, openExternal } = setupNavigation('file://');
     open('https://example.com/a b');
+    await settle();
+    expect(confirmExternal).toHaveBeenCalledWith('https://example.com/a%20b');
     expect(openExternal).toHaveBeenCalledWith('https://example.com/a%20b');
   });
 
-  it('trata a falha ao abrir fora, sem rejeição solta', async () => {
-    // Função comum, não vi.fn: o vi.fn trata a promessa que devolve e esconderia a rejeição.
+  // Funções comuns, não vi.fn: o vi.fn trata a promessa que devolve e esconderia a rejeição.
+  it.each([
+    ['rejeita', () => Promise.reject(new Error('diálogo indisponível'))],
+    [
+      'lança erro',
+      () => {
+        throw new Error('diálogo indisponível');
+      },
+    ],
+  ])('quando o diálogo %s, não abre e não deixa rejeição solta', async (_case, confirmExternal) => {
     const opened: string[] = [];
-    const openExternal = (url: string) => {
-      opened.push(url);
-      return Promise.reject(new Error('nenhum programa para o protocolo'));
-    };
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown) => unhandled.push(reason);
-    process.on('unhandledRejection', onUnhandled);
-    try {
-      const fake = fakeWebContents();
-      restrictNavigation(fake.contents, 'file://', openExternal);
-      fake.open('mailto:contato@example.com');
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(opened).toEqual(['mailto:contato@example.com']);
-      expect(unhandled).toEqual([]);
-    } finally {
-      process.off('unhandledRejection', onUnhandled);
-    }
+    const fake = fakeWebContents();
+    restrictNavigation(fake.contents, 'file://', {
+      confirmExternal,
+      openExternal: (url) => {
+        opened.push(url);
+        return Promise.resolve();
+      },
+    });
+    const unhandled = await unhandledRejectionsDuring(() => fake.open('https://example.com/'));
+    expect(opened).toEqual([]);
+    expect(unhandled).toEqual([]);
+  });
+
+  it('trata a falha ao abrir fora, sem rejeição solta', async () => {
+    const opened: string[] = [];
+    const fake = fakeWebContents();
+    restrictNavigation(fake.contents, 'file://', {
+      confirmExternal: () => Promise.resolve(true),
+      openExternal: (url) => {
+        opened.push(url);
+        return Promise.reject(new Error('nenhum programa para o protocolo'));
+      },
+    });
+    const unhandled = await unhandledRejectionsDuring(() =>
+      fake.open('mailto:contato@example.com'),
+    );
+    expect(opened).toEqual(['mailto:contato@example.com']);
+    expect(unhandled).toEqual([]);
   });
 });
 
