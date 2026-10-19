@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { CHANNELS, type AppResult } from '@project-hub/contracts';
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import {
   applyContentSecurityPolicy,
   denyAllPermissions,
@@ -20,6 +20,24 @@ const preloadPath = join(import.meta.dirname, '../preload/index.cjs');
 const devServerUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
 const appOrigin = devServerUrl === undefined ? 'file://' : new URL(devServerUrl).origin;
 
+/**
+ * Confirmação nativa antes de abrir um endereço fora do aplicativo (seção 17.2). Mostra o endereço
+ * normalizado. Cancelar é o botão padrão e também a resposta do Esc.
+ */
+async function confirmExternal(owner: BrowserWindow, url: string): Promise<boolean> {
+  const { response } = await dialog.showMessageBox(owner, {
+    type: 'question',
+    title: 'Project Hub',
+    message: 'Abrir este endereço fora do Project Hub?',
+    detail: url,
+    buttons: ['Abrir', 'Cancelar'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  return response === 0;
+}
+
 function createMainWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -27,30 +45,40 @@ function createMainWindow(): void {
     show: false,
     webPreferences: buildWebPreferences(preloadPath),
   });
-  restrictNavigation(mainWindow.webContents, appOrigin, (url) => shell.openExternal(url));
+  restrictNavigation(mainWindow.webContents, appOrigin, {
+    confirmExternal: (url) => confirmExternal(mainWindow, url),
+    openExternal: (url) => shell.openExternal(url),
+  });
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
-  if (devServerUrl === undefined) {
-    void mainWindow.loadFile(join(rendererDirectory, 'index.html'));
-  } else {
-    void mainWindow.loadURL(devServerUrl);
-  }
+  const loading =
+    devServerUrl === undefined
+      ? mainWindow.loadFile(join(rendererDirectory, 'index.html'))
+      : mainWindow.loadURL(devServerUrl);
+  loading.catch((error: unknown) => {
+    console.error('Falha ao carregar o renderer:', error);
+  });
 }
 
-void app.whenReady().then(() => {
-  applyContentSecurityPolicy(session.defaultSession);
-  restrictFileRequests(session.defaultSession, rendererDirectory);
-  denyAllPermissions(session.defaultSession);
-  ipcMain.handle(CHANNELS.appPing, (): AppResult<string> => ({ ok: true, data: 'pong' }));
-  createMainWindow();
+app
+  .whenReady()
+  .then(() => {
+    applyContentSecurityPolicy(session.defaultSession);
+    restrictFileRequests(session.defaultSession, rendererDirectory);
+    denyAllPermissions(session.defaultSession);
+    ipcMain.handle(CHANNELS.appPing, (): AppResult<string> => ({ ok: true, data: 'pong' }));
+    createMainWindow();
 
-  // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
+    // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  })
+  .catch((error: unknown) => {
+    console.error('Falha ao iniciar o aplicativo:', error);
   });
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
