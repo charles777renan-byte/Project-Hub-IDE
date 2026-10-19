@@ -1,3 +1,4 @@
+export * from './api';
 export * from './channels';
 export * from './errors';
 export * from './project';

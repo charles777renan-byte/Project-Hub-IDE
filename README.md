@@ -46,12 +46,12 @@ Copie `.env.example` para `.env` se quiser mudar alguma variável. O `.env` não
 | `pnpm db:generate`      | Gera migrações. Delega ao pacote `@project-hub/database`.                                   |
 | `pnpm db:migrate`       | Aplica migrações. Delega ao pacote `@project-hub/database`.                                 |
 
-`dev`, `test:e2e`, `db:generate` e `db:migrate` delegam a pacotes que chegam nas próximas tarefas. Enquanto o pacote não existir, terminam com o erro "No projects matched the filters".
+`test:e2e`, `db:generate` e `db:migrate` delegam a pacotes ou scripts que chegam nas próximas tarefas e, até lá, terminam com erro. Na primeira vez, `pnpm dev` baixa o binário do Electron (ADR 0007, "Registros posteriores").
 
 ## Estrutura
 
 ```text
-apps/desktop      processo principal, preload e renderer (a criar)
+apps/desktop      processo principal, preload e renderer
 packages/domain   regras de negócio, sem dependência de Electron
 packages/*        demais pacotes internos (contracts, application, database, git-adapter, ...)
 docs/adr          decisões de arquitetura

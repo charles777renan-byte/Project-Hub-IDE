@@ -1,0 +1,18 @@
+{
+  "name": "@project-hub/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "install-electron && electron-vite dev",
+    "typecheck": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@project-hub/contracts": "workspace:*",
+    "electron": "44.9.0",
+    "electron-vite": "6.0.0",
+    "vite": "8.3.4"
+  }
+}
