@@ -1,1 +1,14 @@
+# Dependências e saídas de build
+node_modules/
+dist/
+out/
+
+# Configuração e dados locais (segredos nunca entram no Git)
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+
+# Mockups do brainstorm e arquivos de trabalho dos agentes
 .superpowers/

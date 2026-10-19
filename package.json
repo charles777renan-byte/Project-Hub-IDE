@@ -1,0 +1,34 @@
+{
+  "name": "project-hub",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hub local para organizar projetos, missões e agentes de IA.",
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=24.22.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @project-hub/desktop dev",
+    "build": "pnpm typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "typecheck": "tsc && pnpm -r run typecheck",
+    "test": "vitest run --project=!integration",
+    "test:integration": "vitest run --project=integration",
+    "test:e2e": "pnpm --filter @project-hub/desktop test:e2e",
+    "db:generate": "pnpm --filter @project-hub/database db:generate",
+    "db:migrate": "pnpm --filter @project-hub/database db:migrate"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.5"
+  }
+}
