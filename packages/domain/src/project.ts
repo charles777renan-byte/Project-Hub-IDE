@@ -1,0 +1,24 @@
+/** Projeto registrado no Hub, como o banco o guarda e como o repositório o devolve. */
+export type ProjectRecord = {
+  id: string;
+  name: string;
+  path: string;
+  normalizedPath: string;
+  description?: string;
+  repositoryKind: 'git' | 'none';
+  defaultBranch?: string;
+  isFavorite: boolean;
+  /** Usado pela RF-AGT-007. */
+  trusted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastOpenedAt?: string;
+  /** Remoção lógica: o registro continua no banco, mas sai da listagem. */
+  removedAt?: string;
+};
+
+/** Dados que o usuário informa ao adicionar um projeto. O restante é preenchido pelo banco. */
+export type NewProject = Omit<
+  ProjectRecord,
+  'isFavorite' | 'trusted' | 'updatedAt' | 'removedAt' | 'lastOpenedAt'
+>;

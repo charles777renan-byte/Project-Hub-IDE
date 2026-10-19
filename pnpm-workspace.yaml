@@ -2,6 +2,15 @@ packages:
   - apps/*
   - packages/*
 
+# Scripts de instalação de dependências. Só entra com `true` o pacote cujo script o projeto precisa
+# executar: nenhum até agora (o better-sqlite3 traz o binário pronto e não tem script; o Electron
+# baixa o dele pelo `install-electron`). `false` registra uma recusa: o pnpm 12 falha a instalação
+# (ERR_PNPM_IGNORED_BUILDS) enquanto houver um script bloqueado sem decisão.
+allowBuilds:
+  # Dependência do drizzle-kit. O script de pós-instalação só troca o executável por um atalho; o
+  # esbuild funciona sem ele.
+  esbuild: false
+
 # Falha quando um --filter não encontra nenhum pacote. Sem isso, um nome digitado
 # errado (pnpm --filter @project-hub/dominio test) terminaria com código 0 sem rodar nada.
 failIfNoMatch: true
