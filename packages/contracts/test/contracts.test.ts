@@ -1,0 +1,154 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { z } from 'zod';
+import {
+  addProjectInputSchema,
+  CHANNELS,
+  ERROR_CODES,
+  type AppError,
+  type AppResult,
+  type ErrorCode,
+  type ProjectSummary,
+} from '../src/index';
+
+describe('addProjectInputSchema', () => {
+  it('recusa caminho vazio', () => {
+    expect(addProjectInputSchema.safeParse({ path: '' }).success).toBe(false);
+  });
+
+  it('aceita caminho absoluto do Windows', () => {
+    expect(addProjectInputSchema.safeParse({ path: 'C:\\Projetos\\app' }).success).toBe(true);
+  });
+
+  it.each([{}, { path: 123 }, { path: null }, null, 'C:\\Projetos\\app'])(
+    'recusa payload que não é um objeto com path em texto: %j',
+    (payload) => {
+      expect(addProjectInputSchema.safeParse(payload).success).toBe(false);
+    },
+  );
+});
+
+describe('CHANNELS', () => {
+  // As tarefas seguintes acrescentam canais, então o teste confere presença, não igualdade.
+  it('inclui os canais da seção 13.4 e da Tarefa 2', () => {
+    expect(Object.values(CHANNELS)).toEqual(
+      expect.arrayContaining([
+        'app:ping:v1',
+        'projects:list:v1',
+        'projects:add:v1',
+        'projects:choose-directory:v1',
+      ]),
+    );
+  });
+
+  it('todo canal tem versão no nome e nenhum se repete', () => {
+    const channels = Object.values(CHANNELS);
+    for (const channel of channels) {
+      expect(channel).toMatch(/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*:v[1-9]\d*$/);
+    }
+    expect(new Set(channels).size).toBe(channels.length);
+  });
+});
+
+describe('ERROR_CODES', () => {
+  it('inclui todos os códigos da seção 13.7', () => {
+    expect(ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'PROJECT_NOT_FOUND',
+        'PROJECT_PATH_UNAVAILABLE',
+        'PROJECT_ALREADY_EXISTS',
+        'GIT_NOT_AVAILABLE',
+        'GIT_DIRTY_BASE_REQUIRES_DECISION',
+        'WORKTREE_COLLISION',
+        'WORKTREE_CREATE_FAILED',
+        'MISSION_INVALID_STATE',
+        'AGENT_UNAVAILABLE',
+        'AGENT_AUTH_REQUIRED',
+        'AGENT_PROTOCOL_ERROR',
+        'APPROVAL_REQUIRED',
+        'APPROVAL_EXPIRED',
+        'PROCESS_START_FAILED',
+        'PERMISSION_DENIED',
+        'PATH_OUTSIDE_ALLOWED_SCOPE',
+        'DATABASE_MIGRATION_FAILED',
+      ]),
+    );
+  });
+
+  it('acrescenta os códigos da Tarefa 2', () => {
+    expect(ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'WORKTREE_HAS_UNSAVED_CHANGES',
+        'PROJECT_WITHOUT_GIT',
+        'VALIDATION_FAILED',
+        'UNKNOWN',
+      ]),
+    );
+  });
+
+  it('não repete códigos', () => {
+    expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
+  });
+});
+
+// Estas conferências de tipo valem para o `tsc` (pnpm typecheck), que inclui a pasta test.
+// O Vitest só as executa como chamadas vazias.
+describe('tipos públicos', () => {
+  it('AppError tem código, mensagem, detalhes opcionais e retryable', () => {
+    expectTypeOf<AppError>().toEqualTypeOf<{
+      code: ErrorCode;
+      message: string;
+      details?: Record<string, unknown>;
+      retryable: boolean;
+    }>();
+  });
+
+  it('AppResult<T> é a união discriminada por ok', () => {
+    expectTypeOf<AppResult<number>>().toEqualTypeOf<
+      { ok: true; data: number } | { ok: false; error: AppError }
+    >();
+  });
+
+  it('ProjectSummary segue a seção Interfaces da Tarefa 2', () => {
+    expectTypeOf<ProjectSummary>().toEqualTypeOf<{
+      id: string;
+      name: string;
+      path: string;
+      repositoryKind: 'git' | 'none';
+      available: boolean;
+    }>();
+  });
+
+  it('addProjectInputSchema é um ZodObject com path em texto', () => {
+    expectTypeOf(addProjectInputSchema).toExtend<z.ZodObject<{ path: z.ZodString }>>();
+    expectTypeOf<z.infer<typeof addProjectInputSchema>>().toEqualTypeOf<{ path: string }>();
+  });
+
+  it('ErrorCode aceita os códigos novos e recusa texto qualquer', () => {
+    expectTypeOf<
+      | 'AGENT_UNAVAILABLE'
+      | 'AGENT_PROTOCOL_ERROR'
+      | 'WORKTREE_HAS_UNSAVED_CHANGES'
+      | 'PROJECT_WITHOUT_GIT'
+      | 'VALIDATION_FAILED'
+      | 'UNKNOWN'
+    >().toExtend<ErrorCode>();
+    expectTypeOf<string>().not.toExtend<ErrorCode>();
+  });
+});
+
+describe('package.json', () => {
+  it('o pacote não depende de electron', () => {
+    // new URL(..., import.meta.url) não depende do diretório em que o Vitest roda (raiz ou pacote).
+    const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+    const pkg = JSON.parse(manifest) as Record<string, Record<string, string> | undefined>;
+    for (const section of [
+      'dependencies',
+      'devDependencies',
+      'peerDependencies',
+      'optionalDependencies',
+    ]) {
+      expect(pkg[section]?.electron).toBeUndefined();
+    }
+  });
+});
