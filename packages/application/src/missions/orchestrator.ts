@@ -93,6 +93,13 @@ type Pulled =
 
 type Workspace = { cwd: string };
 
+/**
+ * Resultado da transação de pausa ou de retomada. `moved`: a mudança foi gravada. `already`: outra
+ * chamada já tinha deixado a missão no estado pedido. `stale`: a missão mudou de estado antes da
+ * transação, e a mudança não foi gravada.
+ */
+type ControlOutcome = 'moved' | 'already' | 'stale';
+
 /** O código do contrato que a falha traz, se ela traz um (o `GitError` traz). */
 function errorCode(error: unknown): ErrorCode | undefined {
   if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
@@ -626,6 +633,28 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   /**
+   * Confere a capacidade `pauseResume` do agente antes de pedir pausa ou retomada (seção 14.3). Se
+   * ela não existe, o agente não recebe a chamada e a missão não muda. Falha ao consultar vira
+   * `AGENT_UNAVAILABLE`.
+   */
+  async function supportsPauseResume(): Promise<AppResult<void>> {
+    let capabilities: Awaited<ReturnType<AgentAdapter['getCapabilities']>>;
+    try {
+      capabilities = await agent.getCapabilities({ configuration: {} });
+    } catch (error) {
+      console.error('Não foi possível consultar as capacidades do agente:', error);
+      return failure('AGENT_UNAVAILABLE', 'Não foi possível consultar o agente.');
+    }
+    if (!capabilities.pauseResume) {
+      return failure(
+        'AGENT_CAPABILITY_UNSUPPORTED',
+        'O agente desta missão não suporta pausar e retomar.',
+      );
+    }
+    return { ok: true, data: undefined };
+  }
+
+  /**
    * Pausa a missão em execução (R181). O agente pausa primeiro: se ele recusar, nada muda e a missão
    * segue `running`. Depois, missão e execução vão para `paused` numa transação que confere o estado
    * de novo, porque o agente pode ter terminado enquanto a pausa era pedida. Se a transação falhar,
@@ -644,15 +673,18 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       }
       const session = run.session;
       const executionId = run.executionId;
+      const capable = await supportsPauseResume();
+      if (!capable.ok) return capable;
       const paused = await tryAgent('Não foi possível pausar o agente:', () => session.pause());
       if (!paused) return failure('AGENT_UNAVAILABLE', 'O agente não pausou. A execução continua.');
 
-      let moved: boolean;
+      let outcome: ControlOutcome;
       try {
-        moved = repo.transaction(() => {
+        outcome = repo.transaction((): ControlOutcome => {
           const current = repo.getMission(missionId);
           const execution = repo.getExecution(executionId);
-          if (current?.status !== 'running' || execution?.status !== 'running') return false;
+          if (current?.status === 'paused' && execution?.status === 'paused') return 'already';
+          if (current?.status !== 'running' || execution?.status !== 'running') return 'stale';
           const at = now();
           repo.updateExecution(executionId, { status: 'paused' });
           repo.appendAudit({
@@ -665,13 +697,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
             createdAt: at,
           });
           moveMission(repo, missionId, 'paused', { actor: 'user', at });
-          return true;
+          return 'moved';
         });
       } catch (error) {
         await tryAgent('Não foi possível desfazer a pausa do agente:', () => session.resume());
         throw error;
       }
-      if (!moved) {
+      // Outra chamada já deixou a missão pausada: o estado é o pedido, e não há o que desfazer.
+      if (outcome === 'already') return { ok: true, data: undefined };
+      if (outcome === 'stale') {
         await tryAgent('Não foi possível desfazer a pausa do agente:', () => session.resume());
         return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto era pausada.');
       }
@@ -697,17 +731,20 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       }
       const session = run.session;
       const executionId = run.executionId;
+      const capable = await supportsPauseResume();
+      if (!capable.ok) return capable;
       const resumed = await tryAgent('Não foi possível retomar o agente:', () => session.resume());
       if (!resumed) {
         return failure('AGENT_UNAVAILABLE', 'O agente não retomou. A missão continua pausada.');
       }
 
-      let moved: boolean;
+      let outcome: ControlOutcome;
       try {
-        moved = repo.transaction(() => {
+        outcome = repo.transaction((): ControlOutcome => {
           const current = repo.getMission(missionId);
           const execution = repo.getExecution(executionId);
-          if (current?.status !== 'paused' || execution?.status !== 'paused') return false;
+          if (current?.status === 'running' && execution?.status === 'running') return 'already';
+          if (current?.status !== 'paused' || execution?.status !== 'paused') return 'stale';
           const at = now();
           repo.updateExecution(executionId, { status: 'running' });
           repo.appendAudit({
@@ -720,13 +757,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
             createdAt: at,
           });
           moveMission(repo, missionId, 'running', { actor: 'user', at });
-          return true;
+          return 'moved';
         });
       } catch (error) {
         await tryAgent('Não foi possível pausar de novo o agente:', () => session.pause());
         throw error;
       }
-      if (!moved) {
+      // Outra chamada já deixou a missão em execução: o estado é o pedido, e não há o que desfazer.
+      if (outcome === 'already') return { ok: true, data: undefined };
+      if (outcome === 'stale') {
         await tryAgent('Não foi possível pausar de novo o agente:', () => session.pause());
         return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto era retomada.');
       }

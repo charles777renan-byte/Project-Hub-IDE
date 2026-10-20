@@ -32,6 +32,8 @@ export const ERROR_CODES = [
   // para aprovação.
   'MISSION_NOT_FOUND',
   'APPROVAL_NOT_FOUND',
+  // Acrescentado pela Tarefa 10b: nenhum código da seção 13.7 serve para um agente que não pausa.
+  'AGENT_CAPABILITY_UNSUPPORTED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

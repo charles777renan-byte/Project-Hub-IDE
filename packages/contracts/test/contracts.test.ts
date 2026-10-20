@@ -94,6 +94,10 @@ describe('ERROR_CODES', () => {
     );
   });
 
+  it('acrescenta o código de capacidade do agente da Tarefa 10b', () => {
+    expect(ERROR_CODES).toEqual(expect.arrayContaining(['AGENT_CAPABILITY_UNSUPPORTED']));
+  });
+
   it('não repete códigos', () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
   });
