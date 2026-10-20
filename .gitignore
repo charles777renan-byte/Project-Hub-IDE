@@ -12,3 +12,6 @@ out/
 
 # Mockups do brainstorm e arquivos de trabalho dos agentes
 .superpowers/
+
+# Cérebro do projeto (vault do Obsidian): fica só na máquina, fora do git
+brain/
