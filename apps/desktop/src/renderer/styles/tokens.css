@@ -4,6 +4,10 @@
  * internas têm o mesmo tom; a separação vem das linhas. Só existe o tema escuro. Todo texto sobre um
  * fundo tem pelo menos 4,5:1 (WCAG 2.2 AA, seção 12.4): o teste test/renderer/contrast.test.ts lê
  * este arquivo e confere os pares. Cores em #rrggbb, que é o que o teste entende.
+ *
+ * Fontes: --font-sans começa por Inter e --font-mono por JetBrains Mono, as duas locais (fonts.css,
+ * ligado por <link> antes deste arquivo; a CSP não aceita fonte de fora). A pilha do sistema segue
+ * como reserva.
  */
 :root {
   color-scheme: dark;
@@ -35,8 +39,12 @@
   /* Amarelo: logs e progresso. */
   --yellow: #ffd23f;
 
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+  /* Inter no texto e JetBrains Mono nos dados: arquivos locais declarados em fonts.css. A pilha do
+     sistema fica depois como reserva, enquanto a fonte carrega (font-display: swap) e para os
+     símbolos que o subconjunto latin não cobre. */
+  --font-sans:
+    Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 1rem;
