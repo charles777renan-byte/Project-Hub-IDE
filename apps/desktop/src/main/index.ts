@@ -11,6 +11,7 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 import {
+  applicationEnvironment,
   createAppServices,
   platformOf,
   resolveDatabaseFile,
@@ -118,10 +119,12 @@ app
     restrictFileRequests(session.defaultSession, rendererDirectory);
     denyAllPermissions(session.defaultSession);
 
+    // Empacotado, o ambiente do processo não troca a pasta de dados nem o seletor (R193).
+    const env = applicationEnvironment(process.env, app.isPackaged);
     const services = createAppServices({
-      dbFile: resolveDatabaseFile(process.env, app.getPath('userData')),
+      dbFile: resolveDatabaseFile(env, app.getPath('userData')),
       platform: platformOf(process.platform),
-      worktreesRoot: resolveWorktreesRoot(process.env, homedir()),
+      worktreesRoot: resolveWorktreesRoot(env, homedir()),
       publishMissionEvent,
     });
     app.once('will-quit', () => {
@@ -133,7 +136,7 @@ app
     );
     registerProjectHandlers(ipcMain, isTrustedSender, {
       services,
-      chooseDirectory: resolveDirectoryChooser(process.env, chooseProjectDirectory),
+      chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);

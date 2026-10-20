@@ -50,6 +50,22 @@ export function platformOf(value: NodeJS.Platform): Platform {
 }
 
 /**
+ * Ambiente que a composição consulta para trocar pastas e o seletor de pasta (R193). Fora do
+ * aplicativo empacotado, é o ambiente do processo. Empacotado, `PROJECT_HUB_DATA_DIR`,
+ * `PROJECT_HUB_ENV` e `PROJECT_HUB_TEST_DIALOG_PATH` não valem: variáveis de teste não redirecionam
+ * o banco nem o seletor de uma instalação. `APP_WORKTREES_ROOT` não é variável de teste, é a
+ * configuração da raiz dos worktrees (R166), e continua valendo.
+ */
+export function applicationEnvironment(
+  env: NodeJS.ProcessEnv,
+  isPackaged: boolean,
+): NodeJS.ProcessEnv {
+  if (!isPackaged) return env;
+  const worktreesRoot = env['APP_WORKTREES_ROOT'];
+  return worktreesRoot === undefined ? {} : { APP_WORKTREES_ROOT: worktreesRoot };
+}
+
+/**
  * Raiz dos worktrees (R166). `APP_WORKTREES_ROOT` vence. Sem ela, `PROJECT_HUB_DATA_DIR/worktrees`
  * quando a variável de dados existe, e `<home>/ProjectHub/worktrees` nos outros casos.
  */

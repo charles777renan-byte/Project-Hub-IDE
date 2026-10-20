@@ -1,4 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { once } from 'node:events';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,12 +13,15 @@ import {
 } from '@playwright/test';
 import { createTempRepo, type TempRepo } from '@project-hub/test-utils';
 
-// Fixtures dos testes de ponta a ponta (R188, R189). Cada teste recebe pastas descartáveis (dados do
-// aplicativo e `userData` do Chromium) e abre o aplicativo construído em `out/`. Nada toca a pasta de
-// dados verdadeira da pessoa.
+// Fixtures dos testes de ponta a ponta (R188, R189, R193). Cada teste recebe pastas descartáveis
+// (dados do aplicativo e `userData` do Chromium), uma configuração do Git sem nada da máquina e abre
+// o aplicativo construído em `out/`. Nada toca a pasta de dados verdadeira da pessoa.
 
 /** Entrada do processo principal construído (`pnpm test:e2e` roda o `electron-vite build` antes). */
 const MAIN_ENTRY = join(import.meta.dirname, '..', 'out', 'main', 'index.js');
+
+/** Prazo para o aplicativo fechar sozinho. Passado ele, o processo é encerrado à força. */
+const CLOSE_TIMEOUT_MS = 15_000;
 
 /** Executável do Electron instalado no pacote: o `require('electron')` do Node devolve o caminho. */
 function electronExecutable(): string {
@@ -39,13 +44,19 @@ export type LaunchedApp = {
   app: ElectronApplication;
   /** Janela principal, com a interface já montada. */
   page: Page;
-  /** Fecha o aplicativo e espera o processo terminar. */
+  /** Fecha o aplicativo e espera o processo terminar (passado o prazo, encerra à força e avisa). */
   close(): Promise<void>;
 };
 
 export type LaunchOptions = {
   /** Valor de `PROJECT_HUB_TEST_DIALOG_PATH`: a pasta que o seletor de pasta devolve. */
   dialogPath?: string;
+  /** Espera a interface ficar pronta. O padrão confere a navegação principal. */
+  waitForReady?: (page: Page) => Promise<void>;
+  /** Chamado assim que o processo abre, antes de qualquer espera. */
+  onLaunch?: (app: ElectronApplication) => void;
+  /** Prazo do fechamento deste app, em ms. O padrão é `CLOSE_TIMEOUT_MS`. */
+  closeTimeoutMs?: number;
 };
 
 type Fixtures = {
@@ -53,7 +64,12 @@ type Fixtures = {
   dataDir: string;
   /** Pasta de worktrees das missões, dentro da pasta de dados. */
   worktreesDir: string;
-  /** Repositório Git com um commit em `main`, fora da pasta de dados. */
+  /**
+   * Variáveis que isolam o Git da configuração global e da do sistema da máquina (o arquivo é vazio).
+   * Valem para o aplicativo e para os comandos Git do teste.
+   */
+  gitEnv: Record<string, string>;
+  /** Repositório Git com um commit na branch `main` (fixada pelo helper), fora da pasta de dados. */
   gitRepo: TempRepo;
   /** Abre o aplicativo com a pasta de dados do teste. Pode ser chamada de novo para reiniciar. */
   launchApp: (options?: LaunchOptions) => Promise<LaunchedApp>;
@@ -62,6 +78,61 @@ type Fixtures = {
 function removeFolder(path: string): void {
   // No Windows, o SQLite e o Git podem segurar um arquivo por instantes depois que o processo sai.
   rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
+/** Roda `work` com as variáveis dadas no `process.env` e restaura os valores antigos no fim. */
+function withEnvironment<T>(values: Record<string, string>, work: () => T): T {
+  const previous = Object.keys(values).map((name) => [name, process.env[name]] as const);
+  Object.assign(process.env, values);
+  try {
+    return work();
+  } finally {
+    for (const [name, value] of previous) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+}
+
+/**
+ * Encerra o processo do aplicativo e os filhos dele (renderer, GPU, rede), que seguram arquivos da
+ * pasta de dados enquanto vivem. No Windows, `taskkill /T` leva a árvore inteira.
+ */
+async function killProcessTree(app: ElectronApplication): Promise<void> {
+  const child = app.process();
+  if (child.pid !== undefined && process.platform === 'win32') {
+    try {
+      execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {
+      // O processo já tinha terminado.
+    }
+  } else {
+    child.kill('SIGKILL');
+  }
+  if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
+}
+
+/**
+ * Fecha o aplicativo. Se ele não terminar no prazo, encerra a árvore de processos e avisa com erro:
+ * um fechamento travado não prende o teardown do teste.
+ */
+async function closeApp(app: ElectronApplication, timeoutMs: number): Promise<void> {
+  const closing = app.close();
+  // Se o prazo vencer, o fim tardio (ou o erro) do fechamento não pode virar rejeição solta.
+  closing.catch(() => undefined);
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<'expired'>((resolve) => {
+    timer = setTimeout(() => resolve('expired'), timeoutMs);
+  });
+  try {
+    const outcome = await Promise.race([closing.then(() => 'closed' as const), expired]);
+    if (outcome === 'expired') {
+      await killProcessTree(app);
+      throw new Error(`O aplicativo não fechou em ${timeoutMs} ms; o processo foi encerrado.`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const test = base.extend<Fixtures>({
@@ -79,9 +150,20 @@ export const test = base.extend<Fixtures>({
     await use(join(dataDir, 'worktrees'));
   },
 
-  // eslint-disable-next-line no-empty-pattern -- o Playwright exige o primeiro argumento destruturado.
-  gitRepo: async ({}, use) => {
-    const repo = createTempRepo();
+  gitEnv: async ({ dataDir }, use) => {
+    const emptyConfig = join(dataDir, 'git-config-vazio');
+    writeFileSync(emptyConfig, '');
+    await use({
+      GIT_CONFIG_GLOBAL: emptyConfig,
+      GIT_CONFIG_SYSTEM: emptyConfig,
+      GIT_CONFIG_NOSYSTEM: '1',
+    });
+  },
+
+  gitRepo: async ({ gitEnv }, use) => {
+    // O helper fixa `--initial-branch=main` e grava identidade e opções no próprio repositório; o
+    // ambiente sem configuração global garante que nada da máquina interfira nos comandos dele.
+    const repo = withEnvironment(gitEnv, () => createTempRepo());
     try {
       await use(repo);
     } finally {
@@ -89,8 +171,8 @@ export const test = base.extend<Fixtures>({
     }
   },
 
-  launchApp: async ({ dataDir }, use) => {
-    const launched: LaunchedApp[] = [];
+  launchApp: async ({ dataDir, gitEnv }, use) => {
+    const opened: { close(): Promise<void> }[] = [];
     const userDataDir = join(dataDir, 'electron-user-data');
 
     async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
@@ -98,6 +180,7 @@ export const test = base.extend<Fixtures>({
       for (const [name, value] of Object.entries(process.env)) {
         if (value !== undefined && !BLOCKED_ENV.includes(name)) env[name] = value;
       }
+      Object.assign(env, gitEnv);
       env['PROJECT_HUB_ENV'] = 'test';
       env['PROJECT_HUB_DATA_DIR'] = dataDir;
       delete env['PROJECT_HUB_TEST_DIALOG_PATH'];
@@ -110,29 +193,36 @@ export const test = base.extend<Fixtures>({
         args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`],
         env,
       });
-      let closed = false;
-      const close = async () => {
-        if (closed) return;
-        closed = true;
-        await app.close();
-      };
-      const page = await app.firstWindow();
-      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+      // O fechamento é registrado antes de qualquer espera: se a janela não aparecer ou a interface
+      // não ficar pronta, o processo não sobra e a pasta de dados pode ser apagada.
+      let closing: Promise<void> | undefined;
+      const close = () => (closing ??= closeApp(app, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS));
+      opened.push({ close });
 
-      const handle = { app, page, close };
-      launched.push(handle);
-      return handle;
+      try {
+        options.onLaunch?.(app);
+        const page = await app.firstWindow();
+        await (options.waitForReady ?? waitForNavigation)(page);
+        return { app, page, close };
+      } catch (error) {
+        await close().catch(() => undefined);
+        throw error;
+      }
     }
 
     try {
       await use(launchApp);
     } finally {
       // Fecha o que o teste deixou aberto, para a pasta de dados poder ser apagada.
-      for (const handle of launched) {
+      for (const handle of opened) {
         await handle.close().catch(() => undefined);
       }
     }
   },
 });
+
+async function waitForNavigation(page: Page): Promise<void> {
+  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+}
 
 export { expect };
