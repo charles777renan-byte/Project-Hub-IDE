@@ -48,6 +48,9 @@ export type LaunchedApp = {
   close(): Promise<void>;
 };
 
+/** Aplicativo aberto sem esperar janela nem interface: o teste decide o que esperar. */
+export type LaunchedProcess = Omit<LaunchedApp, 'page'>;
+
 export type LaunchOptions = {
   /** Valor de `PROJECT_HUB_TEST_DIALOG_PATH`: a pasta que o seletor de pasta devolve. */
   dialogPath?: string;
@@ -57,9 +60,16 @@ export type LaunchOptions = {
   onLaunch?: (app: ElectronApplication) => void;
   /** Prazo do fechamento deste app, em ms. O padrão é `CLOSE_TIMEOUT_MS`. */
   closeTimeoutMs?: number;
+  /**
+   * Endereço a passar em `ELECTRON_RENDERER_URL`, para a janela carregar um servidor (por exemplo um
+   * que nunca responde). Sem esta opção a variável continua removida do ambiente do aplicativo.
+   */
+  rendererUrl?: string;
 };
 
 type Fixtures = {
+  /** Interno: falhas de fechamento que o teste não viu e que reprovam o teste na limpeza. */
+  closeFailures: unknown[];
   /** `PROJECT_HUB_DATA_DIR`: banco e worktrees do aplicativo neste teste. */
   dataDir: string;
   /** Pasta de worktrees das missões, dentro da pasta de dados. */
@@ -73,6 +83,8 @@ type Fixtures = {
   gitRepo: TempRepo;
   /** Abre o aplicativo com a pasta de dados do teste. Pode ser chamada de novo para reiniciar. */
   launchApp: (options?: LaunchOptions) => Promise<LaunchedApp>;
+  /** Como `launchApp`, mas sem esperar janela nem interface (`waitForReady` não se aplica). */
+  launchProcess: (options?: LaunchOptions) => Promise<LaunchedProcess>;
 };
 
 function removeFolder(path: string): void {
@@ -171,11 +183,41 @@ export const test = base.extend<Fixtures>({
     }
   },
 
-  launchApp: async ({ dataDir, gitEnv }, use) => {
-    const opened: { close(): Promise<void> }[] = [];
+  // Falhas de fechamento que o teste não viu (limpeza, falha na espera). Um encerramento à força ou
+  // um erro ao fechar não pode passar em silêncio: a lista é relançada depois da limpeza.
+  // eslint-disable-next-line no-empty-pattern -- o Playwright exige o primeiro argumento destruturado.
+  closeFailures: async ({}, use) => {
+    const failures: unknown[] = [];
+    await use(failures);
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'O fechamento do aplicativo falhou na limpeza do teste.');
+    }
+  },
+
+  launchApp: async ({ launchProcess, closeFailures }, use) => {
+    async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
+      const launched = await launchProcess(options);
+      try {
+        const page = await launched.app.firstWindow();
+        await (options.waitForReady ?? waitForNavigation)(page);
+        return { ...launched, page };
+      } catch (error) {
+        // O processo não pode sobrar. O erro original explica a falha da espera e é o relançado; se o
+        // fechamento também falhar, essa falha vai para a lista e reprova o teste na limpeza.
+        await launched.close().catch((closeError: unknown) => closeFailures.push(closeError));
+        throw error;
+      }
+    }
+    await use(launchApp);
+  },
+
+  launchProcess: async ({ dataDir, gitEnv, closeFailures }, use) => {
+    /** Um aplicativo aberto. `observed`: o teste chamou `close()` e viu o resultado. */
+    type Handle = { closeOnce(): Promise<void>; observed: boolean };
+    const opened: Handle[] = [];
     const userDataDir = join(dataDir, 'electron-user-data');
 
-    async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
+    async function launchProcess(options: LaunchOptions = {}): Promise<LaunchedProcess> {
       const env: Record<string, string> = {};
       for (const [name, value] of Object.entries(process.env)) {
         if (value !== undefined && !BLOCKED_ENV.includes(name)) env[name] = value;
@@ -186,6 +228,7 @@ export const test = base.extend<Fixtures>({
       delete env['PROJECT_HUB_TEST_DIALOG_PATH'];
       if (options.dialogPath !== undefined)
         env['PROJECT_HUB_TEST_DIALOG_PATH'] = options.dialogPath;
+      if (options.rendererUrl !== undefined) env['ELECTRON_RENDERER_URL'] = options.rendererUrl;
 
       const app = await electron.launch({
         executablePath: electronExecutable(),
@@ -196,26 +239,36 @@ export const test = base.extend<Fixtures>({
       // O fechamento é registrado antes de qualquer espera: se a janela não aparecer ou a interface
       // não ficar pronta, o processo não sobra e a pasta de dados pode ser apagada.
       let closing: Promise<void> | undefined;
-      const close = () => (closing ??= closeApp(app, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS));
-      opened.push({ close });
+      const closeOnce = () =>
+        (closing ??= closeApp(app, options.closeTimeoutMs ?? CLOSE_TIMEOUT_MS));
+      const handle: Handle = { closeOnce, observed: false };
+      opened.push(handle);
+      // O fechamento chamado pelo teste devolve o resultado a ele, que o confere. Só o fechamento
+      // feito pelo próprio fixture (limpeza) pode passar sem ninguém ver.
+      const close = () => {
+        handle.observed = true;
+        return closeOnce();
+      };
 
       try {
         options.onLaunch?.(app);
-        const page = await app.firstWindow();
-        await (options.waitForReady ?? waitForNavigation)(page);
-        return { app, page, close };
       } catch (error) {
-        await close().catch(() => undefined);
+        await closeOnce().catch((closeError: unknown) => closeFailures.push(closeError));
         throw error;
       }
+      return { app, close };
     }
 
     try {
-      await use(launchApp);
+      await use(launchProcess);
     } finally {
       // Fecha o que o teste deixou aberto, para a pasta de dados poder ser apagada.
       for (const handle of opened) {
-        await handle.close().catch(() => undefined);
+        try {
+          await handle.closeOnce();
+        } catch (error) {
+          if (!handle.observed) closeFailures.push(error);
+        }
       }
     }
   },
