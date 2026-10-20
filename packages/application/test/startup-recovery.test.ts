@@ -99,6 +99,20 @@ describe('recoverInterruptedExecutions', () => {
     ]);
   });
 
+  it('execução running de missão já terminal fecha sem lançar erro e entra na contagem', () => {
+    const repo = fakeMissionRepository();
+    seed(repo, { status: 'cancelled' });
+
+    expect(recoverInterruptedExecutions(repo, now)).toBe(1);
+
+    expect(repo.getExecution('exec-1')).toMatchObject({
+      status: 'failed',
+      exitReason: 'interrupted_by_restart',
+      finishedAt: NOW,
+    });
+    expect(repo.getMission('missao-1')?.status).toBe('cancelled');
+  });
+
   it('sem execução em andamento não muda nada e devolve 0', () => {
     const repo = fakeMissionRepository();
     repo.insertMission(mission({ status: 'succeeded' }));

@@ -20,6 +20,8 @@ export type FakeMissionRepository = MissionRepository & {
   audit(): AuditEvent[];
   steps(): MissionStep[];
   approvals(): ApprovalRequest[];
+  /** A próxima auditoria com esse `eventType` lança erro, uma vez: simula falha no meio de uma transação. */
+  failNextAudit(eventType: string): void;
 };
 
 /**
@@ -37,6 +39,7 @@ export function fakeMissionRepository(): FakeMissionRepository {
     ids: 0,
   };
   const copy = <T>(value: T): T => structuredClone(value);
+  let failingAudit: string | undefined;
 
   return {
     insertMission(mission) {
@@ -81,6 +84,10 @@ export function fakeMissionRepository(): FakeMissionRepository {
         .filter((a) => a.executionId === executionId && a.status === 'pending')
         .map(copy),
     appendAudit(event) {
+      if (failingAudit === event.eventType) {
+        failingAudit = undefined;
+        throw new Error('falha simulada na auditoria');
+      }
       const sequence = state.audit.filter((a) => a.aggregateId === event.aggregateId).length + 1;
       state.ids += 1;
       const record: AuditEvent = { ...event, id: `audit-${state.ids}`, sequence };
@@ -96,6 +103,9 @@ export function fakeMissionRepository(): FakeMissionRepository {
         throw error;
       }
     },
+    failNextAudit(eventType) {
+      failingAudit = eventType;
+    },
     audit: () => copy(state.audit),
     steps: () => copy(state.steps),
     approvals: () => [...state.approvals.values()].map(copy),
@@ -107,10 +117,15 @@ export type FakeWorktrees = WorktreePort & {
   readonly removed: Parameters<WorktreePort['remove']>[0][];
 };
 
-/** Porta de worktree em memória. Com `failWith`, `create` rejeita com o código dado, como o GitError. */
+/**
+ * Porta de worktree em memória. Com `failWith`, `create` rejeita com o código dado, como o GitError.
+ * Como o Git, a branch existe até ser apagada à mão: `remove` tira a pasta e mantém a branch, e uma
+ * nova criação com a mesma branch rejeita com WORKTREE_COLLISION.
+ */
 export function fakeWorktrees(failWith?: { code: string; message: string }): FakeWorktrees {
   const created: Parameters<WorktreePort['create']>[0][] = [];
   const removed: Parameters<WorktreePort['remove']>[0][] = [];
+  const branches = new Set<string>();
   return {
     created,
     removed,
@@ -118,6 +133,14 @@ export function fakeWorktrees(failWith?: { code: string; message: string }): Fak
       if (failWith !== undefined) {
         return Promise.reject(Object.assign(new Error(failWith.message), { code: failWith.code }));
       }
+      if (branches.has(input.names.branch)) {
+        return Promise.reject(
+          Object.assign(new Error('Já existe uma branch com esse nome.'), {
+            code: 'WORKTREE_COLLISION',
+          }),
+        );
+      }
+      branches.add(input.names.branch);
       created.push(input);
       return Promise.resolve({
         path: `${input.worktreesRoot}/${input.names.relativeDir}`,

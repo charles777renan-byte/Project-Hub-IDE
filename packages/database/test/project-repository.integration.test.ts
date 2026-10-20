@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { NewProject } from '../../domain/src/project';
+import type { NewProject } from '@project-hub/domain';
 import { openDatabase, type AppDatabase } from '../src/client';
 import { migrateDatabase } from '../src/migrate';
 import {
