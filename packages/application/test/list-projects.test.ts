@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ProjectRecord } from '@project-hub/domain';
 import { listProjects } from '../src/projects/list-projects';
 import { fakeFileSystem, fakeRepository } from './fakes';
@@ -65,5 +65,48 @@ describe('listProjects', () => {
     const result = await listProjects({ repo, fs: fakeFileSystem(['C:\\Projetos\\app']) });
 
     expect(result).toEqual({ ok: true, data: [] });
+  });
+
+  // R78: um erro de acesso numa pasta não derruba a listagem. O projeto sai indisponível, o erro é
+  // registrado, e os outros projetos seguem com o valor normal.
+  it('pasta sem permissão: o projeto aparece indisponível, e os outros continuam disponíveis', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const repo = fakeRepository();
+    repo.insert({
+      id: 'bloqueado',
+      name: 'bloqueado',
+      path: 'C:\\Projetos\\bloqueado',
+      normalizedPath: 'c:\\projetos\\bloqueado',
+      repositoryKind: 'none',
+      createdAt: '2026-10-19T10:00:00.000Z',
+    });
+    repo.insert({
+      id: 'livre',
+      name: 'livre',
+      path: 'C:\\Projetos\\livre',
+      normalizedPath: 'c:\\projetos\\livre',
+      repositoryKind: 'none',
+      createdAt: '2026-10-19T10:05:00.000Z',
+    });
+    const eacces = Object.assign(new Error('EACCES: permissão negada'), { code: 'EACCES' });
+    const readable = fakeFileSystem(['C:\\Projetos\\livre']);
+
+    const result = await listProjects({
+      repo,
+      fs: {
+        isDirectory: (path) =>
+          path === 'C:\\Projetos\\bloqueado' ? Promise.reject(eacces) : readable.isDirectory(path),
+      },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        expect.objectContaining({ id: 'bloqueado', available: false }),
+        expect.objectContaining({ id: 'livre', available: true }),
+      ],
+    });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('bloqueado'), eacces);
+    log.mockRestore();
   });
 });
