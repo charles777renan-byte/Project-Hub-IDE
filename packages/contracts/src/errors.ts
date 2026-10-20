@@ -28,6 +28,10 @@ export const ERROR_CODES = [
   'PROJECT_WITHOUT_GIT',
   'VALIDATION_FAILED',
   'UNKNOWN',
+  // Acrescentados pela Tarefa 9: a seção 13.7 não traz código de "não encontrado" para missão nem
+  // para aprovação.
+  'MISSION_NOT_FOUND',
+  'APPROVAL_NOT_FOUND',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

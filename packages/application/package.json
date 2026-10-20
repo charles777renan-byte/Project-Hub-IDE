@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@project-hub/agent-sdk": "workspace:*",
     "@project-hub/contracts": "workspace:*",
     "@project-hub/domain": "workspace:*"
   }

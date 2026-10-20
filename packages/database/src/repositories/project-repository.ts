@@ -1,5 +1,5 @@
 import { asc, eq, isNull } from 'drizzle-orm';
-import type { NewProject, ProjectRecord } from '../../../domain/src/project';
+import type { NewProject, ProjectRecord } from '@project-hub/domain';
 import type { AppDatabase } from '../client';
 import { projects } from '../schema';
 
