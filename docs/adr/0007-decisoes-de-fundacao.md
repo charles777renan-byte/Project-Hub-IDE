@@ -280,3 +280,38 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Caminho fora do worktree (R125):** `create-file` recusa caminho absoluto, com `..` ou que caia fora da pasta de trabalho. A recusa vira `tool.completed` com `PATH_OUTSIDE_ALLOWED_SCOPE`, e a sessão termina com `session.failed`. Um link simbólico dentro da pasta não é verificado, igual à Tarefa 8.
 - **Aprovação:** `approve` com `rejected` termina a sessão com `session.failed` e `APPROVAL_REQUIRED`. O roteiro não informa o tipo de ação protegida, então o pedido sai com `write_outside_worktree`.
 - **Uso:** o adaptador não informa uso (`usageReporting: false`). Cancelar (abortar o sinal ou chamar `stop`) para a sessão sem emitir mais nada (R126).
+
+### 2026-10-20, Tarefa 10: toda missão roda em worktree (R160)
+
+- **Decisão:** `prepareWorkspace` cria o worktree da missão para toda missão, também a que não altera código (`altersCode` falso). `startMission` recusa com `PROJECT_WITHOUT_GIT` qualquer missão num projeto sem Git. O campo `altersCode` continua gravado, mas deixou de escolher o diretório de trabalho.
+- **Motivo:** a decisão do usuário é que nenhum agente roda na pasta original do projeto. Assim, um agente que escreve sem querer fica confinado ao worktree, e o Git do projeto não recebe alteração sem revisão.
+- **Consequência:** a pasta de um projeto sem Git não executa missão, mesmo sem alteração de código. O teste de integração `missions-flow` cobre o caso.
+
+### 2026-10-20, Tarefa 10: replanejar e a versão do plano (R161)
+
+- **Decisão:** `planMission` aceita a missão em `planned`, além de `draft`. Replanejar troca as etapas (`replaceSteps`, na mesma transação) e fica registrado na auditoria como `plan.generated`, com os títulos das etapas. A missão continua em `planned`. Uma missão em `queued` ou depois não replaneja.
+- **Motivo:** a seção 10.6 pede que um plano refeito seja uma nova versão, e a versão aprovada é a que roda (seção 15.2). A tabela `mission_steps` tem `(missionId, position)` único, e o histórico de versões fica na auditoria. Não há coluna de versão nesta etapa, para não mexer no schema.
+- **Consequência:** as etapas só mostram o plano vigente. As versões anteriores estão na auditoria, sem uma consulta própria.
+
+### 2026-10-20, Tarefa 10: canais de missão e o canal de eventos (R165)
+
+- **Decisão:** além dos canais de R165, entram três canais de leitura e de ação, sem os quais a interface não fecha: `missions:list:v1` (cartões da aba Missões, R167), `missions:get:v1` (visão do workspace, R168) e `missions:provide-input:v1` (caixa de resposta ao pedido de entrada, que o orquestrador já trata). `missions:event:v1` vai do processo principal ao renderer, só para a janela principal, e cada evento é conferido por `missionEventDtoSchema` antes do ouvinte. O preload expõe `missions.subscribe(listener)`, que devolve a função de cancelamento.
+- **Entrega:** o repositório de missões é envolvido por `withMissionEvents`: cada evento de auditoria de missão ou de tentativa é entregue logo depois da gravação, com o `missionId` da missão dona. Se a transação for desfeita, o renderer recebe um evento sem registro, e a tela busca o estado de novo, então o custo é uma leitura.
+- **Respostas:** todo canal de pedido tem schema de resposta em `responseSchemas`. O canal de evento não tem resposta, e o teste de contrato diz isso.
+- **Códigos de erro:** nenhum código novo. A entrada inválida devolve `VALIDATION_FAILED`, e a origem não confiável devolve `PERMISSION_DENIED`, como nos canais de projetos.
+
+### 2026-10-20, Tarefa 10: tokens visuais escuros (R172)
+
+- **Decisão:** o aplicativo tem só o tema escuro. Os tokens de cor passam a ser `--bg`, `--panel`, `--panel-2`, `--line`, `--field-line`, `--text`, `--muted`, `--log`, `--amber`, `--violet` e `--pink`, em `tokens.css`, com os valores da especificação de design. Os tokens `--color-*` da Tarefa 4 saem. O teste de contraste lê os novos nomes e confere os pares de texto em 4,5:1: a razão vai de 6,7:1 (pior par) a 17:1 (melhor par).
+- **Fontes:** só pilhas do sistema, sem fonte externa (R164). Mono é `ui-monospace, Menlo, Consolas, monospace`.
+- **CSP:** nenhum atributo `style` no HTML ou no React. Cores e estados saem de classes CSS, e a barra de progresso é uma classe com animação, com `prefers-reduced-motion` respeitado.
+
+### 2026-10-20, Tarefa 10: `createProjectServices` vira `createAppServices`, e a composição liga as missões
+
+- **Decisão:** a composição do processo principal é `createAppServices`, que abre o banco, aplica as migrações, liga o orquestrador, roda `recoverInterruptedExecutions` e devolve `missions` junto com os serviços de projetos. A raiz dos worktrees vem de `resolveWorktreesRoot`: `APP_WORKTREES_ROOT`, depois `PROJECT_HUB_DATA_DIR/worktrees`, depois `<home>/ProjectHub/worktrees`. O agente é o simulado, com roteiro fixo (`demo-agent.ts`).
+- **Motivo:** o nome antigo falava só de projetos. O renomeio atinge um só teste (`projects-flow`).
+
+### 2026-10-20, Tarefa 10: `defaultBranch` no resumo do projeto
+
+- **Decisão:** `ProjectSummary` ganha `defaultBranch?`, preenchido quando a pasta é um repositório Git. A aba de detalhe do projeto mostra a branch no cabeçalho (R167).
+- **Consequência:** `contracts.test.ts` confere o tipo novo.

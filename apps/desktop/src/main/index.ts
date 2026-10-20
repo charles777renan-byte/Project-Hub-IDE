@@ -1,5 +1,6 @@
+import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CHANNELS } from '@project-hub/contracts';
+import { CHANNELS, type MissionEventDto } from '@project-hub/contracts';
 import {
   app,
   BrowserWindow,
@@ -9,8 +10,10 @@ import {
   shell,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { createProjectServices, platformOf } from './composition';
+import { createAppServices, platformOf, resolveWorktreesRoot } from './composition';
 import { chooseProjectDirectory } from './dialogs';
+import { registerApprovalHandlers } from './ipc/approvals';
+import { registerMissionHandlers } from './ipc/missions';
 import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
 import { handleStartupFailure } from './startup-failure';
@@ -62,23 +65,37 @@ const startupFailure = {
   exit: (code: number) => app.exit(code),
 };
 
+/** Janela principal enquanto ela existe: é a única que recebe os eventos das missões. */
+let mainWindow: BrowserWindow | undefined;
+
+/** Entrega um evento de missão ao quadro principal. Sem janela, o evento não tem para onde ir. */
+function publishMissionEvent(event: MissionEventDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.missionsEvent, event);
+}
+
 function createMainWindow(): void {
-  const mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
     webPreferences: buildWebPreferences(preloadPath),
   });
-  restrictNavigation(mainWindow.webContents, appOrigin, {
-    confirmExternal: (url) => confirmExternal(mainWindow, url),
+  mainWindow = win;
+  win.once('closed', () => {
+    if (mainWindow === win) mainWindow = undefined;
+  });
+  restrictNavigation(win.webContents, appOrigin, {
+    confirmExternal: (url) => confirmExternal(win, url),
     openExternal: (url) => shell.openExternal(url),
   });
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  win.once('ready-to-show', () => win.show());
 
   const loading =
     devServerUrl === undefined
-      ? mainWindow.loadFile(join(rendererDirectory, 'index.html'))
-      : mainWindow.loadURL(devServerUrl);
+      ? win.loadFile(join(rendererDirectory, 'index.html'))
+      : win.loadURL(devServerUrl);
   loading.catch((error: unknown) => {
     handleStartupFailure(error, startupFailure);
   });
@@ -95,9 +112,11 @@ app
     restrictFileRequests(session.defaultSession, rendererDirectory);
     denyAllPermissions(session.defaultSession);
 
-    const services = createProjectServices({
+    const services = createAppServices({
       dbFile: join(app.getPath('userData'), 'database', 'project-hub.sqlite'),
       platform: platformOf(process.platform),
+      worktreesRoot: resolveWorktreesRoot(process.env, homedir()),
+      publishMissionEvent,
     });
     app.once('will-quit', () => {
       services.close();
@@ -110,6 +129,8 @@ app
       services,
       chooseDirectory: chooseProjectDirectory,
     });
+    registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
+    registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     createMainWindow();
 
     // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.

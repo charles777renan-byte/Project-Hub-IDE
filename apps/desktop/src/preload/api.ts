@@ -1,14 +1,29 @@
 import {
   CHANNELS,
+  missionEventDtoSchema,
   responseSchemas,
   type AddProjectInput,
   type AppResult,
+  type CreateMissionInput,
+  type DecideApprovalInput,
+  type ExecutionDto,
+  type MissionDto,
+  type MissionEventDto,
+  type MissionPlanDto,
+  type MissionViewDto,
   type ProjectHubApi,
   type ProjectSummary,
+  type ProvideInput,
 } from '@project-hub/contracts';
 
 /** Chamada ao processo principal. No preload, é `ipcRenderer.invoke`. */
 export type Invoke = (channel: string, payload?: unknown) => Promise<unknown>;
+
+/**
+ * Assinatura de um canal que o processo principal envia (main → renderer). Devolve a função que
+ * remove o ouvinte. No preload, é `ipcRenderer.on`.
+ */
+export type Subscribe = (channel: string, listener: (payload: unknown) => void) => () => void;
 
 type ResponseChannel = keyof typeof responseSchemas;
 
@@ -44,9 +59,9 @@ async function invokeChannel<T>(
 
 /**
  * Monta a API que o preload expõe ao renderer. É uma função pura: cada método chama um canal fixo
- * de `CHANNELS`, e o renderer nunca escolhe o canal nem recebe `invoke` (seção 13.4).
+ * de `CHANNELS`, e o renderer nunca escolhe o canal nem recebe `invoke` ou `on` (seção 13.4).
  */
-export function buildProjectHubApi(invoke: Invoke): ProjectHubApi {
+export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): ProjectHubApi {
   const call = <T>(channel: ResponseChannel, payload?: unknown) =>
     invokeChannel<T>(invoke, channel, payload);
 
@@ -56,6 +71,31 @@ export function buildProjectHubApi(invoke: Invoke): ProjectHubApi {
       list: () => call<ProjectSummary[]>(CHANNELS.projectsList),
       chooseDirectory: () => call<{ path: string } | null>(CHANNELS.projectsChooseDirectory),
       add: (input: AddProjectInput) => call<ProjectSummary>(CHANNELS.projectsAdd, input),
+    },
+    missions: {
+      create: (input: CreateMissionInput) => call<MissionDto>(CHANNELS.missionsCreate, input),
+      list: (projectId: string) => call<MissionDto[]>(CHANNELS.missionsList, { projectId }),
+      get: (missionId: string) => call<MissionViewDto>(CHANNELS.missionsGet, { missionId }),
+      plan: (missionId: string) => call<MissionPlanDto>(CHANNELS.missionsPlan, { missionId }),
+      approvePlan: (missionId: string) => call<void>(CHANNELS.missionsApprovePlan, { missionId }),
+      start: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsStart, { missionId }),
+      cancel: (missionId: string) => call<void>(CHANNELS.missionsCancel, { missionId }),
+      provideInput: (input: ProvideInput) => call<void>(CHANNELS.missionsProvideInput, input),
+      subscribe: (listener: (event: MissionEventDto) => void) =>
+        subscribe(CHANNELS.missionsEvent, (payload) => {
+          const parsed = missionEventDtoSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.missionsEvent}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
+    },
+    approvals: {
+      decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),
     },
   };
 }

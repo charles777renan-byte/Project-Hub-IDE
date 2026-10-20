@@ -273,3 +273,89 @@ describe('auditoria', () => {
     expect(auditRows('missao-1')).toEqual([]);
   });
 });
+
+describe('consultas para a interface', () => {
+  const step = (id: string, position: number, title: string): MissionStep => ({
+    id,
+    missionId: 'missao-1',
+    position,
+    title,
+    description: '',
+    kind: 'custom',
+    status: 'pending',
+    dependsOn: [],
+  });
+
+  it('lista as missões do projeto, da atualizada mais recentemente para a mais antiga', () => {
+    repo.insertMission(
+      mission({
+        id: 'antiga',
+        updatedAt: '2026-10-20T09:00:00.000Z',
+        acceptanceCriteria: [{ id: 'a1', position: 1, text: 'Antigo' }],
+      }),
+    );
+    repo.insertMission(
+      mission({
+        id: 'nova',
+        updatedAt: '2026-10-20T11:00:00.000Z',
+        acceptanceCriteria: [
+          { id: 'n1', position: 1, text: 'Novo' },
+          { id: 'n2', position: 2, text: 'Novo dois' },
+        ],
+      }),
+    );
+
+    const missions = repo.listMissions('p1');
+
+    expect(missions.map((m) => m.id)).toEqual(['nova', 'antiga']);
+    expect(missions[0]?.acceptanceCriteria.map((c) => c.position)).toEqual([1, 2]);
+  });
+
+  it('lista as etapas na ordem da posição', () => {
+    repo.insertMission(mission());
+    repo.insertSteps([step('s2', 2, 'Segundo'), step('s1', 1, 'Primeiro')]);
+
+    expect(repo.listSteps('missao-1').map((s) => s.title)).toEqual(['Primeiro', 'Segundo']);
+  });
+
+  it('replaceSteps troca o plano inteiro, sem tocar nas etapas de outra missão', () => {
+    repo.insertMission(mission());
+    repo.insertMission(
+      mission({ id: 'outra', acceptanceCriteria: [{ id: 'o1', position: 1, text: 'Outra' }] }),
+    );
+    repo.insertSteps([step('s1', 1, 'Antigo')]);
+    repo.insertSteps([{ ...step('o1', 1, 'De outra'), missionId: 'outra' }]);
+
+    repo.replaceSteps('missao-1', [step('s2', 1, 'Novo um'), step('s3', 2, 'Novo dois')]);
+
+    expect(repo.listSteps('missao-1').map((s) => s.title)).toEqual(['Novo um', 'Novo dois']);
+    expect(repo.listSteps('outra').map((s) => s.title)).toEqual(['De outra']);
+  });
+
+  it('listAudit devolve a auditoria do agregado em ordem de sequence', () => {
+    repo.insertMission(mission());
+    repo.appendAudit({
+      aggregateType: 'mission',
+      aggregateId: 'missao-1',
+      eventType: 'mission.created',
+      severity: 'info',
+      actor: 'user',
+      payload: {},
+      createdAt: T0,
+    });
+    repo.appendAudit({
+      aggregateType: 'mission',
+      aggregateId: 'missao-1',
+      eventType: 'plan.generated',
+      severity: 'info',
+      actor: 'user',
+      payload: { steps: ['Login'] },
+      createdAt: T0,
+    });
+
+    expect(repo.listAudit('missao-1').map((e) => [e.sequence, e.eventType])).toEqual([
+      [1, 'mission.created'],
+      [2, 'plan.generated'],
+    ]);
+  });
+});

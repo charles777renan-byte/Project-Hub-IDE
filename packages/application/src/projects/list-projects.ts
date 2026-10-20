@@ -9,13 +9,15 @@ export type ListProjectsDeps = {
 
 /** Resumo que o renderer recebe: sem campos internos, com a disponibilidade da pasta. */
 export function toProjectSummary(project: ProjectRecord, available: boolean): ProjectSummary {
-  return {
+  const summary: ProjectSummary = {
     id: project.id,
     name: project.name,
     path: project.path,
     repositoryKind: project.repositoryKind,
     available,
   };
+  if (project.defaultBranch !== undefined) summary.defaultBranch = project.defaultBranch;
+  return summary;
 }
 
 /**

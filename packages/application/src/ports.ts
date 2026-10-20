@@ -65,8 +65,14 @@ export type ApprovalChanges = Partial<
 export interface MissionRepository {
   insertMission(mission: Mission): void;
   getMission(id: string): Mission | undefined;
+  /** As missões do projeto, da atualizada mais recentemente para a mais antiga. */
+  listMissions(projectId: string): Mission[];
   updateMission(id: string, changes: MissionChanges): void;
   insertSteps(steps: MissionStep[]): void;
+  /** As etapas do plano da missão, na ordem. */
+  listSteps(missionId: string): MissionStep[];
+  /** Troca o plano: apaga as etapas da missão e grava as novas, na mesma transação do chamador. */
+  replaceSteps(missionId: string, steps: MissionStep[]): void;
   insertExecution(execution: Execution): void;
   updateExecution(id: string, changes: ExecutionChanges): void;
   getExecution(id: string): Execution | undefined;
@@ -78,6 +84,8 @@ export interface MissionRepository {
   updateApproval(id: string, changes: ApprovalChanges): void;
   listPendingApprovals(executionId: string): ApprovalRequest[];
   appendAudit(event: NewAuditEvent): AuditEvent;
+  /** A auditoria de um agregado, em ordem de `sequence`. */
+  listAudit(aggregateId: string): AuditEvent[];
   transaction<T>(work: () => T): T;
 }
 

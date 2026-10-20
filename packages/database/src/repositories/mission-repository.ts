@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -12,6 +12,7 @@ import type { AppDatabase } from '../client';
 import { appendAuditEvent } from './audit-repository';
 import {
   approvalRequests,
+  auditEvents,
   executions,
   missionAcceptanceCriteria,
   missions,
@@ -34,8 +35,11 @@ type ApprovalChanges = Partial<Pick<ApprovalRequest, 'status' | 'decidedAt' | 'd
 export interface MissionRepository {
   insertMission(mission: Mission): void;
   getMission(id: string): Mission | undefined;
+  listMissions(projectId: string): Mission[];
   updateMission(id: string, changes: MissionChanges): void;
   insertSteps(steps: MissionStep[]): void;
+  listSteps(missionId: string): MissionStep[];
+  replaceSteps(missionId: string, steps: MissionStep[]): void;
   insertExecution(execution: Execution): void;
   updateExecution(id: string, changes: ExecutionChanges): void;
   getExecution(id: string): Execution | undefined;
@@ -46,6 +50,7 @@ export interface MissionRepository {
   updateApproval(id: string, changes: ApprovalChanges): void;
   listPendingApprovals(executionId: string): ApprovalRequest[];
   appendAudit(event: NewAuditEvent): AuditEvent;
+  listAudit(aggregateId: string): AuditEvent[];
   transaction<T>(work: () => T): T;
 }
 
@@ -53,6 +58,38 @@ type MissionRow = typeof missions.$inferSelect;
 type ExecutionRow = typeof executions.$inferSelect;
 type ApprovalRow = typeof approvalRequests.$inferSelect;
 type CriterionRow = typeof missionAcceptanceCriteria.$inferSelect;
+type StepRow = typeof missionSteps.$inferSelect;
+type AuditRow = typeof auditEvents.$inferSelect;
+
+function toStep(row: StepRow): MissionStep {
+  const step: MissionStep = {
+    id: row.id,
+    missionId: row.missionId,
+    position: row.position,
+    title: row.title,
+    description: row.description,
+    kind: row.kind,
+    status: row.status,
+    dependsOn: row.dependsOn,
+  };
+  if (row.startedAt !== null) step.startedAt = row.startedAt;
+  if (row.finishedAt !== null) step.finishedAt = row.finishedAt;
+  return step;
+}
+
+function toAuditEvent(row: AuditRow): AuditEvent {
+  return {
+    id: row.id,
+    aggregateType: row.aggregateType,
+    aggregateId: row.aggregateId,
+    eventType: row.eventType,
+    severity: row.severity,
+    actor: row.actor,
+    payload: row.payload,
+    sequence: row.sequence,
+    createdAt: row.createdAt,
+  };
+}
 
 /** Campos opcionais entram só quando têm valor: o JSON e o objeto lido ficam sem chaves vazias. */
 function toMission(row: MissionRow, criteria: CriterionRow[]): Mission {
@@ -112,6 +149,26 @@ function toApproval(row: ApprovalRow): ApprovalRequest {
 }
 
 export function createMissionRepository(db: AppDatabase): MissionRepository {
+  function insertStepRows(steps: MissionStep[]): void {
+    if (steps.length === 0) return;
+    db.insert(missionSteps)
+      .values(
+        steps.map((step) => ({
+          id: step.id,
+          missionId: step.missionId,
+          position: step.position,
+          title: step.title,
+          description: step.description,
+          kind: step.kind,
+          status: step.status,
+          dependsOn: step.dependsOn,
+          startedAt: step.startedAt ?? null,
+          finishedAt: step.finishedAt ?? null,
+        })),
+      )
+      .run();
+  }
+
   const criteriaOf = (missionId: string): CriterionRow[] =>
     db
       .select()
@@ -163,6 +220,16 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
       return row === undefined ? undefined : toMission(row, criteriaOf(id));
     },
 
+    listMissions(projectId) {
+      return db
+        .select()
+        .from(missions)
+        .where(eq(missions.projectId, projectId))
+        .orderBy(desc(missions.updatedAt), asc(missions.id))
+        .all()
+        .map((row) => toMission(row, criteriaOf(row.id)));
+    },
+
     updateMission(id, changes) {
       db.update(missions)
         .set({
@@ -177,24 +244,21 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
         .run();
     },
 
-    insertSteps(steps) {
-      if (steps.length === 0) return;
-      db.insert(missionSteps)
-        .values(
-          steps.map((step) => ({
-            id: step.id,
-            missionId: step.missionId,
-            position: step.position,
-            title: step.title,
-            description: step.description,
-            kind: step.kind,
-            status: step.status,
-            dependsOn: step.dependsOn,
-            startedAt: step.startedAt ?? null,
-            finishedAt: step.finishedAt ?? null,
-          })),
-        )
-        .run();
+    insertSteps: insertStepRows,
+
+    listSteps(missionId) {
+      return db
+        .select()
+        .from(missionSteps)
+        .where(eq(missionSteps.missionId, missionId))
+        .orderBy(asc(missionSteps.position))
+        .all()
+        .map(toStep);
+    },
+
+    replaceSteps(missionId, steps) {
+      db.delete(missionSteps).where(eq(missionSteps.missionId, missionId)).run();
+      insertStepRows(steps);
     },
 
     insertExecution(execution) {
@@ -303,6 +367,16 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
 
     appendAudit(event) {
       return appendAuditEvent(db, event);
+    },
+
+    listAudit(aggregateId) {
+      return db
+        .select()
+        .from(auditEvents)
+        .where(eq(auditEvents.aggregateId, aggregateId))
+        .orderBy(asc(auditEvents.sequence))
+        .all()
+        .map(toAuditEvent);
     },
 
     transaction(work) {

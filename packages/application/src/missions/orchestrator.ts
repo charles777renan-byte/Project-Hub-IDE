@@ -211,7 +211,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * é o worktree da missão: criado agora, ou o de uma tentativa anterior, que fica na missão.
    */
   async function prepareWorkspace(mission: Mission, project: ProjectRecord): Promise<Workspace> {
-    if (!mission.altersCode) return { cwd: project.path };
+    // Toda missão roda num worktree, também a que não altera código (R160).
     if (mission.worktreeId !== undefined && mission.worktreePath !== undefined) {
       return { cwd: mission.worktreePath };
     }
@@ -554,10 +554,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     if (project === undefined) {
       return failure('PROJECT_NOT_FOUND', 'O projeto da missão não foi encontrado.');
     }
-    if (mission.altersCode && project.repositoryKind !== 'git') {
+    if (project.repositoryKind !== 'git') {
       return failure(
         'PROJECT_WITHOUT_GIT',
-        'Esta missão altera código, e a pasta do projeto não é um repositório Git. Inicialize o Git na pasta e tente de novo.',
+        'A missão roda num worktree do Git, e a pasta do projeto não é um repositório Git. Inicialize o Git na pasta e tente de novo.',
       );
     }
     return launch(startRun(missionId), mission, project);
@@ -747,11 +747,18 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return startMission(missionId);
   }
 
+  /**
+   * Gera o plano de uma missão em rascunho, ou refaz o plano de uma missão planejada (R161). O
+   * plano refeito troca as etapas e fica registrado na auditoria, com as etapas de cada versão.
+   */
   async function planMission(missionId: string): Promise<AppResult<MissionPlan>> {
     const mission = repo.getMission(missionId);
     if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
-    if (mission.status !== 'draft') {
-      return failure('MISSION_INVALID_STATE', 'Só uma missão em rascunho pode ser planejada.');
+    if (mission.status !== 'draft' && mission.status !== 'planned') {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'Só uma missão em rascunho ou com plano pode ser planejada.',
+      );
     }
     if (mission.acceptanceCriteria.length === 0) {
       return failure('VALIDATION_FAILED', 'A missão precisa de pelo menos um critério de aceite.');
@@ -770,8 +777,19 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       dependsOn: [],
     }));
     repo.transaction(() => {
-      repo.insertSteps(steps);
-      moveMission(repo, missionId, 'planned', { actor: 'user', at: now() });
+      const at = now();
+      repo.replaceSteps(missionId, steps);
+      if (mission.status === 'draft')
+        moveMission(repo, missionId, 'planned', { actor: 'user', at });
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: missionId,
+        eventType: 'plan.generated',
+        severity: 'info',
+        actor: 'user',
+        payload: { steps: steps.map((step) => step.title) },
+        createdAt: at,
+      });
     });
     return { ok: true, data: { missionId, steps } };
   }

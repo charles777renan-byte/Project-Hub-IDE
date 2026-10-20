@@ -200,6 +200,9 @@ importers:
         specifier: 13.0.3
         version: 13.0.3
     devDependencies:
+      '@project-hub/agent-adapters':
+        specifier: workspace:*
+        version: link:../../packages/agent-adapters
       '@project-hub/application':
         specifier: workspace:*
         version: link:../../packages/application

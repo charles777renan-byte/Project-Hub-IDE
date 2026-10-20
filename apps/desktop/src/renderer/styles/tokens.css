@@ -1,37 +1,33 @@
 /*
- * Tokens visuais. O tema claro é o padrão (:root) e o escuro vem de prefers-color-scheme.
- *
- * Todo texto sobre --color-bg precisa de pelo menos 4,5:1 de contraste (WCAG 2.2 AA, seção 12.4).
- * O teste test/renderer/contrast.test.ts lê este arquivo e confere os dois temas. Escreva as cores
- * como #rgb ou #rrggbb, que é o que o teste entende, e defina cada token de cor nos dois temas.
+ * Tokens visuais (R172): tema escuro violeta, com âmbar para o que roda e violeta para o que espera
+ * uma decisão. Só existe o tema escuro. Todo texto sobre um fundo tem pelo menos 4,5:1 (WCAG 2.2 AA,
+ * seção 12.4): o teste test/renderer/contrast.test.ts lê este arquivo e confere os pares. Cores em
+ * #rrggbb, que é o que o teste entende.
  */
 :root {
-  /* Controles nativos (campos, barras de rolagem) seguem o tema. */
-  color-scheme: light dark;
+  color-scheme: dark;
 
-  --color-bg: #ffffff;
-  --color-text: #1f2328;
-  --color-accent: #0b5cad;
-  --color-danger: #b42318;
-  --color-success: #1a7f37;
-  --color-warning: #8a5a00;
+  --bg: #0d0818;
+  --panel: #150e26;
+  --panel-2: #1c1333;
+  --line: #2e2150;
+  --field-line: #43307a;
+  --text: #f3eeff;
+  --muted: #a99bcb;
+  --log: #cfc4ea;
+  /* Âmbar: o que está rodando e a ação principal. */
+  --amber: #ffb224;
+  /* Violeta: o que aguarda aprovação ou resposta. */
+  --violet: #b58cff;
+  /* Rosa: parar e erro. */
+  --pink: #ff5c8a;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 1rem;
   --space-4: 1.5rem;
   --space-5: 2rem;
-  --radius: 0.375rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0d1117;
-    --color-text: #e6edf3;
-    --color-accent: #58a6ff;
-    --color-danger: #ff7b72;
-    --color-success: #3fb950;
-    --color-warning: #d29922;
-  }
+  --radius: 2px;
 }

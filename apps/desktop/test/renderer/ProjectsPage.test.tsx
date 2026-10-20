@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import type { AppResult, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectsPage } from '../../src/renderer/pages/ProjectsPage';
@@ -44,7 +45,11 @@ afterEach(() => {
 describe('ProjectsPage: listagem', () => {
   it('mostra o título Projetos e, sem projetos, o estado vazio', async () => {
     installApi();
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
     expect(
@@ -55,7 +60,11 @@ describe('ProjectsPage: listagem', () => {
 
   it('mostra um cartão por projeto, com nome, caminho e tipo de repositório', async () => {
     installApi({ list: () => Promise.resolve({ ok: true, data: [hub, outro] }) });
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
 
     const list = await screen.findByRole('list', { name: 'Projetos cadastrados' });
     const cards = within(list).getAllByRole('listitem');
@@ -70,7 +79,11 @@ describe('ProjectsPage: listagem', () => {
     installApi({
       list: () => Promise.resolve({ ok: true, data: [{ ...outro, available: false }] }),
     });
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
 
     expect(await screen.findByText('Pasta indisponível')).toBeInTheDocument();
   });
@@ -83,14 +96,22 @@ describe('ProjectsPage: listagem', () => {
           error: { code: 'UNKNOWN', message: 'Não foi possível ler o catálogo.', retryable: false },
         }),
     });
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível ler o catálogo.');
   });
 
   it('mostra uma mensagem geral quando a chamada ao processo principal falha', async () => {
     installApi({ list: () => Promise.reject(new Error('canal fechado')) });
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Não foi possível concluir a ação. Tente de novo.',
@@ -121,7 +142,11 @@ describe('ProjectsPage: adicionar projeto', () => {
       add: () => Promise.resolve({ ok: true, data: novo }),
     });
     const user = userEvent.setup();
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
     await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.');
 
     await user.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
@@ -136,7 +161,11 @@ describe('ProjectsPage: adicionar projeto', () => {
       chooseDirectory: () => Promise.resolve({ ok: true, data: null }),
     });
     const user = userEvent.setup();
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
     await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.');
 
     await user.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
@@ -162,7 +191,11 @@ describe('ProjectsPage: adicionar projeto', () => {
         }),
     });
     const user = userEvent.setup();
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
     await screen.findByRole('heading', { name: 'Project Hub' });
 
     await user.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
@@ -180,7 +213,11 @@ describe('ProjectsPage: adicionar projeto', () => {
         }),
     });
     const user = userEvent.setup();
-    render(<ProjectsPage />);
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
     await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.');
 
     await user.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
