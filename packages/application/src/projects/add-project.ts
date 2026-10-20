@@ -2,7 +2,13 @@ import type { AppResult } from '@project-hub/contracts';
 import type { NewProject, ProjectRecord } from '@project-hub/domain';
 import type { FileSystemPort, GitDetector, ProjectRepository } from '../ports';
 import { failure } from '../result';
-import { normalizePath, platformPaths, resolveProjectPath, type Platform } from './normalize-path';
+import {
+  isAbsoluteProjectPath,
+  normalizePath,
+  platformPaths,
+  resolveProjectPath,
+  type Platform,
+} from './normalize-path';
 
 export type AddProjectDeps = {
   repo: ProjectRepository;
@@ -24,7 +30,7 @@ export async function addProject(
   input: { path: string },
 ): Promise<AppResult<ProjectRecord>> {
   const paths = platformPaths(deps.platform);
-  if (!paths.isAbsolute(input.path)) {
+  if (!isAbsoluteProjectPath(input.path, deps.platform)) {
     return failure('VALIDATION_FAILED', 'O caminho do projeto precisa ser absoluto.');
   }
   const path = resolveProjectPath(input.path, deps.platform);

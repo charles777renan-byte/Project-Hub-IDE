@@ -13,6 +13,7 @@ import { createProjectServices, platformOf } from './composition';
 import { chooseProjectDirectory } from './dialogs';
 import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
+import { handleStartupFailure } from './startup-failure';
 import {
   applyContentSecurityPolicy,
   denyAllPermissions,
@@ -109,7 +110,12 @@ app
     });
   })
   .catch((error: unknown) => {
-    console.error('Falha ao iniciar o aplicativo:', error);
+    // Sem janela, o app não tem onde mostrar o erro: a caixa nativa mostra, e o processo encerra (R70).
+    handleStartupFailure(error, {
+      log: (cause) => console.error('Falha ao iniciar o aplicativo:', cause),
+      showError: (message) => dialog.showErrorBox('Project Hub', message),
+      exit: (code) => app.exit(code),
+    });
   });
 
 app.on('window-all-closed', () => {

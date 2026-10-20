@@ -58,8 +58,9 @@ export function isAllowedExternalUrl(url: string): boolean {
 /**
  * Diz se o quadro que chamou um canal IPC é do aplicativo (R65, seção 17.2). Em desenvolvimento a
  * origem é a do servidor do Vite, e vale `isAllowedNavigation`. Em produção a origem é `file://`,
- * opaca, que nunca passa por `isAllowedNavigation`: o remetente confiável é o `index.html` dentro
- * de `rendererDirectory`. `appOrigin` é `file://` exatamente quando o app carrega de arquivo.
+ * opaca, que nunca passa por `isAllowedNavigation`: o remetente confiável é qualquer arquivo dentro
+ * de `rendererDirectory`, pelo mesmo critério de `isFileUrlInside`. `appOrigin` é `file://`
+ * exatamente quando o app carrega de arquivo.
  */
 export function isTrustedSenderUrl(
   url: string,
