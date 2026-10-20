@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,11 @@ import { GitError, runGit, runGitWorktree } from '../src/run-git';
 // Unitário: o `execFile` é imitado, então nenhum processo é criado aqui. O Git de verdade fica em
 // worktree.integration.test.ts.
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }));
+// O `mkdtemp` segue real, mas um teste pode fazê-lo falhar uma vez (pasta temporária sem permissão).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...original, mkdtemp: vi.fn(original.mkdtemp) };
+});
 
 type Callback = (error: Error | null, stdout: string, stderr: string) => void;
 
@@ -300,6 +306,18 @@ describe('runGitWorktree: hooks do repositório no worktree add', () => {
     const [first, second] = execFileMock.mock.calls.map((c) => (c[1] as string[])[3]);
     expect(first).toBeDefined();
     expect(first).not.toBe(second);
+  });
+
+  it('mkdtemp falhando, o add vira WORKTREE_CREATE_FAILED, sem erro cru de fs e sem criar processo', async () => {
+    const original = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    vi.mocked(mkdtemp).mockRejectedValueOnce(original);
+
+    const error = await runGitWorktree(addArgs, { cwd }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(GitError);
+    expect(error).toMatchObject({ code: 'WORKTREE_CREATE_FAILED', cause: original });
+    expect((error as GitError).message).not.toContain('EACCES');
+    expect(execFileMock).not.toHaveBeenCalled();
   });
 
   it('worktree remove não leva core.hooksPath: só o add faz checkout', async () => {

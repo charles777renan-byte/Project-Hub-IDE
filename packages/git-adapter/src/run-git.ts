@@ -263,7 +263,8 @@ export async function runGit(
  * O `worktree add` faz um checkout, e o checkout roda o hook `post-checkout` do repositório, que num
  * repositório de terceiros (seção 17.1) é código alheio. Só nele o adaptador acrescenta
  * `-c core.hooksPath=<pasta vazia>`: uma pasta nova, criada por chamada na pasta temporária do
- * sistema (modo restrito, nome aleatório) e apagada ao fim, com sucesso ou falha. Por chamada, e não
+ * sistema (modo restrito, nome aleatório) e apagada ao fim, com sucesso ou falha. Se a pasta não puder
+ * ser criada, o `add` rejeita com WORKTREE_CREATE_FAILED, sem criar processo. Por chamada, e não
  * uma fixa nem uma opção do chamador: ninguém consegue plantar hooks numa pasta de nome previsível,
  * e quem chama não tem como esquecer o `-c`. O `-c` de linha de comando vale mais que o
  * `core.hooksPath` da configuração do repositório. O `worktree remove` não faz checkout e não leva o `-c`.
@@ -281,12 +282,26 @@ export async function runGitWorktree(
   const withTimeout = { ...options, timeoutMs: options.timeoutMs ?? WORKTREE_TIMEOUT_MS };
   if (args[1] !== 'add') return runApproved(args, withTimeout);
 
-  const noHooks = await mkdtemp(join(tmpdir(), 'project-hub-sem-hooks-'));
+  let noHooks: string | undefined;
   try {
+    noHooks = await mkdtemp(join(tmpdir(), 'project-hub-sem-hooks-'));
     return await runApproved(args, withTimeout, ['-c', `core.hooksPath=${noHooks}`]);
+  } catch (error) {
+    // Sem a pasta de hooks vazia o `add` não pode rodar com segurança: nenhum processo é criado, e o
+    // erro de fs (pasta temporária sem permissão ou cheia) não vaza cru. Falha do próprio Git sobe.
+    if (noHooks === undefined) {
+      throw new GitError(
+        'WORKTREE_CREATE_FAILED',
+        'Não foi possível preparar a criação do worktree.',
+        { cause: error },
+      );
+    }
+    throw error;
   } finally {
     // Limpeza de uma pasta vazia: se falhar, sobra uma pasta vazia na pasta temporária, e isso não
     // deve esconder o resultado do `worktree add`, que já aconteceu.
-    await rm(noHooks, { recursive: true, force: true }).catch(() => undefined);
+    if (noHooks !== undefined) {
+      await rm(noHooks, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }

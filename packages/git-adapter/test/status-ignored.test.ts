@@ -39,7 +39,15 @@ describe('hasIgnoredFiles', () => {
       string[],
       { cwd: string },
     ];
-    expect(args.slice(2)).toEqual(['status', '--porcelain=v2', '--ignored', '-z']);
+    // `--untracked-files=normal` é explícito: com `status.showUntrackedFiles=no` na configuração do
+    // repositório, o `--ignored` sozinho não lista nada.
+    expect(args.slice(2)).toEqual([
+      'status',
+      '--porcelain=v2',
+      '--ignored',
+      '--untracked-files=normal',
+      '-z',
+    ]);
     expect(options.cwd).toBe(cwd);
   });
 
@@ -70,6 +78,7 @@ describe('hasIgnoredFiles', () => {
     ['arquivo novo', '? novo.txt\0'],
     // O nome do arquivo é que começa com "!": o registro continua sendo `? `.
     ['arquivo novo cujo nome começa com !', '? !novo.txt\0'],
+    ['arquivo novo cujo nome começa com "! "', '? ! novo.txt\0'],
     ['cabeçalho de branch', `# branch.oid ${SHA}\0# branch.head main\0`],
     ['arquivo em conflito', `u UU N... 100644 100644 100644 100644 ${SHA} ${SHA} ${SHA} a.txt\0`],
   ])('com %s e nenhum ignorado, diz que não há', async (_case, output) => {
@@ -79,16 +88,18 @@ describe('hasIgnoredFiles', () => {
   });
 
   // Em `-z`, o registro de um renomeado traz o caminho antigo como um campo à parte, que não é um
-  // registro: se o nome antigo começa com "!", ele não pode contar como arquivo ignorado.
-  it('o caminho antigo de um renomeado que começa com ! não é um registro de ignorado', async () => {
-    respondWith(`2 R. N... 100644 100644 100644 ${SHA} ${SHA} R100 novo.txt\0!antigo.txt\0`);
+  // registro: se o nome antigo começa com "! ", ele não pode contar como arquivo ignorado. O nome da
+  // fixture tem o espaço depois do "!", o mesmo prefixo de um registro de ignorado: sem o pulo do
+  // campo, o parser leria o caminho antigo como `! <caminho>`.
+  it('o caminho antigo de um renomeado que começa com "! " não é um registro de ignorado', async () => {
+    respondWith(`2 R. N... 100644 100644 100644 ${SHA} ${SHA} R100 novo.txt\0! antigo.txt\0`);
 
     expect(await hasIgnoredFiles(cwd)).toBe(false);
   });
 
-  it('um ignorado depois de um renomeado ainda é visto', async () => {
+  it('um ignorado depois de um renomeado com caminho antigo "! " ainda é visto', async () => {
     respondWith(
-      `2 R. N... 100644 100644 100644 ${SHA} ${SHA} R100 novo.txt\0!antigo.txt\0! .env\0`,
+      `2 R. N... 100644 100644 100644 ${SHA} ${SHA} R100 novo.txt\0! antigo.txt\0! .env\0`,
     );
 
     expect(await hasIgnoredFiles(cwd)).toBe(true);
