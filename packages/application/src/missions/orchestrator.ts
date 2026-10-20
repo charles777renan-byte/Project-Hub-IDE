@@ -259,8 +259,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   /**
-   * Grava `execution.failed` com o motivo, na transação que encerra a execução. Vale para a recusa de
-   * aprovação e para a falha na entrega, que não chegam pelo evento final do agente (R137).
+   * Grava `execution.failed` com o motivo, na transação que encerra a execução. Vale para a
+   * recusa de aprovação e para a falha na entrega, que não chegam pelo evento final do agente
+   * (R137).
    */
   function failedAudit(executionId: string, exitReason: ExitReason, actor: AuditActor): () => void {
     return () => {
@@ -278,8 +279,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
   /**
    * Fecha as execuções `running` da missão como canceladas pelo usuário, na transação do
-   * cancelamento. Vale com ou sem processo ativo: sem ele, a execução ficaria aberta e a recuperação
-   * depois teria de adivinhar o motivo (R136).
+   * cancelamento. Vale com ou sem processo ativo: sem ele, a execução ficaria aberta e a
+   * recuperação depois teria de adivinhar o motivo (R136).
    */
   function cancelRunningExecutions(missionId: string, at: string): void {
     for (const execution of repo.listExecutions(missionId)) {
@@ -445,15 +446,20 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     }
   }
 
-  /** Tenta entregar ao agente. Devolve `false` quando ele recusa; quem chama decide o que fazer. */
-  async function tryDeliver(action: () => Promise<void>): Promise<boolean> {
+  /** Roda uma chamada ao agente. Devolve `false` quando ela falha, e registra o erro. */
+  async function tryAgent(problem: string, action: () => Promise<void>): Promise<boolean> {
     try {
       await action();
       return true;
     } catch (error) {
-      console.error('Não foi possível entregar a resposta ao agente:', error);
+      console.error(problem, error);
       return false;
     }
+  }
+
+  /** Tenta entregar ao agente. Devolve `false` quando ele recusa; quem chama decide o que fazer. */
+  function tryDeliver(action: () => Promise<void>): Promise<boolean> {
+    return tryAgent('Não foi possível entregar a resposta ao agente:', action);
   }
 
   /**
@@ -657,21 +663,25 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     if (input.decision === 'rejected') {
       // A recusa encerra a execução por conta do próprio Project Hub: o agente não retoma, e o
       // motivo fica registrado. A missão passa por `running` (seção 9.3) até `failed`.
-      const delivered = await tryDeliver(() => session.approve(decision));
+      const rejectionDelivered = await tryDeliver(() => session.approve(decision));
+      const sessionStopped = await tryAgent('Não foi possível encerrar a sessão do agente:', () =>
+        session.stop(REJECTED_REASON),
+      );
       try {
-        await session.stop(REJECTED_REASON);
-      } finally {
         endRun(
           run,
           executionId,
           { status: 'failed', exitReason: 'approval_rejected', actor: 'user' },
           failedAudit(executionId, 'approval_rejected', 'user'),
         );
+      } catch (error) {
+        console.error('Não foi possível encerrar a execução recusada:', error);
+        return failure('UNKNOWN', 'Não foi possível encerrar a execução recusada.');
       }
-      if (!delivered) {
+      if (!rejectionDelivered || !sessionStopped) {
         return failure(
           'AGENT_UNAVAILABLE',
-          'O agente não recebeu a recusa. A execução foi encerrada.',
+          'O agente não recebeu a recusa ou não encerrou. A execução foi encerrada.',
         );
       }
       return { ok: true, data: undefined };
