@@ -10,6 +10,17 @@ import { describe, expect, it } from 'vitest';
 
 const MIN_CONTRAST = 4.5;
 
+const ACCENTS = [
+  '--violet',
+  '--red',
+  '--blue',
+  '--magenta',
+  '--orange',
+  '--lime',
+  '--cyan',
+  '--yellow',
+] as const;
+
 const COLOR_TOKENS = [
   '--bg',
   '--panel',
@@ -18,38 +29,23 @@ const COLOR_TOKENS = [
   '--field-line',
   '--text',
   '--muted',
-  '--log',
-  '--amber',
-  '--violet',
-  '--pink',
+  ...ACCENTS,
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
 
+const SURFACES = ['--bg', '--panel', '--panel-2'] as const;
+const TEXTS = ['--text', '--muted', ...ACCENTS] as const;
+
 /**
- * Pares de texto sobre fundo que o aplicativo usa. Texto sobre âmbar ou violeta usa o fundo (`--bg`),
- * como manda o visual. Um par novo entra nesta lista.
+ * Pares de texto sobre fundo que o aplicativo usa. O fundo é um tom só, então --panel e --panel-2
+ * entram na lista para o teste falhar se um deles voltar a ser outro tom. Texto, texto secundário e
+ * cada acento (chip, link, borda com texto, aba) são medidos sobre cada superfície; o texto escuro
+ * (`--bg`) dentro de botão ou aba cheios é medido sobre cada acento. Um par novo entra nesta lista.
  */
 const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
-  ['--text', '--bg'],
-  ['--text', '--panel'],
-  ['--text', '--panel-2'],
-  ['--muted', '--bg'],
-  ['--muted', '--panel'],
-  ['--muted', '--panel-2'],
-  ['--log', '--bg'],
-  ['--log', '--panel'],
-  ['--log', '--panel-2'],
-  ['--amber', '--bg'],
-  ['--amber', '--panel'],
-  ['--violet', '--bg'],
-  ['--violet', '--panel'],
-  ['--violet', '--panel-2'],
-  ['--pink', '--bg'],
-  ['--pink', '--panel'],
-  ['--bg', '--amber'],
-  ['--bg', '--violet'],
-  ['--bg', '--pink'],
+  ...TEXTS.flatMap((text) => SURFACES.map((surface): [ColorToken, ColorToken] => [text, surface])),
+  ...ACCENTS.map((accent): [ColorToken, ColorToken] => ['--bg', accent]),
 ];
 
 function channelToLinear(channel: number): number {
@@ -133,6 +129,11 @@ describe('tema escuro', () => {
       expect(tokens.get(token), token).toBeDefined();
       expect(() => luminance(tokens.get(token) ?? '')).not.toThrow();
     }
+  });
+
+  it('usa um fundo só: painéis e caixas internas valem o mesmo que o fundo', () => {
+    expect(tokens.get('--panel')).toBe(tokens.get('--bg'));
+    expect(tokens.get('--panel-2')).toBe(tokens.get('--bg'));
   });
 
   it('não tem tema claro: o aplicativo é escuro (R172)', () => {

@@ -145,7 +145,7 @@ export function MissionPage() {
           {mission.status === 'running' ? (
             <button
               type="button"
-              className="btn-outline"
+              className="btn-pause"
               disabled={controlBusy}
               onClick={() => void runControl(() => window.projectHub.missions.pause(missionId))}
             >

@@ -1,7 +1,10 @@
 import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
 
-/** Tom visual de um chip: âmbar para o que roda, violeta para o que espera, rosa para parar e erro. */
-export type Tone = 'amber' | 'violet' | 'pink' | 'muted';
+/**
+ * Tom visual de um chip, pela cor do acento: lima para o que roda, violeta para o que espera a
+ * pessoa, vermelho para falha, laranja para pausa e `muted` para o resto (sem destaque).
+ */
+export type Tone = 'lime' | 'violet' | 'red' | 'orange' | 'muted';
 
 export type MissionStatus = MissionDto['status'];
 
@@ -9,12 +12,12 @@ const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
   draft: { label: 'Rascunho', tone: 'muted' },
   planned: { label: 'Aguarda aprovação do plano', tone: 'violet' },
   queued: { label: 'Plano aprovado, na fila', tone: 'muted' },
-  running: { label: 'Em execução', tone: 'amber' },
+  running: { label: 'Em execução', tone: 'lime' },
   waiting_approval: { label: 'Aguarda sua aprovação', tone: 'violet' },
   waiting_input: { label: 'Aguarda sua resposta', tone: 'violet' },
-  paused: { label: 'Pausada', tone: 'muted' },
+  paused: { label: 'Pausada', tone: 'orange' },
   succeeded: { label: 'Concluída', tone: 'muted' },
-  failed: { label: 'Falhou', tone: 'pink' },
+  failed: { label: 'Falhou', tone: 'red' },
   cancelled: { label: 'Cancelada', tone: 'muted' },
 };
 
@@ -48,10 +51,10 @@ const REQUIRED_ACTION: Partial<Record<MissionStatus, string>> = {
 
 const STEP_STATUS: Record<MissionStepDto['status'], { label: string; tone: Tone }> = {
   pending: { label: 'Pendente', tone: 'muted' },
-  running: { label: 'Em andamento', tone: 'amber' },
+  running: { label: 'Em andamento', tone: 'lime' },
   blocked: { label: 'Bloqueada', tone: 'violet' },
   succeeded: { label: 'Concluída', tone: 'muted' },
-  failed: { label: 'Falhou', tone: 'pink' },
+  failed: { label: 'Falhou', tone: 'red' },
   skipped: { label: 'Ignorada', tone: 'muted' },
 };
 

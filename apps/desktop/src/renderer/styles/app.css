@@ -13,9 +13,9 @@ body {
   line-height: 1.5;
 }
 
-/* Foco visível em todo controle, para quem navega por teclado (seção 12.4). */
+/* Foco visível em todo controle, para quem navega por teclado (seção 12.4). Branco-violeta: aparece sobre qualquer acento. */
 :focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
@@ -49,6 +49,7 @@ p {
 
 .app-brand {
   padding: var(--space-3) 0;
+  color: var(--violet);
   font-size: 1rem;
   font-weight: 800;
 }
@@ -61,7 +62,7 @@ p {
   list-style: none;
 }
 
-/* A aba da página atual tem a barra âmbar embaixo e o texto mais forte. */
+/* A aba da página atual tem a barra magenta embaixo e o texto mais forte. */
 .app-nav a {
   display: block;
   padding: var(--space-3) var(--space-3) calc(var(--space-3) - 3px);
@@ -76,7 +77,7 @@ p {
 }
 
 .app-nav a[aria-current='page'] {
-  border-bottom-color: var(--amber);
+  border-bottom-color: var(--magenta);
   color: var(--text);
 }
 
@@ -95,7 +96,7 @@ p {
   margin: 0 0 var(--space-3);
 }
 
-/* Botões: primário âmbar, decisão violeta e contorno. Texto sobre âmbar e violeta usa o fundo. */
+/* Botões: primário e aprovar em lima, pausa em laranja, contornos violeta e vermelho. Texto sobre um acento cheio usa o fundo. */
 button {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--field-line);
@@ -116,26 +117,18 @@ button:disabled {
   opacity: 0.55;
 }
 
-.btn-primary {
-  border-color: var(--amber);
-  background: var(--amber);
-  color: var(--bg);
-}
-
-.btn-primary:hover {
-  border-color: var(--amber);
-  background: color-mix(in srgb, var(--amber) 88%, white);
-}
-
+/* Ação principal e aprovar: lima cheio. */
+.btn-primary,
 .btn-decision {
-  border-color: var(--violet);
-  background: var(--violet);
+  border-color: var(--lime);
+  background: var(--lime);
   color: var(--bg);
 }
 
+.btn-primary:hover,
 .btn-decision:hover {
-  border-color: var(--violet);
-  background: color-mix(in srgb, var(--violet) 88%, white);
+  border-color: var(--lime);
+  background: color-mix(in srgb, var(--lime) 88%, white);
 }
 
 .btn-outline {
@@ -143,9 +136,16 @@ button:disabled {
   color: var(--violet);
 }
 
+/* Pausar a execução: laranja. */
+.btn-pause {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+/* Recusar, cancelar e parar: vermelho. */
 .btn-danger {
-  border-color: var(--pink);
-  color: var(--pink);
+  border-color: var(--red);
+  color: var(--red);
 }
 
 /* Ação com aparência de link, usada no aviso da missão. */
@@ -158,12 +158,12 @@ button:disabled {
 }
 
 .page-alert {
-  color: var(--pink);
+  color: var(--red);
   font-weight: 600;
 }
 
 .page-note {
-  color: var(--log);
+  color: var(--text);
 }
 
 .muted {
@@ -192,7 +192,7 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 0;
   background: var(--panel-2);
-  color: var(--log);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 600;
@@ -207,9 +207,9 @@ button:disabled {
   background: currentColor;
 }
 
-.chip--amber {
-  border-color: var(--amber);
-  color: var(--amber);
+.chip--lime {
+  border-color: var(--lime);
+  color: var(--lime);
 }
 
 .chip--violet {
@@ -217,16 +217,25 @@ button:disabled {
   color: var(--violet);
 }
 
-.chip--pink {
-  border-color: var(--pink);
-  color: var(--pink);
+.chip--red {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.chip--orange {
+  border-color: var(--orange);
+  color: var(--orange);
 }
 
 .chip--muted {
   color: var(--muted);
 }
 
-/* Abas: sublinhado âmbar na seção; no workspace da missão, a aba ativa é um botão âmbar cheio. */
+/*
+ * Abas: sublinhado na cor da aba na seção; no workspace da missão, a aba ativa é um botão cheio
+ * nessa cor. A cor vem de --tab-accent: ciano por padrão (projetos), e cada aba da missão tem a sua
+ * (Plano azul, Conversa magenta, Terminal e Diff ciano, Testes lima, Logs amarelo, Artefatos laranja).
+ */
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -236,6 +245,7 @@ button:disabled {
 }
 
 .tab {
+  --tab-accent: var(--cyan);
   border: 0;
   border-bottom: 3px solid transparent;
   border-radius: 0;
@@ -243,8 +253,33 @@ button:disabled {
   color: var(--muted);
 }
 
+.tab--plan {
+  --tab-accent: var(--blue);
+}
+
+.tab--conversation {
+  --tab-accent: var(--magenta);
+}
+
+.tab--terminal,
+.tab--diff {
+  --tab-accent: var(--cyan);
+}
+
+.tab--tests {
+  --tab-accent: var(--lime);
+}
+
+.tab--logs {
+  --tab-accent: var(--yellow);
+}
+
+.tab--artifacts {
+  --tab-accent: var(--orange);
+}
+
 .tab[aria-selected='true'] {
-  border-bottom-color: var(--amber);
+  border-bottom-color: var(--tab-accent);
   color: var(--text);
 }
 
@@ -260,8 +295,8 @@ button:disabled {
 }
 
 .tabs--filled .tab[aria-selected='true'] {
-  border-color: var(--amber);
-  background: var(--amber);
+  border-color: var(--tab-accent);
+  background: var(--tab-accent);
   color: var(--bg);
 }
 
@@ -282,7 +317,11 @@ button:disabled {
   background: var(--panel);
 }
 
-.project-card h2 a,
+.project-card h2 a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
 .mission-card a {
   color: inherit;
   text-decoration: none;
@@ -307,11 +346,11 @@ button:disabled {
 
 .project-unavailable {
   margin-top: var(--space-1);
-  color: var(--pink);
+  color: var(--red);
   font-weight: 600;
 }
 
-/* Cartão de missão: borda violeta quando espera decisão, barra âmbar quando roda. */
+/* Cartão de missão: borda violeta quando espera decisão, barra amarela de progresso quando roda. */
 .mission-card {
   display: grid;
   gap: var(--space-2);
@@ -342,7 +381,7 @@ button:disabled {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: var(--amber);
+  background: var(--yellow);
   animation: progress-slide 1.6s ease-in-out infinite;
 }
 
@@ -418,7 +457,7 @@ button:disabled {
 
 .plan-step-number {
   font-family: var(--font-mono);
-  color: var(--amber);
+  color: var(--blue);
   font-weight: 700;
 }
 
@@ -445,7 +484,7 @@ button:disabled {
 .decision-card ul {
   margin: 0;
   padding-left: 1.25rem;
-  color: var(--log);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
@@ -455,7 +494,7 @@ button:disabled {
   margin: 0;
   padding: var(--space-2);
   background: var(--bg);
-  color: var(--log);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   white-space: pre-wrap;
@@ -477,7 +516,7 @@ button:disabled {
   gap: var(--space-3);
   padding: var(--space-1) 0;
   border-bottom: 1px solid var(--line);
-  color: var(--log);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
@@ -487,7 +526,7 @@ button:disabled {
   color: var(--muted);
 }
 
-/* Formulários: campos com linha violeta-escura e foco âmbar. */
+/* Formulários: campos com borda azul-violeta escura e foco branco-violeta. */
 .form {
   display: grid;
   gap: var(--space-3);
@@ -530,7 +569,7 @@ button:disabled {
 }
 
 .field-error {
-  color: var(--pink);
+  color: var(--red);
   font-weight: 600;
   font-size: 0.875rem;
 }
@@ -544,7 +583,7 @@ button:disabled {
 .check input {
   width: 1rem;
   height: 1rem;
-  accent-color: var(--amber);
+  accent-color: var(--lime);
 }
 
 .form-actions {
