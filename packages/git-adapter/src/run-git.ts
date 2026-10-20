@@ -14,6 +14,13 @@ const NOT_AVAILABLE_MESSAGE = 'Instale o Git e reinicie o Project Hub.';
  */
 const REPOSITORY_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'];
 
+/**
+ * Vai antes do subcomando em toda chamada. O `core.fsmonitor` da configuração de um repositório
+ * não confiável (seção 17.1) é um comando que o `git status` executaria; `false` o desliga. Só o
+ * adaptador passa `-c`: o do chamador cai na lista de permissão.
+ */
+const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
+
 /** Opções que `symbolic-ref` aceita só para ler. Qualquer outra, como `-d` e `-m`, escreve ou apaga. */
 const SYMBOLIC_REF_READ_OPTIONS = new Set(['--short', '-q', '--quiet']);
 
@@ -87,12 +94,15 @@ function gitEnvironment(): NodeJS.ProcessEnv {
 
 type Outcome = { error: null; stdout: string } | { error: ExecFileException; stderr: string };
 
-/** Roda o executável sem shell, com os argumentos em array. Nunca rejeita: devolve o resultado. */
+/**
+ * Roda o executável sem shell, com os argumentos em array, depois da lista de permissão. Nunca
+ * rejeita: devolve o resultado.
+ */
 function execGit(file: string, args: readonly string[], options: RunGitOptions): Promise<Outcome> {
   return new Promise((resolve) => {
     execFile(
       file,
-      [...args],
+      [...FSMONITOR_OFF, ...args],
       {
         cwd: options.cwd,
         env: gitEnvironment(),

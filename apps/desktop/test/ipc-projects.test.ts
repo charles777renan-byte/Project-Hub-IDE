@@ -1,4 +1,5 @@
 import { CHANNELS } from '@project-hub/contracts';
+import { GitError } from '@project-hub/git-adapter';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import type { AddProjectDeps } from '@project-hub/application';
@@ -75,6 +76,41 @@ describe('registerTrustedHandler', () => {
     expect(log).toHaveBeenCalled();
     log.mockRestore();
   });
+
+  // Só o GitError tem código e mensagem pensados para a tela. Qualquer outro erro continua UNKNOWN.
+  it('GitError chega ao renderer com o código e a mensagem dele', async () => {
+    const { registry, call } = fakeRegistry();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    registerTrustedHandler(registry, 'canal:teste:v1', isTrusted, () =>
+      Promise.reject(new GitError('GIT_NOT_AVAILABLE', 'Instale o Git e reinicie o Project Hub.')),
+    );
+
+    await expect(call('canal:teste:v1', trusted)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'GIT_NOT_AVAILABLE',
+        message: 'Instale o Git e reinicie o Project Hub.',
+        retryable: false,
+      },
+    });
+    // O erro continua no log, com a saída do Git que a mensagem não mostra.
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it('erro que só parece um GitError (mesmo code e message) continua UNKNOWN', async () => {
+    const { registry, call } = fakeRegistry();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    registerTrustedHandler(registry, 'canal:teste:v1', isTrusted, () =>
+      Promise.reject(Object.assign(new Error('Instale o Git'), { code: 'GIT_NOT_AVAILABLE' })),
+    );
+
+    await expect(call('canal:teste:v1', trusted)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'UNKNOWN' },
+    });
+    log.mockRestore();
+  });
 });
 
 describe('handleAddProject', () => {
@@ -114,6 +150,37 @@ describe('registerProjectHandlers', () => {
     expect(channels()).toEqual(
       [CHANNELS.projectsAdd, CHANNELS.projectsChooseDirectory, CHANNELS.projectsList].sort(),
     );
+  });
+
+  it('projects:add com o Git ausente responde GIT_NOT_AVAILABLE com a instrução, e não UNKNOWN', async () => {
+    const { registry, call } = fakeRegistry();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Aplicação de verdade (addProject), com um detector que falha como o do Git ausente.
+    const services = {
+      repo: { findByNormalizedPath: () => undefined },
+      fs: { isDirectory: () => Promise.resolve(true) },
+      git: {
+        detect: () =>
+          Promise.reject(
+            new GitError('GIT_NOT_AVAILABLE', 'Instale o Git e reinicie o Project Hub.'),
+          ),
+      },
+      platform: 'win32',
+      now: () => '2026-10-19T12:00:00.000Z',
+      newId: () => 'id-1',
+    } as unknown as AddProjectDeps;
+    registerProjectHandlers(registry, isTrusted, {
+      services,
+      chooseDirectory: () => Promise.resolve(null),
+    });
+
+    await expect(
+      call(CHANNELS.projectsAdd, trusted, { path: 'C:\\Projetos\\app' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'GIT_NOT_AVAILABLE', message: 'Instale o Git e reinicie o Project Hub.' },
+    });
+    log.mockRestore();
   });
 
   it('recusa os três canais para remetente de outra origem, sem tocar na aplicação', async () => {

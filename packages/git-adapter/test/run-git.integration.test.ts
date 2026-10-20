@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,6 +67,24 @@ describe('runGit com o Git do sistema', () => {
     ).rejects.toMatchObject({ exitCode: 128 });
 
     expect(existsSync(join(path, 'marcador.txt'))).toBe(false);
+  });
+
+  // Seção 17.1: o repositório não é confiável, e a configuração dele pode mandar o `git status`
+  // executar um comando (`core.fsmonitor`). O adaptador desliga isso em toda chamada.
+  it('o core.fsmonitor da configuração do repositório não é executado', async () => {
+    const { path } = repo();
+    const marker = join(plainFolder(), 'marcador.txt');
+    const command = `echo executado > "${marker.replaceAll('\\', '/')}"; exit 1`;
+    execFileSync('git', ['config', 'core.fsmonitor', command], { cwd: path });
+
+    // Controle: o Git sem a proteção executa o comando. Sem isto, o teste passaria à toa.
+    execFileSync('git', ['status', '--porcelain'], { cwd: path, stdio: 'ignore' });
+    expect(existsSync(marker)).toBe(true);
+    rmSync(marker);
+
+    await runGit(['status', '--porcelain'], { cwd: path });
+
+    expect(existsSync(marker)).toBe(false);
   });
 
   it('pasta com espaço, acento e caracteres de shell no nome funciona', async () => {

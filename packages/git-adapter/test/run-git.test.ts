@@ -12,6 +12,9 @@ type Callback = (error: Error | null, stdout: string, stderr: string) => void;
 const execFileMock = vi.mocked(execFile);
 // Uma pasta que existe, para os erros ENOENT não serem confundidos com pasta de trabalho ausente.
 const cwd = import.meta.dirname;
+// Vai antes do subcomando em toda chamada: o `core.fsmonitor` de um repositório não confiável executa
+// um comando no `git status`.
+const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
 
 /** Faz o `execFile` imitado terminar logo, com o erro e as saídas dadas. */
 function respondWith(error: Error | null, stdout = '', stderr = ''): void {
@@ -88,7 +91,7 @@ describe('runGit: só comandos de leitura', () => {
   ])('aceita %j', async (args) => {
     await runGit(args, { cwd });
 
-    expect(call().args).toEqual(args);
+    expect(call().args).toEqual([...FSMONITOR_OFF, ...args]);
   });
 });
 
@@ -99,9 +102,25 @@ describe('runGit: como o processo é criado', () => {
     expect(result).toEqual({ stdout: 'saida\n' });
     const { file, args, options } = call();
     expect(file).toBe('git');
-    expect(args).toEqual(['rev-parse', 'HEAD']);
+    expect(args).toEqual([...FSMONITOR_OFF, 'rev-parse', 'HEAD']);
     expect(options.shell ?? false).toBe(false);
     expect(options).toMatchObject({ cwd, encoding: 'utf8', windowsHide: true });
+  });
+
+  // O `-c` do chamador continua recusado (lista de permissão); o do adaptador vai sempre, antes do
+  // subcomando, em todo comando permitido.
+  it.each([
+    [['status']],
+    [['rev-parse', '--is-inside-work-tree']],
+    [['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']],
+    [['branch', '--show-current']],
+  ])('passa -c core.fsmonitor=false antes do subcomando em %j', async (args) => {
+    await runGit(args, { cwd });
+
+    const passed = call().args;
+    expect(passed.slice(0, 2)).toEqual(FSMONITOR_OFF);
+    expect(passed[2]).toBe(args[0]);
+    expect(passed.filter((arg) => arg === '-c')).toHaveLength(1);
   });
 
   it('usa o gitBinary informado', async () => {

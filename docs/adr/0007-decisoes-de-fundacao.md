@@ -40,7 +40,8 @@ Dependências novas entram com versão exata (`saveExact: true` em `pnpm-workspa
 
 - **Contexto:** O aplicativo usa poucas operações de Git: ler o estado do repositório e criar e remover worktrees.
 - **Decisão:** Chamar o executável `git` direto, com `execa`, sem `simple-git`. Os argumentos vão em array e nunca por shell. O tempo limite padrão é de 15 segundos (`timeoutMs` de 15000), e executável ausente vira o erro `GIT_NOT_AVAILABLE`.
-- **Consequência:** Os comandos permitidos ficam explícitos no código (RF-GIT-007) e nenhuma camada intermediária expõe comandos de escrita. Caminhos com espaço e acento passam como argumentos, sem escape de shell. Na Tarefa 7 o `execa` foi trocado pelo `execFile` do Node (ver "Registros posteriores").
+- **Consequência:** Os comandos permitidos ficam explícitos no código (RF-GIT-007) e nenhuma camada intermediária expõe comandos de escrita. Caminhos com espaço e acento passam como argumentos, sem escape de shell.
+- **Nota (Tarefa 7):** o `execa` desta decisão foi substituído pelo `execFile` do Node. O motivo e o que continua valendo estão em "Registros posteriores", na entrada "2026-10-19, Tarefa 7: `execFile` do Node no lugar do `execa`".
 
 ## 3. Drizzle ORM com better-sqlite3
 
@@ -187,7 +188,7 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 
 ### 2026-10-19, Tarefa 7: lista de permissão do `runGit` e ambiente do processo
 
-- **Decisão:** `runGit` só roda `status`, `rev-parse`, `symbolic-ref` e `branch --show-current` (os argumentos de `branch` têm de ser exatamente esses). O subcomando precisa ser o primeiro argumento, então `-c`, `-C` e `--exec-path` antes dele são recusados. Qualquer outro comando rejeita com `PERMISSION_DENIED` antes de criar o processo. O `symbolic-ref` escreve quando recebe um segundo nome e quando recebe `-d` ou `-m`, então só vale a forma de leitura: um nome, com as opções `--short`, `-q` ou `--quiet`.
+- **Decisão:** `runGit` só roda `status`, `rev-parse`, `symbolic-ref` e `branch --show-current` (os argumentos de `branch` têm de ser exatamente esses). O subcomando precisa ser o primeiro argumento, então `-c`, `-C` e `--exec-path` antes dele são recusados. Qualquer outro comando rejeita com `PERMISSION_DENIED` antes de criar o processo. O `symbolic-ref` escreve quando recebe um segundo nome e quando recebe `-d` ou `-m`, então só vale a forma de leitura: um nome, com as opções `--short`, `-q` ou `--quiet`. Depois dessa checagem, o adaptador acrescenta `-c core.fsmonitor=false` antes do subcomando em toda chamada: o `core.fsmonitor` da configuração de um repositório não confiável (seção 17.1) é um comando que o `git status` executaria. Só o adaptador passa `-c`; o do chamador continua recusado.
 - **Ambiente:** o processo roda com `LC_ALL=C` (a detecção reconhece "not a git repository" no texto de erro, que sem isso sairia traduzido), `GIT_OPTIONAL_LOCKS=0` (o `status` não regrava o índice, então ler não altera o repositório) e sem `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` e `GIT_COMMON_DIR`, que fariam o Git ignorar a pasta recebida.
 - **Motivo:** RF-GIT-007, seção 17.2 e seção 11 de `docs/regras-subagentes.md`. A API pública de `@project-hub/git-adapter` não exporta nada com `commit`, `push`, `merge`, `fetch` ou `pull` no nome, e um teste confere.
 - **Consequência:** a Tarefa 8 acrescenta `worktree` à lista, com uma entrada aqui dizendo quais formas valem. Subcomando novo não entra sem essa entrada.
@@ -198,7 +199,7 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **O que vira `none`:** só a resposta "not a git repository" (código 128). Git ausente, tempo esgotado, pasta recusada por dono diferente (`safe.directory`) e qualquer outra falha sobem como `GitError`: cadastrar como "sem Git" por engano esconderia o problema.
 - **Status:** `getStatus` faz uma chamada só, `status --porcelain=v2 --branch --untracked-files=all -z`. Cada arquivo conta uma vez (renomeado inclusive), e cada arquivo de uma pasta nova conta, e não a pasta. Em HEAD destacado a branch é `HEAD`. Repositório sem commits rejeita, porque não tem `baseCommit`.
 - **Erros:** `GitError` leva `code` e `message` do contrato `AppError`, mais `exitCode` e `stderr`. A saída de erro do Git não entra na mensagem, porque pode trazer conteúdo do repositório (seção 17.1). `GIT_NOT_AVAILABLE` já constava em `ERROR_CODES` (seção 13.7), então não houve código novo nem mudança no teste do contrato. Falha sem código específico usa `UNKNOWN`.
-- **Pendência:** `registerTrustedHandler` converte qualquer exceção em `UNKNOWN` ("Algo deu errado"). Com o Git ausente, o cadastro de um projeto falha com essa mensagem genérica, e a instrução de instalar o Git não chega à tela. Mapear o `code` do `GitError` para a resposta fica para uma tarefa seguinte.
+- **Erro do Git na tela:** `registerTrustedHandler`, em `apps/desktop/src/main/ipc/trusted-handler.ts`, devolve o `code` e a `message` de um `GitError` (por exemplo `GIT_NOT_AVAILABLE`, com a instrução de instalar o Git), e só dele. Qualquer outro erro continua `UNKNOWN` ("Algo deu errado"). Um teste cobre o `projects:add` com o Git ausente.
 
 ### 2026-10-19, Tarefa 7: `restore` grava a detecção e `addProject` consulta a duplicata antes do Git
 
