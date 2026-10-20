@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { branchExists, revParse } from '../src/git-queries';
 import { createTempRepo, type TempRepo } from '../src/temp-repo';
@@ -6,6 +9,7 @@ import { createTempRepo, type TempRepo } from '../src/temp-repo';
 // Git real: o repositório nasce e é lido com o executável do sistema.
 
 const created: TempRepo[] = [];
+const folders: string[] = [];
 
 function repo(): TempRepo {
   const made = createTempRepo();
@@ -23,6 +27,7 @@ function git(cwd: string, ...args: string[]): string {
 
 afterEach(() => {
   for (const made of created.splice(0)) made.cleanup();
+  for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true });
 });
 
 describe('revParse', () => {
@@ -69,8 +74,18 @@ describe('branchExists', () => {
   });
 
   it('rejeita em vez de responder falso quando a pasta não é um repositório', () => {
-    const { path } = repo();
+    // Uma pasta que existe, na pasta temporária, sem Git: o Git sai com 128 ("not a git
+    // repository"), que não é o 1 de "a branch não existe".
+    const folder = mkdtempSync(join(tmpdir(), 'project-hub-sem-git-'));
+    folders.push(folder);
 
-    expect(() => branchExists(`${path}-inexistente`, 'main')).toThrow();
+    let thrown: unknown;
+    try {
+      branchExists(folder, 'main');
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({ status: 128 });
   });
 });

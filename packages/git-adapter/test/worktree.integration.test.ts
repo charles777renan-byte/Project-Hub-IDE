@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -302,6 +303,61 @@ describe('createWorktree', () => {
     expect(readdirSync(root)).toEqual([]);
   });
 
+  // O checkout do `worktree add` roda o hook `post-checkout` do repositório, que num repositório de
+  // terceiros é código alheio (seção 17.1). O controle prova que, sem o `-c core.hooksPath` do
+  // adaptador, o Git roda o hook: sem ele o teste passaria mesmo se o hook nunca rodasse.
+  describe('não roda o hook post-checkout do repositório', () => {
+    /** Hook que grava um marcador quando roda. O caminho vai com `/`, que o `sh` do Git entende. */
+    function installPostCheckout(hooksFolder: string, marker: string): void {
+      mkdirSync(hooksFolder, { recursive: true });
+      const script = join(hooksFolder, 'post-checkout');
+      writeFileSync(script, `#!/bin/sh\necho rodou > "${marker.replaceAll('\\', '/')}"\n`);
+      chmodSync(script, 0o755);
+    }
+
+    it.each([
+      ['na pasta de hooks do repositório', (repoPath: string) => join(repoPath, '.git', 'hooks')],
+      [
+        'numa pasta indicada por core.hooksPath na configuração do repositório',
+        (repoPath: string) => {
+          const folder = newFolder('project-hub-hooks-');
+          git(repoPath, 'config', 'core.hooksPath', folder.replaceAll('\\', '/'));
+          return folder;
+        },
+      ],
+    ])('hook %s', async (_case, hooksFolderOf) => {
+      const { path: repoPath } = repo();
+      const root = worktreesRoot();
+      const marker = join(newFolder('project-hub-marcador-'), 'marcador.txt');
+      installPostCheckout(hooksFolderOf(repoPath), marker);
+
+      // Controle: um `worktree add` comum, sem o flag, roda o hook e grava o marcador.
+      git(repoPath, 'worktree', 'add', '-b', 'controle', join(root, 'controle'), 'HEAD');
+      expect(existsSync(marker)).toBe(true);
+      rmSync(marker);
+
+      const wt = await createWorktree({ repoPath, worktreesRoot: root, names, baseRef: 'HEAD' });
+
+      expect(existsSync(wt.path)).toBe(true);
+      expect(existsSync(join(wt.path, 'a.txt'))).toBe(true);
+      expect(existsSync(marker)).toBe(false);
+    });
+
+    it('não deixa a pasta de hooks vazia para trás na pasta temporária', async () => {
+      const { path: repoPath } = repo();
+      const before = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith('project-hub-sem-hooks-'),
+      );
+
+      await createWorktree({ repoPath, worktreesRoot: worktreesRoot(), names, baseRef: 'HEAD' });
+
+      const after = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith('project-hub-sem-hooks-'),
+      );
+      expect(after).toEqual(before);
+    });
+  });
+
   describe('recusa uma pasta que escapa da raiz, antes de chamar o Git', () => {
     // A pasta de fora é irmã da raiz e começa com o nome dela: uma checagem de prefixo, em vez de
     // `relative`, deixaria passar.
@@ -446,8 +502,11 @@ describe('removeWorktree', () => {
   it('o checkout principal não é removido', async () => {
     const { path: repoPath } = repo();
 
+    // Quem recusa é o `git worktree remove` ("is a main working tree"), sem --force.
     await expect(removeWorktree({ repoPath, worktreePath: repoPath })).rejects.toMatchObject({
       name: 'GitError',
+      code: 'UNKNOWN',
+      exitCode: 128,
     });
 
     expect(existsSync(join(repoPath, '.git'))).toBe(true);
@@ -459,8 +518,11 @@ describe('removeWorktree', () => {
     const plain = newFolder('project-hub-pasta-comum-');
     writeFileSync(join(plain, 'importante.txt'), 'x');
 
+    // Quem recusa é a leitura do status ("not a git repository"): a pasta nem chega ao `remove`.
     await expect(removeWorktree({ repoPath, worktreePath: plain })).rejects.toMatchObject({
       name: 'GitError',
+      code: 'UNKNOWN',
+      exitCode: 128,
     });
 
     expect(readFileSync(join(plain, 'importante.txt'), 'utf8')).toBe('x');
@@ -470,11 +532,97 @@ describe('removeWorktree', () => {
     const { path: repoPath } = repo();
     const { repoPath: otherRepo, wt } = await setUp();
 
+    // O worktree está limpo, então quem recusa é o `git worktree remove` ("is not a working tree").
     await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
       name: 'GitError',
+      code: 'UNKNOWN',
+      exitCode: 128,
     });
 
     expect(existsSync(wt.path)).toBe(true);
     expect(registeredWorktrees(otherRepo)).toHaveLength(2);
+  });
+
+  it('recusa um caminho de worktree relativo, sem tocar em nada', async () => {
+    const { repoPath, wt } = await setUp();
+
+    await expect(
+      removeWorktree({ repoPath, worktreePath: names.relativeDir }),
+    ).rejects.toMatchObject({ name: 'GitError', code: 'VALIDATION_FAILED' });
+
+    expect(existsSync(wt.path)).toBe(true);
+    expect(registeredWorktrees(repoPath)).toHaveLength(2);
+  });
+
+  // O `git worktree remove` apaga os arquivos ignorados junto com a pasta, e o status comum não os
+  // lista. O adaptador lê o status com --ignored e recusa antes do `remove`.
+  describe('com arquivos ignorados pelo Git', () => {
+    async function setUpWithIgnoreRules(): Promise<Awaited<ReturnType<typeof setUp>>> {
+      const { path: repoPath } = repo();
+      writeFileSync(join(repoPath, '.gitignore'), '.env\nnode_modules/\n');
+      git(repoPath, 'add', '.gitignore');
+      git(repoPath, 'commit', '--no-verify', '-m', 'ignora .env e node_modules');
+      const root = worktreesRoot();
+      const wt = await createWorktree({ repoPath, worktreesRoot: root, names, baseRef: 'HEAD' });
+      return { repoPath, root, wt };
+    }
+
+    it.each([
+      ['.env', (path: string) => writeFileSync(join(path, '.env'), 'SEGREDO=1'), '.env'],
+      [
+        'node_modules/x',
+        (path: string) => {
+          mkdirSync(join(path, 'node_modules'));
+          writeFileSync(join(path, 'node_modules', 'x'), 'pacote');
+        },
+        join('node_modules', 'x'),
+      ],
+    ])(
+      'worktree com %s ignorado não é removido, e a pasta continua existindo',
+      async (_case, makeIgnored, ignoredFile) => {
+        const { repoPath, wt } = await setUpWithIgnoreRules();
+        makeIgnored(wt.path);
+        // O status comum diz que está limpo: só a leitura com --ignored vê o arquivo.
+        expect(git(wt.path, 'status', '--porcelain')).toBe('');
+        expect(git(wt.path, 'status', '--porcelain', '--ignored')).not.toBe('');
+
+        await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+          name: 'GitError',
+          code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+        });
+
+        expect(existsSync(wt.path)).toBe(true);
+        expect(existsSync(join(wt.path, ignoredFile))).toBe(true);
+        expect(branchExists(repoPath, names.branch)).toBe(true);
+        expect(registeredWorktrees(repoPath)).toHaveLength(2);
+      },
+    );
+
+    it('depois de apagar os arquivos ignorados, a remoção segue', async () => {
+      const { repoPath, wt } = await setUpWithIgnoreRules();
+      writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+      });
+
+      rmSync(join(wt.path, '.env'));
+
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).resolves.toBeUndefined();
+      expect(existsSync(wt.path)).toBe(false);
+      expect(branchExists(repoPath, names.branch)).toBe(true);
+    });
+
+    it('regra de ignorar só no repositório (info/exclude) também conta', async () => {
+      const { repoPath, wt } = await setUp();
+      writeFileSync(join(repoPath, '.git', 'info', 'exclude'), '*.log\n', { flag: 'a' });
+      writeFileSync(join(wt.path, 'saida.log'), 'x');
+      expect(git(wt.path, 'status', '--porcelain')).toBe('');
+
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+      });
+
+      expect(existsSync(join(wt.path, 'saida.log'))).toBe(true);
+    });
   });
 });

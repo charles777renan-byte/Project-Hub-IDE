@@ -1,5 +1,7 @@
 import { execFile, type ExecFileException } from 'node:child_process';
-import { stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { ErrorCode } from '@project-hub/contracts';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -137,11 +139,16 @@ type Outcome = { error: null; stdout: string } | { error: ExecFileException; std
  * Roda o executável sem shell, com os argumentos em array, depois da lista de permissão. Nunca
  * rejeita: devolve o resultado.
  */
-function execGit(file: string, args: readonly string[], options: RunGitOptions): Promise<Outcome> {
+function execGit(
+  file: string,
+  args: readonly string[],
+  config: readonly string[],
+  options: RunGitOptions,
+): Promise<Outcome> {
   return new Promise((resolve) => {
     execFile(
       file,
-      [...FSMONITOR_OFF, ...args],
+      [...FSMONITOR_OFF, ...config, ...args],
       {
         cwd: options.cwd,
         env: gitEnvironment(),
@@ -209,13 +216,15 @@ async function toGitError(
 
 /**
  * Roda o comando que a lista de permissão do chamador já aprovou. Não é exportada: só `runGit` e
- * `runGitWorktree` chegam aqui, cada uma depois da sua checagem.
+ * `runGitWorktree` chegam aqui, cada uma depois da sua checagem. `config` são `-c chave=valor` que
+ * o adaptador acrescenta depois do `-c core.fsmonitor=false`, nunca vindos do chamador.
  */
 async function runApproved(
   args: readonly string[],
   options: RunGitOptions,
+  config: readonly string[] = [],
 ): Promise<{ stdout: string }> {
-  const outcome = await execGit(options.gitBinary ?? 'git', args, options);
+  const outcome = await execGit(options.gitBinary ?? 'git', args, config, options);
   if (outcome.error === null) return { stdout: outcome.stdout };
   throw await toGitError(outcome.error, outcome.stderr, args, options);
 }
@@ -250,6 +259,14 @@ export async function runGit(
  *
  * Qualquer outra rejeita com PERMISSION_DENIED, sem criar processo. O tempo limite padrão é maior
  * que o de `runGit`, porque o checkout leva mais que uma leitura.
+ *
+ * O `worktree add` faz um checkout, e o checkout roda o hook `post-checkout` do repositório, que num
+ * repositório de terceiros (seção 17.1) é código alheio. Só nele o adaptador acrescenta
+ * `-c core.hooksPath=<pasta vazia>`: uma pasta nova, criada por chamada na pasta temporária do
+ * sistema (modo restrito, nome aleatório) e apagada ao fim, com sucesso ou falha. Por chamada, e não
+ * uma fixa nem uma opção do chamador: ninguém consegue plantar hooks numa pasta de nome previsível,
+ * e quem chama não tem como esquecer o `-c`. O `-c` de linha de comando vale mais que o
+ * `core.hooksPath` da configuração do repositório. O `worktree remove` não faz checkout e não leva o `-c`.
  */
 export async function runGitWorktree(
   args: readonly string[],
@@ -261,5 +278,15 @@ export async function runGitWorktree(
       'Comando do Git recusado: só são permitidos criar e remover worktrees, nas formas fixas.',
     );
   }
-  return runApproved(args, { ...options, timeoutMs: options.timeoutMs ?? WORKTREE_TIMEOUT_MS });
+  const withTimeout = { ...options, timeoutMs: options.timeoutMs ?? WORKTREE_TIMEOUT_MS };
+  if (args[1] !== 'add') return runApproved(args, withTimeout);
+
+  const noHooks = await mkdtemp(join(tmpdir(), 'project-hub-sem-hooks-'));
+  try {
+    return await runApproved(args, withTimeout, ['-c', `core.hooksPath=${noHooks}`]);
+  } finally {
+    // Limpeza de uma pasta vazia: se falhar, sobra uma pasta vazia na pasta temporária, e isso não
+    // deve esconder o resultado do `worktree add`, que já aconteceu.
+    await rm(noHooks, { recursive: true, force: true }).catch(() => undefined);
+  }
 }

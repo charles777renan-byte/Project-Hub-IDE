@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitError, runGit, runGitWorktree } from '../src/run-git';
 
@@ -13,6 +16,18 @@ const execFileMock = vi.mocked(execFile);
 const cwd = import.meta.dirname;
 const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
 const SHA = '0123456789abcdef0123456789abcdef01234567';
+
+/**
+ * Confere os argumentos de um `worktree add`: depois do `-c` do fsmonitor vem o `-c core.hooksPath`,
+ * que aponta o Git para uma pasta sem hooks, e só então o subcomando. Devolve a pasta de hooks.
+ */
+function expectAddArgs(passed: string[], args: string[]): string {
+  expect(passed.slice(0, 2)).toEqual(FSMONITOR_OFF);
+  expect(passed[2]).toBe('-c');
+  expect(passed[3]).toMatch(/^core\.hooksPath=.+/);
+  expect(passed.slice(4)).toEqual(args);
+  return (passed[3] ?? '').slice('core.hooksPath='.length);
+}
 
 function respondWith(error: Error | null, stdout = '', stderr = ''): void {
   execFileMock.mockImplementation(((
@@ -136,7 +151,7 @@ describe('runGitWorktree: só duas formas fixas', () => {
 
     await runGitWorktree(args, { cwd });
 
-    expect(call().args).toEqual([...FSMONITOR_OFF, ...args]);
+    expectAddArgs(call().args, args);
   });
 
   it('aceita worktree remove <pasta>', async () => {
@@ -159,17 +174,17 @@ describe('runGitWorktree: como o processo é criado', () => {
     expect(result).toEqual({ stdout: 'saida\n' });
     const { file, args, options } = call();
     expect(file).toBe('git');
-    expect(args).toEqual([...FSMONITOR_OFF, ...addArgs]);
+    expectAddArgs(args, addArgs);
     expect(options.shell ?? false).toBe(false);
     expect(options).toMatchObject({ cwd, encoding: 'utf8', windowsHide: true });
   });
 
   it('passa -c core.fsmonitor=false antes do subcomando, uma vez só', async () => {
-    await runGitWorktree(addArgs, { cwd });
+    const removeArgs = ['worktree', 'remove', 'C:\\w\\x'];
+    await runGitWorktree(removeArgs, { cwd });
 
     const passed = call().args;
-    expect(passed.slice(0, 2)).toEqual(FSMONITOR_OFF);
-    expect(passed[2]).toBe('worktree');
+    expect(passed).toEqual([...FSMONITOR_OFF, ...removeArgs]);
     expect(passed.filter((arg) => arg === '-c')).toHaveLength(1);
   });
 
@@ -217,7 +232,87 @@ describe('runGitWorktree: como o processo é criado', () => {
 
     await runGitWorktree(args, { cwd });
 
-    expect(call().args).toEqual([...FSMONITOR_OFF, ...args]);
+    expectAddArgs(call().args, args);
+  });
+});
+
+// O `worktree add` faz um checkout, e o checkout roda o hook `post-checkout` do repositório. Num
+// repositório de terceiros (seção 17.1) isso é código que o Project Hub executaria. O `-c` do
+// adaptador aponta `core.hooksPath` para uma pasta vazia, só nesse subcomando.
+describe('runGitWorktree: hooks do repositório no worktree add', () => {
+  const addArgs = ['worktree', 'add', '-b', 'ph/x', 'C:\\w\\x', SHA];
+  const removeArgs = ['worktree', 'remove', 'C:\\w\\x'];
+
+  /** Faz o `execFile` imitado registrar o estado da pasta de hooks no instante da chamada. */
+  function watchHooksFolder(outcome: Error | null = null): {
+    seen: { inside: string[]; existed: boolean }[];
+  } {
+    const seen: { inside: string[]; existed: boolean }[] = [];
+    execFileMock.mockImplementation(((
+      _file: string,
+      args: string[],
+      _options: object,
+      done: Callback,
+    ) => {
+      const folder = (args[3] ?? '').slice('core.hooksPath='.length);
+      seen.push({
+        existed: existsSync(folder),
+        inside: existsSync(folder) ? readdirSync(folder) : [],
+      });
+      done(outcome, '', '');
+    }) as unknown as typeof execFile);
+    return { seen };
+  }
+
+  it('worktree add leva core.hooksPath para uma pasta vazia, criada na pasta temporária', async () => {
+    const { seen } = watchHooksFolder();
+
+    await runGitWorktree(addArgs, { cwd });
+
+    const folder = expectAddArgs(call().args, addArgs);
+    expect(seen).toEqual([{ existed: true, inside: [] }]);
+    expect(isAbsolute(folder)).toBe(true);
+    expect(relative(tmpdir(), folder).startsWith('..')).toBe(false);
+  });
+
+  it('a pasta de hooks é apagada depois da criação', async () => {
+    watchHooksFolder();
+
+    await runGitWorktree(addArgs, { cwd });
+
+    expect(existsSync(expectAddArgs(call().args, addArgs))).toBe(false);
+  });
+
+  it('a pasta de hooks é apagada também quando o Git falha', async () => {
+    watchHooksFolder(Object.assign(new Error('Command failed'), { code: 128 }));
+
+    await expect(runGitWorktree(addArgs, { cwd })).rejects.toMatchObject({ exitCode: 128 });
+
+    expect(existsSync(expectAddArgs(call().args, addArgs))).toBe(false);
+  });
+
+  it('cada criação usa a sua pasta de hooks', async () => {
+    watchHooksFolder();
+
+    await runGitWorktree(addArgs, { cwd });
+    await runGitWorktree(addArgs, { cwd });
+
+    const [first, second] = execFileMock.mock.calls.map((c) => (c[1] as string[])[3]);
+    expect(first).toBeDefined();
+    expect(first).not.toBe(second);
+  });
+
+  it('worktree remove não leva core.hooksPath: só o add faz checkout', async () => {
+    await runGitWorktree(removeArgs, { cwd });
+
+    expect(call().args).toEqual([...FSMONITOR_OFF, ...removeArgs]);
+    expect(call().args.join(' ')).not.toContain('hooksPath');
+  });
+
+  it('runGit não leva core.hooksPath', async () => {
+    await runGit(['status'], { cwd });
+
+    expect(call().args).toEqual([...FSMONITOR_OFF, 'status']);
   });
 });
 
