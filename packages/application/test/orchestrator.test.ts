@@ -17,6 +17,7 @@ type HarnessOptions = {
   scripts?: FakeStep[][];
   failStarts?: number;
   failDelivery?: boolean;
+  failStop?: boolean;
   worktreeFailure?: { code: string; message: string };
   repositoryKind?: 'git' | 'none';
 };
@@ -44,6 +45,7 @@ function harness(options: HarnessOptions = {}): Harness {
   const agent = fakeAgent(options.scripts ?? [], {
     failStarts: options.failStarts ?? 0,
     failDelivery: options.failDelivery === true,
+    failStop: options.failStop === true,
   });
   let tick = 0;
   let ids = 0;
@@ -510,6 +512,37 @@ describe('recusa com entrega que falha (R147)', () => {
   });
 });
 
+describe('recusa com falha ao encerrar a sessão ou a execução (R154)', () => {
+  it('session.stop que falha na recusa não escapa: devolve AGENT_UNAVAILABLE e deixa a missão em failed', async () => {
+    const h = harness({ scripts: [[{ kind: 'approval' }]], failStop: true });
+    h.repo.insertMission(missionFixture());
+    await h.orchestrator.startMission(MISSION);
+    const approvalId = h.repo.approvals()[0]?.id ?? '';
+
+    expect(codeOf(await h.orchestrator.decideApproval({ approvalId, decision: 'rejected' }))).toBe(
+      'AGENT_UNAVAILABLE',
+    );
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+    expect(h.repo.listExecutions(MISSION)[0]).toMatchObject({
+      status: 'failed',
+      exitReason: 'approval_rejected',
+    });
+  });
+
+  it('falha ao gravar o encerramento da recusa devolve um resultado, sem exceção', async () => {
+    const h = harness({ scripts: [[{ kind: 'approval' }]] });
+    h.repo.insertMission(missionFixture());
+    await h.orchestrator.startMission(MISSION);
+    const approvalId = h.repo.approvals()[0]?.id ?? '';
+    h.repo.failNextAudit('execution.failed');
+
+    expect(codeOf(await h.orchestrator.decideApproval({ approvalId, decision: 'rejected' }))).toBe(
+      'UNKNOWN',
+    );
+  });
+});
+
 describe('cancelamento sem execução ativa (R136)', () => {
   it('fecha as execuções running da missão com o motivo de cancelamento', async () => {
     const h = harness();
@@ -545,6 +578,7 @@ describe('cancelamento sem execução ativa (R136)', () => {
     data(await h.orchestrator.cancelMission(MISSION));
 
     expect(h.repo.getExecution('exec-orfa')).toMatchObject({ status: 'cancelled' });
+    expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
   });
 });
 

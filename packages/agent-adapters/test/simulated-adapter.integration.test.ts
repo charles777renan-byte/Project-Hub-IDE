@@ -224,7 +224,8 @@ describe('create-file: caminho dentro do diretório de trabalho (R125)', () => {
     ['barra invertida com ..', '..\\fora.txt'],
     ['unidade seguida de ..', 'C:..\\fora.txt'],
     ['.. com espaço final no segmento', '.. \\fora.txt'],
-    ['.. com ponto final no segmento', '..\\fora.txt.'],
+    ['... é o pai para o Windows, com pontos no segmento', '...\\fora.txt'],
+    ['.. . é o pai, com espaço e ponto no segmento', '.. .\\fora.txt'],
   ])('recusa %s com PATH_OUTSIDE_ALLOWED_SCOPE e não grava nada', async (_label, relativePath) => {
     const session = await startWith([
       { type: 'create-file', relativePath, content: 'x' },
@@ -340,6 +341,8 @@ describe('create-file: links e nomes reservados (R138, R139)', () => {
     'CONOUT$',
     'COM\u00B9',
     'LPT\u00B2.txt',
+    'COM0',
+    'LPT0.txt',
   ])('recusa o nome reservado do Windows %s com VALIDATION_FAILED', async (relativePath) => {
     const session = await startWith([{ type: 'create-file', relativePath, content: 'x' }]);
 

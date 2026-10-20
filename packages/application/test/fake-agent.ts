@@ -64,7 +64,7 @@ function deferred<T>(): Deferred<T> {
  */
 export function fakeAgent(
   scripts: FakeStep[][],
-  options: { failStarts?: number; failDelivery?: boolean } = {},
+  options: { failStarts?: number; failDelivery?: boolean; failStop?: boolean } = {},
 ): FakeAgent {
   const starts: AgentStartInput[] = [];
   const sessions: FakeSession[] = [];
@@ -84,7 +84,9 @@ export function fakeAgent(
       count += 1;
       const record: FakeSession = { stopReasons: [], decisions: [], inputs: [] };
       sessions.push(record);
-      return Promise.resolve(createFakeSession(script, record, options.failDelivery === true));
+      return Promise.resolve(
+        createFakeSession(script, record, options.failDelivery === true, options.failStop === true),
+      );
     },
   };
 }
@@ -94,6 +96,7 @@ function createFakeSession(
   script: FakeStep[],
   record: FakeSession,
   deliveryFails: boolean,
+  stopFails: boolean,
 ): AgentSession {
   let halted = false;
   const halt = deferred<void>();
@@ -182,6 +185,7 @@ function createFakeSession(
       record.stopReasons.push(reason);
       halted = true;
       halt.resolve();
+      if (stopFails) return Promise.reject(new Error('parada recusada pelo agente de teste'));
       return Promise.resolve();
     },
   };

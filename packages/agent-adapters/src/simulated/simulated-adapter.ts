@@ -58,7 +58,7 @@ type ErrorCode = AgentError['code'];
  * Um arquivo com esse nome não é um arquivo: a gravação vai para o dispositivo.
  */
 const WINDOWS_RESERVED_BASE =
-  /^(con|prn|aux|nul|com[1-9\u00B9\u00B2\u00B3]|lpt[1-9\u00B9\u00B2\u00B3]|conin\$|conout\$)$/i;
+  /^(con|prn|aux|nul|com[0-9\u00B9\u00B2\u00B3]|lpt[0-9\u00B9\u00B2\u00B3]|conin\$|conout\$)$/i;
 
 /**
  * Diz se o segmento é o pai (`..`) para o Windows. Ele ignora espaços e pontos finais no segmento,
