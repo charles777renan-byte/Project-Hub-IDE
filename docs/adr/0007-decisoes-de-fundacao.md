@@ -241,3 +241,42 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Contexto:** o `worktree add` faz um checkout, e o checkout roda o hook `post-checkout` do repositório (na pasta `hooks` dele ou na indicada por `core.hooksPath` da configuração dele). Num repositório de terceiros (seção 17.1) é código alheio, executado pelo Project Hub. O `-c core.fsmonitor=false` do adaptador já tratava o caso análogo do `status`. Um teste de controle mostrou o problema: com um `post-checkout` que grava um marcador, o `createWorktree` gravava o marcador.
 - **Decisão:** só no `worktree add`, `runGitWorktree` acrescenta `-c core.hooksPath=<pasta>` logo depois do `-c core.fsmonitor=false` e antes do subcomando, com uma pasta vazia. A pasta é criada pelo adaptador (`mkdtemp` em `os.tmpdir()`, nome aleatório, modo restrito no POSIX), uma por chamada, e apagada ao fim, com sucesso ou falha (se a limpeza falhar, sobra uma pasta vazia na pasta temporária, e o resultado do `add` não é escondido). Se a pasta não puder ser criada (pasta temporária sem permissão ou cheia), o `add` rejeita com `WORKTREE_CREATE_FAILED`, sem criar processo e sem deixar o erro cru do sistema de arquivos subir. Foi escolhida em vez de uma pasta fixa e de uma opção do chamador: um nome previsível na pasta temporária deixaria alguém plantar hooks nela, e uma opção deixaria cada chamador responsável por não esquecer. O `-c` de linha de comando vale mais que o `core.hooksPath` da configuração do repositório; um teste cobre os dois caminhos de hook. O `worktree remove` não faz checkout e não leva o `-c`; `runGit` também não.
 - **Consequência:** hooks do repositório não rodam na criação de worktree pelo Project Hub. Se o produto quiser rodar um bootstrap, será uma ação à parte e aprovada (seção 16.3, passo 9), e não um hook herdado. O flag só vem do adaptador: o `-c` do chamador continua recusado.
+
+### 2026-10-20, Tarefa 9: migração gerada pelo drizzle-kit (`0001_missoes`)
+
+- **Contexto:** o plano previa `0002_missoes.sql` escrito à mão. O R4 manda gerar todas as migrações pelo drizzle-kit, e o nome sai como `0001`, porque a `0000_projetos` já existe.
+- **Decisão:** `drizzle-kit generate --name missoes` gera `0001_missoes.sql` e o snapshot. Entram as seis tabelas das seções 9.1 e 9.4 que a tarefa usa: `missions`, `mission_acceptance_criteria`, `mission_steps`, `executions`, `approval_requests` e `audit_events`. Ficam para as próximas tarefas as tabelas `agent_profiles`, `worktrees`, `terminal_sessions`, `artifacts` e `app_settings`.
+- **Consequência:** o teste de migração espera `['0000_projetos', '0001_missoes']` (R119). A migração só cria tabelas e índices novos.
+
+### 2026-10-20, Tarefa 9: `@project-hub/domain` declarado em `packages/database`
+
+- **Contexto:** o schema lê as listas de valores das enumerações em runtime, para os `CHECK` do banco. O registro da Tarefa 5 previa declarar o pacote quando isso acontecesse.
+- **Decisão:** `"@project-hub/domain": "workspace:*"` em `packages/database`, importado pelo índice do pacote. O `project-repository.ts` deixa o caminho relativo e importa do mesmo jeito.
+- **Consequência:** o `pnpm install` só ligou os workspaces. O lockfile ganhou entradas de importers, sem versão nova.
+
+### 2026-10-20, Tarefa 9: máquina de estados e nova tentativa
+
+- **Decisão:** `canTransition` segue a seção 9.3 e acrescenta duas arestas. `failed` e `cancelled` voltam para `queued`, e é assim que uma nova tentativa começa: a missão não vai direto a `running`, e a execução anterior fica encerrada. Cancelar vale de qualquer estado não terminal. `waiting_approval` não vai direto a `failed`: a recusa de uma aprovação passa por `running` (`waiting_approval` -> `running` -> `failed`), e a recuperação após reinício faz o mesmo quando a missão esperava algo.
+- **Motivo:** a seção 9.3 não diz como uma nova tentativa sai de um estado final sem voltar a `running`. Com `queued`, a execução anterior continua terminal e a nova é outra `Execution`, como manda a seção. A passagem por `running` mantém a tabela sem arestas fora da seção.
+- **Consequência:** `failed` e `cancelled` deixam de ser finais para a missão, mas continuam finais para a execução. Quem mostrar o estado da missão precisa tratar `queued` depois de `failed`.
+
+### 2026-10-20, Tarefa 9: `WorktreePort` na porta, nomes injetados pela composição
+
+- **Decisão:** `WorktreePort` tem `create` e `remove`, com as formas de `createWorktree` e `removeWorktree` (R122). `packages/application` não importa `@project-hub/git-adapter`: o nome do worktree vem de uma função injetada (`worktreeNames`), que a composição liga a `buildWorktreeNames`. Quando a criação falha, a porta rejeita com um erro que traz `code` do contrato, e o orquestrador devolve esse código.
+- **Consequência:** a composição (Tarefa 10) faz a ligação. `remove` está na porta e ainda não é chamado por nenhum caso de uso, porque o encerramento do worktree fica para a tarefa que trata da revisão.
+
+### 2026-10-20, Tarefa 9: auditoria com `sequence` por agregado, numa transação
+
+- **Decisão:** `sequence` cresce dentro de cada `aggregate_id`, com índice único em `(aggregate_id, sequence)`. O repositório atribui o número na própria gravação. Cada transição de missão e a auditoria dela entram numa transação (`repo.transaction`). Os eventos do agente vão para a auditoria da execução, com `actor = agent`, na ordem em que chegaram.
+- **Consequência:** a ordem de gravação segue a seção 15.3: estado e auditoria antes de qualquer retorno. Ainda não há atualização visual, que chega com a Tarefa 10.
+
+### 2026-10-20, Tarefa 9: `provideInput` e os códigos `MISSION_NOT_FOUND` e `APPROVAL_NOT_FOUND`
+
+- **Contexto:** o brief não traz método para responder ao pedido de entrada do agente, e sem ele `waiting_input` não tem saída. A seção 13.7 também não tem código para missão ou aprovação inexistente.
+- **Decisão:** o `Orchestrator` ganha `provideInput({ missionId, text })`, que leva `waiting_input` a `running`. `ERROR_CODES` ganha `MISSION_NOT_FOUND` e `APPROVAL_NOT_FOUND`. Os outros códigos usados já existiam: `PROJECT_WITHOUT_GIT`, `MISSION_INVALID_STATE`, `VALIDATION_FAILED`, `PROJECT_NOT_FOUND`, `APPROVAL_EXPIRED`, `AGENT_UNAVAILABLE` e `PATH_OUTSIDE_ALLOWED_SCOPE`.
+
+### 2026-10-20, Tarefa 9: agente simulado
+
+- **Caminho fora do worktree (R125):** `create-file` recusa caminho absoluto, com `..` ou que caia fora da pasta de trabalho. A recusa vira `tool.completed` com `PATH_OUTSIDE_ALLOWED_SCOPE`, e a sessão termina com `session.failed`. Um link simbólico dentro da pasta não é verificado, igual à Tarefa 8.
+- **Aprovação:** `approve` com `rejected` termina a sessão com `session.failed` e `APPROVAL_REQUIRED`. O roteiro não informa o tipo de ação protegida, então o pedido sai com `write_outside_worktree`.
+- **Uso:** o adaptador não informa uso (`usageReporting: false`). Cancelar (abortar o sinal ou chamar `stop`) para a sessão sem emitir mais nada (R126).

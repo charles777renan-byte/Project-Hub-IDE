@@ -1,4 +1,14 @@
-import type { NewProject, ProjectRecord } from '@project-hub/domain';
+import type {
+  ApprovalRequest,
+  AuditEvent,
+  Execution,
+  ExecutionStatus,
+  Mission,
+  MissionStep,
+  NewAuditEvent,
+  NewProject,
+  ProjectRecord,
+} from '@project-hub/domain';
 
 /**
  * Porta do repositório de projetos. O repositório do banco a satisfaz por tipagem estrutural, e a
@@ -32,4 +42,66 @@ export interface GitDetector {
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
 export interface FileSystemPort {
   isDirectory(path: string): Promise<boolean>;
+}
+
+/** Campos de uma missão que a aplicação altera depois de criada. */
+export type MissionChanges = Partial<
+  Pick<Mission, 'status' | 'startedAt' | 'finishedAt' | 'worktreeId' | 'worktreePath' | 'updatedAt'>
+>;
+
+export type ExecutionChanges = Partial<
+  Pick<Execution, 'status' | 'agentSessionId' | 'exitReason' | 'usage' | 'finishedAt'>
+>;
+
+export type ApprovalChanges = Partial<
+  Pick<ApprovalRequest, 'status' | 'decidedAt' | 'decisionNote'>
+>;
+
+/**
+ * Porta do repositório de missões, com a auditoria. O banco a satisfaz (seção 9.4). `appendAudit`
+ * dá o `id` e o `sequence` do evento, que cresce dentro de cada `aggregateId`. `transaction` roda o
+ * trabalho de uma vez: se ele lançar erro, nenhuma gravação do trabalho fica.
+ */
+export interface MissionRepository {
+  insertMission(mission: Mission): void;
+  getMission(id: string): Mission | undefined;
+  updateMission(id: string, changes: MissionChanges): void;
+  insertSteps(steps: MissionStep[]): void;
+  insertExecution(execution: Execution): void;
+  updateExecution(id: string, changes: ExecutionChanges): void;
+  getExecution(id: string): Execution | undefined;
+  /** As tentativas da missão, da primeira para a última. */
+  listExecutions(missionId: string): Execution[];
+  findExecutionsByStatus(status: ExecutionStatus): Execution[];
+  insertApproval(approval: ApprovalRequest): void;
+  getApproval(id: string): ApprovalRequest | undefined;
+  updateApproval(id: string, changes: ApprovalChanges): void;
+  listPendingApprovals(executionId: string): ApprovalRequest[];
+  appendAudit(event: NewAuditEvent): AuditEvent;
+  transaction<T>(work: () => T): T;
+}
+
+/** Nomes do worktree, com a mesma forma que o `WorktreeNames` do adaptador Git (Tarefa 8). */
+export type WorktreeNames = {
+  missionShortId: string;
+  slug: string;
+  /** `ph/<missionShortId>-<slug>` */
+  branch: string;
+  /** `<projectSlug>/<missionShortId>-<slug>` */
+  relativeDir: string;
+};
+
+/**
+ * Porta de worktrees, com as formas de `createWorktree` e `removeWorktree` (Tarefa 8). A ligação
+ * real fica na composição. Quando a criação falha, a implementação rejeita com um erro que traz
+ * `code`, um código do contrato, como o `GitError`.
+ */
+export interface WorktreePort {
+  create(input: {
+    repoPath: string;
+    worktreesRoot: string;
+    names: WorktreeNames;
+    baseRef: string;
+  }): Promise<{ path: string; branch: string; baseCommit: string }>;
+  remove(input: { repoPath: string; worktreePath: string }): Promise<void>;
 }

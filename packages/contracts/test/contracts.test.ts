@@ -88,6 +88,12 @@ describe('ERROR_CODES', () => {
     );
   });
 
+  it('acrescenta os códigos de missão e de aprovação da Tarefa 9', () => {
+    expect(ERROR_CODES).toEqual(
+      expect.arrayContaining(['MISSION_NOT_FOUND', 'APPROVAL_NOT_FOUND']),
+    );
+  });
+
   it('não repete códigos', () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
   });
