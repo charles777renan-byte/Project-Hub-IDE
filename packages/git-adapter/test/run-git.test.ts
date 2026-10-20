@@ -58,6 +58,9 @@ describe('runGit: só comandos de leitura', () => {
     [['checkout', 'outra']],
     [['reset', '--hard']],
     [['worktree', 'add', 'pasta']],
+    // As formas fixas de worktree são de `runGitWorktree`; `runGit` só lê.
+    [['worktree', 'add', '-b', 'ph/x', 'pasta', 'abc']],
+    [['worktree', 'remove', 'pasta']],
     [['branch']],
     [['branch', '--list']],
     [['branch', 'nome']],

@@ -11,6 +11,15 @@ describe('superfície da API', () => {
   it('exporta o que as tarefas seguintes consomem', async () => {
     const names = Object.keys(await import('../src/index'));
 
-    expect(names).toEqual(expect.arrayContaining(['runGit', 'createGitDetector', 'getStatus']));
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'runGit',
+        'createGitDetector',
+        'getStatus',
+        'buildWorktreeNames',
+        'createWorktree',
+        'removeWorktree',
+      ]),
+    );
   });
 });
