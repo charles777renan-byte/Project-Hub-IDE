@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentEvent, AgentSession, AgentStartInput } from '@project-hub/agent-sdk';
@@ -212,6 +220,11 @@ describe('create-file: caminho dentro do diretório de trabalho (R125)', () => {
     ['.. mesmo quando o destino fica dentro', 'sub/../a.txt'],
     ['o próprio diretório de trabalho', '.'],
     ['caminho vazio', ''],
+    ['caminho UNC', '\\\\servidor\\compartilhamento\\fora.txt'],
+    ['barra invertida com ..', '..\\fora.txt'],
+    ['unidade seguida de ..', 'C:..\\fora.txt'],
+    ['.. com espaço final no segmento', '.. \\fora.txt'],
+    ['.. com ponto final no segmento', '..\\fora.txt.'],
   ])('recusa %s com PATH_OUTSIDE_ALLOWED_SCOPE e não grava nada', async (_label, relativePath) => {
     const session = await startWith([
       { type: 'create-file', relativePath, content: 'x' },
@@ -245,5 +258,96 @@ describe('create-file: caminho dentro do diretório de trabalho (R125)', () => {
       result: { ok: false, error: { code: 'PATH_OUTSIDE_ALLOWED_SCOPE' } },
     });
     expect(existsSync(target)).toBe(false);
+  });
+});
+
+describe('create-file: links e nomes reservados (R138, R139)', () => {
+  it('recusa destino que é junção de pasta dentro da raiz, sem tentar gravar (R145)', async () => {
+    mkdirSync(join(dir, 'interna'));
+    symlinkSync(join(dir, 'interna'), join(dir, 'atalho-pasta'), 'junction');
+    const session = await startWith([
+      { type: 'create-file', relativePath: 'atalho-pasta', content: 'x' },
+    ]);
+
+    const events = await collect(session.events());
+
+    expect(events[2]).toMatchObject({
+      type: 'tool.completed',
+      result: { ok: false, error: { code: 'PATH_OUTSIDE_ALLOWED_SCOPE' } },
+    });
+  });
+
+  it('recusa link de arquivo que aponta para dentro da pasta de trabalho (R145)', async () => {
+    writeFileSync(join(dir, 'real.txt'), 'original');
+    symlinkSync(join(dir, 'real.txt'), join(dir, 'espelho.txt'), 'file');
+    const session = await startWith([
+      { type: 'create-file', relativePath: 'espelho.txt', content: 'alterado' },
+    ]);
+
+    const events = await collect(session.events());
+
+    expect(events[2]).toMatchObject({
+      type: 'tool.completed',
+      result: { ok: false, error: { code: 'PATH_OUTSIDE_ALLOWED_SCOPE' } },
+    });
+    expect(readFileSync(join(dir, 'real.txt'), 'utf8')).toBe('original');
+  });
+
+  it.each([
+    ['link simbólico de pasta', 'ligacao', 'dir'],
+    ['junção de pasta', 'juncao', 'junction'],
+  ] as const)('recusa escrita por %s que aponta para fora', async (_label, name, type) => {
+    symlinkSync(outside, join(dir, name), type);
+    const session = await startWith([
+      { type: 'create-file', relativePath: `${name}/fora.txt`, content: 'x' },
+    ]);
+
+    const events = await collect(session.events());
+
+    expect(events[2]).toMatchObject({
+      type: 'tool.completed',
+      result: { ok: false, error: { code: 'PATH_OUTSIDE_ALLOWED_SCOPE' } },
+    });
+    expect(existsSync(join(outside, 'fora.txt'))).toBe(false);
+  });
+
+  it('recusa link simbólico de arquivo cujo alvo fica fora, mesmo quando o alvo não existe', async () => {
+    symlinkSync(join(outside, 'alvo.txt'), join(dir, 'atalho.txt'), 'file');
+    const session = await startWith([
+      { type: 'create-file', relativePath: 'atalho.txt', content: 'x' },
+    ]);
+
+    const events = await collect(session.events());
+
+    expect(events[2]).toMatchObject({
+      type: 'tool.completed',
+      result: { ok: false, error: { code: 'PATH_OUTSIDE_ALLOWED_SCOPE' } },
+    });
+    expect(existsSync(join(outside, 'alvo.txt'))).toBe(false);
+  });
+
+  it.each([
+    'NUL',
+    'con.txt',
+    'sub/PRN',
+    'AUX.md',
+    'com1',
+    'LPT9.log',
+    'NUL ',
+    'NUL .txt',
+    'CON.',
+    'CONIN$',
+    'CONOUT$',
+    'COM\u00B9',
+    'LPT\u00B2.txt',
+  ])('recusa o nome reservado do Windows %s com VALIDATION_FAILED', async (relativePath) => {
+    const session = await startWith([{ type: 'create-file', relativePath, content: 'x' }]);
+
+    const events = await collect(session.events());
+
+    expect(events[2]).toMatchObject({
+      type: 'tool.completed',
+      result: { ok: false, error: { code: 'VALIDATION_FAILED' } },
+    });
   });
 });

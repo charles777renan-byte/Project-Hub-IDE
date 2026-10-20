@@ -15,13 +15,7 @@ import {
   type MissionStep,
   type ProjectRecord,
 } from '@project-hub/domain';
-import type {
-  MissionChanges,
-  MissionRepository,
-  ProjectRepository,
-  WorktreeNames,
-  WorktreePort,
-} from '../ports';
+import type { MissionRepository, ProjectRepository, WorktreeNames, WorktreePort } from '../ports';
 import { failure } from '../result';
 import { planFromCriteria } from './plan';
 import { expirePendingApprovals, moveMission } from './transitions';
@@ -93,7 +87,7 @@ type Pulled =
   | { kind: 'aborted' }
   | { kind: 'error'; message: string };
 
-type Workspace = { cwd: string; worktree?: { id: string; path: string } };
+type Workspace = { cwd: string };
 
 /** O código do contrato que a falha traz, se ela traz um (o `GitError` traz). */
 function errorCode(error: unknown): ErrorCode | undefined {
@@ -151,10 +145,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   /**
-   * Abre a tentativa: a execução `running` e a missão `running`, com o worktree quando há um, numa
-   * só transação. A nova tentativa é o número seguinte ao maior que já existe.
+   * Abre a tentativa: a execução `running` e a missão `running`, numa só transação.
+   * A nova tentativa é o número seguinte ao maior que já existe.
    */
-  function openExecution(mission: Mission, workspace: Workspace): Execution {
+  function openExecution(mission: Mission): Execution {
     return repo.transaction(() => {
       const at = now();
       const attempt = Math.max(0, ...repo.listExecutions(mission.id).map((e) => e.attempt)) + 1;
@@ -166,12 +160,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         startedAt: at,
       };
       repo.insertExecution(execution);
-      const changes: MissionChanges = { startedAt: mission.startedAt ?? at };
-      if (workspace.worktree !== undefined) {
-        changes.worktreeId = workspace.worktree.id;
-        changes.worktreePath = workspace.worktree.path;
-      }
-      moveMission(repo, mission.id, 'running', { actor: 'user', at, changes });
+      moveMission(repo, mission.id, 'running', {
+        actor: 'user',
+        at,
+        changes: { startedAt: mission.startedAt ?? at },
+      });
       repo.appendAudit({
         aggregateType: 'execution',
         aggregateId: execution.id,
@@ -186,16 +179,41 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   /**
+   * Grava o worktree na missão logo depois de criado, com a auditoria. Assim, uma tentativa depois
+   * dele encontra o caminho e não tenta criar outro com a mesma branch (R135).
+   */
+  function recordWorktree(
+    missionId: string,
+    worktree: { id: string; path: string },
+    branch: string,
+  ): void {
+    repo.transaction(() => {
+      const at = now();
+      repo.updateMission(missionId, {
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        updatedAt: at,
+      });
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: missionId,
+        eventType: 'worktree.created',
+        severity: 'info',
+        actor: 'user',
+        payload: { worktreeId: worktree.id, path: worktree.path, branch },
+        createdAt: at,
+      });
+    });
+  }
+
+  /**
    * Onde o agente trabalha. Sem alteração de código, é a própria pasta do projeto. Com alteração,
    * é o worktree da missão: criado agora, ou o de uma tentativa anterior, que fica na missão.
    */
   async function prepareWorkspace(mission: Mission, project: ProjectRecord): Promise<Workspace> {
     if (!mission.altersCode) return { cwd: project.path };
     if (mission.worktreeId !== undefined && mission.worktreePath !== undefined) {
-      return {
-        cwd: mission.worktreePath,
-        worktree: { id: mission.worktreeId, path: mission.worktreePath },
-      };
+      return { cwd: mission.worktreePath };
     }
     const names = worktreeNames({
       missionId: mission.id,
@@ -208,7 +226,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       names,
       baseRef: project.defaultBranch ?? 'HEAD',
     });
-    return { cwd: created.path, worktree: { id: newId(), path: created.path } };
+    recordWorktree(mission.id, { id: newId(), path: created.path }, created.branch);
+    return { cwd: created.path };
   }
 
   /**
@@ -237,6 +256,50 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       });
     });
     forget(run);
+  }
+
+  /**
+   * Grava `execution.failed` com o motivo, na transação que encerra a execução. Vale para a recusa de
+   * aprovação e para a falha na entrega, que não chegam pelo evento final do agente (R137).
+   */
+  function failedAudit(executionId: string, exitReason: ExitReason, actor: AuditActor): () => void {
+    return () => {
+      repo.appendAudit({
+        aggregateType: 'execution',
+        aggregateId: executionId,
+        eventType: 'execution.failed',
+        severity: 'error',
+        actor,
+        payload: { exitReason },
+        createdAt: now(),
+      });
+    };
+  }
+
+  /**
+   * Fecha as execuções `running` da missão como canceladas pelo usuário, na transação do
+   * cancelamento. Vale com ou sem processo ativo: sem ele, a execução ficaria aberta e a recuperação
+   * depois teria de adivinhar o motivo (R136).
+   */
+  function cancelRunningExecutions(missionId: string, at: string): void {
+    for (const execution of repo.listExecutions(missionId)) {
+      if (execution.status !== 'running') continue;
+      repo.updateExecution(execution.id, {
+        status: 'cancelled',
+        exitReason: 'cancelled_by_user',
+        finishedAt: at,
+      });
+      expirePendingApprovals(repo, execution.id, at);
+      repo.appendAudit({
+        aggregateType: 'execution',
+        aggregateId: execution.id,
+        eventType: 'execution.cancelled',
+        severity: 'info',
+        actor: 'user',
+        payload: {},
+        createdAt: at,
+      });
+    }
   }
 
   /** Espera o próximo evento, ou o aborto. Um erro do agente volta como `error`, e não é lançado. */
@@ -382,6 +445,17 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     }
   }
 
+  /** Tenta entregar ao agente. Devolve `false` quando ele recusa; quem chama decide o que fazer. */
+  async function tryDeliver(action: () => Promise<void>): Promise<boolean> {
+    try {
+      await action();
+      return true;
+    } catch (error) {
+      console.error('Não foi possível entregar a resposta ao agente:', error);
+      return false;
+    }
+  }
+
   /**
    * Entrega ao agente a resposta do usuário. Se o agente recusar, a execução termina como falha, e
    * a missão não fica parada em `running`.
@@ -392,18 +466,18 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     executionId: string,
     action: () => Promise<void>,
   ): Promise<AppResult<void>> {
-    try {
-      await action();
-      return { ok: true, data: undefined };
-    } catch (error) {
-      console.error('Não foi possível entregar a resposta ao agente:', error);
-      endRun(run, executionId, { status: 'failed', exitReason: 'agent_failed', actor: 'system' });
-      await session.stop('Resposta não entregue ao agente.');
-      return failure(
-        'AGENT_UNAVAILABLE',
-        'O agente não recebeu a resposta. A execução foi encerrada.',
-      );
-    }
+    if (await tryDeliver(action)) return { ok: true, data: undefined };
+    endRun(
+      run,
+      executionId,
+      { status: 'failed', exitReason: 'agent_failed', actor: 'system' },
+      failedAudit(executionId, 'agent_failed', 'system'),
+    );
+    await session.stop('Resposta não entregue ao agente.');
+    return failure(
+      'AGENT_UNAVAILABLE',
+      'O agente não recebeu a resposta. A execução foi encerrada.',
+    );
   }
 
   /**
@@ -451,7 +525,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
     let execution: Execution;
     try {
-      execution = openExecution(mission, workspace);
+      execution = openExecution(mission);
     } catch (error) {
       forget(run);
       await session.stop('Não foi possível abrir a tentativa.');
@@ -494,6 +568,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       }
       repo.transaction(() => {
         const at = now();
+        cancelRunningExecutions(missionId, at);
         moveMission(repo, missionId, 'cancelled', {
           actor: 'user',
           at,
@@ -512,23 +587,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       try {
         repo.transaction(() => {
           const at = now();
-          if (run.executionId !== undefined) {
-            repo.updateExecution(run.executionId, {
-              status: 'cancelled',
-              exitReason: 'cancelled_by_user',
-              finishedAt: at,
-            });
-            expirePendingApprovals(repo, run.executionId, at);
-            repo.appendAudit({
-              aggregateType: 'execution',
-              aggregateId: run.executionId,
-              eventType: 'execution.cancelled',
-              severity: 'info',
-              actor: 'user',
-              payload: {},
-              createdAt: at,
-            });
-          }
+          cancelRunningExecutions(missionId, at);
           moveMission(repo, missionId, 'cancelled', {
             actor: 'user',
             at,
@@ -598,15 +657,22 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     if (input.decision === 'rejected') {
       // A recusa encerra a execução por conta do próprio Project Hub: o agente não retoma, e o
       // motivo fica registrado. A missão passa por `running` (seção 9.3) até `failed`.
+      const delivered = await tryDeliver(() => session.approve(decision));
       try {
-        await session.approve(decision);
-      } finally {
         await session.stop(REJECTED_REASON);
-        endRun(run, executionId, {
-          status: 'failed',
-          exitReason: 'approval_rejected',
-          actor: 'user',
-        });
+      } finally {
+        endRun(
+          run,
+          executionId,
+          { status: 'failed', exitReason: 'approval_rejected', actor: 'user' },
+          failedAudit(executionId, 'approval_rejected', 'user'),
+        );
+      }
+      if (!delivered) {
+        return failure(
+          'AGENT_UNAVAILABLE',
+          'O agente não recebeu a recusa. A execução foi encerrada.',
+        );
       }
       return { ok: true, data: undefined };
     }

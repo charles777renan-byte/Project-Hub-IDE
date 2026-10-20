@@ -5,12 +5,16 @@ import { expirePendingApprovals, moveMission } from './transitions';
 /** Estados em que a missão espera algo do usuário ou está pausada, com a execução ainda aberta. */
 const PAUSED_OR_WAITING: readonly MissionStatus[] = ['waiting_approval', 'waiting_input', 'paused'];
 
+/** Estados em que a missão já acabou. Uma execução `running` ainda aberta nela é só fechada (R136). */
+const ENDED: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
+
 /**
  * Trata as execuções que estavam em `running` quando o app fechou (seção 15.7). Cada uma vira
  * `failed` com `interrupted_by_restart`, e nenhum processo é retomado: o agente não tem como
  * voltar. As aprovações pendentes da execução expiram. A missão vai para `failed`, passando por
- * `running` quando esperava uma decisão, porque essa é a única aresta até `failed`. Depois disso o
- * usuário pode iniciar uma nova tentativa. Devolve quantas execuções foram tratadas.
+ * `running` quando esperava uma decisão, porque essa é a única aresta até `failed`. Se a missão já
+ * acabou, a execução fecha e a missão fica como está. Depois disso o usuário pode iniciar uma nova
+ * tentativa. Devolve quantas execuções foram tratadas, inclusive as de missão já encerrada.
  */
 export function recoverInterruptedExecutions(repo: MissionRepository, now: () => string): number {
   const interrupted = repo.findExecutionsByStatus('running');
@@ -35,6 +39,7 @@ export function recoverInterruptedExecutions(repo: MissionRepository, now: () =>
 
       const mission = repo.getMission(execution.missionId);
       if (mission === undefined) throw new Error(`Missão ausente: ${execution.missionId}.`);
+      if (ENDED.includes(mission.status)) return;
       if (PAUSED_OR_WAITING.includes(mission.status)) {
         moveMission(repo, mission.id, 'running', { actor: 'system', at });
       }

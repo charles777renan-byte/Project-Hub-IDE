@@ -59,9 +59,13 @@ function deferred<T>(): Deferred<T> {
 
 /**
  * Agente de teste. Cada `start` usa o próximo roteiro da lista. Sem roteiro, a sessão só emite
- * início e fim. Com `failStart`, `start` rejeita, como um agente indisponível.
+ * início e fim. As `failStarts` primeiras chamadas a `start` rejeitam, como um agente indisponível.
+ * Com `failDelivery`, `approve` e `send` rejeitam: a resposta do usuário não chega ao agente.
  */
-export function fakeAgent(scripts: FakeStep[][], options: { failStart?: boolean } = {}): FakeAgent {
+export function fakeAgent(
+  scripts: FakeStep[][],
+  options: { failStarts?: number; failDelivery?: boolean } = {},
+): FakeAgent {
   const starts: AgentStartInput[] = [];
   const sessions: FakeSession[] = [];
   let count = 0;
@@ -73,20 +77,24 @@ export function fakeAgent(scripts: FakeStep[][], options: { failStart?: boolean 
     getCapabilities: () => Promise.resolve(CAPABILITIES),
     start(input) {
       starts.push(input);
-      if (options.failStart === true) {
+      if (starts.length <= (options.failStarts ?? 0)) {
         return Promise.reject(new Error('agente indisponível'));
       }
       const script = scripts[count] ?? [];
       count += 1;
       const record: FakeSession = { stopReasons: [], decisions: [], inputs: [] };
       sessions.push(record);
-      return Promise.resolve(createFakeSession(script, record));
+      return Promise.resolve(createFakeSession(script, record, options.failDelivery === true));
     },
   };
 }
 
 /** Sessão que segue o roteiro. Aprovação e entrada param o roteiro até a resposta ou o `stop`. */
-function createFakeSession(script: FakeStep[], record: FakeSession): AgentSession {
+function createFakeSession(
+  script: FakeStep[],
+  record: FakeSession,
+  deliveryFails: boolean,
+): AgentSession {
   let halted = false;
   const halt = deferred<void>();
   let pendingApproval: Deferred<AgentApprovalDecision> | undefined;
@@ -153,6 +161,7 @@ function createFakeSession(script: FakeStep[], record: FakeSession): AgentSessio
     id: 'fake-session',
     events: () => events,
     send(input) {
+      if (deliveryFails) return Promise.reject(new Error('entrega recusada pelo agente de teste'));
       if (pendingInput === undefined) return Promise.reject(new Error('sem entrada pendente'));
       record.inputs.push(input);
       pendingInput.resolve(input);
@@ -160,6 +169,7 @@ function createFakeSession(script: FakeStep[], record: FakeSession): AgentSessio
       return Promise.resolve();
     },
     approve(input) {
+      if (deliveryFails) return Promise.reject(new Error('entrega recusada pelo agente de teste'));
       if (pendingApproval === undefined) return Promise.reject(new Error('sem aprovação pendente'));
       record.decisions.push(input);
       pendingApproval.resolve(input);
