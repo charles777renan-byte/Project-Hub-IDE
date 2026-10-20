@@ -1,14 +1,12 @@
 import { lstat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { GitError, runGit, runGitWorktree } from './run-git';
-import { getStatus, hasIgnoredFiles } from './status';
+import { getStatus } from './status';
 import type { WorktreeNames } from './worktree-naming';
 
 const CREATE_FAILED_MESSAGE = 'Não foi possível criar o worktree.';
 const UNSAVED_CHANGES_MESSAGE =
   'O worktree tem alterações não salvas e não foi removido. Salve ou descarte as alterações antes.';
-const IGNORED_FILES_MESSAGE =
-  'O worktree tem arquivos ignorados pelo Git, como .env ou node_modules, que seriam apagados junto. Salve ou apague esses arquivos antes.';
 /** Trecho da recusa do `git worktree remove` sem `--force` (`LC_ALL=C` fixa o idioma). */
 const GIT_REFUSED_UNSAVED_CHANGES = 'contains modified or untracked files';
 
@@ -132,17 +130,19 @@ export async function createWorktree(input: {
 
 /**
  * Remove o worktree em `worktreePath`, sem apagar a branch (seção 16.5). `worktreePath` precisa ser
- * absoluto (VALIDATION_FAILED). Nada é apagado enquanto houver algo que se perderia, e nenhum passo
- * usa `--force`:
+ * absoluto (VALIDATION_FAILED). Nada é apagado enquanto houver trabalho que se perderia, e nenhum
+ * passo usa `--force`:
  *
- * 1. o status do worktree: arquivo modificado, preparado, novo ou removido recusa;
- * 2. a leitura do status com `--ignored`: um arquivo ou pasta ignorado pelo Git (`.env`,
- *    `node_modules`) recusa, porque o `git worktree remove` os apagaria junto com a pasta e o
- *    status comum não os lista;
- * 3. o `git worktree remove`, que recusa por conta própria uma pasta com arquivo modificado ou novo,
+ * 1. o status do worktree: arquivo versionado modificado, preparado, removido, renomeado ou em
+ *    conflito, e arquivo novo que o Git não ignora, recusam;
+ * 2. o `git worktree remove`, que recusa por conta própria uma pasta com arquivo modificado ou novo,
  *    como numa alteração que chegou depois do status.
  *
- * Os três rejeitam com WORKTREE_HAS_UNSAVED_CHANGES, antes de `worktree remove` nos passos 1 e 2.
+ * Os dois rejeitam com WORKTREE_HAS_UNSAVED_CHANGES, antes de `worktree remove` no passo 1.
+ *
+ * Arquivo ou pasta que o Git ignora (`node_modules`, `.env`, saídas de build) NÃO é trabalho não
+ * salvo (R198): o status comum não os lista, o `git worktree remove` sem `--force` não os trata como
+ * sujeira e os apaga junto com a pasta. Quem precisa de um `.env` deve versioná-lo ou copiá-lo antes.
  */
 export async function removeWorktree(input: {
   repoPath: string;
@@ -155,9 +155,6 @@ export async function removeWorktree(input: {
   const status = await getStatus(worktreePath);
   if (status.changedFiles > 0) {
     throw new GitError('WORKTREE_HAS_UNSAVED_CHANGES', UNSAVED_CHANGES_MESSAGE);
-  }
-  if (await hasIgnoredFiles(worktreePath)) {
-    throw new GitError('WORKTREE_HAS_UNSAVED_CHANGES', IGNORED_FILES_MESSAGE);
   }
   try {
     await runGitWorktree(['worktree', 'remove', worktreePath], { cwd: repoPath });

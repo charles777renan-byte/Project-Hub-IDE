@@ -17,14 +17,26 @@ function isNotARepository(error: unknown): boolean {
   );
 }
 
-/** Uma pasta é Git quando está dentro de uma árvore de trabalho: subpastas de um repositório contam. */
-async function isInsideWorkTree(path: string, gitBinary: string | undefined): Promise<boolean> {
+/**
+ * Uma pasta é Git só quando é a RAIZ de uma árvore de trabalho (R199). Uma subpasta de repositório é
+ * tratada como pasta sem Git: sem isto, um repositório de dotfiles na pasta pessoal faria toda pasta
+ * abaixo dela entrar como `git`. Worktree vinculado (`.git` como arquivo) e submódulo têm raiz própria
+ * e continuam Git.
+ *
+ * `rev-parse --is-inside-work-tree --show-prefix` imprime duas linhas: `true` e o caminho da pasta
+ * relativo à raiz da árvore de trabalho, que é vazio na própria raiz e, por exemplo, `pacote/` numa
+ * subpasta. É o Git quem diz o prefixo, e não uma comparação de caminhos (maiúsculas, `\` e `/`,
+ * links simbólicos e nomes curtos do Windows deixariam a conta insegura). Dentro de `.git` ou num
+ * repositório bare a primeira linha é `false`.
+ */
+async function isWorkTreeRoot(path: string, gitBinary: string | undefined): Promise<boolean> {
   try {
-    const { stdout } = await runGit(['rev-parse', '--is-inside-work-tree'], {
+    const { stdout } = await runGit(['rev-parse', '--is-inside-work-tree', '--show-prefix'], {
       cwd: path,
       gitBinary,
     });
-    return stdout.trim() === 'true';
+    const [isInside, prefix] = stdout.split(/\r?\n/);
+    return isInside === 'true' && prefix === '';
   } catch (error) {
     if (isNotARepository(error)) return false;
     throw error;
@@ -72,7 +84,7 @@ export function createGitDetector(options: { gitBinary?: string | undefined } = 
   const { gitBinary } = options;
   return {
     async detect(path) {
-      if (!(await isInsideWorkTree(path, gitBinary))) return { kind: 'none' };
+      if (!(await isWorkTreeRoot(path, gitBinary))) return { kind: 'none' };
 
       const defaultBranch =
         (await remoteDefaultBranch(path, gitBinary)) ?? (await currentBranch(path, gitBinary));

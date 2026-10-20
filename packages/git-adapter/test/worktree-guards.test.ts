@@ -19,8 +19,6 @@ const execFileMock = vi.mocked(execFile);
 const SHA = '0123456789abcdef0123456789abcdef01234567';
 const CLEAN_STATUS = `# branch.oid ${SHA}\0# branch.head ph/abcdef12-x\0`;
 const DIRTY_STATUS = `${CLEAN_STATUS}1 .M N... 100644 100644 100644 ${SHA} ${SHA} a.txt\0`;
-// A segunda leitura de `removeWorktree`: o status com os arquivos ignorados.
-const IGNORED_READ = ['status', '--porcelain=v2', '--ignored', '--untracked-files=normal', '-z'];
 
 const names = buildWorktreeNames({ missionId: 'abcdef123456', title: 'x', projectSlug: 'app' });
 const created: string[] = [];
@@ -329,75 +327,30 @@ describe('removeWorktree: primeira guarda, o status', () => {
     await expect(removeWorktree({ repoPath, worktreePath })).resolves.toBeUndefined();
 
     const all = calls();
-    expect(all).toHaveLength(3);
+    expect(all).toHaveLength(2);
     expect(all[0]?.[0]).toBe('status');
-    expect(all[1]).toEqual(IGNORED_READ);
-    expect(all[2]).toEqual(['worktree', 'remove', worktreePath]);
+    expect(all[1]).toEqual(['worktree', 'remove', worktreePath]);
     expect(all.flat()).not.toContain('--force');
     expect(all.flat()).not.toContain('-f');
     expect(execFileMock.mock.calls[0]?.[2]).toMatchObject({ cwd: worktreePath });
-    expect(execFileMock.mock.calls[1]?.[2]).toMatchObject({ cwd: worktreePath });
-    expect(execFileMock.mock.calls[2]?.[2]).toMatchObject({ cwd: repoPath });
+    expect(execFileMock.mock.calls[1]?.[2]).toMatchObject({ cwd: repoPath });
   });
 });
 
-// O `git worktree remove` apaga os arquivos ignorados (`.env`, `node_modules`) junto com a pasta, e o
-// status comum não os lista. A leitura com `--ignored` os mostra, e qualquer um recusa a remoção.
-describe('removeWorktree: arquivos ignorados', () => {
+// Arquivo ou pasta ignorado pelo Git (`.env`, `node_modules`) não é trabalho não salvo (R198): o
+// adaptador não faz nenhuma leitura com `--ignored`, só o status comum e o `worktree remove`.
+describe('removeWorktree: arquivos ignorados não são lidos nem bloqueiam', () => {
   const repoPath = resolve('repo');
   const worktreePath = resolve(tmpdir(), 'raiz', 'app', 'abcdef12-x');
 
-  /** O status comum responde limpo; a leitura com `--ignored` traz os registros dados. */
-  function respondWithIgnored(records: string): void {
-    respond((args) => ({
-      stdout: args.includes('--ignored') ? CLEAN_STATUS + records : CLEAN_STATUS,
-    }));
-  }
+  it('nenhum comando usa --ignored, e a remoção segue com o status limpo', async () => {
+    respond(() => ({ stdout: CLEAN_STATUS }));
 
-  it.each([
-    ['um arquivo', '! .env\0'],
-    ['uma pasta inteira', '! node_modules/\0'],
-    ['um arquivo dentro de uma pasta', '! build/saida.js\0'],
-    ['vários', '! .env\0! node_modules/\0'],
-  ])(
-    'com %s ignorado, lança WORKTREE_HAS_UNSAVED_CHANGES e não chama worktree remove',
-    async (_c, records) => {
-      respondWithIgnored(records);
+    await expect(removeWorktree({ repoPath, worktreePath })).resolves.toBeUndefined();
 
-      await expect(removeWorktree({ repoPath, worktreePath })).rejects.toMatchObject({
-        name: 'GitError',
-        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
-      });
-
-      const all = calls();
-      expect(all).toHaveLength(2);
-      expect(all.every((args) => args[0] === 'status')).toBe(true);
-      expect(all[1]).toEqual(IGNORED_READ);
-      expect(execFileMock.mock.calls[1]?.[2]).toMatchObject({ cwd: worktreePath });
-    },
-  );
-
-  it('a mensagem diz que são arquivos ignorados, e não alterações', async () => {
-    respondWithIgnored('! .env\0');
-
-    const error = await removeWorktree({ repoPath, worktreePath }).catch(
-      (caught: unknown) => caught,
-    );
-
-    expect((error as GitError).message).toContain('ignorados');
-  });
-
-  it('a leitura dos ignorados falhando, a falha sobe e nada é removido', async () => {
-    respond((args) =>
-      args.includes('--ignored') ? exitedWith(128, 'fatal: algo\n') : { stdout: CLEAN_STATUS },
-    );
-
-    await expect(removeWorktree({ repoPath, worktreePath })).rejects.toMatchObject({
-      code: 'UNKNOWN',
-      exitCode: 128,
-    });
-
-    expect(calls().some((args) => args[0] === 'worktree')).toBe(false);
+    const all = calls();
+    expect(all.flat().some((arg) => arg.includes('ignored'))).toBe(false);
+    expect(all.map((args) => args[0])).toEqual(['status', 'worktree']);
   });
 });
 
