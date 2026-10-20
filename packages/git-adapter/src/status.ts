@@ -50,6 +50,30 @@ function parseStatus(output: string): GitStatus {
 }
 
 /**
+ * Diz se a árvore de trabalho em `path` tem arquivos que o Git ignora (`.env`, `node_modules`,
+ * saídas de build). Leitura à parte de `getStatus`, que não os lista: o `git worktree remove` os
+ * apaga junto com a pasta. No formato `--porcelain=v2 -z`, cada ignorado é um registro `! <caminho>`
+ * (uma pasta inteira ignorada vem como um registro só). O campo que segue um registro `2 ` é o
+ * caminho antigo de um renomeado, e não um registro: um nome antigo que comece com `!` não conta.
+ */
+export async function hasIgnoredFiles(
+  path: string,
+  options: { gitBinary?: string | undefined } = {},
+): Promise<boolean> {
+  const { stdout } = await runGit(['status', '--porcelain=v2', '--ignored', '-z'], {
+    cwd: path,
+    gitBinary: options.gitBinary,
+  });
+  const fields = stdout.split('\0');
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index] ?? '';
+    if (field.startsWith('! ')) return true;
+    if (field.startsWith('2 ')) index += 1;
+  }
+  return false;
+}
+
+/**
  * Estado do repositório em `repoPath`, numa só chamada ao Git (RF-GIT-004). Cada arquivo de uma pasta
  * nova conta, e não a pasta. Só lê: o `status` roda sem regravar o índice.
  */

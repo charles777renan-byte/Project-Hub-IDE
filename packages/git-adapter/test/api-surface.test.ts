@@ -7,7 +7,14 @@ describe('superfície da API', () => {
     expect(names.filter((n) => /commit|push|merge|fetch|pull/i.test(n))).toEqual([]);
   });
 
-  // Sem isto, o teste acima passaria com um módulo vazio.
+  // A escrita de worktree só sai por createWorktree e removeWorktree, que conferem o caminho e o status.
+  it('não exporta runGitWorktree, a função de escrita de baixo nível', async () => {
+    const names = Object.keys(await import('../src/index'));
+
+    expect(names).not.toContain('runGitWorktree');
+  });
+
+  // Sem isto, os testes acima passariam com um módulo vazio.
   it('exporta o que as tarefas seguintes consomem', async () => {
     const names = Object.keys(await import('../src/index'));
 
