@@ -3,6 +3,11 @@ import { stat } from 'node:fs/promises';
 import type { ErrorCode } from '@project-hub/contracts';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+/**
+ * Tempo limite de `worktree add` e `worktree remove`. O checkout de um repositório grande leva bem
+ * mais que o de uma leitura, e cortá-lo no meio deixaria um worktree pela metade.
+ */
+const WORKTREE_TIMEOUT_MS = 120_000;
 /** Teto da saída. O padrão do Node é 1 MiB, pouco para o `status` de um repositório com muitas alterações. */
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
@@ -77,6 +82,40 @@ function isReadOnly(args: readonly string[]): boolean {
       const names = rest.filter((arg) => !arg.startsWith('-'));
       return names.length === 1 && options.every((option) => SYMBOLIC_REF_READ_OPTIONS.has(option));
     }
+    default:
+      return false;
+  }
+}
+
+/** Um argumento que o Git lê como valor: não vazio e sem `-` na frente, que o faria virar opção. */
+function isOperand(arg: string | undefined): arg is string {
+  return arg !== undefined && arg !== '' && !arg.startsWith('-');
+}
+
+/**
+ * Lista de permissão de `runGitWorktree`: as duas formas que escrevem, e nenhuma outra.
+ * `worktree add -b <branch> <pasta> <base>` cria uma branch nova e a pasta; `-B` (reescreve uma
+ * branch que existe), `--force` e `--detach` caem porque a forma tem exatamente esses argumentos.
+ * `worktree remove <pasta>` tem um argumento só, então `--force` não cabe. Nada de `branch -d`,
+ * `push`, `fetch`, `pull`, `merge`, `commit`, `reset` ou `clean`. Os valores não começam com `-`,
+ * para o Git nunca ler um nome de branch, uma pasta ou uma base como opção.
+ */
+function isWorktreeWrite(args: readonly string[]): boolean {
+  const [command, subcommand, ...rest] = args;
+  if (command !== 'worktree') return false;
+  switch (subcommand) {
+    case 'add': {
+      const [flag, branch, path, base] = rest;
+      return (
+        rest.length === 4 &&
+        flag === '-b' &&
+        isOperand(branch) &&
+        isOperand(path) &&
+        isOperand(base)
+      );
+    }
+    case 'remove':
+      return rest.length === 1 && isOperand(rest[0]);
     default:
       return false;
   }
@@ -169,6 +208,19 @@ async function toGitError(
 }
 
 /**
+ * Roda o comando que a lista de permissão do chamador já aprovou. Não é exportada: só `runGit` e
+ * `runGitWorktree` chegam aqui, cada uma depois da sua checagem.
+ */
+async function runApproved(
+  args: readonly string[],
+  options: RunGitOptions,
+): Promise<{ stdout: string }> {
+  const outcome = await execGit(options.gitBinary ?? 'git', args, options);
+  if (outcome.error === null) return { stdout: outcome.stdout };
+  throw await toGitError(outcome.error, outcome.stderr, args, options);
+}
+
+/**
  * Roda um comando de leitura do Git em `options.cwd`, sem shell: o executável recebe os argumentos
  * em array, então nome de pasta ou de branch nunca vira comando. Comando fora da lista de permissão
  * rejeita com PERMISSION_DENIED, sem criar processo. Executável ausente rejeita com
@@ -184,7 +236,30 @@ export async function runGit(
       'Comando do Git recusado: só são permitidos os de leitura.',
     );
   }
-  const outcome = await execGit(options.gitBinary ?? 'git', args, options);
-  if (outcome.error === null) return { stdout: outcome.stdout };
-  throw await toGitError(outcome.error, outcome.stderr, args, options);
+  return runApproved(args, options);
+}
+
+/**
+ * Roda um comando de escrita do Git sobre worktrees, com as mesmas proteções de `runGit`: sem
+ * shell, argumentos em array, tempo limite, ambiente sem as variáveis de repositório e
+ * `-c core.fsmonitor=false` antes do subcomando. Só duas formas valem, e nenhuma delas apaga uma
+ * branch ou usa `--force`:
+ *
+ * - `['worktree', 'add', '-b', <branch>, <pasta>, <base>]`
+ * - `['worktree', 'remove', <pasta>]`
+ *
+ * Qualquer outra rejeita com PERMISSION_DENIED, sem criar processo. O tempo limite padrão é maior
+ * que o de `runGit`, porque o checkout leva mais que uma leitura.
+ */
+export async function runGitWorktree(
+  args: readonly string[],
+  options: RunGitOptions,
+): Promise<{ stdout: string }> {
+  if (!isWorktreeWrite(args)) {
+    throw new GitError(
+      'PERMISSION_DENIED',
+      'Comando do Git recusado: só são permitidos criar e remover worktrees, nas formas fixas.',
+    );
+  }
+  return runApproved(args, { ...options, timeoutMs: options.timeoutMs ?? WORKTREE_TIMEOUT_MS });
 }
