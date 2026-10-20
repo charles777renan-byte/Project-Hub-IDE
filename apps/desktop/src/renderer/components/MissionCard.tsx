@@ -13,7 +13,7 @@ import { StatusChip } from './StatusChip';
 /**
  * Cartão de missão na aba Missões (seção 10.5): nome, situação em uma frase e a ação necessária.
  * Missão que espera a pessoa fica destacada com borda violeta. Missão em execução mostra a barra
- * âmbar. Selecionar o cartão abre o workspace da missão.
+ * amarela de progresso. Selecionar o cartão abre o workspace da missão.
  */
 export function MissionCard({ mission, projectId }: { mission: MissionDto; projectId: string }) {
   const attention = needsAttention(mission.status);

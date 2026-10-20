@@ -1,26 +1,39 @@
 /*
- * Tokens visuais (R172): tema escuro violeta, com âmbar para o que roda e violeta para o que espera
- * uma decisão. Só existe o tema escuro. Todo texto sobre um fundo tem pelo menos 4,5:1 (WCAG 2.2 AA,
- * seção 12.4): o teste test/renderer/contrast.test.ts lê este arquivo e confere os pares. Cores em
- * #rrggbb, que é o que o teste entende.
+ * Tokens visuais (R172): tema escuro de fundo único (#080614) com acentos fortes, cada um com um
+ * papel (brain/decisoes/decisao-estilo-workspace-multicor.md). Fundo, painéis, botões e caixas
+ * internas têm o mesmo tom; a separação vem das linhas. Só existe o tema escuro. Todo texto sobre um
+ * fundo tem pelo menos 4,5:1 (WCAG 2.2 AA, seção 12.4): o teste test/renderer/contrast.test.ts lê
+ * este arquivo e confere os pares. Cores em #rrggbb, que é o que o teste entende.
  */
 :root {
   color-scheme: dark;
 
-  --bg: #0d0818;
-  --panel: #150e26;
-  --panel-2: #1c1333;
-  --line: #2e2150;
-  --field-line: #43307a;
-  --text: #f3eeff;
-  --muted: #a99bcb;
-  --log: #cfc4ea;
-  /* Âmbar: o que está rodando e a ação principal. */
-  --amber: #ffb224;
-  /* Violeta: o que aguarda aprovação ou resposta. */
-  --violet: #b58cff;
-  /* Rosa: parar e erro. */
-  --pink: #ff5c8a;
+  /* Fundo único: --panel e --panel-2 existem para nomear o papel, mas valem o mesmo que --bg. */
+  --bg: #080614;
+  --panel: #080614;
+  --panel-2: #080614;
+  --line: #2a2656;
+  /* Borda de botão e de campo. */
+  --field-line: #3a3570;
+  --text: #f5f2ff;
+  --muted: #b7adcf;
+
+  /* Violeta: a marca e o que aguarda a sua decisão. */
+  --violet: #b583ff;
+  /* Vermelho: parar, recusar e falha. */
+  --red: #ff2d6f;
+  /* Azul: plano. */
+  --blue: #3d8bff;
+  /* Magenta: conversa e item ativo da navegação. */
+  --magenta: #ff3fd0;
+  /* Laranja: agente Claude e pausa. */
+  --orange: #ff8a1f;
+  /* Lima: executando, aprovar e a ação principal. */
+  --lime: #c8ff2e;
+  /* Ciano: terminal, Git e projetos. */
+  --cyan: #19e6ff;
+  /* Amarelo: logs e progresso. */
+  --yellow: #ffd23f;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, Menlo, Consolas, monospace;
