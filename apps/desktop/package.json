@@ -7,17 +7,20 @@
   "scripts": {
     "dev": "install-electron && electron-vite dev",
     "typecheck": "tsc",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:e2e": "install-electron && electron-vite build && playwright test"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@project-hub/agent-adapters": "workspace:*",
     "@project-hub/application": "workspace:*",
     "@project-hub/contracts": "workspace:*",
     "@project-hub/database": "workspace:*",
     "@project-hub/git-adapter": "workspace:*",
+    "@project-hub/test-utils": "workspace:*",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

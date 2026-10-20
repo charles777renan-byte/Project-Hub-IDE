@@ -10,7 +10,13 @@ import {
   shell,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { createAppServices, platformOf, resolveWorktreesRoot } from './composition';
+import {
+  createAppServices,
+  platformOf,
+  resolveDatabaseFile,
+  resolveDirectoryChooser,
+  resolveWorktreesRoot,
+} from './composition';
 import { chooseProjectDirectory } from './dialogs';
 import { registerApprovalHandlers } from './ipc/approvals';
 import { registerMissionHandlers } from './ipc/missions';
@@ -113,7 +119,7 @@ app
     denyAllPermissions(session.defaultSession);
 
     const services = createAppServices({
-      dbFile: join(app.getPath('userData'), 'database', 'project-hub.sqlite'),
+      dbFile: resolveDatabaseFile(process.env, app.getPath('userData')),
       platform: platformOf(process.platform),
       worktreesRoot: resolveWorktreesRoot(process.env, homedir()),
       publishMissionEvent,
@@ -127,7 +133,7 @@ app
     );
     registerProjectHandlers(ipcMain, isTrustedSender, {
       services,
-      chooseDirectory: chooseProjectDirectory,
+      chooseDirectory: resolveDirectoryChooser(process.env, chooseProjectDirectory),
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
