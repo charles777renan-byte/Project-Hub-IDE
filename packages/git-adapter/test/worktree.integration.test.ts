@@ -554,75 +554,100 @@ describe('removeWorktree', () => {
     expect(registeredWorktrees(repoPath)).toHaveLength(2);
   });
 
-  // O `git worktree remove` apaga os arquivos ignorados junto com a pasta, e o status comum não os
-  // lista. O adaptador lê o status com --ignored e recusa antes do `remove`.
-  describe('com arquivos ignorados pelo Git', () => {
+  // R198: arquivo ou pasta ignorado pelo Git (`node_modules`, `.env`, build) não é trabalho não salvo.
+  // O `git worktree remove` sem --force não os trata como sujeira e os apaga junto com a pasta.
+  describe('com arquivos ignorados pelo Git (R198)', () => {
     async function setUpWithIgnoreRules(): Promise<Awaited<ReturnType<typeof setUp>>> {
       const { path: repoPath } = repo();
-      writeFileSync(join(repoPath, '.gitignore'), '.env\nnode_modules/\n');
+      writeFileSync(join(repoPath, '.gitignore'), '.env\nnode_modules/\nbuild/\n');
       git(repoPath, 'add', '.gitignore');
-      git(repoPath, 'commit', '--no-verify', '-m', 'ignora .env e node_modules');
+      git(repoPath, 'commit', '--no-verify', '-m', 'ignora .env, node_modules e build');
       const root = worktreesRoot();
       const wt = await createWorktree({ repoPath, worktreesRoot: root, names, baseRef: 'HEAD' });
       return { repoPath, root, wt };
     }
 
+    function makeNodeModules(path: string): void {
+      mkdirSync(join(path, 'node_modules', 'pacote'), { recursive: true });
+      writeFileSync(join(path, 'node_modules', 'pacote', 'index.js'), 'modulo');
+    }
+
     it.each([
-      ['.env', (path: string) => writeFileSync(join(path, '.env'), 'SEGREDO=1'), '.env'],
+      ['.env', (path: string) => writeFileSync(join(path, '.env'), 'SEGREDO=1')],
+      ['node_modules', makeNodeModules],
       [
-        'node_modules/x',
+        'build',
         (path: string) => {
-          mkdirSync(join(path, 'node_modules'));
-          writeFileSync(join(path, 'node_modules', 'x'), 'pacote');
+          mkdirSync(join(path, 'build'));
+          writeFileSync(join(path, 'build', 'saida.js'), 'saida');
         },
-        join('node_modules', 'x'),
       ],
     ])(
-      'worktree com %s ignorado não é removido, e a pasta continua existindo',
-      async (_case, makeIgnored, ignoredFile) => {
+      'worktree com %s ignorado é removido sem --force, e a branch continua',
+      async (_case, makeIgnored) => {
         const { repoPath, wt } = await setUpWithIgnoreRules();
         makeIgnored(wt.path);
-        // O status comum diz que está limpo: só a leitura com --ignored vê o arquivo.
+        // Controle: o Git de fato vê o arquivo como ignorado, e o status comum diz que está limpo.
         expect(git(wt.path, 'status', '--porcelain')).toBe('');
-        expect(git(wt.path, 'status', '--porcelain', '--ignored')).not.toBe('');
+        expect(git(wt.path, 'status', '--porcelain', '--ignored')).toMatch(/^!! /);
 
-        await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
-          name: 'GitError',
-          code: 'WORKTREE_HAS_UNSAVED_CHANGES',
-        });
+        await expect(removeWorktree({ repoPath, worktreePath: wt.path })).resolves.toBeUndefined();
 
-        expect(existsSync(wt.path)).toBe(true);
-        expect(existsSync(join(wt.path, ignoredFile))).toBe(true);
+        expect(existsSync(wt.path)).toBe(false);
+        expect(registeredWorktrees(repoPath)).toHaveLength(1);
         expect(branchExists(repoPath, names.branch)).toBe(true);
-        expect(registeredWorktrees(repoPath)).toHaveLength(2);
+        expect(revParse(repoPath, names.branch)).toBe(wt.baseCommit);
       },
     );
 
-    it('depois de apagar os arquivos ignorados, a remoção segue', async () => {
+    it('vários ignorados juntos (.env e node_modules) não impedem a remoção', async () => {
       const { repoPath, wt } = await setUpWithIgnoreRules();
       writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
-      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
-        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
-      });
-
-      rmSync(join(wt.path, '.env'));
+      makeNodeModules(wt.path);
 
       await expect(removeWorktree({ repoPath, worktreePath: wt.path })).resolves.toBeUndefined();
+
       expect(existsSync(wt.path)).toBe(false);
-      expect(branchExists(repoPath, names.branch)).toBe(true);
     });
 
-    // Com `status.showUntrackedFiles=no` na configuração do repositório, o `git status --ignored`
-    // não lista nem os ignorados. Por isso a leitura passa `--untracked-files=normal` por conta própria.
-    it('com status.showUntrackedFiles=no na configuração, o ignorado ainda recusa a remoção', async () => {
+    it('regra de ignorar só no repositório (info/exclude) também vale', async () => {
+      const { repoPath, wt } = await setUp();
+      writeFileSync(join(repoPath, '.git', 'info', 'exclude'), '*.log\n', { flag: 'a' });
+      writeFileSync(join(wt.path, 'saida.log'), 'x');
+      expect(git(wt.path, 'status', '--porcelain')).toBe('');
+
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).resolves.toBeUndefined();
+
+      expect(existsSync(wt.path)).toBe(false);
+    });
+
+    it('com status.showUntrackedFiles=no na configuração, o ignorado também não impede', async () => {
       const { repoPath, wt } = await setUpWithIgnoreRules();
       git(repoPath, 'config', 'status.showUntrackedFiles', 'no');
       writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
-      // Controle: a configuração esconde o ignorado do `--ignored` sozinho, e `normal` o mostra.
-      expect(git(wt.path, 'status', '--porcelain', '--ignored')).toBe('');
-      expect(git(wt.path, 'status', '--porcelain', '--ignored', '--untracked-files=normal')).toBe(
-        '!! .env',
-      );
+
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).resolves.toBeUndefined();
+
+      expect(existsSync(wt.path)).toBe(false);
+    });
+
+    // O que bloqueava continua bloqueando, mesmo com ignorados ao lado: só o ignorado deixou de contar.
+    it.each([
+      [
+        'arquivo versionado modificado',
+        (path: string) => writeFileSync(join(path, 'a.txt'), 'mudou'),
+      ],
+      [
+        'arquivo novo que o Git não ignora',
+        (path: string) => writeFileSync(join(path, 'novo.txt'), 'x'),
+      ],
+      ['arquivo versionado apagado', (path: string) => rmSync(join(path, 'a.txt'))],
+      ['arquivo versionado renomeado', (path: string) => git(path, 'mv', 'a.txt', 'renomeado.txt')],
+    ])('worktree com %s e com ignorados continua não removido', async (_case, makeDirty) => {
+      const { repoPath, wt } = await setUpWithIgnoreRules();
+      writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
+      makeNodeModules(wt.path);
+      makeDirty(wt.path);
 
       await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
         name: 'GitError',
@@ -631,20 +656,28 @@ describe('removeWorktree', () => {
 
       expect(existsSync(wt.path)).toBe(true);
       expect(existsSync(join(wt.path, '.env'))).toBe(true);
+      expect(existsSync(join(wt.path, 'node_modules', 'pacote', 'index.js'))).toBe(true);
       expect(registeredWorktrees(repoPath)).toHaveLength(2);
     });
 
-    it('regra de ignorar só no repositório (info/exclude) também conta', async () => {
-      const { repoPath, wt } = await setUp();
-      writeFileSync(join(repoPath, '.git', 'info', 'exclude'), '*.log\n', { flag: 'a' });
-      writeFileSync(join(wt.path, 'saida.log'), 'x');
-      expect(git(wt.path, 'status', '--porcelain')).toBe('');
+    it('worktree com arquivo em conflito e com ignorados não é removido', async () => {
+      const { repoPath, wt } = await setUpWithIgnoreRules();
+      // A mesma linha de a.txt muda em `main` e na branch do worktree, e o merge deixa o conflito.
+      writeFileSync(join(repoPath, 'a.txt'), 'versao de main\n');
+      git(repoPath, 'commit', '--no-verify', '-am', 'muda em main');
+      writeFileSync(join(wt.path, 'a.txt'), 'versao do worktree\n');
+      git(wt.path, 'commit', '--no-verify', '-am', 'muda no worktree');
+      expect(() => git(wt.path, 'merge', '--no-edit', 'main')).toThrow();
+      expect(git(wt.path, 'status', '--porcelain')).toMatch(/^UU a\.txt/);
+      writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
 
       await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+        name: 'GitError',
         code: 'WORKTREE_HAS_UNSAVED_CHANGES',
       });
 
-      expect(existsSync(join(wt.path, 'saida.log'))).toBe(true);
+      expect(existsSync(wt.path)).toBe(true);
+      expect(existsSync(join(wt.path, '.env'))).toBe(true);
     });
   });
 });

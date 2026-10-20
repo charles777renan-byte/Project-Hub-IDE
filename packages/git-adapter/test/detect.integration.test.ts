@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { createTempRepo, type TempRepo } from '@project-hub/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGitDetector } from '../src/detect';
@@ -52,14 +52,75 @@ describe('createGitDetector', () => {
     expect(await detector.detect(path)).toEqual({ kind: 'git', defaultBranch: 'main' });
   });
 
-  it('pasta dentro de um repositório conta como Git', async () => {
+  // R199: só a raiz da árvore de trabalho é projeto Git. Sem isto, um repositório de dotfiles na pasta
+  // pessoal faria toda pasta abaixo dela entrar como `git`.
+  it('subpasta de um repositório conta como sem Git', async () => {
     const { path } = repo();
     mkdirSync(join(path, 'pacote'));
 
-    expect(await detector.detect(join(path, 'pacote'))).toEqual({
+    expect(await detector.detect(join(path, 'pacote'))).toEqual({ kind: 'none' });
+  });
+
+  it('subpasta funda de um repositório também conta como sem Git', async () => {
+    const { path } = repo();
+    mkdirSync(join(path, 'apps', 'web', 'src'), { recursive: true });
+
+    expect(await detector.detect(join(path, 'apps', 'web', 'src'))).toEqual({ kind: 'none' });
+  });
+
+  it('subpasta de um repositório sem commits conta como sem Git', async () => {
+    const folder = plainFolder('project-hub-vazio-');
+    git(folder, 'init', '--initial-branch=trunk');
+    mkdirSync(join(folder, 'pacote'));
+
+    expect(await detector.detect(folder)).toEqual({ kind: 'git', defaultBranch: 'trunk' });
+    expect(await detector.detect(join(folder, 'pacote'))).toEqual({ kind: 'none' });
+  });
+
+  it('a raiz do repositório é Git, e a subpasta dele é sem Git, lado a lado', async () => {
+    const { path } = repo();
+    mkdirSync(join(path, 'pacote'));
+
+    expect(await detector.detect(path)).toEqual({ kind: 'git', defaultBranch: 'main' });
+    expect(await detector.detect(join(path, 'pacote'))).toEqual({ kind: 'none' });
+  });
+
+  it('a raiz com barra final no caminho continua sendo Git', async () => {
+    const { path } = repo();
+
+    expect(await detector.detect(`${path}${sep}`)).toEqual({ kind: 'git', defaultBranch: 'main' });
+  });
+
+  it('a pasta .git por dentro não é projeto Git', async () => {
+    const { path } = repo();
+
+    expect(await detector.detect(join(path, '.git'))).toEqual({ kind: 'none' });
+  });
+
+  it('worktree vinculado (.git como arquivo) é a raiz da sua árvore: kind git', async () => {
+    const { path } = repo();
+    const linked = join(plainFolder('project-hub-vinculado-'), 'wt');
+    git(path, 'worktree', 'add', '-b', 'ph/vinculado', linked, 'HEAD');
+    mkdirSync(join(linked, 'pacote'));
+    expect(statSync(join(linked, '.git')).isFile()).toBe(true);
+
+    expect(await detector.detect(linked)).toEqual({ kind: 'git', defaultBranch: 'ph/vinculado' });
+    expect(await detector.detect(join(linked, 'pacote'))).toEqual({ kind: 'none' });
+  });
+
+  it('raiz de submódulo é Git, e a subpasta dele não', async () => {
+    const { path } = repo();
+    const library = repo();
+    // `protocol.file.allow` só neste comando: o Git recusa submódulo de caminho local por padrão.
+    git(path, '-c', 'protocol.file.allow=always', 'submodule', 'add', library.path, 'lib');
+    mkdirSync(join(path, 'lib', 'pacote'));
+    expect(statSync(join(path, 'lib', '.git')).isFile()).toBe(true);
+
+    expect(await detector.detect(join(path, 'lib'))).toEqual({
       kind: 'git',
       defaultBranch: 'main',
     });
+    expect(await detector.detect(join(path, 'lib', 'pacote'))).toEqual({ kind: 'none' });
   });
 
   it('repositório sem commits ainda tem a branch inicial', async () => {

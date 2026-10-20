@@ -87,6 +87,7 @@ describe('runGit: só comandos de leitura', () => {
     [['status']],
     [['status', '--porcelain=v2', '--branch', '-z']],
     [['rev-parse', '--is-inside-work-tree']],
+    [['rev-parse', '--is-inside-work-tree', '--show-prefix']],
     [['rev-parse', 'HEAD']],
     [['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']],
     [['symbolic-ref', '-q', 'HEAD']],
