@@ -6,6 +6,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "install-electron && electron-vite dev",
+    "build": "electron-vite build",
     "typecheck": "tsc",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "install-electron && electron-vite build && playwright test"
