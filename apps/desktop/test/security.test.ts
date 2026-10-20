@@ -15,7 +15,7 @@ import {
   restrictFileRequests,
   restrictNavigation,
 } from '../src/main/security';
-import { buildProjectHubApi } from '../src/preload/api';
+import { buildProjectHubApi, type Invoke } from '../src/preload/api';
 
 // Os módulos testados só importam tipos do Electron. Os objetos do Electron que eles recebem
 // (sessão e webContents) são substituídos por versões falsas, que guardam os ouvintes registrados.
@@ -446,10 +446,16 @@ describe('isTrustedSenderUrl', () => {
   });
 });
 
+/** Monta a API com um canal de eventos que não entrega nada: estes testes olham só os pedidos. */
+const noEvents = () => () => undefined;
+function hubApi(invoke: Invoke) {
+  return buildProjectHubApi(invoke, noEvents);
+}
+
 describe('buildProjectHubApi', () => {
   it('preload só chama canais conhecidos', async () => {
     const calls: string[] = [];
-    const api = buildProjectHubApi(async (channel) => {
+    const api = hubApi(async (channel) => {
       calls.push(channel);
       return { ok: true, data: 'pong' };
     });
@@ -457,15 +463,27 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só ping e os métodos de projetos, sem envio genérico', () => {
-    const api = buildProjectHubApi(() => Promise.resolve(undefined));
-    expect(Object.keys(api).sort()).toEqual(['ping', 'projects']);
+  it('a API exposta tem só os métodos de ping, projetos, missões e aprovações, sem envio genérico', () => {
+    const api = hubApi(() => Promise.resolve(undefined));
+    expect(Object.keys(api).sort()).toEqual(['approvals', 'missions', 'ping', 'projects']);
     expect(Object.keys(api.projects).sort()).toEqual(['add', 'chooseDirectory', 'list']);
+    expect(Object.keys(api.missions).sort()).toEqual([
+      'approvePlan',
+      'cancel',
+      'create',
+      'get',
+      'list',
+      'plan',
+      'provideInput',
+      'start',
+      'subscribe',
+    ]);
+    expect(Object.keys(api.approvals)).toEqual(['decide']);
   });
 
   it('projects.list e projects.add usam os canais de contracts, e add leva o caminho', async () => {
     const calls: Array<[string, unknown]> = [];
-    const api = buildProjectHubApi((channel, payload) => {
+    const api = hubApi((channel, payload) => {
       calls.push([channel, payload]);
       return Promise.resolve({ ok: true, data: [] });
     });
@@ -478,7 +496,7 @@ describe('buildProjectHubApi', () => {
   });
 
   it('a resposta válida vai ao renderer só com os campos do contrato', async () => {
-    const api = buildProjectHubApi(() =>
+    const api = hubApi(() =>
       Promise.resolve({
         ok: true,
         data: [
@@ -502,7 +520,7 @@ describe('buildProjectHubApi', () => {
 
   it('resposta fora do contrato é registrada com console.warn antes de virar VALIDATION_FAILED', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: 42 }));
+    const api = hubApi(() => Promise.resolve({ ok: true, data: 42 }));
 
     await api.ping();
 
@@ -511,7 +529,7 @@ describe('buildProjectHubApi', () => {
   });
 
   it('projects.chooseDirectory aceita null, que é o cancelamento da pessoa', async () => {
-    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: null }));
+    const api = hubApi(() => Promise.resolve({ ok: true, data: null }));
     await expect(api.projects.chooseDirectory()).resolves.toEqual({ ok: true, data: null });
   });
 
@@ -535,7 +553,7 @@ describe('buildProjectHubApi', () => {
   ])(
     '%s: resposta fora do contrato vira VALIDATION_FAILED, sem repassar o dado',
     async (_name, call, response) => {
-      const api = buildProjectHubApi(() => Promise.resolve(response));
+      const api = hubApi(() => Promise.resolve(response));
       await expect(call(api)).resolves.toEqual({
         ok: false,
         error: { code: 'VALIDATION_FAILED', message: expect.any(String), retryable: false },
@@ -544,8 +562,135 @@ describe('buildProjectHubApi', () => {
   );
 
   it('ping devolve a resposta do processo principal', async () => {
-    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: 'pong' }));
+    const api = hubApi(() => Promise.resolve({ ok: true, data: 'pong' }));
     await expect(api.ping()).resolves.toEqual({ ok: true, data: 'pong' });
     expectTypeOf(api.ping).toEqualTypeOf<() => Promise<AppResult<string>>>();
+  });
+});
+
+describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
+  const mission = {
+    id: 'm1',
+    projectId: 'p1',
+    title: 'Ajustar login',
+    objective: 'Corrigir o login',
+    status: 'draft',
+    altersCode: true,
+    acceptanceCriteria: [{ id: 'c1', position: 1, text: 'Login funciona' }],
+    createdAt: '2026-10-20T09:00:00.000Z',
+    updatedAt: '2026-10-20T09:00:00.000Z',
+    worktreeId: 'wt-interno',
+  };
+
+  const event = {
+    id: 'a1',
+    missionId: 'm1',
+    aggregateType: 'execution',
+    aggregateId: 'e1',
+    eventType: 'message.delta',
+    severity: 'info',
+    actor: 'agent',
+    payload: { content: 'olá' },
+    sequence: 1,
+    createdAt: '2026-10-20T09:01:00.000Z',
+  };
+
+  it('missions.create envia a entrada pelo canal de contracts e devolve a missão sem campos internos', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: mission });
+    }, noEvents);
+    const input = {
+      projectId: 'p1',
+      title: 'Ajustar login',
+      objective: 'Corrigir o login',
+      acceptanceCriteria: ['Login funciona'],
+      altersCode: true,
+    };
+
+    const result = await api.missions.create(input);
+
+    expect(calls).toEqual([[CHANNELS.missionsCreate, input]]);
+    expect(result).toStrictEqual({
+      ok: true,
+      data: {
+        id: 'm1',
+        projectId: 'p1',
+        title: 'Ajustar login',
+        objective: 'Corrigir o login',
+        status: 'draft',
+        altersCode: true,
+        acceptanceCriteria: [{ id: 'c1', position: 1, text: 'Login funciona' }],
+        createdAt: '2026-10-20T09:00:00.000Z',
+        updatedAt: '2026-10-20T09:00:00.000Z',
+      },
+    });
+  });
+
+  it('missions.get leva o id da missão no payload e recusa uma visão fora do contrato', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: { mission: 'nao é missão' } });
+    }, noEvents);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await api.missions.get('m1');
+
+    expect(calls).toEqual([[CHANNELS.missionsGet, { missionId: 'm1' }]]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    vi.restoreAllMocks();
+  });
+
+  it('ações sem dado (aprovar plano, cancelar, decidir) aceitam sucesso vazio', async () => {
+    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: undefined }), noEvents);
+
+    await expect(api.missions.approvePlan('m1')).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.missions.cancel('m1')).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.approvals.decide({ approvalId: 'a1', decision: 'approved' })).resolves.toEqual(
+      { ok: true, data: undefined },
+    );
+  });
+
+  it('approvals.decide envia a decisão pelo canal de aprovações', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: undefined });
+    }, noEvents);
+
+    await api.approvals.decide({ approvalId: 'ap1', decision: 'rejected' });
+
+    expect(calls).toEqual([
+      [CHANNELS.approvalsDecide, { approvalId: 'ap1', decision: 'rejected' }],
+    ]);
+  });
+
+  it('subscribe entrega só eventos válidos e devolve a função que remove o ouvinte', () => {
+    let registered: ((payload: unknown) => void) | undefined;
+    const removed: string[] = [];
+    const api = buildProjectHubApi(
+      () => Promise.resolve(undefined),
+      (channel, listener) => {
+        registered = listener;
+        return () => removed.push(channel);
+      },
+    );
+    const received: unknown[] = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const unsubscribe = api.missions.subscribe((evento) => received.push(evento));
+    required(registered, 'o canal de eventos')(event);
+    required(registered, 'o canal de eventos')({ id: 'ruim' });
+    unsubscribe();
+
+    expect(received).toEqual([event]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(CHANNELS.missionsEvent),
+      expect.anything(),
+    );
+    expect(removed).toEqual([CHANNELS.missionsEvent]);
+    warn.mockRestore();
   });
 });

@@ -46,6 +46,11 @@ export function fakeMissionRepository(): FakeMissionRepository {
       state.missions.set(mission.id, copy(mission));
     },
     getMission: (id) => copy(state.missions.get(id)),
+    listMissions: (projectId) =>
+      [...state.missions.values()]
+        .filter((m) => m.projectId === projectId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map(copy),
     updateMission(id, changes) {
       const current = state.missions.get(id);
       if (current === undefined) throw new Error(`missão ausente: ${id}`);
@@ -53,6 +58,14 @@ export function fakeMissionRepository(): FakeMissionRepository {
     },
     insertSteps(steps) {
       state.steps.push(...copy(steps));
+    },
+    listSteps: (missionId) =>
+      state.steps
+        .filter((step) => step.missionId === missionId)
+        .sort((a, b) => a.position - b.position)
+        .map(copy),
+    replaceSteps(missionId, steps) {
+      state.steps = [...state.steps.filter((step) => step.missionId !== missionId), ...copy(steps)];
     },
     insertExecution(execution) {
       state.executions.set(execution.id, copy(execution));
@@ -94,6 +107,11 @@ export function fakeMissionRepository(): FakeMissionRepository {
       state.audit.push(record);
       return copy(record);
     },
+    listAudit: (aggregateId) =>
+      state.audit
+        .filter((a) => a.aggregateId === aggregateId)
+        .sort((a, b) => a.sequence - b.sequence)
+        .map(copy),
     transaction<T>(work: () => T): T {
       const snapshot = copy(state);
       try {

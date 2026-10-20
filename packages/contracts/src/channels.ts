@@ -4,4 +4,15 @@ export const CHANNELS = {
   projectsList: 'projects:list:v1',
   projectsAdd: 'projects:add:v1',
   projectsChooseDirectory: 'projects:choose-directory:v1',
+  missionsCreate: 'missions:create:v1',
+  missionsList: 'missions:list:v1',
+  missionsGet: 'missions:get:v1',
+  missionsPlan: 'missions:plan:v1',
+  missionsApprovePlan: 'missions:approve-plan:v1',
+  missionsStart: 'missions:start:v1',
+  missionsCancel: 'missions:cancel:v1',
+  missionsProvideInput: 'missions:provide-input:v1',
+  /** Evento da missão, do processo principal para o renderer. Não tem resposta. */
+  missionsEvent: 'missions:event:v1',
+  approvalsDecide: 'approvals:decide:v1',
 } as const;

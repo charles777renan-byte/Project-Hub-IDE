@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ProjectHubApi } from '@project-hub/contracts';
 import { App } from '../../src/renderer/App';
 
 // O aplicativo usa HashRouter (o renderer roda de file:// em produção). Os testes usam
@@ -102,7 +103,7 @@ describe('página de Projetos', () => {
         chooseDirectory: () => Promise.resolve({ ok: true, data: null }),
         add: () => Promise.reject(new Error('add não é chamado nesta página')),
       },
-    };
+    } as unknown as ProjectHubApi;
   });
 
   afterEach(() => {

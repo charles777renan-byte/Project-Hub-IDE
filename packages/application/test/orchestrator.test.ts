@@ -130,11 +130,28 @@ describe('planMission e approvePlan', () => {
     expect(h.repo.getMission(MISSION)?.status).toBe('planned');
   });
 
-  it('não planeja de novo uma missão que já saiu de draft', async () => {
+  it('replanejar uma missão planned troca as etapas e mantém a missão em planned (R161)', async () => {
     const h = harness();
-    h.repo.insertMission(missionFixture({ status: 'planned' }));
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    data(await h.orchestrator.planMission(MISSION));
+
+    const again = data(await h.orchestrator.planMission(MISSION));
+
+    expect(again.steps.map((step) => step.title)).toEqual(['Login funciona', 'Testes passam']);
+    expect(h.repo.listSteps(MISSION).map((step) => step.title)).toEqual([
+      'Login funciona',
+      'Testes passam',
+    ]);
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.generated')).toHaveLength(2);
+  });
+
+  it('não planeja uma missão que já foi aprovada para a fila', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture({ status: 'queued' }));
 
     expect(codeOf(await h.orchestrator.planMission(MISSION))).toBe('MISSION_INVALID_STATE');
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
   });
 
   it('recusa planejar uma missão sem critério de aceite', async () => {
@@ -244,6 +261,26 @@ describe('startMission', () => {
     const worktreePath = `C:\\hub\\worktrees/app/missao-1-ajustar-login`;
     expect(h.repo.getMission(MISSION)).toMatchObject({ worktreePath });
     expect(h.agent.starts[0]?.cwd).toBe(worktreePath);
+  });
+
+  it('missão que não altera código também roda num worktree (R160)', async () => {
+    const h = harness({ scripts: [[]] });
+    h.repo.insertMission(missionFixture({ altersCode: false }));
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.worktrees.created).toHaveLength(1);
+    expect(h.agent.starts[0]?.cwd).toBe(WORKTREE_PATH);
+    expect(h.repo.getMission(MISSION)?.worktreePath).toBe(WORKTREE_PATH);
+  });
+
+  it('missão que não altera código sem Git também retorna PROJECT_WITHOUT_GIT (R160)', async () => {
+    const h = harness({ repositoryKind: 'none' });
+    h.repo.insertMission(missionFixture({ altersCode: false }));
+
+    expect(codeOf(await h.orchestrator.startMission(MISSION))).toBe('PROJECT_WITHOUT_GIT');
+    expect(h.worktrees.created).toHaveLength(0);
+    expect(h.agent.starts).toHaveLength(0);
   });
 
   it('falha ao criar o worktree devolve o código da falha e deixa a missão em queued', async () => {

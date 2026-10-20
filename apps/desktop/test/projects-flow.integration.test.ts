@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { openDatabase } from '@project-hub/database';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProjectServices, platformOf, type ProjectServices } from '../src/main/composition';
+import { createAppServices, platformOf, type AppServices } from '../src/main/composition';
 import { handleAddProject, handleListProjects } from '../src/main/ipc/projects';
 
 // Fluxo real: SQLite num arquivo temporário, pastas de verdade e o Git do sistema. Só o seletor de
@@ -12,7 +12,7 @@ import { handleAddProject, handleListProjects } from '../src/main/ipc/projects';
 
 let dir: string;
 let folder: string;
-let services: ProjectServices;
+let services: AppServices;
 
 /** Torna a pasta um repositório Git, sem commits: basta para a detecção. */
 function gitInit(path: string): void {
@@ -24,9 +24,11 @@ beforeEach(() => {
   // Espaços e acentos no nome, como a pasta real do projeto.
   folder = join(dir, 'Claude Code Projetos', 'Ação Hub');
   mkdirSync(folder, { recursive: true });
-  services = createProjectServices({
+  services = createAppServices({
     dbFile: join(dir, 'database', 'project-hub.sqlite'),
     platform: platformOf(process.platform),
+    worktreesRoot: join(dir, 'worktrees'),
+    publishMissionEvent: () => undefined,
   });
 });
 
@@ -106,7 +108,12 @@ describe('cadastro e listagem com banco e pastas reais', () => {
     legacy.$client.close();
 
     expect(() =>
-      createProjectServices({ dbFile: legacyFile, platform: platformOf(process.platform) }),
+      createAppServices({
+        dbFile: legacyFile,
+        platform: platformOf(process.platform),
+        worktreesRoot: join(dir, 'worktrees'),
+        publishMissionEvent: () => undefined,
+      }),
     ).toThrow(/CREATE UNIQUE INDEX/);
     // No Windows, um arquivo com handle aberto não pode ser apagado: a remoção só passa se o banco fechou.
     // Esta asserção só distingue o fechamento no Windows: em Linux e macOS, apagar arquivo aberto passa de qualquer jeito.

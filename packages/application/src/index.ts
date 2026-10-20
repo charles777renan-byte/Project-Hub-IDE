@@ -8,6 +8,19 @@ export {
   type OrchestratorDeps,
 } from './missions/orchestrator';
 export { planFromCriteria, type MissionPlanStep } from './missions/plan';
+export {
+  createMission,
+  type CreateMissionDeps,
+  type CreateMissionInput,
+} from './missions/create-mission';
+export {
+  getMissionView,
+  listMissions,
+  type MissionEvent,
+  type MissionProject,
+  type MissionQueryDeps,
+  type MissionView,
+} from './missions/mission-queries';
 export { recoverInterruptedExecutions } from './missions/startup-recovery';
 export type {
   ApprovalChanges,

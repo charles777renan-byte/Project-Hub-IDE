@@ -6,112 +6,282 @@
 
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-sans);
-  font-size: 1rem;
+  font-size: 0.9375rem;
   line-height: 1.5;
 }
 
 /* Foco visível em todo controle, para quem navega por teclado (seção 12.4). */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
 
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+/* Estrutura: barra superior com a marca e as abas de seção, e a área da página abaixo. */
 .app-shell {
-  display: grid;
-  grid-template-columns: 15rem 1fr;
   min-height: 100vh;
 }
 
-.app-sidebar {
-  padding: var(--space-4) var(--space-3);
-  border-right: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
 }
 
 .app-brand {
-  margin: 0 0 var(--space-4);
-  font-size: 1.125rem;
-  font-weight: 700;
+  padding: var(--space-3) 0;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .app-nav {
-  display: grid;
+  display: flex;
   gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* A aba da página atual tem a barra âmbar embaixo e o texto mais forte. */
 .app-nav a {
   display: block;
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid transparent;
-  border-radius: var(--radius);
-  color: var(--color-text);
+  padding: var(--space-3) var(--space-3) calc(var(--space-3) - 3px);
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  font-weight: 600;
   text-decoration: none;
 }
 
 .app-nav a:hover {
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  color: var(--text);
 }
 
-/* A página atual não se distingue só pela cor: tem barra ao lado, fundo e fonte mais pesada. */
 .app-nav a[aria-current='page'] {
-  border-left-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-  font-weight: 600;
+  border-bottom-color: var(--amber);
+  color: var(--text);
 }
 
 .app-main {
   padding: var(--space-4) var(--space-5);
+  max-width: 72rem;
 }
 
 .app-main h1 {
   margin: 0 0 var(--space-3);
-  font-size: 1.5rem;
-  line-height: 1.25;
+  font-size: 1.75rem;
 }
 
 .app-main p {
-  max-width: 60ch;
+  max-width: 62ch;
   margin: 0 0 var(--space-3);
 }
 
+/* Botões: primário âmbar, decisão violeta e contorno. Texto sobre âmbar e violeta usa o fundo. */
 button {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid currentColor;
+  border: 1px solid var(--field-line);
   border-radius: var(--radius);
   background: transparent;
-  color: var(--color-text);
+  color: var(--text);
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--muted);
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.55;
+}
+
+.btn-primary {
+  border-color: var(--amber);
+  background: var(--amber);
+  color: var(--bg);
+}
+
+.btn-primary:hover {
+  border-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 88%, white);
+}
+
+.btn-decision {
+  border-color: var(--violet);
+  background: var(--violet);
+  color: var(--bg);
+}
+
+.btn-decision:hover {
+  border-color: var(--violet);
+  background: color-mix(in srgb, var(--violet) 88%, white);
+}
+
+.btn-outline {
+  border-color: var(--violet);
+  color: var(--violet);
+}
+
+.btn-danger {
+  border-color: var(--pink);
+  color: var(--pink);
 }
 
 .page-alert {
-  color: var(--color-danger);
+  color: var(--pink);
   font-weight: 600;
 }
 
-.project-list {
+.page-note {
+  color: var(--log);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin-bottom: var(--space-1);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Chip quadrado com ponto de estado: texto em maiúsculas e fonte mono (visual do protótipo). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel-2);
+  color: var(--log);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chip::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  background: currentColor;
+}
+
+.chip--amber {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.chip--violet {
+  border-color: var(--violet);
+  color: var(--violet);
+}
+
+.chip--pink {
+  border-color: var(--pink);
+  color: var(--pink);
+}
+
+.chip--muted {
+  color: var(--muted);
+}
+
+/* Abas: sublinhado âmbar na seção; no workspace da missão, a aba ativa é um botão âmbar cheio. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--muted);
+}
+
+.tab[aria-selected='true'] {
+  border-bottom-color: var(--amber);
+  color: var(--text);
+}
+
+.tabs--filled {
+  border-bottom: 0;
+}
+
+.tabs--filled .tab {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.tabs--filled .tab[aria-selected='true'] {
+  border-color: var(--amber);
+  background: var(--amber);
+  color: var(--bg);
+}
+
+/* Listas de cartões: projetos e missões. */
+.card-list {
   display: grid;
   gap: var(--space-3);
-  max-width: 48rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.project-card {
+.project-card,
+.mission-card {
   padding: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.project-card h2 a,
+.mission-card a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.project-card h2 a:hover,
+.mission-card h2 a:hover {
+  text-decoration: underline;
 }
 
 .project-card h2 {
@@ -119,17 +289,256 @@ button:disabled {
   font-size: 1.125rem;
 }
 
-.project-card p {
-  margin: 0;
-}
-
-/* O caminho é longo e pode não ter espaço para quebrar: quebra em qualquer ponto para caber na janela. */
 .project-path {
   overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
 }
 
 .project-unavailable {
   margin-top: var(--space-1);
-  color: var(--color-danger);
+  color: var(--pink);
   font-weight: 600;
+}
+
+/* Cartão de missão: borda violeta quando espera decisão, barra âmbar quando roda. */
+.mission-card {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.mission-card--attention {
+  border-color: var(--violet);
+}
+
+.mission-card h2 {
+  font-size: 1.0625rem;
+}
+
+.mission-card-action {
+  color: var(--violet);
+  font-weight: 700;
+}
+
+.progress {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.progress--running::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--amber);
+  animation: progress-slide 1.6s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress--running::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* Cabeçalho da missão: título grande, chip de situação e as ações. */
+.mission-header {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.mission-header h1 {
+  font-size: 2rem;
+}
+
+.mission-meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.mission-actions,
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Plano: passos numerados e o cartão de decisão. */
+.plan-steps {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.plan-step {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.plan-step-number {
+  font-family: var(--font-mono);
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.plan-step-agent {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+/* Cartão de decisão: violeta, para aprovação do plano e de ação protegida. */
+.decision-card {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--violet);
+  background: var(--panel-2);
+}
+
+.decision-card h3 {
+  font-size: 1.125rem;
+}
+
+.decision-card ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--log);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.decision-card pre {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg);
+  color: var(--log);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Conversa: eventos com instante, em fonte mono. */
+.timeline {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline li {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--log);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.timeline time {
+  color: var(--muted);
+}
+
+/* Formulários: campos com linha violeta-escura e foco âmbar. */
+.form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.field label,
+.check label {
+  font-weight: 600;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.field textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.field-error {
+  color: var(--pink);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--amber);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.empty {
+  color: var(--muted);
+}
+
+.workspace-panel {
+  max-width: 48rem;
 }

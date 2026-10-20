@@ -1,5 +1,15 @@
 import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
+import type {
+  CreateMissionInput,
+  DecideApprovalInput,
+  ExecutionDto,
+  MissionDto,
+  MissionEventDto,
+  MissionPlanDto,
+  MissionViewDto,
+  ProvideInput,
+} from './mission';
 
 /**
  * API que o preload expõe ao renderer em `window.projectHub` (seção 13.3).
@@ -15,5 +25,32 @@ export type ProjectHubApi = {
     chooseDirectory(): Promise<AppResult<{ path: string } | null>>;
     /** Cadastra a pasta. O processo principal revalida o caminho (R66). */
     add(input: AddProjectInput): Promise<AppResult<ProjectSummary>>;
+  };
+  missions: {
+    /** Cria a missão em rascunho (RF-MIS-002). */
+    create(input: CreateMissionInput): Promise<AppResult<MissionDto>>;
+    /** As missões do projeto, da mais recente para a mais antiga. */
+    list(projectId: string): Promise<AppResult<MissionDto[]>>;
+    /** A visão completa de uma missão: plano, tentativas, aprovações pendentes e eventos. */
+    get(missionId: string): Promise<AppResult<MissionViewDto>>;
+    /** Gera o plano, ou refaz o plano de uma missão planejada (R161). */
+    plan(missionId: string): Promise<AppResult<MissionPlanDto>>;
+    /** Aprova o plano gerado: a missão vai para a fila. */
+    approvePlan(missionId: string): Promise<AppResult<void>>;
+    /** Inicia a execução de uma missão aprovada. Devolve a tentativa no estado em que parou. */
+    start(missionId: string): Promise<AppResult<ExecutionDto>>;
+    /** Cancela a missão, encerrando o agente se ele estiver rodando. */
+    cancel(missionId: string): Promise<AppResult<void>>;
+    /** Resposta do usuário ao pedido de entrada do agente. */
+    provideInput(input: ProvideInput): Promise<AppResult<void>>;
+    /**
+     * Assina os eventos das missões. Cada evento chega validado. Devolve a função que cancela a
+     * assinatura.
+     */
+    subscribe(listener: (event: MissionEventDto) => void): () => void;
+  };
+  approvals: {
+    /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */
+    decide(input: DecideApprovalInput): Promise<AppResult<void>>;
   };
 };

@@ -3,34 +3,53 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Contraste dos tokens de cor (WCAG 2.2 AA, seção 12.4 do planejamento): todo par texto/fundo
- * precisa de pelo menos 4,5:1 no tema claro e no tema escuro. O teste lê o `tokens.css` de verdade,
- * então trocar uma cor por um valor fraco derruba este teste.
+ * Contraste dos tokens de cor (WCAG 2.2 AA, seção 12.4 do planejamento): todo texto sobre um fundo
+ * precisa de pelo menos 4,5:1. O aplicativo tem só o tema escuro (R172). O teste lê o `tokens.css`
+ * de verdade, então trocar uma cor por um valor fraco derruba este teste.
  */
 
 const MIN_CONTRAST = 4.5;
 
 const COLOR_TOKENS = [
-  '--color-bg',
-  '--color-text',
-  '--color-accent',
-  '--color-danger',
-  '--color-success',
-  '--color-warning',
+  '--bg',
+  '--panel',
+  '--panel-2',
+  '--line',
+  '--field-line',
+  '--text',
+  '--muted',
+  '--log',
+  '--amber',
+  '--violet',
+  '--pink',
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
 
 /**
- * Pares de texto sobre fundo que o aplicativo usa. O accent também é a cor dos links e do contorno
- * do foco. Um par novo (por exemplo, texto sobre um fundo de botão) entra nesta lista.
+ * Pares de texto sobre fundo que o aplicativo usa. Texto sobre âmbar ou violeta usa o fundo (`--bg`),
+ * como manda o visual. Um par novo entra nesta lista.
  */
 const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
-  ['--color-text', '--color-bg'],
-  ['--color-accent', '--color-bg'],
-  ['--color-danger', '--color-bg'],
-  ['--color-success', '--color-bg'],
-  ['--color-warning', '--color-bg'],
+  ['--text', '--bg'],
+  ['--text', '--panel'],
+  ['--text', '--panel-2'],
+  ['--muted', '--bg'],
+  ['--muted', '--panel'],
+  ['--muted', '--panel-2'],
+  ['--log', '--bg'],
+  ['--log', '--panel'],
+  ['--log', '--panel-2'],
+  ['--amber', '--bg'],
+  ['--amber', '--panel'],
+  ['--violet', '--bg'],
+  ['--violet', '--panel'],
+  ['--violet', '--panel-2'],
+  ['--pink', '--bg'],
+  ['--pink', '--panel'],
+  ['--bg', '--amber'],
+  ['--bg', '--violet'],
+  ['--bg', '--pink'],
 ];
 
 function channelToLinear(channel: number): number {
@@ -66,21 +85,17 @@ function declarations(block: string): Map<string, string> {
   return found;
 }
 
-/** Os dois temas do `tokens.css`: o claro vem do `:root` e o escuro, do `prefers-color-scheme`. */
-function readThemes(css: string): { light: Map<string, string>; dark: Map<string, string> } {
+/** Os tokens do bloco `:root`, que é o único tema (escuro). */
+function readTokens(css: string): { tokens: Map<string, string>; hasLightTheme: boolean } {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  const darkBlock = /@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)\s*\{([\s\S]*?\})\s*\}/.exec(
-    withoutComments,
-  )?.[1];
-  if (darkBlock === undefined) {
-    throw new Error('tokens.css precisa de um @media (prefers-color-scheme: dark)');
-  }
-  const outsideMedia = withoutComments.replace(/@media[\s\S]*?\}\s*\}/g, '');
-  const lightBlocks = [...outsideMedia.matchAll(/:root\s*\{([^}]*)\}/g)].map((match) => match[1]);
-  if (lightBlocks.length === 0) {
+  const rootBlocks = [...withoutComments.matchAll(/:root\s*\{([^}]*)\}/g)].map((match) => match[1]);
+  if (rootBlocks.length === 0) {
     throw new Error('tokens.css precisa de um bloco :root');
   }
-  return { light: declarations(lightBlocks.join('\n')), dark: declarations(darkBlock) };
+  return {
+    tokens: declarations(rootBlocks.join('\n')),
+    hasLightTheme: /prefers-color-scheme\s*:\s*light/.test(withoutComments),
+  };
 }
 
 // Neste projeto (jsdom) não use new URL('texto literal', import.meta.url): o Vite reescreve esse
@@ -89,7 +104,7 @@ const tokensCss = readFileSync(
   resolve(import.meta.dirname, '../../src/renderer/styles/tokens.css'),
   'utf8',
 );
-const themes = readThemes(tokensCss);
+const { tokens, hasLightTheme } = readTokens(tokensCss);
 
 describe('cálculo do contraste', () => {
   it('preto sobre branco é 21:1 e cor igual é 1:1', () => {
@@ -108,35 +123,32 @@ describe('cálculo do contraste', () => {
 
   it('recusa cor que não é #rgb nem #rrggbb, em vez de ignorar', () => {
     expect(() => contrastRatio('rgb(0, 0, 0)', '#ffffff')).toThrow('Cor não suportada');
-    expect(() => contrastRatio('var(--color-bg)', '#ffffff')).toThrow('Cor não suportada');
+    expect(() => contrastRatio('var(--bg)', '#ffffff')).toThrow('Cor não suportada');
   });
 });
 
-describe.each([
-  { name: 'claro', declared: themes.light },
-  { name: 'escuro', declared: themes.dark },
-])('tema $name', ({ declared }) => {
-  it('define todos os tokens de cor', () => {
-    const colorTokens = [...declared.keys()].filter((token) => token.startsWith('--color-'));
-    expect(colorTokens.sort()).toEqual([...COLOR_TOKENS].sort());
+describe('tema escuro', () => {
+  it('define todos os tokens de cor, em #rrggbb ou #rgb', () => {
+    for (const token of COLOR_TOKENS) {
+      expect(tokens.get(token), token).toBeDefined();
+      expect(() => luminance(tokens.get(token) ?? '')).not.toThrow();
+    }
+  });
+
+  it('não tem tema claro: o aplicativo é escuro (R172)', () => {
+    expect(hasLightTheme).toBe(false);
+    expect(tokensCss).toMatch(/color-scheme:\s*dark/);
   });
 
   it.each(TEXT_ON_BACKGROUND)(
     '%s sobre %s tem contraste de pelo menos 4,5:1',
     (text, background) => {
-      const textColor = declared.get(text) ?? '';
-      const backgroundColor = declared.get(background) ?? '';
+      const textColor = tokens.get(text) ?? '';
+      const backgroundColor = tokens.get(background) ?? '';
       expect(
         contrastRatio(textColor, backgroundColor),
         `${text} (${textColor}) sobre ${background} (${backgroundColor})`,
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     },
   );
-});
-
-describe('os dois temas', () => {
-  it('o escuro troca o fundo e o texto do claro, em vez de repeti-los', () => {
-    expect(themes.dark.get('--color-bg')).not.toBe(themes.light.get('--color-bg'));
-    expect(themes.dark.get('--color-text')).not.toBe(themes.light.get('--color-text'));
-  });
 });

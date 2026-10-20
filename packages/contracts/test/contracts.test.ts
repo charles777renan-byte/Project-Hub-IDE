@@ -124,6 +124,7 @@ describe('tipos públicos', () => {
       path: string;
       repositoryKind: 'git' | 'none';
       available: boolean;
+      defaultBranch?: string | undefined;
     }>();
   });
 
@@ -146,8 +147,10 @@ describe('tipos públicos', () => {
 });
 
 describe('responseSchemas', () => {
-  it('tem um schema de resposta para cada canal, e só para eles', () => {
-    expect(Object.keys(responseSchemas).sort()).toEqual(Object.values(CHANNELS).sort());
+  it('tem um schema de resposta para cada canal de pedido, e só para eles', () => {
+    // O canal de eventos vai do processo principal ao renderer e não tem resposta (R165).
+    const requestChannels = Object.values(CHANNELS).filter((c) => c !== CHANNELS.missionsEvent);
+    expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());
   });
 
   it('aceita a lista de projetos no formato AppResult', () => {
