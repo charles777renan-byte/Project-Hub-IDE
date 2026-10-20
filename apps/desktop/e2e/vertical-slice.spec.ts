@@ -2,7 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative } from 'node:path';
 import type { Page } from '@playwright/test';
-import { createMissionRepository, openDatabase } from '@project-hub/database';
+import {
+  createMissionRepository,
+  openDatabase,
+  type MissionRepository,
+} from '@project-hub/database';
 import { expect, test } from './fixtures';
 
 // Critério de saída da etapa (seção 22) e Review Focus 5 do plano, pela interface real: a janela do
@@ -73,14 +77,28 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
 }
 
-/** Caminho do worktree que o cabeçalho da missão mostra. */
-async function worktreePathOf(page: Page): Promise<string> {
-  const meta = await page.getByText(/ · worktree /).textContent();
-  const path = meta?.split(' · worktree ')[1]?.trim();
+/**
+ * Caminho do worktree que o cabeçalho da missão mostra. O texto do cabeçalho é único na página:
+ * projeto, branch e worktree, nessa ordem (a linha do tempo diz "Worktree criado em", sem a branch).
+ */
+async function worktreePathOf(page: Page, projectName: string): Promise<string> {
+  const prefix = `${projectName} · branch main · worktree `;
+  const header = await page.getByText(prefix).textContent();
+  const path = header?.startsWith(prefix) ? header.slice(prefix.length).trim() : undefined;
   if (path === undefined || path === '' || path === 'ainda não criado') {
-    throw new Error(`O cabeçalho da missão não mostra um worktree: ${String(meta)}`);
+    throw new Error(`O cabeçalho da missão não mostra um worktree: ${String(header)}`);
   }
   return path;
+}
+
+/** Lê o banco do aplicativo pelo repositório de missões. O aplicativo precisa estar fechado. */
+function readDatabase<T>(dataDir: string, read: (repo: MissionRepository) => T): T {
+  const db = openDatabase(join(dataDir, 'database', 'project-hub.sqlite'));
+  try {
+    return read(createMissionRepository(db));
+  } finally {
+    db.$client.close();
+  }
 }
 
 /** Frases da linha do tempo da aba Conversa, na ordem em que aparecem (com a hora de cada uma). */
@@ -94,6 +112,8 @@ async function timelineOf(page: Page): Promise<string[]> {
 test('projeto Git → missão simulada → aprovação → eventos persistidos', async ({
   launchApp,
   gitRepo,
+  gitEnv,
+  dataDir,
   worktreesDir,
 }) => {
   const projectName = basename(gitRepo.path);
@@ -110,7 +130,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await approvePlanAndStart(page);
 
   // 3. O worktree foi criado em PROJECT_HUB_DATA_DIR/worktrees, e o agente gravou o arquivo nele.
-  const worktreePath = await worktreePathOf(page);
+  const worktreePath = await worktreePathOf(page, projectName);
   const fromRoot = relative(worktreesDir, worktreePath);
   expect(fromRoot.startsWith('..') || isAbsolute(fromRoot)).toBe(false);
   expect(existsSync(worktreePath)).toBe(true);
@@ -120,6 +140,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   // O Git conhece o worktree, e a pasta do projeto original continua sem o arquivo.
   const listed = execFileSync('git', ['worktree', 'list', '--porcelain'], {
     cwd: gitRepo.path,
+    env: { ...process.env, ...gitEnv },
     encoding: 'utf8',
   });
   expect(listed.replaceAll('\\', '/').toLowerCase()).toContain(
@@ -164,7 +185,38 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   ).toBeVisible();
   expect(await timelineOf(page)).toEqual(eventsBeforeRestart);
   // A missão concluída não foi mexida pela recuperação do início: continua com o mesmo worktree.
-  expect(await worktreePathOf(page)).toBe(worktreePath);
+  expect(await worktreePathOf(page, projectName)).toBe(worktreePath);
+
+  // O banco guarda o fim da tentativa: ela terminou `succeeded`, a missão também, e a recuperação
+  // do segundo início não fechou nem falhou nenhuma execução.
+  await launched.close();
+  const persisted = readDatabase(dataDir, (repo) => {
+    const succeeded = repo.findExecutionsByStatus('succeeded');
+    return {
+      succeeded: succeeded.map((execution) => ({
+        attempt: execution.attempt,
+        status: execution.status,
+        exitReason: execution.exitReason,
+        finished: execution.finishedAt !== undefined,
+        missionStatus: repo.getMission(execution.missionId)?.status,
+      })),
+      failed: repo.findExecutionsByStatus('failed'),
+      running: repo.findExecutionsByStatus('running'),
+    };
+  });
+  expect(persisted).toEqual({
+    succeeded: [
+      {
+        attempt: 1,
+        status: 'succeeded',
+        exitReason: 'completed',
+        finished: true,
+        missionStatus: 'succeeded',
+      },
+    ],
+    failed: [],
+    running: [],
+  });
 });
 
 test('fechar o app durante aprovação e reabrir mostra execução interrompida', async ({
@@ -215,11 +267,6 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
 
   // O banco guarda o motivo (seção 15.7): a tentativa falhou com `interrupted_by_restart`.
   await launched.close();
-  const db = openDatabase(join(dataDir, 'database', 'project-hub.sqlite'));
-  try {
-    const failed = createMissionRepository(db).findExecutionsByStatus('failed');
-    expect(failed.map((execution) => execution.exitReason)).toEqual(['interrupted_by_restart']);
-  } finally {
-    db.$client.close();
-  }
+  const failed = readDatabase(dataDir, (repo) => repo.findExecutionsByStatus('failed'));
+  expect(failed.map((execution) => execution.exitReason)).toEqual(['interrupted_by_restart']);
 });

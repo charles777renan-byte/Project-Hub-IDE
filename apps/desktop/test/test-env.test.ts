@@ -1,6 +1,11 @@
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { resolveDatabaseFile, resolveDirectoryChooser } from '../src/main/composition';
+import {
+  applicationEnvironment,
+  resolveDatabaseFile,
+  resolveDirectoryChooser,
+  resolveWorktreesRoot,
+} from '../src/main/composition';
 
 // Variáveis de ambiente dos testes de ponta a ponta (R189). Os dois resolvedores recebem o `env`, e o
 // teste passa objetos simples: nada aqui mexe no `process.env`.
@@ -78,5 +83,53 @@ describe('seletor de pasta nos testes (PROJECT_HUB_TEST_DIALOG_PATH)', () => {
     await choose('quem-chamou');
 
     expect(native).toHaveBeenCalledWith('quem-chamou');
+  });
+});
+
+describe('ambiente do aplicativo empacotado (R193)', () => {
+  const testEnvironment = {
+    PROJECT_HUB_ENV: 'test',
+    PROJECT_HUB_DATA_DIR: '/dados',
+    PROJECT_HUB_TEST_DIALOG_PATH: '/repo',
+    APP_WORKTREES_ROOT: '/raiz-dos-worktrees',
+    PATH: '/bin',
+  };
+
+  it('fora do pacote, o ambiente do processo vale inteiro', () => {
+    expect(applicationEnvironment(testEnvironment, false)).toBe(testEnvironment);
+  });
+
+  it('empacotado, só APP_WORKTREES_ROOT sobra', () => {
+    expect(applicationEnvironment(testEnvironment, true)).toEqual({
+      APP_WORKTREES_ROOT: '/raiz-dos-worktrees',
+    });
+    expect(applicationEnvironment({ PROJECT_HUB_ENV: 'test' }, true)).toEqual({});
+  });
+
+  it('empacotado, as variáveis de teste não trocam o banco, os worktrees nem o seletor', async () => {
+    const env = applicationEnvironment(
+      {
+        PROJECT_HUB_ENV: 'test',
+        PROJECT_HUB_DATA_DIR: '/dados',
+        PROJECT_HUB_TEST_DIALOG_PATH: '/repo',
+      },
+      true,
+    );
+    const native = vi.fn(() => Promise.resolve('/escolhida'));
+
+    expect(resolveDatabaseFile(env, '/user-data')).toBe(
+      join('/user-data', 'database', 'project-hub.sqlite'),
+    );
+    expect(resolveWorktreesRoot(env, '/home/ana')).toBe(
+      join('/home/ana', 'ProjectHub', 'worktrees'),
+    );
+    await expect(resolveDirectoryChooser(env, native)()).resolves.toBe('/escolhida');
+    expect(native).toHaveBeenCalledTimes(1);
+  });
+
+  it('empacotado, APP_WORKTREES_ROOT ainda define a raiz dos worktrees', () => {
+    const env = applicationEnvironment(testEnvironment, true);
+
+    expect(resolveWorktreesRoot(env, '/home/ana')).toBe('/raiz-dos-worktrees');
   });
 });
