@@ -20,10 +20,12 @@ export type AddProjectDeps = {
   newId: () => string;
 };
 
+const ALREADY_EXISTS = 'Esta pasta já está cadastrada.';
+
 /**
  * Cadastra uma pasta como projeto (RF-PROJ-001 a RF-PROJ-003). O caminho precisa ser absoluto e
- * apontar para um diretório. Uma pasta já cadastrada e ativa é recusada. Uma pasta removida volta
- * pelo mesmo registro, sem inserir outro.
+ * apontar para um diretório. Uma pasta já cadastrada e ativa é recusada, sem rodar o Git. Uma pasta
+ * removida volta pelo mesmo registro, sem inserir outro, com o tipo e a branch que o Git detecta agora.
  */
 export async function addProject(
   deps: AddProjectDeps,
@@ -39,18 +41,31 @@ export async function addProject(
   if (!(await deps.fs.isDirectory(path))) {
     return failure('PROJECT_PATH_UNAVAILABLE', 'A pasta não existe ou não é um diretório.');
   }
+
+  // Primeira consulta: uma pasta já cadastrada e ativa nunca chega ao Git (R85).
+  const known = deps.repo.findByNormalizedPath(normalizedPath);
+  if (known !== undefined && known.removedAt === undefined) {
+    return failure('PROJECT_ALREADY_EXISTS', ALREADY_EXISTS);
+  }
   const detection = await deps.git.detect(path);
 
-  // Daqui até a escrita não há await: a consulta e a gravação não se intercalam com outro cadastro.
+  // O Git é assíncrono, então outro cadastro da mesma pasta pode ter gravado enquanto ele rodava. A
+  // consulta que vale é esta, e daqui até a escrita não há await: ela e a gravação não se intercalam.
   const existing = deps.repo.findByNormalizedPath(normalizedPath);
   const timestamp = deps.now();
   if (existing !== undefined && existing.removedAt === undefined) {
-    return failure('PROJECT_ALREADY_EXISTS', 'Esta pasta já está cadastrada.');
+    return failure('PROJECT_ALREADY_EXISTS', ALREADY_EXISTS);
   }
   if (existing !== undefined) {
-    deps.repo.restore(existing.id, timestamp);
-    const restored: ProjectRecord = { ...existing, updatedAt: timestamp };
+    const git: { repositoryKind: 'git' | 'none'; defaultBranch?: string } = {
+      repositoryKind: detection.kind,
+    };
+    if (detection.defaultBranch !== undefined) git.defaultBranch = detection.defaultBranch;
+    deps.repo.restore(existing.id, timestamp, git);
+    const restored: ProjectRecord = { ...existing, ...git, updatedAt: timestamp };
     delete restored.removedAt;
+    // A branch antiga não vale mais: sem `defaultBranch` na detecção nova, ela sai do registro.
+    if (git.defaultBranch === undefined) delete restored.defaultBranch;
     return { ok: true, data: restored };
   }
 

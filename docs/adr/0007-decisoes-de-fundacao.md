@@ -40,7 +40,7 @@ Dependências novas entram com versão exata (`saveExact: true` em `pnpm-workspa
 
 - **Contexto:** O aplicativo usa poucas operações de Git: ler o estado do repositório e criar e remover worktrees.
 - **Decisão:** Chamar o executável `git` direto, com `execa`, sem `simple-git`. Os argumentos vão em array e nunca por shell. O tempo limite padrão é de 15 segundos (`timeoutMs` de 15000), e executável ausente vira o erro `GIT_NOT_AVAILABLE`.
-- **Consequência:** Os comandos permitidos ficam explícitos no código (RF-GIT-007) e nenhuma camada intermediária expõe comandos de escrita. Caminhos com espaço e acento passam como argumentos, sem escape de shell.
+- **Consequência:** Os comandos permitidos ficam explícitos no código (RF-GIT-007) e nenhuma camada intermediária expõe comandos de escrita. Caminhos com espaço e acento passam como argumentos, sem escape de shell. Na Tarefa 7 o `execa` foi trocado pelo `execFile` do Node (ver "Registros posteriores").
 
 ## 3. Drizzle ORM com better-sqlite3
 
@@ -177,3 +177,31 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Decisão:** `better-sqlite3` 13.0.3, a mesma versão de `packages/database`, entra em `dependencies` de `apps/desktop`, como o item sobre módulos nativos manda. `electron.vite.config.ts` copia `packages/database/migrations` para `out/migrations` no início de cada build do processo principal, também nos rebuilds do modo watch, antes de o bundle sair (R75).
 - **Motivo:** o `better-sqlite3` 13 traz um binário N-API em `prebuilds/`. Carregado pelo runtime do Electron 44.9.0 (Node 24.22, ABI 149) com `ELECTRON_RUN_AS_NODE=1`, o módulo abre um banco em memória sem erro de ABI, sem abrir janela. A cópia é a solução mais simples até a Tarefa 12 definir o empacotamento.
 - **Consequência:** a lockfile ganhou a entrada de `apps/desktop` e os links de `packages/application` e `packages/database`. A lista de versões de pacotes não mudou (502 antes e depois). Abrir o banco dentro da janela continua pendente do passo 10 do plano, que é verificação manual.
+
+### 2026-10-19, Tarefa 7: `execFile` do Node no lugar do `execa`
+
+- **Contexto:** o item 2 e o plano pedem `execa`. Ele é uma dependência externa nova, e dependência nova só entra com a permissão do usuário (R46).
+- **Decisão:** `runGit`, em `packages/git-adapter/src/run-git.ts`, usa `execFile` de `node:child_process`. Continuam valendo as garantias do item 2: sem shell, argumentos em array, tempo limite (`timeoutMs`, padrão 15000) e executável ausente (`ENOENT`) como `GIT_NOT_AVAILABLE`, com a mensagem "Instale o Git e reinicie o Project Hub.". O `windowsHide` evita a janela de console do `git.exe` no Windows.
+- **`ENOENT` de pasta ausente:** o Node responde `ENOENT` também quando o `cwd` não existe. Nesse caso `runGit` confere a pasta e devolve `PROJECT_PATH_UNAVAILABLE`, para uma pasta que sumiu não aparecer como Git não instalado.
+- **Consequência:** nenhuma dependência nova, e o lockfile só ganhou links entre pacotes do workspace. Se o `execa` entrar um dia, só o `run-git.ts` muda.
+
+### 2026-10-19, Tarefa 7: lista de permissão do `runGit` e ambiente do processo
+
+- **Decisão:** `runGit` só roda `status`, `rev-parse`, `symbolic-ref` e `branch --show-current` (os argumentos de `branch` têm de ser exatamente esses). O subcomando precisa ser o primeiro argumento, então `-c`, `-C` e `--exec-path` antes dele são recusados. Qualquer outro comando rejeita com `PERMISSION_DENIED` antes de criar o processo. O `symbolic-ref` escreve quando recebe um segundo nome e quando recebe `-d` ou `-m`, então só vale a forma de leitura: um nome, com as opções `--short`, `-q` ou `--quiet`.
+- **Ambiente:** o processo roda com `LC_ALL=C` (a detecção reconhece "not a git repository" no texto de erro, que sem isso sairia traduzido), `GIT_OPTIONAL_LOCKS=0` (o `status` não regrava o índice, então ler não altera o repositório) e sem `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` e `GIT_COMMON_DIR`, que fariam o Git ignorar a pasta recebida.
+- **Motivo:** RF-GIT-007, seção 17.2 e seção 11 de `docs/regras-subagentes.md`. A API pública de `@project-hub/git-adapter` não exporta nada com `commit`, `push`, `merge`, `fetch` ou `pull` no nome, e um teste confere.
+- **Consequência:** a Tarefa 8 acrescenta `worktree` à lista, com uma entrada aqui dizendo quais formas valem. Subcomando novo não entra sem essa entrada.
+
+### 2026-10-19, Tarefa 7: detecção, status e erros do Git
+
+- **Detecção:** uma pasta é Git quando `rev-parse --is-inside-work-tree` diz `true`, o que inclui subpastas de um repositório. Repositório bare e a pasta `.git` dão `none`. A branch padrão é a que `origin/HEAD` aponta (`symbolic-ref`), senão a branch em uso (`branch --show-current`), e em HEAD destacado sem remoto não há branch.
+- **O que vira `none`:** só a resposta "not a git repository" (código 128). Git ausente, tempo esgotado, pasta recusada por dono diferente (`safe.directory`) e qualquer outra falha sobem como `GitError`: cadastrar como "sem Git" por engano esconderia o problema.
+- **Status:** `getStatus` faz uma chamada só, `status --porcelain=v2 --branch --untracked-files=all -z`. Cada arquivo conta uma vez (renomeado inclusive), e cada arquivo de uma pasta nova conta, e não a pasta. Em HEAD destacado a branch é `HEAD`. Repositório sem commits rejeita, porque não tem `baseCommit`.
+- **Erros:** `GitError` leva `code` e `message` do contrato `AppError`, mais `exitCode` e `stderr`. A saída de erro do Git não entra na mensagem, porque pode trazer conteúdo do repositório (seção 17.1). `GIT_NOT_AVAILABLE` já constava em `ERROR_CODES` (seção 13.7), então não houve código novo nem mudança no teste do contrato. Falha sem código específico usa `UNKNOWN`.
+- **Pendência:** `registerTrustedHandler` converte qualquer exceção em `UNKNOWN` ("Algo deu errado"). Com o Git ausente, o cadastro de um projeto falha com essa mensagem genérica, e a instrução de instalar o Git não chega à tela. Mapear o `code` do `GitError` para a resposta fica para uma tarefa seguinte.
+
+### 2026-10-19, Tarefa 7: `restore` grava a detecção e `addProject` consulta a duplicata antes do Git
+
+- **Contexto:** uma pasta removida pode ter ganhado ou perdido o Git até ser cadastrada de novo, e o `restore` só limpava `removedAt`. Além disso, `addProject` chamava o detector antes de procurar a duplicata, então uma pasta repetida rodava o Git à toa.
+- **Decisão:** `restore(id, updatedAt, git)`, com `git: { repositoryKind; defaultBranch? }`, grava o tipo e a branch padrão da detecção nova, e `defaultBranch: null` quando ela não traz branch. A porta em `packages/application` e o repositório em `packages/database` mudaram juntos. `addProject` procura a duplicata ativa antes de chamar o Git.
+- **Dois lookups:** o Git é assíncrono, então outro cadastro da mesma pasta pode gravar enquanto ele roda. `addProject` repete a consulta depois do `await`, e daí até a escrita não há `await` (a invariante do cadastro continua). Um teste com dois cadastros simultâneos confere que o segundo recebe `PROJECT_ALREADY_EXISTS`, e não um erro do índice único.
