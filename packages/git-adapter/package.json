@@ -1,0 +1,20 @@
+{
+  "name": "@project-hub/git-adapter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@project-hub/application": "workspace:*",
+    "@project-hub/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@project-hub/test-utils": "workspace:*"
+  }
+}

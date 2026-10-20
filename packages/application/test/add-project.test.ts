@@ -1,5 +1,5 @@
 import type { AppResult } from '@project-hub/contracts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addProject, type AddProjectDeps } from '../src/projects/add-project';
 import { fakeFileSystem, fakeGit, fakeRepository } from './fakes';
 
@@ -155,6 +155,88 @@ describe('addProject', () => {
     expect(dataOf(result)).not.toHaveProperty('removedAt');
     expect(repo.records()).toEqual([expect.objectContaining({ id: 'id-1', updatedAt: NOW })]);
     expect(repo.list().map((record) => record.id)).toEqual(['id-1']);
+  });
+
+  it('pasta removida que volta com Git é restaurada como git, com a branch padrão do detector', async () => {
+    const repo = fakeRepository();
+    const context = deps({ repo });
+    await addProject(context, { path: 'C:\\Projetos\\app' });
+    repo.markRemoved('id-1', '2026-10-19T13:00:00.000Z');
+
+    const result = await addProject(
+      { ...context, git: fakeGit({ kind: 'git', defaultBranch: 'main' }), newId: () => 'id-2' },
+      { path: 'C:\\Projetos\\app' },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      data: expect.objectContaining({
+        id: 'id-1',
+        repositoryKind: 'git',
+        defaultBranch: 'main',
+        updatedAt: NOW,
+      }),
+    });
+    expect(dataOf(result)).not.toHaveProperty('removedAt');
+    // O que o banco guardou é o mesmo que a resposta mostra.
+    expect(repo.get('id-1')).toEqual(dataOf(result));
+    expect(repo.list().map((record) => record.id)).toEqual(['id-1']);
+  });
+
+  it('pasta removida que volta sem Git perde o tipo git e a branch padrão antigos', async () => {
+    const repo = fakeRepository();
+    const context = deps({ repo, git: fakeGit({ kind: 'git', defaultBranch: 'main' }) });
+    await addProject(context, { path: 'C:\\Projetos\\app' });
+    repo.markRemoved('id-1', '2026-10-19T13:00:00.000Z');
+
+    const result = await addProject(
+      { ...context, git: fakeGit({ kind: 'none' }), newId: () => 'id-2' },
+      { path: 'C:\\Projetos\\app' },
+    );
+
+    expect(result).toMatchObject({ ok: true, data: { id: 'id-1', repositoryKind: 'none' } });
+    expect(dataOf(result)).not.toHaveProperty('defaultBranch');
+    expect(repo.get('id-1')).toEqual(dataOf(result));
+  });
+
+  it('pasta já cadastrada não roda o Git', async () => {
+    const detect = vi.fn(() => Promise.resolve({ kind: 'none' as const }));
+    const context = deps({ git: { detect } });
+    await addProject(context, { path: 'C:\\Projetos\\app' });
+    detect.mockClear();
+
+    const again = await addProject(
+      { ...context, newId: () => 'id-2' },
+      { path: 'C:\\Projetos\\app' },
+    );
+
+    expect(again).toMatchObject({ ok: false, error: { code: 'PROJECT_ALREADY_EXISTS' } });
+    expect(detect).not.toHaveBeenCalled();
+  });
+
+  // A consulta de duplicata acontece antes do Git, que é assíncrono: a checagem que vale para a gravação
+  // é a de depois dele. Sem ela, o segundo cadastro bateria no índice único e subiria como erro.
+  it('dois cadastros simultâneos da mesma pasta: um grava e o outro recebe PROJECT_ALREADY_EXISTS', async () => {
+    const repo = fakeRepository();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const git = {
+      detect: async () => {
+        await gate;
+        return { kind: 'none' as const };
+      },
+    };
+    const context = deps({ repo, git });
+
+    const first = addProject({ ...context, newId: () => 'id-1' }, { path: 'C:\\Projetos\\app' });
+    const second = addProject({ ...context, newId: () => 'id-2' }, { path: 'C:\\Projetos\\app' });
+    release();
+
+    expect(await first).toMatchObject({ ok: true, data: { id: 'id-1' } });
+    expect(await second).toMatchObject({ ok: false, error: { code: 'PROJECT_ALREADY_EXISTS' } });
+    expect(repo.records().map((record) => record.id)).toEqual(['id-1']);
   });
 
   it('pasta removida cujo diretório sumiu retorna PROJECT_PATH_UNAVAILABLE', async () => {

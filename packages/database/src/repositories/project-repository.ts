@@ -11,8 +11,15 @@ export interface ProjectRepository {
   /** Inclui os removidos: o caminho continua ocupado enquanto o registro existir. */
   findByNormalizedPath(normalizedPath: string): ProjectRecord | undefined;
   markRemoved(id: string, removedAt: string): void;
-  /** Desfaz a remoção lógica: o mesmo registro volta à lista, sem inserir outro. */
-  restore(id: string, updatedAt: string): void;
+  /**
+   * Desfaz a remoção lógica: o mesmo registro volta à lista, sem inserir outro. A detecção nova
+   * substitui o tipo e a branch padrão guardados (sem `defaultBranch`, a branch antiga some).
+   */
+  restore(
+    id: string,
+    updatedAt: string,
+    git: { repositoryKind: 'git' | 'none'; defaultBranch?: string },
+  ): void;
 }
 
 type ProjectRow = typeof projects.$inferSelect;
@@ -83,8 +90,16 @@ export function createProjectRepository(db: AppDatabase): ProjectRepository {
       db.update(projects).set({ removedAt, updatedAt: removedAt }).where(eq(projects.id, id)).run();
     },
 
-    restore(id, updatedAt) {
-      db.update(projects).set({ removedAt: null, updatedAt }).where(eq(projects.id, id)).run();
+    restore(id, updatedAt, git) {
+      db.update(projects)
+        .set({
+          removedAt: null,
+          updatedAt,
+          repositoryKind: git.repositoryKind,
+          defaultBranch: git.defaultBranch ?? null,
+        })
+        .where(eq(projects.id, id))
+        .run();
     },
   };
 }

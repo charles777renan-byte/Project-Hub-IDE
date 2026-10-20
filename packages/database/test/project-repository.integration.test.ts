@@ -115,7 +115,7 @@ describe('ProjectRepository', () => {
     repo.insert(hub);
     repo.markRemoved('p1', '2026-10-19T12:00:00Z');
 
-    repo.restore('p1', '2026-10-19T13:00:00Z');
+    repo.restore('p1', '2026-10-19T13:00:00Z', { repositoryKind: 'git' });
 
     expect(repo.list().map((project) => project.id)).toEqual(['p1']);
     expect(repo.get('p1')).toStrictEqual({
@@ -129,5 +129,31 @@ describe('ProjectRepository', () => {
       createdAt: '2026-10-19T10:00:00Z',
       updatedAt: '2026-10-19T13:00:00Z',
     });
+  });
+
+  it('restaurar grava o tipo e a branch padrão da detecção nova', () => {
+    repo.insert(outro);
+    repo.markRemoved('p2', '2026-10-19T12:00:00Z');
+
+    repo.restore('p2', '2026-10-19T13:00:00Z', { repositoryKind: 'git', defaultBranch: 'main' });
+
+    expect(repo.get('p2')).toMatchObject({
+      repositoryKind: 'git',
+      defaultBranch: 'main',
+      updatedAt: '2026-10-19T13:00:00Z',
+    });
+    expect(repo.get('p2')).not.toHaveProperty('removedAt');
+    expect(repo.list().map((project) => project.id)).toEqual(['p2']);
+  });
+
+  it('restaurar sem Git apaga a branch padrão que o registro tinha', () => {
+    repo.insert({ ...hub, defaultBranch: 'main' });
+    repo.markRemoved('p1', '2026-10-19T12:00:00Z');
+
+    repo.restore('p1', '2026-10-19T13:00:00Z', { repositoryKind: 'none' });
+
+    expect(repo.get('p1')).toMatchObject({ repositoryKind: 'none' });
+    expect(repo.get('p1')).not.toHaveProperty('defaultBranch');
+    expect(repo.get('p1')).not.toHaveProperty('removedAt');
   });
 });

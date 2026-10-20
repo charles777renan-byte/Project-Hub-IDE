@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AddProjectDeps, Platform } from '@project-hub/application';
 import { createProjectRepository, migrateDatabase, openDatabase } from '@project-hub/database';
+import { createGitDetector } from '@project-hub/git-adapter';
 import { createIsDirectory } from './filesystem';
 
 /** Serviços de projetos, com `close` para fechar o banco ao sair do aplicativo. */
@@ -17,7 +18,7 @@ export function platformOf(value: NodeJS.Platform): Platform {
  * Liga as portas dos casos de uso às implementações reais (composição do processo principal). Abre
  * o banco e aplica as migrações antes de devolver os serviços. Se a migração falha, o banco é
  * fechado antes do erro subir: no Windows, o arquivo aberto não pode ser apagado nem trocado. A
- * detecção de Git é um stub até a Tarefa 7 (R3): nenhuma pasta é reconhecida como repositório.
+ * detecção de Git é a real (`createGitDetector`), que roda o `git` do PATH.
  */
 export function createProjectServices(options: {
   dbFile: string;
@@ -34,7 +35,7 @@ export function createProjectServices(options: {
 
   return {
     repo: createProjectRepository(db),
-    git: { detect: () => Promise.resolve({ kind: 'none' as const }) },
+    git: createGitDetector(),
     fs: { isDirectory: createIsDirectory() },
     platform: options.platform,
     now: () => new Date().toISOString(),

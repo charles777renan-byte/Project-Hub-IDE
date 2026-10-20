@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -6,11 +7,17 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createProjectServices, platformOf, type ProjectServices } from '../src/main/composition';
 import { handleAddProject, handleListProjects } from '../src/main/ipc/projects';
 
-// Fluxo real: SQLite num arquivo temporário e pastas de verdade. Só o seletor de pasta fica de fora.
+// Fluxo real: SQLite num arquivo temporário, pastas de verdade e o Git do sistema. Só o seletor de
+// pasta fica de fora.
 
 let dir: string;
 let folder: string;
 let services: ProjectServices;
+
+/** Torna a pasta um repositório Git, sem commits: basta para a detecção. */
+function gitInit(path: string): void {
+  execFileSync('git', ['init', '--initial-branch=main'], { cwd: path, stdio: 'ignore' });
+}
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'project-hub-flow-'));
@@ -38,7 +45,7 @@ describe('cadastro e listagem com banco e pastas reais', () => {
         id: expect.any(String),
         name: 'Ação Hub',
         path: folder,
-        // O detector de Git é um stub até a Tarefa 7 (R3): toda pasta entra como sem Git.
+        // Pasta comum, na pasta temporária do sistema e fora de qualquer repositório: sem Git.
         repositoryKind: 'none',
         available: true,
       },
@@ -46,6 +53,19 @@ describe('cadastro e listagem com banco e pastas reais', () => {
     expect(await handleListProjects(services)).toEqual({
       ok: true,
       data: [expect.objectContaining({ name: 'Ação Hub', path: folder, available: true })],
+    });
+  });
+
+  it('pasta com Git entra como git, e a branch padrão fica no registro', async () => {
+    gitInit(folder);
+
+    const added = await handleAddProject(services, { path: folder });
+
+    expect(added).toMatchObject({ ok: true, data: { name: 'Ação Hub', repositoryKind: 'git' } });
+    if (!added.ok) throw new Error('o cadastro deveria dar certo');
+    expect(services.repo.get(added.data.id)).toMatchObject({
+      repositoryKind: 'git',
+      defaultBranch: 'main',
     });
   });
 
@@ -107,5 +127,22 @@ describe('cadastro e listagem com banco e pastas reais', () => {
       ok: true,
       data: [expect.objectContaining({ id: first.data.id })],
     });
+  });
+
+  it('projeto removido volta como git quando a pasta ganhou Git enquanto estava fora', async () => {
+    const first = await handleAddProject(services, { path: folder });
+    if (!first.ok) throw new Error('o cadastro inicial deveria dar certo');
+    expect(first.data.repositoryKind).toBe('none');
+    services.repo.markRemoved(first.data.id, '2026-10-19T13:00:00.000Z');
+    gitInit(folder);
+
+    const second = await handleAddProject(services, { path: folder });
+
+    expect(second).toMatchObject({ ok: true, data: { id: first.data.id, repositoryKind: 'git' } });
+    expect(services.repo.get(first.data.id)).toMatchObject({
+      repositoryKind: 'git',
+      defaultBranch: 'main',
+    });
+    expect(services.repo.get(first.data.id)).not.toHaveProperty('removedAt');
   });
 });

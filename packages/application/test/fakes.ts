@@ -29,11 +29,14 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       const record = byId.get(id);
       if (record !== undefined) byId.set(id, { ...record, removedAt, updatedAt: removedAt });
     },
-    restore(id, updatedAt) {
+    restore(id, updatedAt, git) {
       const record = byId.get(id);
       if (record === undefined) return;
-      const restored: ProjectRecord = { ...record, updatedAt };
+      // Como o banco: a detecção nova substitui a antiga, inclusive a branch (some se não houver).
+      const restored: ProjectRecord = { ...record, repositoryKind: git.repositoryKind, updatedAt };
       delete restored.removedAt;
+      delete restored.defaultBranch;
+      if (git.defaultBranch !== undefined) restored.defaultBranch = git.defaultBranch;
       byId.set(id, restored);
     },
     records: () => [...byId.values()].map((r) => ({ ...r })),
