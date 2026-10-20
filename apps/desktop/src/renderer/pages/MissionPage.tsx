@@ -48,10 +48,18 @@ type ViewState =
 export function MissionPage() {
   const { projectId = '', missionId = '' } = useParams();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
-  /** Aba que a pessoa escolheu. `null` enquanto ela não escolheu: vale a aba da situação. */
-  const [chosenTab, setChosenTab] = useState<MissionTab | null>(null);
+  /**
+   * Aba que a pessoa escolheu, com a missão a que a escolha vale. Outra missão não herda a escolha, e
+   * sem escolha vale a aba da situação.
+   */
+  const [choice, setChoice] = useState<{ missionId: string; tab: MissionTab } | null>(null);
+  /** Chamadas longas (início, decisão, resposta, nova tentativa). Não bloqueiam os controles. */
   const [busy, setBusy] = useState(false);
+  /** Pausar, retomar e cancelar: cada uma só cobre a própria chamada, e vale com a longa em curso. */
+  const [controlBusy, setControlBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const chosenTab = choice !== null && choice.missionId === missionId ? choice.tab : null;
+  const chooseTab = (tab: MissionTab) => setChoice({ missionId, tab });
   const latestRequest = useRef(0);
 
   const reload = useCallback(async () => {
@@ -80,9 +88,15 @@ export function MissionPage() {
     [missionId, reload],
   );
 
-  /** Roda uma ação da missão. Falha vira mensagem na tela, e a visão é buscada de novo em qualquer caso. */
-  async function run(action: () => Promise<AppResult<unknown>>): Promise<boolean> {
-    setBusy(true);
+  /**
+   * Roda uma ação da missão, marcando `pending` enquanto ela não volta. Falha vira mensagem na tela,
+   * e a visão é buscada de novo em qualquer caso.
+   */
+  async function execute(
+    action: () => Promise<AppResult<unknown>>,
+    setPending: (pending: boolean) => void,
+  ): Promise<boolean> {
+    setPending(true);
     setActionError(null);
     let ok = false;
     try {
@@ -95,10 +109,15 @@ export function MissionPage() {
     } catch {
       setActionError(GENERIC_ERROR);
     }
-    setBusy(false);
+    setPending(false);
     await reload();
     return ok;
   }
+
+  /** Chamada longa: início, decisão, resposta, nova tentativa e planejamento. */
+  const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
+  /** Controle da execução: pausar, retomar e cancelar. Não espera a chamada longa terminar. */
+  const runControl = (action: () => Promise<AppResult<unknown>>) => execute(action, setControlBusy);
 
   if (state.status === 'loading') {
     return <p role="status">Carregando missão…</p>;
@@ -127,8 +146,8 @@ export function MissionPage() {
             <button
               type="button"
               className="btn-outline"
-              disabled={busy}
-              onClick={() => void run(() => window.projectHub.missions.pause(missionId))}
+              disabled={controlBusy}
+              onClick={() => void runControl(() => window.projectHub.missions.pause(missionId))}
             >
               {MISSION_TEXT.pause}
             </button>
@@ -137,8 +156,8 @@ export function MissionPage() {
             <button
               type="button"
               className="btn-primary"
-              disabled={busy}
-              onClick={() => void run(() => window.projectHub.missions.resume(missionId))}
+              disabled={controlBusy}
+              onClick={() => void runControl(() => window.projectHub.missions.resume(missionId))}
             >
               {MISSION_TEXT.resume}
             </button>
@@ -157,8 +176,8 @@ export function MissionPage() {
             <button
               type="button"
               className="btn-danger"
-              disabled={busy}
-              onClick={() => void run(() => window.projectHub.missions.cancel(missionId))}
+              disabled={controlBusy}
+              onClick={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
             >
               Cancelar missão
             </button>
@@ -167,7 +186,7 @@ export function MissionPage() {
         {needsDecisionInConversation(mission.status) ? (
           <p className="mission-notice">
             <StatusChip label={MISSION_TEXT.decisionNotice} tone="violet" />
-            <button type="button" className="btn-link" onClick={() => setChosenTab('conversation')}>
+            <button type="button" className="btn-link" onClick={() => chooseTab('conversation')}>
               {MISSION_TEXT.decisionLink}
             </button>
           </p>
@@ -184,13 +203,7 @@ export function MissionPage() {
         </p>
       )}
 
-      <Tabs
-        label="Seções da missão"
-        tabs={TABS}
-        active={tab}
-        onChange={(id) => setChosenTab(id)}
-        filled
-      />
+      <Tabs label="Seções da missão" tabs={TABS} active={tab} onChange={chooseTab} filled />
       <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
         {tab === 'plan' ? (
           <PlanPanel

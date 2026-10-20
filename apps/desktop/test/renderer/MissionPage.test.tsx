@@ -7,7 +7,7 @@ import type {
   ProjectHubApi,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { Link, MemoryRouter, Route, Routes } from 'react-router';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
@@ -397,5 +397,53 @@ describe('MissionPage: aba da decisão (R182)', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Conversa' }));
 
     expect(screen.getByLabelText('Qual o nome do arquivo?')).toHaveValue('notas');
+  });
+
+  it('ao abrir outra missão, a escolha de aba da anterior não vale: volta a aba da situação', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }));
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <Link to="/projects/p1/missions/m2">outra missão</Link>
+        <Routes>
+          <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole('tab', { name: 'Plano' }));
+
+    await userEvent.click(screen.getByRole('link', { name: 'outra missão' }));
+
+    expect(await screen.findByRole('tab', { name: 'Conversa' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+});
+
+describe('MissionPage: controles sem espera de chamadas longas (R183)', () => {
+  it('com o início ainda pendente, Pausar funciona e chama pause', async () => {
+    const hub = installApi(viewOf({ status: 'queued' }));
+    hub.api.missions.start.mockImplementation(() => new Promise<never>(() => undefined));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Iniciar missão' }));
+    hub.setView(viewOf({ status: 'running' }));
+    hub.emit({ eventType: 'mission.status_changed', payload: { from: 'queued', to: 'running' } });
+
+    const pause = await screen.findByRole('button', { name: 'Pausar' });
+    expect(pause).toBeEnabled();
+    await userEvent.click(pause);
+
+    await waitFor(() => expect(hub.api.missions.pause).toHaveBeenCalledWith('m1'));
+  });
+
+  it('com o início pendente, Cancelar continua habilitado', async () => {
+    const hub = installApi(viewOf({ status: 'queued' }));
+    hub.api.missions.start.mockImplementation(() => new Promise<never>(() => undefined));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Iniciar missão' }));
+
+    expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeEnabled();
   });
 });

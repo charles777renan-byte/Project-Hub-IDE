@@ -332,3 +332,10 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 
 - **Decisão:** a aba inicial é a Conversa quando a missão está em `waiting_approval` ou `waiting_input`, e o Plano nos outros casos. Enquanto a pessoa não escolhe uma aba, a escolha segue a situação. Um aviso no cabeçalho ("Aguarda sua decisão") leva à Conversa. A Conversa fica montada e escondida quando outra aba está ativa.
 - **Motivo:** a resposta digitada é estado da tela. Desmontar a Conversa perderia o texto não enviado.
+
+### 2026-10-20, Tarefa 10b (rodada de correção): capacidade de pausa e estado de controle separado
+
+- **Decisão:** antes de `session.pause()` ou `session.resume()`, o orquestrador consulta `getCapabilities` e checa `pauseResume`. Se for `false`, devolve `AGENT_CAPABILITY_UNSUPPORTED` (código novo em `ERROR_CODES`, porque nenhum código da seção 13.7 descreve um agente que não pausa), sem chamar o agente e sem mudar o estado. A view da missão não leva a capacidade, então o botão Pausar continua visível e a recusa aparece como erro na tela.
+- **Decisão:** a tela tem dois estados de espera. `busy` cobre as chamadas longas (início, decisão, resposta, nova tentativa e plano). `controlBusy` cobre só a chamada de pausar, retomar ou cancelar, então os controles funcionam com um início ainda pendente.
+- **Motivo:** o início espera o `drive()`, que só termina quando a missão para numa aprovação, numa entrada ou no fim. Desabilitar a pausa durante essa espera impediria o controle que a especificação pede.
+- **Consequência:** duas chamadas concorrentes de pausa ou de retomada não se desfazem. A segunda vê o estado pedido, termina com sucesso e não chama o desfazer.

@@ -182,20 +182,22 @@ describe('pausa, retomada e nova tentativa (R180, R181)', () => {
       queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const results = await Promise.all([
+        fake.call(CHANNELS.missionsPause, 'https://site.invalido/', { missionId: 'm1' }),
+        fake.call(CHANNELS.missionsResume, 'https://site.invalido/', { missionId: 'm1' }),
+        fake.call(CHANNELS.missionsRetry, 'https://site.invalido/', { missionId: 'm1' }),
+      ]);
 
-    const results = await Promise.all([
-      fake.call(CHANNELS.missionsPause, 'https://site.invalido/', { missionId: 'm1' }),
-      fake.call(CHANNELS.missionsResume, 'https://site.invalido/', { missionId: 'm1' }),
-      fake.call(CHANNELS.missionsRetry, 'https://site.invalido/', { missionId: 'm1' }),
-    ]);
-
-    for (const result of results) {
-      expect(result).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+      for (const result of results) {
+        expect(result).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+      }
+      expect(orchestrator.pauseMission).not.toHaveBeenCalled();
+      expect(orchestrator.resumeMission).not.toHaveBeenCalled();
+      expect(orchestrator.retryMission).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
     }
-    expect(orchestrator.pauseMission).not.toHaveBeenCalled();
-    expect(orchestrator.resumeMission).not.toHaveBeenCalled();
-    expect(orchestrator.retryMission).not.toHaveBeenCalled();
-    error.mockRestore();
   });
 });
 

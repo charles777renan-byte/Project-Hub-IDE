@@ -36,6 +36,10 @@ export type FakeSession = {
 export type FakeAgent = AgentAdapter & {
   readonly starts: AgentStartInput[];
   readonly sessions: FakeSession[];
+  /** Muda a capacidade `pauseResume` que `getCapabilities` devolve, a partir de agora. */
+  setPauseResume(value: boolean): void;
+  /** Roda dentro de `pause()`, antes de a pausa voltar ao orquestrador. Simula uma troca de estado concorrente. */
+  setPauseHook(hook: () => void): void;
 };
 
 const AT = '2026-10-20T10:00:00.000Z';
@@ -74,6 +78,8 @@ export type FakeAgentOptions = {
   failPause?: boolean;
   /** `resume()` rejeita. */
   failResume?: boolean;
+  /** Capacidade `pauseResume` declarada. Padrão: `true`. */
+  pauseResume?: boolean;
 };
 
 /**
@@ -85,13 +91,21 @@ export type FakeAgentOptions = {
 export function fakeAgent(scripts: FakeStep[][], options: FakeAgentOptions = {}): FakeAgent {
   const starts: AgentStartInput[] = [];
   const sessions: FakeSession[] = [];
+  const hooks: { onPause?: () => void } = {};
+  let pauseResume = options.pauseResume !== false;
   let count = 0;
   return {
     type: 'fake',
     starts,
     sessions,
     probe: () => Promise.resolve({ available: true }),
-    getCapabilities: () => Promise.resolve(CAPABILITIES),
+    getCapabilities: () => Promise.resolve({ ...CAPABILITIES, pauseResume }),
+    setPauseResume(value) {
+      pauseResume = value;
+    },
+    setPauseHook(hook) {
+      hooks.onPause = hook;
+    },
     start(input) {
       starts.push(input);
       if (starts.length <= (options.failStarts ?? 0)) {
@@ -108,7 +122,7 @@ export function fakeAgent(scripts: FakeStep[][], options: FakeAgentOptions = {})
         releaseHold: () => undefined,
       };
       sessions.push(record);
-      return Promise.resolve(createFakeSession(script, record, options));
+      return Promise.resolve(createFakeSession(script, record, options, hooks));
     },
   };
 }
@@ -118,6 +132,7 @@ function createFakeSession(
   script: FakeStep[],
   record: FakeSession,
   options: FakeAgentOptions,
+  hooks: { onPause?: () => void },
 ): AgentSession {
   let halted = false;
   const halt = deferred<void>();
@@ -229,6 +244,7 @@ function createFakeSession(
       if (options.failPause === true) {
         return Promise.reject(new Error('pausa recusada pelo agente de teste'));
       }
+      hooks.onPause?.();
       pausedGate ??= deferred<void>();
       return Promise.resolve();
     },

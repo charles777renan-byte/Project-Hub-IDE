@@ -20,6 +20,7 @@ type HarnessOptions = {
   failStop?: boolean;
   failPause?: boolean;
   failResume?: boolean;
+  pauseResume?: boolean;
   worktreeFailure?: { code: string; message: string };
   repositoryKind?: 'git' | 'none';
 };
@@ -50,6 +51,7 @@ function harness(options: HarnessOptions = {}): Harness {
     failStop: options.failStop === true,
     failPause: options.failPause === true,
     failResume: options.failResume === true,
+    pauseResume: options.pauseResume !== false,
   });
   let tick = 0;
   let ids = 0;
@@ -817,38 +819,167 @@ describe('pausa e retomada (R181)', () => {
 
   it('agente que recusa a pausa devolve AGENT_UNAVAILABLE e a missão segue running', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const h = harness({
-      scripts: [
-        [{ kind: 'hold' }, { kind: 'event', event: { type: 'message.delta', content: 'x' } }],
-      ],
-      failPause: true,
-    });
-    h.repo.insertMission(missionFixture());
-    const starting = h.orchestrator.startMission(MISSION);
-    await until(() => h.repo.getMission(MISSION)?.status === 'running');
+    try {
+      const h = harness({
+        scripts: [
+          [{ kind: 'hold' }, { kind: 'event', event: { type: 'message.delta', content: 'x' } }],
+        ],
+        failPause: true,
+      });
+      h.repo.insertMission(missionFixture());
+      const starting = h.orchestrator.startMission(MISSION);
+      await until(() => h.repo.getMission(MISSION)?.status === 'running');
 
-    expect(codeOf(await h.orchestrator.pauseMission(MISSION))).toBe('AGENT_UNAVAILABLE');
-    expect(h.repo.getMission(MISSION)?.status).toBe('running');
+      expect(codeOf(await h.orchestrator.pauseMission(MISSION))).toBe('AGENT_UNAVAILABLE');
+      expect(h.repo.getMission(MISSION)?.status).toBe('running');
 
-    h.agent.sessions[0]?.releaseHold();
-    expect(data(await starting)).toMatchObject({ status: 'succeeded' });
-    error.mockRestore();
+      h.agent.sessions[0]?.releaseHold();
+      expect(data(await starting)).toMatchObject({ status: 'succeeded' });
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it('agente que recusa a retomada devolve AGENT_UNAVAILABLE e a missão segue paused', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const h = harness({ scripts: [[{ kind: 'hold' }]], failResume: true });
+    try {
+      const h = harness({ scripts: [[{ kind: 'hold' }]], failResume: true });
+      h.repo.insertMission(missionFixture());
+      const starting = h.orchestrator.startMission(MISSION);
+      await until(() => h.repo.getMission(MISSION)?.status === 'running');
+      data(await h.orchestrator.pauseMission(MISSION));
+
+      expect(codeOf(await h.orchestrator.resumeMission(MISSION))).toBe('AGENT_UNAVAILABLE');
+      expect(h.repo.getMission(MISSION)?.status).toBe('paused');
+
+      data(await h.orchestrator.cancelMission(MISSION));
+      await starting;
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it('capacidade pauseResume falsa: pausar devolve AGENT_CAPABILITY_UNSUPPORTED, o agente não recebe pause() e o estado não muda', async () => {
+    const h = harness({ scripts: [[{ kind: 'hold' }]], pauseResume: false });
+    h.repo.insertMission(missionFixture());
+    const starting = h.orchestrator.startMission(MISSION);
+    await until(() => h.repo.getMission(MISSION)?.status === 'running');
+
+    expect(codeOf(await h.orchestrator.pauseMission(MISSION))).toBe('AGENT_CAPABILITY_UNSUPPORTED');
+    expect(h.agent.sessions[0]?.pauses).toBe(0);
+    expect(h.repo.getMission(MISSION)?.status).toBe('running');
+    expect(h.repo.listExecutions(MISSION)[0]?.status).toBe('running');
+
+    data(await h.orchestrator.cancelMission(MISSION));
+    await starting;
+  });
+
+  it('capacidade pauseResume falsa: retomar devolve AGENT_CAPABILITY_UNSUPPORTED e não chama resume()', async () => {
+    const h = harness({ scripts: [[{ kind: 'hold' }]] });
+    h.repo.insertMission(missionFixture());
+    const starting = h.orchestrator.startMission(MISSION);
+    await until(() => h.repo.getMission(MISSION)?.status === 'running');
+    data(await h.orchestrator.pauseMission(MISSION));
+    h.agent.setPauseResume(false);
+
+    expect(codeOf(await h.orchestrator.resumeMission(MISSION))).toBe(
+      'AGENT_CAPABILITY_UNSUPPORTED',
+    );
+    expect(h.agent.sessions[0]?.resumes).toBe(0);
+    expect(h.repo.getMission(MISSION)?.status).toBe('paused');
+
+    data(await h.orchestrator.cancelMission(MISSION));
+    await starting;
+  });
+
+  it('a execução termina entre a pausa do agente e a transação: MISSION_INVALID_STATE, e o agente volta a rodar', async () => {
+    const h = harness({ scripts: [[{ kind: 'hold' }]] });
+    h.repo.insertMission(missionFixture());
+    void h.orchestrator.startMission(MISSION);
+    await until(() => h.repo.getMission(MISSION)?.status === 'running');
+    h.agent.setPauseHook(() => {
+      const [execution] = h.repo.listExecutions(MISSION);
+      if (execution === undefined) throw new Error('sem execução');
+      h.repo.updateExecution(execution.id, {
+        status: 'cancelled',
+        exitReason: 'cancelled_by_user',
+        finishedAt: T0,
+      });
+      h.repo.updateMission(MISSION, { status: 'cancelled', finishedAt: T0, updatedAt: T0 });
+    });
+
+    expect(codeOf(await h.orchestrator.pauseMission(MISSION))).toBe('MISSION_INVALID_STATE');
+    expect(h.agent.sessions[0]?.resumes).toBe(1);
+    expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
+  });
+
+  it('duas pausas concorrentes: a segunda vê a pausa já feita, não desfaz nada e termina ok', async () => {
+    const h = harness({ scripts: [[{ kind: 'hold' }]] });
+    h.repo.insertMission(missionFixture());
+    const starting = h.orchestrator.startMission(MISSION);
+    await until(() => h.repo.getMission(MISSION)?.status === 'running');
+
+    const results = await Promise.all([
+      h.orchestrator.pauseMission(MISSION),
+      h.orchestrator.pauseMission(MISSION),
+    ]);
+
+    expect(results).toEqual([
+      { ok: true, data: undefined },
+      { ok: true, data: undefined },
+    ]);
+    expect(h.agent.sessions[0]?.resumes).toBe(0);
+    expect(h.repo.getMission(MISSION)?.status).toBe('paused');
+    data(await h.orchestrator.cancelMission(MISSION));
+    await starting;
+  });
+
+  it('duas retomadas concorrentes: a segunda vê a retomada já feita, não pausa de volta e termina ok', async () => {
+    const h = harness({ scripts: [[{ kind: 'hold' }]] });
     h.repo.insertMission(missionFixture());
     const starting = h.orchestrator.startMission(MISSION);
     await until(() => h.repo.getMission(MISSION)?.status === 'running');
     data(await h.orchestrator.pauseMission(MISSION));
 
-    expect(codeOf(await h.orchestrator.resumeMission(MISSION))).toBe('AGENT_UNAVAILABLE');
-    expect(h.repo.getMission(MISSION)?.status).toBe('paused');
+    const results = await Promise.all([
+      h.orchestrator.resumeMission(MISSION),
+      h.orchestrator.resumeMission(MISSION),
+    ]);
 
+    expect(results).toEqual([
+      { ok: true, data: undefined },
+      { ok: true, data: undefined },
+    ]);
+    expect(h.agent.sessions[0]?.pauses).toBe(1);
+    expect(h.repo.getMission(MISSION)?.status).toBe('running');
     data(await h.orchestrator.cancelMission(MISSION));
     await starting;
-    error.mockRestore();
+  });
+
+  it('pausar e retomar gravam execution.paused e depois execution.resumed, nessa ordem, com sequence crescente', async () => {
+    const h = harness({ scripts: [[{ kind: 'hold' }]] });
+    h.repo.insertMission(missionFixture());
+    const starting = h.orchestrator.startMission(MISSION);
+    await until(() => h.repo.getMission(MISSION)?.status === 'running');
+    data(await h.orchestrator.pauseMission(MISSION));
+    data(await h.orchestrator.resumeMission(MISSION));
+
+    const [execution] = h.repo.listExecutions(MISSION);
+    const changes = h.repo
+      .audit()
+      .filter(
+        (e) =>
+          e.aggregateId === execution?.id &&
+          (e.eventType === 'execution.paused' || e.eventType === 'execution.resumed'),
+      );
+    expect(changes.map((e) => [e.eventType, e.actor])).toEqual([
+      ['execution.paused', 'user'],
+      ['execution.resumed', 'user'],
+    ]);
+    const [paused, resumed] = changes;
+    expect(resumed?.sequence ?? 0).toBeGreaterThan(paused?.sequence ?? 0);
+    data(await h.orchestrator.cancelMission(MISSION));
+    await starting;
   });
 });
 
