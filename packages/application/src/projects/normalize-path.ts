@@ -8,12 +8,15 @@ export function platformPaths(platform: Platform): PlatformPath {
   return platform === 'win32' ? win32 : posix;
 }
 
-/** Raiz de Windows que conta como absoluta: letra de unidade (`C:\`) ou compartilhamento UNC (`\\servidor\pasta\`). */
-const WINDOWS_ABSOLUTE_ROOT = /^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/]+[\\/]+[^\\/]+[\\/])$/;
+/**
+ * Raiz de Windows que conta como absoluta: letra de unidade (`C:\`) ou compartilhamento UNC
+ * (`\\servidor\pasta`, com ou sem a barra final, que o parse do Windows nem sempre traz).
+ */
+const WINDOWS_ABSOLUTE_ROOT = /^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/]+[\\/]+[^\\/]+(?:[\\/]|$))$/;
 
 /**
  * Diz se `input` é absoluto para a plataforma. No Windows, `\app` tem raiz mas não é absoluto: falta
- * a unidade ou o compartilhamento (R73). No Linux e no macOS vale a regra do POSIX.
+ * a unidade ou o compartilhamento. No Linux e no macOS vale a regra do POSIX.
  */
 export function isAbsoluteProjectPath(input: string, platform: Platform): boolean {
   if (platform !== 'win32') return posix.isAbsolute(input);

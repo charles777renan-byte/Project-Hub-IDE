@@ -52,6 +52,16 @@ async function confirmExternal(owner: BrowserWindow, url: string): Promise<boole
   return response === 0;
 }
 
+/**
+ * Falha de inicialização, vinda do `whenReady` ou do carregamento da janela. Sem janela, a caixa
+ * nativa é a única forma de mostrar o erro, e o processo encerra com código 1.
+ */
+const startupFailure = {
+  log: (cause: unknown) => console.error('Falha ao iniciar o aplicativo:', cause),
+  showError: (message: string) => dialog.showErrorBox('Project Hub', message),
+  exit: (code: number) => app.exit(code),
+};
+
 function createMainWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -70,11 +80,11 @@ function createMainWindow(): void {
       ? mainWindow.loadFile(join(rendererDirectory, 'index.html'))
       : mainWindow.loadURL(devServerUrl);
   loading.catch((error: unknown) => {
-    console.error('Falha ao carregar o renderer:', error);
+    handleStartupFailure(error, startupFailure);
   });
 }
 
-/** Todo canal IPC confere o remetente antes de responder (R65): só o quadro do aplicativo passa. */
+/** Todo canal IPC confere o remetente antes de responder: só o quadro do aplicativo passa. */
 const isTrustedSender = (event: IpcMainInvokeEvent): boolean =>
   isTrustedSenderUrl(event.senderFrame?.url ?? '', appOrigin, rendererDirectory);
 
@@ -110,12 +120,7 @@ app
     });
   })
   .catch((error: unknown) => {
-    // Sem janela, o app não tem onde mostrar o erro: a caixa nativa mostra, e o processo encerra (R70).
-    handleStartupFailure(error, {
-      log: (cause) => console.error('Falha ao iniciar o aplicativo:', cause),
-      showError: (message) => dialog.showErrorBox('Project Hub', message),
-      exit: (code) => app.exit(code),
-    });
+    handleStartupFailure(error, startupFailure);
   });
 
 app.on('window-all-closed', () => {

@@ -18,6 +18,21 @@ describe('handleStartupFailure', () => {
     );
   });
 
+  it('se a caixa falhar ao abrir, a saída com código 1 acontece mesmo assim', () => {
+    const io = {
+      log: vi.fn(),
+      showError: vi.fn(() => {
+        throw new Error('caixa indisponível');
+      }),
+      exit: vi.fn(),
+    };
+
+    expect(() => handleStartupFailure(new Error('banco ilegível'), io)).toThrow(
+      'caixa indisponível',
+    );
+    expect(io.exit).toHaveBeenCalledWith(1);
+  });
+
   it('um erro que não é Error também aparece como texto legível na caixa', () => {
     const io = { log: vi.fn(), showError: vi.fn(), exit: vi.fn() };
 
