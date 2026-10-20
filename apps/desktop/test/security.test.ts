@@ -7,6 +7,7 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   applyContentSecurityPolicy,
   CONTENT_SECURITY_POLICY,
+  confirmUnlessClosing,
   denyAllPermissions,
   isAllowedExternalUrl,
   isAllowedNavigation,
@@ -720,5 +721,30 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     );
     expect(removed).toEqual([CHANNELS.missionsEvent]);
     warn.mockRestore();
+  });
+});
+
+describe('confirmUnlessClosing', () => {
+  it('fechando, devolve false sem abrir o diálogo', async () => {
+    const ask = vi.fn(() => Promise.resolve(true));
+
+    await expect(confirmUnlessClosing(() => true, ask)).resolves.toBe(false);
+
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it('sem fechar, devolve a resposta da pessoa', async () => {
+    await expect(
+      confirmUnlessClosing(
+        () => false,
+        () => Promise.resolve(true),
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      confirmUnlessClosing(
+        () => false,
+        () => Promise.resolve(false),
+      ),
+    ).resolves.toBe(false);
   });
 });
