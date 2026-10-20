@@ -89,6 +89,7 @@ describe('cadastro e listagem com banco e pastas reais', () => {
       createProjectServices({ dbFile: legacyFile, platform: platformOf(process.platform) }),
     ).toThrow(/CREATE UNIQUE INDEX/);
     // No Windows, um arquivo com handle aberto não pode ser apagado: a remoção só passa se o banco fechou.
+    // Esta asserção só distingue o fechamento no Windows: em Linux e macOS, apagar arquivo aberto passa de qualquer jeito.
     expect(() => rmSync(legacyDir, { recursive: true, force: true })).not.toThrow();
     expect(existsSync(legacyDir)).toBe(false);
   });

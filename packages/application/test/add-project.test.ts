@@ -108,6 +108,20 @@ describe('addProject', () => {
     });
   });
 
+  // A raiz UNC sem barra final é raiz real do Windows: o win32 a devolve sem a barra no parse.
+  it('aceita a raiz UNC sem barra final, que é a raiz de um compartilhamento', async () => {
+    const context = deps({
+      fs: fakeFileSystem(['\\\\servidor\\pasta\\'], { caseInsensitive: true }),
+    });
+
+    const result = await addProject(context, { path: '\\\\servidor\\pasta' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { name: 'pasta', path: '\\\\servidor\\pasta\\' },
+    });
+  });
+
   it('no Linux, caixa diferente é outra pasta', async () => {
     const context = deps({
       platform: 'linux',

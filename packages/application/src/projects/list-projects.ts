@@ -32,7 +32,7 @@ export async function listProjects(deps: ListProjectsDeps): Promise<AppResult<Pr
 
 /**
  * Diz se a pasta do projeto está disponível. Erro ao consultar (sem permissão, por exemplo) não
- * derruba a listagem: o projeto sai indisponível, e o erro é registrado (R78).
+ * derruba a listagem: o projeto sai indisponível, e o erro é registrado.
  */
 async function isAvailable(fs: FileSystemPort, project: ProjectRecord): Promise<boolean> {
   try {

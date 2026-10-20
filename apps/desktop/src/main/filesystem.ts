@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 /** Consulta de metadados de um caminho, como `fs.promises.stat`. Injetável para testar os erros. */
 export type StatPath = (path: string) => Promise<{ isDirectory(): boolean }>;
 
-/** Códigos que querem dizer "a pasta não está lá". Só esses viram `false` (R73). */
+/** Códigos que querem dizer "a pasta não está lá". Só esses viram `false`. */
 const MISSING_CODES = new Set(['ENOENT', 'ENOTDIR']);
 
 function isMissing(error: unknown): boolean {
