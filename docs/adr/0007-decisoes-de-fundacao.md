@@ -89,7 +89,7 @@ Dependências novas entram com versão exata (`saveExact: true` em `pnpm-workspa
 ## 8. Convenções de teste e de build
 
 - **Nome dos testes:** `*.test.ts` e `*.test.tsx` são unitários. Os do renderer ficam em `apps/desktop/test/renderer/` e rodam em jsdom (ver "Registros posteriores"). Testes com recursos reais (Git ou SQLite) usam `*.integration.test.ts`. `pnpm test` roda tudo menos os de integração, e `pnpm test:integration` roda só eles. Os testes de ponta a ponta do Playwright usam `*.spec.ts`.
-- **Build provisório:** até a Tarefa 12, `pnpm build` só confere os tipos (`pnpm typecheck`). A Tarefa 12 troca esse script pelo build real dos bundles.
+- **Build:** `pnpm build` roda o build real dos bundles com electron-vite desde a Tarefa 12.1 (ver "Registros posteriores", entrada da Tarefa 12.1). O renderer sai minificado desde a Tarefa 12.2. Os tipos continuam sendo conferidos por `pnpm typecheck`, que faz parte do gate.
 - **Pacotes:** `packages/<pasta>` e `apps/<pasta>` têm o nome `@project-hub/<pasta>`. Os pacotes de `packages/` não importam Electron (seção 8.3), e uma regra do ESLint confere isso.
 
 ## Registros posteriores
@@ -378,3 +378,12 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Decisão:** `apps/desktop` ganha o script `build` (`electron-vite build`), e o `build` da raiz vira `pnpm --filter @project-hub/desktop build`. Isso substitui o build provisório da seção 8, que só rodava `pnpm typecheck`. O `build` não chama `install-electron`, porque não precisa do binário do Electron. O `test:e2e` continua com o próprio passo de build.
 - **Saída (como saiu no primeiro build):** `apps/desktop/out/main/index.js` (processo principal, ES module), `out/preload/index.cjs` (CommonJS), `out/renderer/` (`index.html` e `assets/`) e `out/migrations/` (cópia de `packages/database/migrations`, feita pelo plugin do `electron.vite.config.ts`). A pasta `out/` já está no `.gitignore`.
 - **Consequência:** o build imprime um aviso de `"use client"` vindo do `react-router` 8.4.0, que fica para a Tarefa 12.2.
+
+### 2026-10-20, Tarefa 12.2: renderer minificado e aviso use client tratado
+
+- **Causa do bundle de 735 kB:** o preset de configuração do renderer do electron-vite força `build.minify: false` (`node_modules/electron-vite/dist/chunks/lib-DoUt4oMD.js`). O padrão do Vite 8 para clientes seria `oxc`, mas o preset vence. O tamanho não vinha das dependências: react-dom e react-router já entravam em produção, só sem minificar.
+- **Decisão:** `renderer.build.minify: true` em `apps/desktop/electron.vite.config.ts` (no Vite 8, `true` vira `oxc`). O CSS segue ligado por `<link>`, e o layout de `out/renderer/` (`index.html` e `assets/`) não mudou. `main` e `preload` não mudaram.
+- **Aviso `MODULE_LEVEL_DIRECTIVE`:** filtro em `build.rolldownOptions.onwarn`, estreito: só o código `MODULE_LEVEL_DIRECTIVE` e só o arquivo `react-router/dist/production/index.js`. Os demais avisos seguem para o `defaultHandler`. A justificativa está no próprio config: `"use client"` é marca de React Server Components, e o app é só cliente, rodando no Chromium do Electron, onde a diretiva é uma string sem efeito.
+- **Tamanho (JS do renderer, `pnpm build`):** antes 735.37 kB (735 379 bytes), depois 279.14 kB (279 144 bytes), queda de 62%. CSS: de 10.95 kB para 7.53 kB.
+- **Prova:** com o filtro desligado (regex que não casa), o aviso volta. Com o filtro, o build sai com código 0 e sem o aviso. Gate da raiz: `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test` (653 testes), `pnpm test:integration` (176) e `pnpm test:e2e` (14, incluindo a CSP) passaram.
+- **Resíduo:** o filtro depende do caminho do arquivo. Se uma versão nova do react-router mudar esse caminho, o aviso volta e a regex precisa de ajuste.

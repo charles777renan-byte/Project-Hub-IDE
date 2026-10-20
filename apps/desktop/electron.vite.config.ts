@@ -26,6 +26,11 @@ function copyMigrations(): Plugin {
   };
 }
 
+/**
+ * Arquivo do react-router em produção que traz `"use client"` no topo. Só este arquivo entra no filtro.
+ */
+const REACT_ROUTER_PROD_ENTRY = /[\\/]react-router[\\/]dist[\\/]production[\\/]index\.js/;
+
 export default defineConfig({
   main: {
     plugins: [copyMigrations()],
@@ -38,5 +43,25 @@ export default defineConfig({
       },
     },
   },
-  renderer: {},
+  renderer: {
+    build: {
+      // O preset do electron-vite força `minify: false` no renderer. Com `true`, o Vite 8 usa o oxc.
+      minify: true,
+      rolldownOptions: {
+        onwarn(warning, defaultHandler) {
+          // A diretiva "use client" é marca para bundlers de React Server Components. Este app é só
+          // cliente e roda no Chromium do Electron, onde a diretiva é uma string sem efeito. Por isso o
+          // aviso MODULE_LEVEL_DIRECTIVE não indica risco neste bundle. O filtro é estreito: só esse
+          // código e só o arquivo do react-router. Os demais avisos seguem para o handler padrão.
+          if (
+            warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
+            REACT_ROUTER_PROD_ENTRY.test(warning.id ?? warning.message ?? '')
+          ) {
+            return;
+          }
+          defaultHandler(warning);
+        },
+      },
+    },
+  },
 });
