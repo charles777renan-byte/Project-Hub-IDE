@@ -62,6 +62,36 @@ export function resolveWorktreesRoot(env: NodeJS.ProcessEnv, homeDir: string): s
 }
 
 /**
+ * Arquivo do banco (R189). `PROJECT_HUB_DATA_DIR` aponta a pasta de dados, a mesma de onde sai a
+ * raiz dos worktrees: os testes de ponta a ponta usam uma pasta descartável por teste. Sem a
+ * variável, o banco fica na pasta `userData` do Electron.
+ */
+export function resolveDatabaseFile(env: NodeJS.ProcessEnv, userDataDir: string): string {
+  const dataDir = env['PROJECT_HUB_DATA_DIR'];
+  const base = dataDir !== undefined && dataDir !== '' ? dataDir : userDataDir;
+  return join(base, 'database', 'project-hub.sqlite');
+}
+
+/** Seletor de pasta: devolve o caminho escolhido, ou null quando a pessoa cancela. */
+export type DirectoryChooser<Args extends unknown[]> = (...args: Args) => Promise<string | null>;
+
+/**
+ * Seletor de pasta dos testes de ponta a ponta (R189). Só com `PROJECT_HUB_ENV=test` e
+ * `PROJECT_HUB_TEST_DIALOG_PATH` preenchida, o seletor devolve esse caminho sem abrir o diálogo
+ * nativo, que o Playwright não alcança. Em qualquer outro caso, a variável do caminho é ignorada e
+ * vale o seletor real. Só o seletor de pasta é trocado: nenhuma outra porta lê essas variáveis.
+ */
+export function resolveDirectoryChooser<Args extends unknown[]>(
+  env: NodeJS.ProcessEnv,
+  native: DirectoryChooser<Args>,
+): DirectoryChooser<Args> {
+  const testPath =
+    env['PROJECT_HUB_ENV'] === 'test' ? env['PROJECT_HUB_TEST_DIALOG_PATH'] : undefined;
+  if (testPath === undefined || testPath === '') return native;
+  return () => Promise.resolve(testPath);
+}
+
+/**
  * Liga as portas dos casos de uso às implementações reais (composição do processo principal). Abre
  * o banco, aplica as migrações e trata as execuções que ficaram abertas antes de devolver os
  * serviços (seção 15.7). Se a migração falha, o banco é fechado antes do erro subir: no Windows, o

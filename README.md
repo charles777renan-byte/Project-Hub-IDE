@@ -42,11 +42,11 @@ Copie `.env.example` para `.env` se quiser mudar alguma variável. O `.env` não
 | `pnpm typecheck`        | Roda o `tsc` na raiz e o script `typecheck` de cada pacote.                                 |
 | `pnpm test`             | Testes unitários: `*.test.ts` no Node e `*.test.tsx` do renderer, em jsdom.                 |
 | `pnpm test:integration` | Testes com Git ou SQLite reais (`*.integration.test.ts`).                                   |
-| `pnpm test:e2e`         | Testes de ponta a ponta com Playwright. Delega ao pacote `@project-hub/desktop`.            |
+| `pnpm test:e2e`         | Constrói o app e roda o E2E (Playwright). Filtro: `pnpm test:e2e security`.                 |
 | `pnpm db:generate`      | Gera migrações. Delega ao pacote `@project-hub/database`.                                   |
 | `pnpm db:migrate`       | Aplica migrações. Delega ao pacote `@project-hub/database`.                                 |
 
-`test:e2e`, `db:generate` e `db:migrate` delegam a pacotes ou scripts que chegam nas próximas tarefas e, até lá, terminam com erro. Na primeira vez, `pnpm dev` baixa o binário do Electron (ADR 0007, "Registros posteriores").
+`db:generate` e `db:migrate` delegam a scripts que chegam nas próximas tarefas e, até lá, terminam com erro. Na primeira vez, `pnpm dev` baixa o binário do Electron (ADR 0007, "Registros posteriores").
 
 ## Estrutura
 

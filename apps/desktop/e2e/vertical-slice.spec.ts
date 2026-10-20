@@ -1,0 +1,225 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { basename, isAbsolute, join, relative } from 'node:path';
+import type { Page } from '@playwright/test';
+import { createMissionRepository, openDatabase } from '@project-hub/database';
+import { expect, test } from './fixtures';
+
+// Critério de saída da etapa (seção 22) e Review Focus 5 do plano, pela interface real: a janela do
+// Electron construído, o IPC, o SQLite, o Git e o agente simulado de demonstração. O agente simula
+// sempre o mesmo roteiro: grava `project-hub-demo.md` no worktree e pede aprovação antes de
+// terminar. Os textos esperados são os da interface (`mission-text.ts` e os componentes).
+
+const MISSION = {
+  title: 'Criar arquivo de demonstração',
+  objective: 'Gravar o arquivo de demonstração no worktree da missão.',
+  criterion: 'O arquivo project-hub-demo.md existe no worktree',
+};
+
+/** Aviso do cabeçalho enquanto a missão espera uma decisão na Conversa (R182). */
+const MISSION_NOTICE = 'Aguarda sua decisão';
+
+const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
+
+/** Abre Projetos e cadastra a pasta que o seletor de teste devolve. Confere nome, tipo e branch. */
+async function addGitProject(page: Page, projectName: string): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Principal' })
+    .getByRole('link', { name: 'Projetos' })
+    .click();
+  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
+
+  const card = page
+    .getByRole('list', { name: 'Projetos cadastrados' })
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('heading', { name: projectName }) });
+  await expect(card.getByText('Repositório Git')).toBeVisible();
+  await expect(card.getByText('Branch padrão: main')).toBeVisible();
+}
+
+/** Do catálogo de projetos para a aba Missões do projeto. */
+async function openProject(page: Page, projectName: string): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Principal' })
+    .getByRole('link', { name: 'Projetos' })
+    .click();
+  await page.getByRole('link', { name: projectName }).click();
+  await expect(page.getByText('Branch: main')).toBeVisible();
+}
+
+/** Cria a missão pelo formulário. A criação gera o plano e abre o workspace da missão. */
+async function createMission(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Criar missão' }).click();
+  const form = page.getByRole('form', { name: 'Nova missão' });
+  await form.getByLabel('Título').fill(MISSION.title);
+  await form.getByLabel('Objetivo').fill(MISSION.objective);
+  await form.getByLabel('Critérios de aceite').fill(MISSION.criterion);
+  await form.getByLabel('Esta missão altera código').check();
+  await form.getByRole('button', { name: 'Criar missão' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
+}
+
+/** Plano gerado e visível; aprova o plano e inicia a missão até o agente pedir aprovação. */
+async function approvePlanAndStart(page: Page): Promise<void> {
+  await expect(page.getByText('Aguarda aprovação do plano', { exact: true })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Etapas do plano' })).toBeVisible();
+  await page.getByRole('button', { name: 'Aprovar plano' }).click();
+
+  await expect(page.getByText('Plano aprovado, na fila', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Iniciar missão' }).click();
+
+  // A missão para no pedido de aprovação do agente, e a página abre na aba Conversa.
+  await expect(page.getByText('Aguarda sua aprovação', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
+}
+
+/** Caminho do worktree que o cabeçalho da missão mostra. */
+async function worktreePathOf(page: Page): Promise<string> {
+  const meta = await page.getByText(/ · worktree /).textContent();
+  const path = meta?.split(' · worktree ')[1]?.trim();
+  if (path === undefined || path === '' || path === 'ainda não criado') {
+    throw new Error(`O cabeçalho da missão não mostra um worktree: ${String(meta)}`);
+  }
+  return path;
+}
+
+/** Frases da linha do tempo da aba Conversa, na ordem em que aparecem (com a hora de cada uma). */
+async function timelineOf(page: Page): Promise<string[]> {
+  return page
+    .getByRole('list', { name: 'Eventos da missão' })
+    .getByRole('listitem')
+    .allTextContents();
+}
+
+test('projeto Git → missão simulada → aprovação → eventos persistidos', async ({
+  launchApp,
+  gitRepo,
+  worktreesDir,
+}) => {
+  const projectName = basename(gitRepo.path);
+  let launched = await launchApp({ dialogPath: gitRepo.path });
+  let { page } = launched;
+
+  // 1. Adiciona o projeto de teste, que tem Git, e vê o branch na tela.
+  await addGitProject(page, projectName);
+  await openProject(page, projectName);
+  await expect(page.getByText('Nenhuma missão ainda. Crie a primeira.')).toBeVisible();
+
+  // 2. Cria a missão com um critério de aceite, vê o plano e o aprova.
+  await createMission(page);
+  await approvePlanAndStart(page);
+
+  // 3. O worktree foi criado em PROJECT_HUB_DATA_DIR/worktrees, e o agente gravou o arquivo nele.
+  const worktreePath = await worktreePathOf(page);
+  const fromRoot = relative(worktreesDir, worktreePath);
+  expect(fromRoot.startsWith('..') || isAbsolute(fromRoot)).toBe(false);
+  expect(existsSync(worktreePath)).toBe(true);
+  expect(readdirSync(worktreesDir)).toHaveLength(1);
+  const demoFile = join(worktreePath, 'project-hub-demo.md');
+  expect(readFileSync(demoFile, 'utf8')).toContain('Arquivo criado pelo agente simulado');
+  // O Git conhece o worktree, e a pasta do projeto original continua sem o arquivo.
+  const listed = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: gitRepo.path,
+    encoding: 'utf8',
+  });
+  expect(listed.replaceAll('\\', '/').toLowerCase()).toContain(
+    worktreePath.replaceAll('\\', '/').toLowerCase(),
+  );
+  expect(existsSync(join(gitRepo.path, 'project-hub-demo.md'))).toBe(false);
+
+  // 4. O cartão de aprovação aparece com o motivo do agente; aprova.
+  const card = page.getByRole('region', { name: APPROVAL_TITLE });
+  await expect(card.getByText('Aprovação necessária')).toBeVisible();
+  await expect(card.getByText('O roteiro simulado pediu aprovação.')).toBeVisible();
+  await card.getByRole('button', { name: 'Aprovar', exact: true }).click();
+
+  // 5. A missão fica concluída (a página volta ao Plano, porque a decisão acabou), e a linha do
+  // tempo da Conversa mostra o fim da sessão (`session.completed`).
+  await expect(page.getByText('Concluída', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Conversa' }).click();
+  const timeline = page.getByRole('list', { name: 'Eventos da missão' });
+  await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
+  await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
+  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
+  const eventsBeforeRestart = await timelineOf(page);
+  expect(eventsBeforeRestart.length).toBeGreaterThan(5);
+
+  // 6. Reinicia o aplicativo com a mesma pasta de dados: a missão e os eventos continuam listados.
+  await launched.close();
+  launched = await launchApp();
+  page = launched.page;
+
+  await openProject(page, projectName);
+  const missions = page.getByRole('list', { name: 'Missões do projeto' });
+  const missionCard = missions.getByRole('listitem').filter({ hasText: MISSION.title });
+  await expect(missionCard).toHaveCount(1);
+  await expect(missionCard.getByText('Concluída', { exact: true })).toBeVisible();
+  await missionCard.getByRole('link', { name: MISSION.title }).click();
+
+  await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
+  await expect(page.getByText('Concluída', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Conversa' }).click();
+  await expect(
+    page.getByRole('list', { name: 'Eventos da missão' }).getByText('Sessão do agente concluída.'),
+  ).toBeVisible();
+  expect(await timelineOf(page)).toEqual(eventsBeforeRestart);
+  // A missão concluída não foi mexida pela recuperação do início: continua com o mesmo worktree.
+  expect(await worktreePathOf(page)).toBe(worktreePath);
+});
+
+test('fechar o app durante aprovação e reabrir mostra execução interrompida', async ({
+  launchApp,
+  gitRepo,
+  dataDir,
+}) => {
+  const projectName = basename(gitRepo.path);
+  let launched = await launchApp({ dialogPath: gitRepo.path });
+  let { page } = launched;
+
+  await addGitProject(page, projectName);
+  await openProject(page, projectName);
+  await createMission(page);
+  await approvePlanAndStart(page);
+
+  // Fecha com a missão esperando a aprovação do agente (waiting_approval).
+  await launched.close();
+
+  // Reabre com a mesma pasta de dados: nada é retomado, e a execução consta como interrompida.
+  launched = await launchApp();
+  page = launched.page;
+  await openProject(page, projectName);
+  const missionCard = page
+    .getByRole('list', { name: 'Missões do projeto' })
+    .getByRole('listitem')
+    .filter({ hasText: MISSION.title });
+  await expect(missionCard.getByText('Falhou', { exact: true })).toBeVisible();
+  await missionCard.getByRole('link', { name: MISSION.title }).click();
+
+  await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
+  await expect(page.getByText('Falhou', { exact: true })).toBeVisible();
+  // A missão não volta a rodar nem a esperar: sem aviso de decisão, sem cartão, sem pausa.
+  await expect(page.getByText('Aguarda sua aprovação', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Em execução', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(MISSION_NOTICE)).toHaveCount(0);
+  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
+  // A pessoa pode tentar de novo, e a conversa explica o que houve.
+  await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Conversa' }).click();
+  const timeline = page.getByRole('list', { name: 'Eventos da missão' });
+  await expect(timeline.getByText('Execução interrompida ao fechar o aplicativo.')).toBeVisible();
+  await expect(timeline.getByText('Aprovação expirou sem decisão.')).toBeVisible();
+  await expect(timeline.getByText('Situação: Falhou.')).toBeVisible();
+  await expect(timeline.getByText('Sessão do agente concluída.')).toHaveCount(0);
+
+  // O banco guarda o motivo (seção 15.7): a tentativa falhou com `interrupted_by_restart`.
+  await launched.close();
+  const db = openDatabase(join(dataDir, 'database', 'project-hub.sqlite'));
+  try {
+    const failed = createMissionRepository(db).findExecutionsByStatus('failed');
+    expect(failed.map((execution) => execution.exitReason)).toEqual(['interrupted_by_restart']);
+  } finally {
+    db.$client.close();
+  }
+});
