@@ -26,6 +26,7 @@ import { registerTrustedHandler } from './ipc/trusted-handler';
 import { handleWindowLoadFailure } from './startup-failure';
 import {
   applyContentSecurityPolicy,
+  confirmUnlessClosing,
   denyAllPermissions,
   isTrustedSenderUrl,
   restrictFileRequests,
@@ -58,32 +59,33 @@ app.once('before-quit', () => {
  * destruída. É o estado, e não o código do erro, que separa o fechamento de uma falha real: ao
  * fechar durante o carregamento, o Chromium rejeita com ERR_FAILED, igual a uma falha de verdade.
  */
-function isClosing(win: BrowserWindow | undefined, windowClosing: boolean): boolean {
-  return quitting || windowClosing || (win !== undefined && win.isDestroyed());
+function isClosing(win: BrowserWindow, windowClosing: boolean): boolean {
+  return quitting || windowClosing || win.isDestroyed();
 }
 
 /**
  * Confirmação nativa antes de abrir um endereço fora do aplicativo (seção 17.2). Mostra o endereço
  * normalizado. Cancelar é o botão padrão e também a resposta do Esc.
  */
-async function confirmExternal(
+function confirmExternal(
   owner: BrowserWindow,
   url: string,
   closing: () => boolean,
 ): Promise<boolean> {
   // Um diálogo nativo aberto durante a saída seguraria o encerramento do processo.
-  if (closing()) return false;
-  const { response } = await dialog.showMessageBox(owner, {
-    type: 'question',
-    title: 'Project Hub',
-    message: 'Abrir este endereço fora do Project Hub?',
-    detail: url,
-    buttons: ['Abrir', 'Cancelar'],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
+  return confirmUnlessClosing(closing, async () => {
+    const { response } = await dialog.showMessageBox(owner, {
+      type: 'question',
+      title: 'Project Hub',
+      message: 'Abrir este endereço fora do Project Hub?',
+      detail: url,
+      buttons: ['Abrir', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    return response === 0;
   });
-  return response === 0;
 }
 
 /**

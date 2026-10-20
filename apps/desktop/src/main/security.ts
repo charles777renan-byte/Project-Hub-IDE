@@ -147,6 +147,18 @@ export type ExternalLinks = {
   openExternal: (url: string) => Promise<void>;
 };
 
+/**
+ * Pergunta só se o aplicativo não está fechando: durante a saída a resposta é "não" e o diálogo nem
+ * abre, porque uma caixa nativa aberta seguraria o encerramento do processo.
+ */
+export async function confirmUnlessClosing(
+  closing: () => boolean,
+  ask: () => Promise<boolean>,
+): Promise<boolean> {
+  if (closing()) return false;
+  return ask();
+}
+
 async function confirmAndOpen(href: string, external: ExternalLinks): Promise<void> {
   if (await external.confirmExternal(href)) {
     await external.openExternal(href);

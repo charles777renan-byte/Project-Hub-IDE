@@ -253,6 +253,8 @@ export const test = base.extend<Fixtures>({
       try {
         options.onLaunch?.(app);
       } catch (error) {
+        // A falha vai para a lista aqui; marcado como visto, a limpeza não a repete.
+        handle.observed = true;
         await closeOnce().catch((closeError: unknown) => closeFailures.push(closeError));
         throw error;
       }

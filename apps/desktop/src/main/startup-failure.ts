@@ -38,10 +38,11 @@ export type LoadFailureIo = StartupFailureIo & {
 function describeErrorCodes(cause: unknown): string {
   if (typeof cause !== 'object' || cause === null) return 'sem código';
   const { code, errno } = cause as { code?: unknown; errno?: unknown };
-  const code_ = typeof code === 'string' || typeof code === 'number' ? String(code) : 'sem código';
-  const errno_ =
+  const codeText =
+    typeof code === 'string' || typeof code === 'number' ? String(code) : 'sem código';
+  const errnoText =
     typeof errno === 'string' || typeof errno === 'number' ? String(errno) : 'sem errno';
-  return `code=${code_}, errno=${errno_}`;
+  return `code=${codeText}, errno=${errnoText}`;
 }
 
 /**
