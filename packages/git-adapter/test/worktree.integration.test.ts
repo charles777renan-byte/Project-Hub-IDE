@@ -660,6 +660,26 @@ describe('removeWorktree', () => {
       expect(registeredWorktrees(repoPath)).toHaveLength(2);
     });
 
+    // Com `status.showUntrackedFiles=no` o `git worktree remove` não vê o arquivo novo e o apagaria:
+    // quem protege é a guarda de `getStatus`, que passa `--untracked-files=all`.
+    it('com status.showUntrackedFiles=no, arquivo novo não ignorado ainda recusa a remoção', async () => {
+      const { repoPath, wt } = await setUpWithIgnoreRules();
+      git(repoPath, 'config', 'status.showUntrackedFiles', 'no');
+      writeFileSync(join(wt.path, 'novo.txt'), 'trabalho novo');
+      writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
+      // Controle: a configuração esconde o arquivo novo do status comum do Git.
+      expect(git(wt.path, 'status', '--porcelain')).toBe('');
+
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+        name: 'GitError',
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+      });
+
+      expect(existsSync(wt.path)).toBe(true);
+      expect(readFileSync(join(wt.path, 'novo.txt'), 'utf8')).toBe('trabalho novo');
+      expect(registeredWorktrees(repoPath)).toHaveLength(2);
+    });
+
     it('worktree com arquivo em conflito e com ignorados não é removido', async () => {
       const { repoPath, wt } = await setUpWithIgnoreRules();
       // A mesma linha de a.txt muda em `main` e na branch do worktree, e o merge deixa o conflito.

@@ -133,12 +133,15 @@ export async function createWorktree(input: {
  * absoluto (VALIDATION_FAILED). Nada é apagado enquanto houver trabalho que se perderia, e nenhum
  * passo usa `--force`:
  *
- * 1. o status do worktree: arquivo versionado modificado, preparado, removido, renomeado ou em
- *    conflito, e arquivo novo que o Git não ignora, recusam;
- * 2. o `git worktree remove`, que recusa por conta própria uma pasta com arquivo modificado ou novo,
- *    como numa alteração que chegou depois do status.
+ * 1. o status do worktree (`getStatus`, com `--untracked-files=all`): arquivo versionado modificado,
+ *    preparado, removido, renomeado ou em conflito, e arquivo novo que o Git não ignora, recusam
+ *    sem chamar `worktree remove`. É a única guarda do arquivo novo: com
+ *    `status.showUntrackedFiles=no` na configuração do repositório, o `worktree remove` não o vê e
+ *    o apagaria;
+ * 2. o `git worktree remove`, que recusa por conta própria uma pasta com arquivo versionado
+ *    modificado, como numa alteração que chegou depois do status.
  *
- * Os dois rejeitam com WORKTREE_HAS_UNSAVED_CHANGES, antes de `worktree remove` no passo 1.
+ * As duas recusas viram WORKTREE_HAS_UNSAVED_CHANGES.
  *
  * Arquivo ou pasta que o Git ignora (`node_modules`, `.env`, saídas de build) NÃO é trabalho não
  * salvo (R198): o status comum não os lista, o `git worktree remove` sem `--force` não os trata como
