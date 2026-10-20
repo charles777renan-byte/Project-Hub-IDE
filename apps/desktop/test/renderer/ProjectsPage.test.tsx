@@ -99,7 +99,7 @@ describe('ProjectsPage: listagem', () => {
 });
 
 describe('ProjectsPage: adicionar projeto', () => {
-  it('escolhe a pasta, cadastra e mostra o novo projeto na lista', async () => {
+  it('escolhe a pasta, cadastra e refaz a listagem no processo principal', async () => {
     const novo: ProjectSummary = {
       id: 'p3',
       name: 'Novo',
@@ -107,7 +107,16 @@ describe('ProjectsPage: adicionar projeto', () => {
       repositoryKind: 'none',
       available: true,
     };
+    // Depois do cadastro, a página pede a lista de novo: a segunda resposta já traz o projeto.
+    let listCalls = 0;
     const projects = installApi({
+      list: () => {
+        listCalls += 1;
+        return Promise.resolve<AppResult<ProjectSummary[]>>({
+          ok: true,
+          data: listCalls === 1 ? [] : [novo],
+        });
+      },
       chooseDirectory: () => Promise.resolve({ ok: true, data: { path: 'C:\\Projetos\\Novo' } }),
       add: () => Promise.resolve({ ok: true, data: novo }),
     });
@@ -119,6 +128,7 @@ describe('ProjectsPage: adicionar projeto', () => {
 
     expect(await screen.findByRole('heading', { name: 'Novo' })).toBeInTheDocument();
     expect(projects.add).toHaveBeenCalledWith({ path: 'C:\\Projetos\\Novo' });
+    expect(projects.list).toHaveBeenCalledTimes(2);
   });
 
   it('cancelar a escolha não cadastra nada e não mostra erro', async () => {

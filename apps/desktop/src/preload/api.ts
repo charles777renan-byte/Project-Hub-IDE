@@ -24,8 +24,9 @@ function invalidResponse(): AppResult<never> {
 }
 
 /**
- * Chama um canal e confere a resposta com o schema dele (seção 13.1 e R28). A resposta que não bate
- * vira VALIDATION_FAILED, e o renderer não recebe o dado inesperado.
+ * Chama um canal e confere a resposta com o schema dele (seção 13.1 e R28). Resposta que não bate vira
+ * VALIDATION_FAILED, registrada com console.warn, e o renderer não recebe o dado inesperado. Resposta
+ * que bate segue como o schema a define: campos extras do processo principal ficam de fora.
  */
 async function invokeChannel<T>(
   invoke: Invoke,
@@ -33,9 +34,12 @@ async function invokeChannel<T>(
   payload?: unknown,
 ): Promise<AppResult<T>> {
   const response = await invoke(channel, payload);
-  return responseSchemas[channel].safeParse(response).success
-    ? (response as AppResult<T>)
-    : invalidResponse();
+  const parsed = responseSchemas[channel].safeParse(response);
+  if (!parsed.success) {
+    console.warn(`Resposta fora do contrato no canal ${channel}:`, parsed.error.issues);
+    return invalidResponse();
+  }
+  return parsed.data as AppResult<T>;
 }
 
 /**

@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
+import { openDatabase } from '@project-hub/database';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createProjectServices, platformOf, type ProjectServices } from '../src/main/composition';
 import { handleAddProject, handleListProjects } from '../src/main/ipc/projects';
@@ -71,6 +72,25 @@ describe('cadastro e listagem com banco e pastas reais', () => {
       ok: true,
       data: [expect.objectContaining({ name: 'Ação Hub', available: false })],
     });
+  });
+
+  it('migração que falha fecha o banco, e a pasta do arquivo pode ser removida depois', () => {
+    const legacyDir = join(dir, 'legado');
+    mkdirSync(legacyDir, { recursive: true });
+    const legacyFile = join(legacyDir, 'project-hub.sqlite');
+    // Banco de uma versão anterior, com um índice do mesmo nome que a migração cria: a migração falha.
+    const legacy = openDatabase(legacyFile);
+    legacy.$client.exec(
+      'CREATE TABLE legado (x TEXT); CREATE INDEX projects_normalized_path_unique ON legado (x);',
+    );
+    legacy.$client.close();
+
+    expect(() =>
+      createProjectServices({ dbFile: legacyFile, platform: platformOf(process.platform) }),
+    ).toThrow(/CREATE UNIQUE INDEX/);
+    // No Windows, um arquivo com handle aberto não pode ser apagado: a remoção só passa se o banco fechou.
+    expect(() => rmSync(legacyDir, { recursive: true, force: true })).not.toThrow();
+    expect(existsSync(legacyDir)).toBe(false);
   });
 
   it('projeto removido volta pelo mesmo registro quando a pasta é cadastrada de novo', async () => {

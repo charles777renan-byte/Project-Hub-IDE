@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ProjectSummary } from '@project-hub/contracts';
 import { ProjectCard } from '../components/ProjectCard';
 
@@ -18,26 +18,23 @@ export function ProjectsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    async function loadProjects() {
-      try {
-        const result = await window.projectHub.projects.list();
-        if (!active) return;
-        setList(
-          result.ok
-            ? { status: 'ready', projects: result.data }
-            : { status: 'error', message: result.error.message },
-        );
-      } catch {
-        if (active) setList({ status: 'error', message: GENERIC_ERROR });
-      }
+  // A lista vem sempre do processo principal: depois de cada cadastro, a página pede tudo de novo.
+  const loadProjects = useCallback(async () => {
+    try {
+      const result = await window.projectHub.projects.list();
+      setList(
+        result.ok
+          ? { status: 'ready', projects: result.data }
+          : { status: 'error', message: result.error.message },
+      );
+    } catch {
+      setList({ status: 'error', message: GENERIC_ERROR });
     }
-    void loadProjects();
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   async function addFolder() {
     setAdding(true);
@@ -55,11 +52,7 @@ export function ProjectsPage() {
         setActionError(added.error.message);
         return;
       }
-      setList((current) =>
-        current.status === 'ready'
-          ? { status: 'ready', projects: [...current.projects, added.data] }
-          : current,
-      );
+      await loadProjects();
     } catch {
       setActionError(GENERIC_ERROR);
     } finally {

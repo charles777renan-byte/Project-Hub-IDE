@@ -1,3 +1,4 @@
+import type { AppResult } from '@project-hub/contracts';
 import { describe, expect, it } from 'vitest';
 import { addProject, type AddProjectDeps } from '../src/projects/add-project';
 import { fakeFileSystem, fakeGit, fakeRepository } from './fakes';
@@ -14,6 +15,12 @@ function deps(overrides: Partial<AddProjectDeps> = {}): AddProjectDeps {
     newId: () => 'id-1',
     ...overrides,
   };
+}
+
+/** Devolve o dado do resultado. Se o resultado for falha, o teste quebra com o código do erro. */
+function dataOf<T>(result: AppResult<T>): T {
+  if (!result.ok) throw new Error(`esperava sucesso, veio ${result.error.code}`);
+  return result.data;
 }
 
 describe('addProject', () => {
@@ -43,14 +50,14 @@ describe('addProject', () => {
   it('pasta sem Git entra como repositoryKind none, sem branch padrão', async () => {
     const result = await addProject(deps(), { path: 'C:\\Projetos\\app' });
 
-    expect(result.ok && result.data.repositoryKind).toBe('none');
-    expect(result.ok && result.data).not.toHaveProperty('defaultBranch');
+    expect(result).toMatchObject({ ok: true, data: { repositoryKind: 'none' } });
+    expect(dataOf(result)).not.toHaveProperty('defaultBranch');
   });
 
-  it('projeto nasce com trusted false', async () => {
+  it('projeto nasce com trusted false e sem favorito', async () => {
     const result = await addProject(deps(), { path: 'C:\\Projetos\\app' });
 
-    expect(result.ok && result.data.trusted).toBe(false);
+    expect(result).toMatchObject({ ok: true, data: { trusted: false, isFavorite: false } });
   });
 
   it('pasta repetida, com outra grafia, retorna PROJECT_ALREADY_EXISTS e não grava de novo', async () => {
@@ -78,7 +85,8 @@ describe('addProject', () => {
     expect(repo.list()).toEqual([]);
   });
 
-  it.each(['', 'app', '.\\app'])(
+  // No Windows, absoluto é só o que tem letra de unidade ou raiz UNC. `\app` tem raiz, mas é relativo à unidade.
+  it.each(['', 'app', '.\\app', '\\app', 'C:app'])(
     'caminho que não é absoluto (%j) retorna VALIDATION_FAILED',
     async (path) => {
       const result = await addProject(deps(), { path });
@@ -86,6 +94,19 @@ describe('addProject', () => {
       expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
     },
   );
+
+  it('aceita caminho UNC do Windows, com servidor e compartilhamento', async () => {
+    const context = deps({
+      fs: fakeFileSystem(['\\\\servidor\\pasta\\app'], { caseInsensitive: true }),
+    });
+
+    const result = await addProject(context, { path: '\\\\servidor\\pasta\\app' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { name: 'app', path: '\\\\servidor\\pasta\\app' },
+    });
+  });
 
   it('no Linux, caixa diferente é outra pasta', async () => {
     const context = deps({
@@ -99,7 +120,7 @@ describe('addProject', () => {
       { path: '/home/ana/projeto' },
     );
 
-    expect(second.ok && second.data.normalizedPath).toBe('/home/ana/projeto');
+    expect(second).toMatchObject({ ok: true, data: { normalizedPath: '/home/ana/projeto' } });
   });
 
   it('pasta removida que volta é restaurada, sem gravar outro registro', async () => {
@@ -117,7 +138,7 @@ describe('addProject', () => {
       ok: true,
       data: expect.objectContaining({ id: 'id-1', updatedAt: NOW }),
     });
-    expect(result.ok && result.data).not.toHaveProperty('removedAt');
+    expect(dataOf(result)).not.toHaveProperty('removedAt');
     expect(repo.records()).toEqual([expect.objectContaining({ id: 'id-1', updatedAt: NOW })]);
     expect(repo.list().map((record) => record.id)).toEqual(['id-1']);
   });

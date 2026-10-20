@@ -415,7 +415,7 @@ describe('denyAllPermissions', () => {
 });
 
 // Quem chama um canal IPC precisa ser o aplicativo. Em desenvolvimento, a origem é a do Vite. Em
-// produção, a origem é file://, opaca, e o remetente confiável é o index.html da pasta do renderer.
+// produção, a origem é file://, opaca, e o remetente confiável é um arquivo da pasta do renderer.
 describe('isTrustedSenderUrl', () => {
   it('em desenvolvimento, aceita o quadro na origem do servidor do Vite, com rota no hash', () => {
     expect(
@@ -430,10 +430,11 @@ describe('isTrustedSenderUrl', () => {
     },
   );
 
-  it('em produção, aceita o index.html da pasta do renderer, com rota no hash', () => {
-    expect(
-      isTrustedSenderUrl(`${fileUrl(rendererDir, 'index.html')}#/projects`, 'file://', rendererDir),
-    ).toBe(true);
+  it.each([
+    ['o index.html, com rota no hash', `${fileUrl(rendererDir, 'index.html')}#/projects`],
+    ['um arquivo de subpasta da pasta do renderer', fileUrl(rendererDir, 'assets', 'index.js')],
+  ])('em produção, aceita %s', (_case, url) => {
+    expect(isTrustedSenderUrl(url, 'file://', rendererDir)).toBe(true);
   });
 
   it.each([
@@ -474,6 +475,39 @@ describe('buildProjectHubApi', () => {
       [CHANNELS.projectsList, undefined],
       [CHANNELS.projectsAdd, { path: 'C:\\Projetos\\app' }],
     ]);
+  });
+
+  it('a resposta válida vai ao renderer só com os campos do contrato', async () => {
+    const api = buildProjectHubApi(() =>
+      Promise.resolve({
+        ok: true,
+        data: [
+          {
+            id: 'p1',
+            name: 'app',
+            path: 'C:\\app',
+            repositoryKind: 'none',
+            available: true,
+            normalizedPath: 'c:\\app',
+          },
+        ],
+      }),
+    );
+
+    await expect(api.projects.list()).resolves.toStrictEqual({
+      ok: true,
+      data: [{ id: 'p1', name: 'app', path: 'C:\\app', repositoryKind: 'none', available: true }],
+    });
+  });
+
+  it('resposta fora do contrato é registrada com console.warn antes de virar VALIDATION_FAILED', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const api = buildProjectHubApi(() => Promise.resolve({ ok: true, data: 42 }));
+
+    await api.ping();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(CHANNELS.appPing), expect.anything());
+    warn.mockRestore();
   });
 
   it('projects.chooseDirectory aceita null, que é o cancelamento da pessoa', async () => {

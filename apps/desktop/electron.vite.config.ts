@@ -9,13 +9,14 @@ import type { Plugin } from 'vite';
 
 /**
  * O código do banco lê as migrações em `../migrations`, relativo ao próprio arquivo. No bundle, esse
- * arquivo é `out/main/index.js`, então as migrações são copiadas para `out/migrations` ao fim de cada
- * build (seção 18.2). O empacotamento final (Tarefa 12) decide onde elas ficam.
+ * arquivo é `out/main/index.js`, então as migrações são copiadas para `out/migrations` (seção 18.2).
+ * A cópia roda no início de cada build, também nos rebuilds do modo watch que o `dev` usa, e antes
+ * de o bundle sair: o app nunca inicia sem a pasta. O empacotamento final (Tarefa 12) decide o resto.
  */
 function copyMigrations(): Plugin {
   return {
     name: 'project-hub:copy-migrations',
-    closeBundle() {
+    buildStart() {
       cpSync(
         join(import.meta.dirname, '../../packages/database/migrations'),
         join(import.meta.dirname, 'out/migrations'),
