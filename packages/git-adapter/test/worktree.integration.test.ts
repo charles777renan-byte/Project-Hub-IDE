@@ -612,6 +612,28 @@ describe('removeWorktree', () => {
       expect(branchExists(repoPath, names.branch)).toBe(true);
     });
 
+    // Com `status.showUntrackedFiles=no` na configuração do repositório, o `git status --ignored`
+    // não lista nem os ignorados. Por isso a leitura passa `--untracked-files=normal` por conta própria.
+    it('com status.showUntrackedFiles=no na configuração, o ignorado ainda recusa a remoção', async () => {
+      const { repoPath, wt } = await setUpWithIgnoreRules();
+      git(repoPath, 'config', 'status.showUntrackedFiles', 'no');
+      writeFileSync(join(wt.path, '.env'), 'SEGREDO=1');
+      // Controle: a configuração esconde o ignorado do `--ignored` sozinho, e `normal` o mostra.
+      expect(git(wt.path, 'status', '--porcelain', '--ignored')).toBe('');
+      expect(git(wt.path, 'status', '--porcelain', '--ignored', '--untracked-files=normal')).toBe(
+        '!! .env',
+      );
+
+      await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+        name: 'GitError',
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+      });
+
+      expect(existsSync(wt.path)).toBe(true);
+      expect(existsSync(join(wt.path, '.env'))).toBe(true);
+      expect(registeredWorktrees(repoPath)).toHaveLength(2);
+    });
+
     it('regra de ignorar só no repositório (info/exclude) também conta', async () => {
       const { repoPath, wt } = await setUp();
       writeFileSync(join(repoPath, '.git', 'info', 'exclude'), '*.log\n', { flag: 'a' });

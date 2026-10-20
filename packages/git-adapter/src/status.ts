@@ -54,16 +54,21 @@ function parseStatus(output: string): GitStatus {
  * saídas de build). Leitura à parte de `getStatus`, que não os lista: o `git worktree remove` os
  * apaga junto com a pasta. No formato `--porcelain=v2 -z`, cada ignorado é um registro `! <caminho>`
  * (uma pasta inteira ignorada vem como um registro só). O campo que segue um registro `2 ` é o
- * caminho antigo de um renomeado, e não um registro: um nome antigo que comece com `!` não conta.
+ * caminho antigo de um renomeado, e não um registro: um nome antigo que comece com `! ` não conta.
+ *
+ * O `--untracked-files=normal` é explícito porque o `status.showUntrackedFiles=no` da configuração
+ * do repositório faz o `--ignored` não listar nada, e um repositório de terceiros (seção 17.1) pode
+ * trazer essa configuração: sem o argumento, um `.env` ignorado passaria despercebido. `getStatus`
+ * já passa o seu `--untracked-files=all` pelo mesmo motivo.
  */
 export async function hasIgnoredFiles(
   path: string,
   options: { gitBinary?: string | undefined } = {},
 ): Promise<boolean> {
-  const { stdout } = await runGit(['status', '--porcelain=v2', '--ignored', '-z'], {
-    cwd: path,
-    gitBinary: options.gitBinary,
-  });
+  const { stdout } = await runGit(
+    ['status', '--porcelain=v2', '--ignored', '--untracked-files=normal', '-z'],
+    { cwd: path, gitBinary: options.gitBinary },
+  );
   const fields = stdout.split('\0');
   for (let index = 0; index < fields.length; index += 1) {
     const field = fields[index] ?? '';

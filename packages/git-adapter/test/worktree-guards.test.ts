@@ -20,7 +20,7 @@ const SHA = '0123456789abcdef0123456789abcdef01234567';
 const CLEAN_STATUS = `# branch.oid ${SHA}\0# branch.head ph/abcdef12-x\0`;
 const DIRTY_STATUS = `${CLEAN_STATUS}1 .M N... 100644 100644 100644 ${SHA} ${SHA} a.txt\0`;
 // A segunda leitura de `removeWorktree`: o status com os arquivos ignorados.
-const IGNORED_READ = ['status', '--porcelain=v2', '--ignored', '-z'];
+const IGNORED_READ = ['status', '--porcelain=v2', '--ignored', '--untracked-files=normal', '-z'];
 
 const names = buildWorktreeNames({ missionId: 'abcdef123456', title: 'x', projectSlug: 'app' });
 const created: string[] = [];
