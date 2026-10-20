@@ -188,6 +188,107 @@ test.describe('política de conteúdo', () => {
   });
 });
 
+test.describe('fontes locais', () => {
+  /** Faces que o `fonts.css` declara: Inter 400 a 700 e JetBrains Mono 400 a 600, peso normal. */
+  const FACES = [
+    ...[400, 500, 600, 700].map((weight) => ({ family: 'Inter', weight })),
+    ...[400, 500, 600].map((weight) => ({ family: 'JetBrains Mono', weight })),
+  ];
+
+  test('Inter e JetBrains Mono carregam de arquivos do aplicativo, sob a CSP e o filtro de arquivos', async ({
+    launchApp,
+  }) => {
+    const { page } = await launchApp();
+
+    // Observa a carga nova da página: pedidos de rede, mensagens do console e violações da CSP. O
+    // ouvinte do evento entra antes de qualquer script da página, por isso `addInitScript` + reload.
+    const requests = watchRequests(page);
+    const consoleProblems: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        consoleProblems.push(message.text());
+      }
+    });
+    await page.addInitScript(() => {
+      const violations: string[] = [];
+      Object.assign(window, { cspViolations: violations });
+      document.addEventListener('securitypolicyviolation', (event) => {
+        violations.push(`${event.violatedDirective} ${event.blockedURI}`);
+      });
+    });
+    await page.reload();
+    await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+
+    // O app construído carrega por `loadFile`, ou seja, `file://`, como o aplicativo empacotado. O
+    // servidor de desenvolvimento (`loadURL`) não é exercitado por este teste.
+    expect(page.url()).toMatch(/^file:\/\//);
+
+    // Pede cada face e espera: `load` resolve com as faces carregadas e rejeita se a fonte falhar.
+    const faces = await page.evaluate(async (wanted) => {
+      for (const { family, weight } of wanted) {
+        const loaded = await document.fonts.load(`${weight} 1em '${family}'`);
+        if (loaded.length !== 1) throw new Error(`${family} ${weight}: ${loaded.length} faces`);
+      }
+      await document.fonts.ready;
+      return [...document.fonts].map((face) => ({
+        family: face.family.replace(/^["']|["']$/g, ''),
+        weight: Number(face.weight),
+        status: face.status,
+      }));
+    }, FACES);
+    expect(faces).toEqual(FACES.map((face) => ({ ...face, status: 'loaded' })));
+
+    // Os arquivos vieram da pasta do renderer: pedido concluído, nenhum cancelado, todos `.woff2`.
+    const fontUrls = [...requests.finished].filter((url) => url.endsWith('.woff2'));
+    expect(fontUrls).toHaveLength(FACES.length);
+    for (const url of fontUrls) {
+      expect(url).toMatch(/\/out\/renderer\/assets\/.+\.woff2$/);
+      expect(requests.failed.has(url)).toBe(false);
+    }
+
+    // O texto da tela usa a fonte local de verdade: o Chromium diz qual fonte formou os glifos do
+    // elemento. `isCustomFont` é `true` só para @font-face (a de sistema vem como `false`).
+    const cdp = await page.context().newCDPSession(page);
+    const platformFonts = async (selector: string) => {
+      await cdp.send('DOM.enable');
+      await cdp.send('CSS.enable');
+      const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+      expect(nodeId, selector).toBeGreaterThan(0);
+      const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+      return fonts.map(({ familyName, isCustomFont }) => ({ familyName, isCustomFont }));
+    };
+    const sansFonts = await platformFonts('nav[aria-label="Principal"] a');
+    expect(sansFonts.length).toBeGreaterThan(0);
+    expect(sansFonts.every(({ isCustomFont }) => isCustomFont)).toBe(true);
+    expect(sansFonts.map(({ familyName }) => familyName)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Inter')]),
+    );
+    // Um elemento mono (classe `mono`, sem estilo inline) para conferir a segunda família.
+    await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.className = 'mono';
+      probe.id = 'sonda-mono';
+      probe.textContent = 'abc 123 ção';
+      document.body.append(probe);
+      // Força o cálculo de layout: sem ele o Chromium ainda não formou os glifos do elemento novo.
+      probe.getBoundingClientRect();
+    });
+    const monoFonts = await platformFonts('#sonda-mono');
+    expect(monoFonts.length).toBeGreaterThan(0);
+    expect(monoFonts.every(({ isCustomFont }) => isCustomFont)).toBe(true);
+    expect(monoFonts.map(({ familyName }) => familyName)).toEqual(
+      expect.arrayContaining([expect.stringContaining('JetBrains Mono')]),
+    );
+
+    // Nada foi bloqueado pela CSP nem recusado pelo decodificador de fontes.
+    expect(
+      await page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations),
+    ).toEqual([]);
+    expect(consoleProblems).toEqual([]);
+  });
+});
+
 test.describe('arquivos fora da pasta do renderer', () => {
   test('script, folha de estilo e imagem de fora não carregam', async ({ launchApp, dataDir }) => {
     const { page } = await launchApp();
