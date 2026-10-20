@@ -55,6 +55,20 @@ describe('recoverInterruptedExecutions', () => {
     expect(repo.getMission('missao-1')).toMatchObject({ status: 'failed', finishedAt: NOW });
   });
 
+  it('execução pausada no fechamento do app também é tratada como interrompida (R181)', () => {
+    const repo = fakeMissionRepository();
+    seed(repo, { status: 'paused' });
+    repo.updateExecution('exec-1', { status: 'paused' });
+
+    expect(recoverInterruptedExecutions(repo, now)).toBe(1);
+
+    expect(repo.getExecution('exec-1')).toMatchObject({
+      status: 'failed',
+      exitReason: 'interrupted_by_restart',
+    });
+    expect(repo.getMission('missao-1')).toMatchObject({ status: 'failed' });
+  });
+
   it('grava o encerramento na auditoria, como ação do sistema', () => {
     const repo = fakeMissionRepository();
     seed(repo);

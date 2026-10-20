@@ -161,6 +161,40 @@ describe('createSimulatedAdapter: roteiro', () => {
 
     expect((await following).value).toMatchObject({ type: 'message.delta' });
   });
+
+  it('pause() antes do primeiro evento segura até o session.started (nada é emitido)', async () => {
+    const session = await startWith([
+      { type: 'emit', event: { type: 'message.delta', content: 'nunca antes da retomada' } },
+    ]);
+    const iterator = session.events()[Symbol.asyncIterator]();
+    await session.pause();
+
+    const first = iterator.next();
+    expect(await settlesWithin(first, 50)).toBe(false);
+
+    await session.resume();
+    expect((await first).value).toMatchObject({ type: 'session.started' });
+  });
+
+  it('pause() no meio de um passo com arquivo não grava nem emite até resume()', async () => {
+    const session = await startWith([
+      { type: 'create-file', relativePath: 'parado.txt', content: 'x' },
+    ]);
+    const iterator = session.events()[Symbol.asyncIterator]();
+    expect((await iterator.next()).value).toMatchObject({ type: 'session.started' });
+    expect((await iterator.next()).value).toMatchObject({ type: 'tool.requested' });
+
+    // A pausa chega depois do pedido da ferramenta e antes da gravação.
+    await session.pause();
+    const completed = iterator.next();
+
+    expect(await settlesWithin(completed, 50)).toBe(false);
+    expect(existsSync(join(dir, 'parado.txt'))).toBe(false);
+
+    await session.resume();
+    expect((await completed).value).toMatchObject({ type: 'tool.completed' });
+    expect(readFileSync(join(dir, 'parado.txt'), 'utf8')).toBe('x');
+  });
 });
 
 describe('createSimulatedAdapter: cancelamento', () => {
@@ -198,6 +232,20 @@ describe('createSimulatedAdapter: cancelamento', () => {
 
     expect((await pending).done).toBe(true);
     expect((await iterator.next()).done).toBe(true);
+  });
+
+  it('stop() com a sessão pausada encerra sem emitir mais nada', async () => {
+    const session = await startWith([
+      { type: 'emit', event: { type: 'message.delta', content: 'nunca' } },
+    ]);
+    const iterator = session.events()[Symbol.asyncIterator]();
+    expect((await iterator.next()).value).toMatchObject({ type: 'session.started' });
+    await session.pause();
+    const pending = iterator.next();
+
+    await session.stop('cancelado enquanto pausado');
+
+    expect((await pending).done).toBe(true);
   });
 
   it('uma sessão já cancelada na partida não emite nenhum evento', async () => {

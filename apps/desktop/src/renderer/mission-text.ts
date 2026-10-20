@@ -71,6 +71,29 @@ export function isEnded(status: MissionStatus): boolean {
   return ENDED.includes(status);
 }
 
+/** Textos da ação e do aviso da missão (cabeçalho e aba Conversa). */
+export const MISSION_TEXT = {
+  pause: 'Pausar',
+  resume: 'Retomar',
+  retry: 'Tentar de novo',
+  decisionNotice: 'Aguarda sua decisão',
+  decisionLink: 'Ver na conversa',
+} as const;
+
+/** Estados que pedem uma decisão na aba Conversa: a aba abre ali e o aviso aparece no cabeçalho (R182). */
+const DECISION_IN_CONVERSATION: readonly MissionStatus[] = ['waiting_approval', 'waiting_input'];
+
+export function needsDecisionInConversation(status: MissionStatus): boolean {
+  return DECISION_IN_CONVERSATION.includes(status);
+}
+
+/** Estados em que a nova tentativa é oferecida (R180). */
+const RETRYABLE: readonly MissionStatus[] = ['failed', 'cancelled'];
+
+export function canRetry(status: MissionStatus): boolean {
+  return RETRYABLE.includes(status);
+}
+
 export function needsAttention(status: MissionStatus): boolean {
   return NEEDS_ATTENTION.includes(status);
 }
@@ -157,6 +180,10 @@ export function describeEvent(event: MissionEventDto): string | null {
       return 'Execução encerrada com falha.';
     case 'execution.cancelled':
       return 'Execução cancelada.';
+    case 'execution.paused':
+      return 'Execução pausada por você.';
+    case 'execution.resumed':
+      return 'Execução retomada por você.';
     case 'execution.interrupted':
       return 'Execução interrompida ao fechar o aplicativo.';
     default:

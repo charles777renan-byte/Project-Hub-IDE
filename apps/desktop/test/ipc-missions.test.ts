@@ -35,6 +35,8 @@ function spyOrchestrator(): Orchestrator {
     decideApproval: vi.fn(ok),
     provideInput: vi.fn(ok),
     retryMission: vi.fn(ok),
+    pauseMission: vi.fn(ok),
+    resumeMission: vi.fn(ok),
   } as unknown as Orchestrator;
 }
 
@@ -134,6 +136,66 @@ describe('ações sobre a missão', () => {
 
     await handleProvideInput(orchestrator, { missionId: 'm1', text: 'sim' });
     expect(orchestrator.provideInput).toHaveBeenCalledWith({ missionId: 'm1', text: 'sim' });
+  });
+});
+
+describe('pausa, retomada e nova tentativa (R180, R181)', () => {
+  it('os canais novos existem com a versão no nome', () => {
+    expect(CHANNELS.missionsPause).toBe('missions:pause:v1');
+    expect(CHANNELS.missionsResume).toBe('missions:resume:v1');
+    expect(CHANNELS.missionsRetry).toBe('missions:retry:v1');
+  });
+
+  it.each([
+    ['pause', 'pauseMission'],
+    ['resume', 'resumeMission'],
+    ['retry', 'retryMission'],
+  ] as const)('%s chama %s com o id da missão', async (action, method) => {
+    const orchestrator = spyOrchestrator();
+
+    await handleMissionAction(orchestrator, action, { missionId: 'm1' });
+
+    expect(orchestrator[method]).toHaveBeenCalledWith('m1');
+  });
+
+  it.each(['pause', 'resume', 'retry'] as const)(
+    '%s recusa o id ausente antes de chamar o orquestrador',
+    (action) => {
+      const orchestrator = spyOrchestrator();
+
+      expect(handleMissionAction(orchestrator, action, {})).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+      expect(orchestrator.pauseMission).not.toHaveBeenCalled();
+      expect(orchestrator.resumeMission).not.toHaveBeenCalled();
+      expect(orchestrator.retryMission).not.toHaveBeenCalled();
+    },
+  );
+
+  it('os canais novos recusam remetente de outra origem, sem rodar o handler (R65)', async () => {
+    const fake = fakeRegistry();
+    const orchestrator = spyOrchestrator();
+    registerMissionHandlers(fake.registry, isTrusted, {
+      orchestrator,
+      createDeps: {} as CreateMissionDeps,
+      queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const results = await Promise.all([
+      fake.call(CHANNELS.missionsPause, 'https://site.invalido/', { missionId: 'm1' }),
+      fake.call(CHANNELS.missionsResume, 'https://site.invalido/', { missionId: 'm1' }),
+      fake.call(CHANNELS.missionsRetry, 'https://site.invalido/', { missionId: 'm1' }),
+    ]);
+
+    for (const result of results) {
+      expect(result).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+    }
+    expect(orchestrator.pauseMission).not.toHaveBeenCalled();
+    expect(orchestrator.resumeMission).not.toHaveBeenCalled();
+    expect(orchestrator.retryMission).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 

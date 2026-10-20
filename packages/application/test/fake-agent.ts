@@ -9,11 +9,15 @@ import type {
   AgentUserInput,
 } from '@project-hub/agent-sdk';
 
-/** Passo de um roteiro de teste. Os eventos de início e de fim da sessão o próprio agente emite. */
+/**
+ * Passo de um roteiro de teste. Os eventos de início e de fim da sessão o próprio agente emite.
+ * `hold` para o roteiro até o teste chamar `releaseHold()` da sessão (ou até a sessão ser parada).
+ */
 export type FakeStep =
   | { kind: 'event'; event: AgentEventDraft }
   | { kind: 'approval' }
   | { kind: 'input' }
+  | { kind: 'hold' }
   | { kind: 'fail'; message: string }
   | { kind: 'throw' }
   | { kind: 'end' };
@@ -22,6 +26,11 @@ export type FakeSession = {
   stopReasons: string[];
   decisions: AgentApprovalDecision[];
   inputs: AgentUserInput[];
+  /** Quantas vezes o orquestrador pediu `pause()` e `resume()` a esta sessão. */
+  pauses: number;
+  resumes: number;
+  /** Libera o passo `hold` do roteiro. */
+  releaseHold: () => void;
 };
 
 export type FakeAgent = AgentAdapter & {
@@ -39,7 +48,7 @@ const CAPABILITIES: AgentCapabilities = {
   tools: false,
   interactiveInput: true,
   approvals: true,
-  pauseResume: false,
+  pauseResume: true,
   attachments: false,
   usageReporting: false,
   persistentContext: false,
@@ -57,15 +66,23 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
+export type FakeAgentOptions = {
+  failStarts?: number;
+  failDelivery?: boolean;
+  failStop?: boolean;
+  /** `pause()` rejeita, como um agente que recusa a pausa. */
+  failPause?: boolean;
+  /** `resume()` rejeita. */
+  failResume?: boolean;
+};
+
 /**
  * Agente de teste. Cada `start` usa o próximo roteiro da lista. Sem roteiro, a sessão só emite
  * início e fim. As `failStarts` primeiras chamadas a `start` rejeitam, como um agente indisponível.
  * Com `failDelivery`, `approve` e `send` rejeitam: a resposta do usuário não chega ao agente.
+ * Enquanto a sessão está pausada, nenhum evento sai e nenhum passo do roteiro começa.
  */
-export function fakeAgent(
-  scripts: FakeStep[][],
-  options: { failStarts?: number; failDelivery?: boolean; failStop?: boolean } = {},
-): FakeAgent {
+export function fakeAgent(scripts: FakeStep[][], options: FakeAgentOptions = {}): FakeAgent {
   const starts: AgentStartInput[] = [];
   const sessions: FakeSession[] = [];
   let count = 0;
@@ -82,45 +99,62 @@ export function fakeAgent(
       }
       const script = scripts[count] ?? [];
       count += 1;
-      const record: FakeSession = { stopReasons: [], decisions: [], inputs: [] };
+      const record: FakeSession = {
+        stopReasons: [],
+        decisions: [],
+        inputs: [],
+        pauses: 0,
+        resumes: 0,
+        releaseHold: () => undefined,
+      };
       sessions.push(record);
-      return Promise.resolve(
-        createFakeSession(script, record, options.failDelivery === true, options.failStop === true),
-      );
+      return Promise.resolve(createFakeSession(script, record, options));
     },
   };
 }
 
-/** Sessão que segue o roteiro. Aprovação e entrada param o roteiro até a resposta ou o `stop`. */
+/** Sessão que segue o roteiro. Aprovação, entrada e `hold` param o roteiro até a resposta ou o `stop`. */
 function createFakeSession(
   script: FakeStep[],
   record: FakeSession,
-  deliveryFails: boolean,
-  stopFails: boolean,
+  options: FakeAgentOptions,
 ): AgentSession {
   let halted = false;
   const halt = deferred<void>();
+  const hold = deferred<void>();
   let pendingApproval: Deferred<AgentApprovalDecision> | undefined;
   let pendingInput: Deferred<AgentUserInput> | undefined;
+  let pausedGate: Deferred<void> | undefined;
+  record.releaseHold = () => hold.resolve();
 
   /** Espera a resposta; `undefined` quando a sessão foi parada antes. */
   const answerOrHalt = <T>(answer: Promise<T>): Promise<T | undefined> =>
     Promise.race([answer, halt.promise.then(() => undefined)]);
 
+  /** Espera enquanto a sessão está pausada. `false` quando ela foi parada. */
+  async function ready(): Promise<boolean> {
+    while (pausedGate !== undefined && !halted) {
+      await answerOrHalt(pausedGate.promise);
+    }
+    return !halted;
+  }
+
   const stamp = (event: Unstamped<AgentEvent>): AgentEvent => ({ ...event, at: AT }) as AgentEvent;
 
   async function* run(): AsyncGenerator<AgentEvent> {
-    if (halted) return;
+    if (!(await ready())) return;
     yield stamp({ type: 'session.started', sessionId: 'fake-session' });
     for (const step of script) {
-      if (halted) return;
+      if (!(await ready())) return;
       switch (step.kind) {
         case 'event':
+          if (!(await ready())) return;
           yield stamp(step.event);
           break;
         case 'approval': {
           const decision = deferred<AgentApprovalDecision>();
           pendingApproval = decision;
+          if (!(await ready())) return;
           yield stamp({
             type: 'approval.requested',
             request: {
@@ -137,6 +171,7 @@ function createFakeSession(
         case 'input': {
           const input = deferred<AgentUserInput>();
           pendingInput = input;
+          if (!(await ready())) return;
           yield stamp({
             type: 'input.requested',
             request: { id: 'input-1', prompt: 'Preciso de uma resposta.' },
@@ -144,7 +179,12 @@ function createFakeSession(
           if ((await answerOrHalt(input.promise)) === undefined) return;
           break;
         }
+        case 'hold':
+          await answerOrHalt(hold.promise);
+          if (halted) return;
+          break;
         case 'fail':
+          if (!(await ready())) return;
           yield stamp({
             type: 'session.failed',
             error: { code: 'UNKNOWN', message: step.message, retryable: false },
@@ -156,6 +196,7 @@ function createFakeSession(
           return;
       }
     }
+    if (!(await ready())) return;
     yield stamp({ type: 'session.completed', result: { summary: 'roteiro concluído' } });
   }
 
@@ -164,7 +205,9 @@ function createFakeSession(
     id: 'fake-session',
     events: () => events,
     send(input) {
-      if (deliveryFails) return Promise.reject(new Error('entrega recusada pelo agente de teste'));
+      if (options.failDelivery === true) {
+        return Promise.reject(new Error('entrega recusada pelo agente de teste'));
+      }
       if (pendingInput === undefined) return Promise.reject(new Error('sem entrada pendente'));
       record.inputs.push(input);
       pendingInput.resolve(input);
@@ -172,20 +215,40 @@ function createFakeSession(
       return Promise.resolve();
     },
     approve(input) {
-      if (deliveryFails) return Promise.reject(new Error('entrega recusada pelo agente de teste'));
+      if (options.failDelivery === true) {
+        return Promise.reject(new Error('entrega recusada pelo agente de teste'));
+      }
       if (pendingApproval === undefined) return Promise.reject(new Error('sem aprovação pendente'));
       record.decisions.push(input);
       pendingApproval.resolve(input);
       pendingApproval = undefined;
       return Promise.resolve();
     },
-    pause: () => Promise.resolve(),
-    resume: () => Promise.resolve(),
+    pause() {
+      record.pauses += 1;
+      if (options.failPause === true) {
+        return Promise.reject(new Error('pausa recusada pelo agente de teste'));
+      }
+      pausedGate ??= deferred<void>();
+      return Promise.resolve();
+    },
+    resume() {
+      record.resumes += 1;
+      if (options.failResume === true) {
+        return Promise.reject(new Error('retomada recusada pelo agente de teste'));
+      }
+      const paused = pausedGate;
+      pausedGate = undefined;
+      paused?.resolve();
+      return Promise.resolve();
+    },
     stop(reason) {
       record.stopReasons.push(reason);
       halted = true;
       halt.resolve();
-      if (stopFails) return Promise.reject(new Error('parada recusada pelo agente de teste'));
+      if (options.failStop === true) {
+        return Promise.reject(new Error('parada recusada pelo agente de teste'));
+      }
       return Promise.resolve();
     },
   };

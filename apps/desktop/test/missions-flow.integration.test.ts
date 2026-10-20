@@ -197,4 +197,49 @@ describe('missão de ponta a ponta, com banco, Git e agente simulado', () => {
     expect(view.data.mission.status).toBe('planned');
     expect(view.data.steps).toHaveLength(1);
   });
+
+  it('nova tentativa depois de cancelar roda o agente de novo, com o worktree da missão (R180)', async () => {
+    const created = await handleCreateMission(services.missions.createDeps, newMissionInput());
+    if (!created.ok) throw new Error('a criação deveria dar certo');
+    const missionId = created.data.id;
+    await handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'approvePlan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'start', { missionId });
+    const cancelled = await handleMissionAction(services.missions.orchestrator, 'cancel', {
+      missionId,
+    });
+    expect(cancelled).toEqual({ ok: true, data: undefined });
+
+    const retried = await handleMissionAction(services.missions.orchestrator, 'retry', {
+      missionId,
+    });
+
+    expect(retried).toMatchObject({ ok: true, data: { attempt: 2 } });
+    const view = await handleGetMission(services.missions.queryDeps, { missionId });
+    if (!view.ok) throw new Error('a visão deveria existir');
+    expect(view.data.mission.status).toBe('waiting_approval');
+    expect(view.data.executions.map((e) => [e.attempt, e.status])).toEqual([
+      [1, 'cancelled'],
+      [2, 'running'],
+    ]);
+    expect(view.data.pendingApprovals).toHaveLength(1);
+  });
+
+  it('pausar uma missão que espera aprovação recusa com MISSION_INVALID_STATE (R181)', async () => {
+    const created = await handleCreateMission(services.missions.createDeps, newMissionInput());
+    if (!created.ok) throw new Error('a criação deveria dar certo');
+    const missionId = created.data.id;
+    await handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'approvePlan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'start', { missionId });
+
+    const paused = await handleMissionAction(services.missions.orchestrator, 'pause', {
+      missionId,
+    });
+
+    expect(paused).toMatchObject({ ok: false, error: { code: 'MISSION_INVALID_STATE' } });
+    const view = await handleGetMission(services.missions.queryDeps, { missionId });
+    if (!view.ok) throw new Error('a visão deveria existir');
+    expect(view.data.mission.status).toBe('waiting_approval');
+  });
 });

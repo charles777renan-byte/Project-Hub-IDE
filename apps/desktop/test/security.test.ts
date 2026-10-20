@@ -473,8 +473,11 @@ describe('buildProjectHubApi', () => {
       'create',
       'get',
       'list',
+      'pause',
       'plan',
       'provideInput',
+      'resume',
+      'retry',
       'start',
       'subscribe',
     ]);
@@ -651,6 +654,31 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     await expect(api.approvals.decide({ approvalId: 'a1', decision: 'approved' })).resolves.toEqual(
       { ok: true, data: undefined },
     );
+  });
+
+  it('pause, resume e retry levam o id da missão pelos próprios canais (R180, R181)', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      if (channel === CHANNELS.missionsRetry) {
+        return Promise.resolve({
+          ok: true,
+          data: { id: 'e2', missionId: 'm1', attempt: 2, status: 'running' },
+        });
+      }
+      return Promise.resolve({ ok: true, data: undefined });
+    }, noEvents);
+
+    await expect(api.missions.pause('m1')).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.missions.resume('m1')).resolves.toEqual({ ok: true, data: undefined });
+    const retried = await api.missions.retry('m1');
+
+    expect(calls).toEqual([
+      [CHANNELS.missionsPause, { missionId: 'm1' }],
+      [CHANNELS.missionsResume, { missionId: 'm1' }],
+      [CHANNELS.missionsRetry, { missionId: 'm1' }],
+    ]);
+    expect(retried).toMatchObject({ ok: true, data: { attempt: 2, status: 'running' } });
   });
 
   it('approvals.decide envia a decisão pelo canal de aprovações', async () => {

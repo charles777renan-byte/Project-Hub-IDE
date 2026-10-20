@@ -9,15 +9,19 @@ const PAUSED_OR_WAITING: readonly MissionStatus[] = ['waiting_approval', 'waitin
 const ENDED: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
 
 /**
- * Trata as execuções que estavam em `running` quando o app fechou (seção 15.7). Cada uma vira
+ * Trata as execuções abertas quando o app fechou, `running` ou `paused` (seção 15.7). Cada uma vira
  * `failed` com `interrupted_by_restart`, e nenhum processo é retomado: o agente não tem como
  * voltar. As aprovações pendentes da execução expiram. A missão vai para `failed`, passando por
- * `running` quando esperava uma decisão, porque essa é a única aresta até `failed`. Se a missão já
- * acabou, a execução fecha e a missão fica como está. Depois disso o usuário pode iniciar uma nova
- * tentativa. Devolve quantas execuções foram tratadas, inclusive as de missão já encerrada.
+ * `running` quando esperava uma decisão ou estava pausada, porque essa é a única aresta até `failed`.
+ * Se a missão já acabou, a execução fecha e a missão fica como está. Depois disso o usuário pode
+ * iniciar uma nova tentativa. Devolve quantas execuções foram tratadas, inclusive as de missão já
+ * encerrada.
  */
 export function recoverInterruptedExecutions(repo: MissionRepository, now: () => string): number {
-  const interrupted = repo.findExecutionsByStatus('running');
+  const interrupted = [
+    ...repo.findExecutionsByStatus('running'),
+    ...repo.findExecutionsByStatus('paused'),
+  ];
   for (const execution of interrupted) {
     repo.transaction(() => {
       const at = now();

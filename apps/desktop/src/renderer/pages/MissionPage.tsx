@@ -5,7 +5,14 @@ import { ConversationPanel } from '../components/ConversationPanel';
 import { PlanPanel } from '../components/PlanPanel';
 import { StatusChip } from '../components/StatusChip';
 import { Tabs, type TabItem } from '../components/Tabs';
-import { isEnded, statusLabel, statusTone } from '../mission-text';
+import {
+  MISSION_TEXT,
+  canRetry,
+  isEnded,
+  needsDecisionInConversation,
+  statusLabel,
+  statusTone,
+} from '../mission-text';
 import { projectPath } from '../routes';
 
 type MissionTab = 'plan' | 'conversation' | 'terminal' | 'diff' | 'tests' | 'logs' | 'artifacts';
@@ -29,15 +36,20 @@ type ViewState =
   | { status: 'error'; message: string };
 
 /**
- * Workspace de uma missão (seção 10.7, R168). Cabeçalho com título, situação e cancelamento; as
- * abas, e a conversa e o plano com ação. A visão vem do processo principal e é buscada de novo a
- * cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma mais
- * nova, não substitui a tela.
+ * Workspace de uma missão (seção 10.7, R168). Cabeçalho com título, situação e as ações (pausar,
+ * retomar, tentar de novo e cancelar); as abas, e a conversa e o plano com ação. A visão vem do
+ * processo principal e é buscada de novo a cada ação e a cada evento da missão (R165). Uma resposta
+ * antiga, que chega depois de uma mais nova, não substitui a tela.
+ *
+ * A aba começa na Conversa quando a missão espera a decisão da pessoa (R182). Enquanto a pessoa não
+ * escolhe uma aba, a escolha segue a situação. A Conversa fica montada quando não está visível, para
+ * que a resposta não enviada não se perca.
  */
 export function MissionPage() {
   const { projectId = '', missionId = '' } = useParams();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
-  const [tab, setTab] = useState<MissionTab>('plan');
+  /** Aba que a pessoa escolheu. `null` enquanto ela não escolheu: vale a aba da situação. */
+  const [chosenTab, setChosenTab] = useState<MissionTab | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const latestRequest = useRef(0);
@@ -100,6 +112,8 @@ export function MissionPage() {
   }
 
   const { mission, project } = state.view;
+  const tab: MissionTab =
+    chosenTab ?? (needsDecisionInConversation(mission.status) ? 'conversation' : 'plan');
   return (
     <>
       <p className="eyebrow">
@@ -109,6 +123,36 @@ export function MissionPage() {
         <h1>{mission.title}</h1>
         <div className="inline-actions">
           <StatusChip label={statusLabel(mission.status)} tone={statusTone(mission.status)} />
+          {mission.status === 'running' ? (
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={busy}
+              onClick={() => void run(() => window.projectHub.missions.pause(missionId))}
+            >
+              {MISSION_TEXT.pause}
+            </button>
+          ) : null}
+          {mission.status === 'paused' ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy}
+              onClick={() => void run(() => window.projectHub.missions.resume(missionId))}
+            >
+              {MISSION_TEXT.resume}
+            </button>
+          ) : null}
+          {canRetry(mission.status) ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy}
+              onClick={() => void run(() => window.projectHub.missions.retry(missionId))}
+            >
+              {MISSION_TEXT.retry}
+            </button>
+          ) : null}
           {isEnded(mission.status) ? null : (
             <button
               type="button"
@@ -120,6 +164,14 @@ export function MissionPage() {
             </button>
           )}
         </div>
+        {needsDecisionInConversation(mission.status) ? (
+          <p className="mission-notice">
+            <StatusChip label={MISSION_TEXT.decisionNotice} tone="violet" />
+            <button type="button" className="btn-link" onClick={() => setChosenTab('conversation')}>
+              {MISSION_TEXT.decisionLink}
+            </button>
+          </p>
+        ) : null}
         <p className="mission-meta">
           {project.name} · branch {project.defaultBranch ?? 'sem Git'} · worktree{' '}
           {mission.worktreePath ?? 'ainda não criado'}
@@ -132,7 +184,13 @@ export function MissionPage() {
         </p>
       )}
 
-      <Tabs label="Seções da missão" tabs={TABS} active={tab} onChange={setTab} filled />
+      <Tabs
+        label="Seções da missão"
+        tabs={TABS}
+        active={tab}
+        onChange={(id) => setChosenTab(id)}
+        filled
+      />
       <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
         {tab === 'plan' ? (
           <PlanPanel
@@ -145,7 +203,7 @@ export function MissionPage() {
             onStart={() => void run(() => window.projectHub.missions.start(missionId))}
           />
         ) : null}
-        {tab === 'conversation' ? (
+        <div hidden={tab !== 'conversation'}>
           <ConversationPanel
             view={state.view}
             busy={busy}
@@ -156,12 +214,8 @@ export function MissionPage() {
               run(() => window.projectHub.missions.provideInput({ missionId, text }))
             }
           />
-        ) : null}
-        {tab === 'terminal' ||
-        tab === 'diff' ||
-        tab === 'tests' ||
-        tab === 'logs' ||
-        tab === 'artifacts' ? (
+        </div>
+        {tab !== 'plan' && tab !== 'conversation' ? (
           <p className="page-note">Disponível na próxima etapa.</p>
         ) : null}
       </div>

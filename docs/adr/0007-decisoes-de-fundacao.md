@@ -315,3 +315,20 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 
 - **Decisão:** `ProjectSummary` ganha `defaultBranch?`, preenchido quando a pasta é um repositório Git. A aba de detalhe do projeto mostra a branch no cabeçalho (R167).
 - **Consequência:** `contracts.test.ts` confere o tipo novo.
+
+### 2026-10-20, Tarefa 10b: pausa e retomada da missão (R181)
+
+- **Decisão:** `pauseMission` e `resumeMission` no orquestrador. O agente é chamado primeiro (`session.pause()` ou `session.resume()`). Só se ele aceitar, a missão e a execução mudam de estado numa transação, que confere o estado de novo: o agente pode ter terminado enquanto a pausa era pedida. Se a transação falhar, a chamada ao agente é desfeita. Falha do agente vira `AGENT_UNAVAILABLE`, e os dois casos nunca lançam.
+- **Motivo:** a ordem inversa deixaria o banco dizendo `paused` enquanto o agente seguia emitindo eventos, e o orquestrador rejeitaria cada um deles. Com o agente primeiro, o pior caso é a missão seguir `running` com um pedido recusado.
+- **Consequência:** o agente simulado segura cada `yield` e cada gravação em disco enquanto pausado. A conferência é síncrona com a ação, então nada sai entre a pausa e a retomada. A execução ganha o estado `paused`, e o cancelamento fecha execuções `running` ou `paused`. A recuperação ao iniciar também trata `paused` como interrompida (`failed` com `interrupted_by_restart`), porque a sessão não sobrevive ao fechamento do app.
+
+### 2026-10-20, Tarefa 10b: nova tentativa pelo canal (R180)
+
+- **Decisão:** o canal `missions:retry:v1` chama o `retryMission` que já existia, sem mudar o contrato dele. Ele leva a missão para `queued` e inicia a tentativa na mesma chamada, então a missão não fica `queued` depois de um sucesso: ela segue para o estado em que o agente parou.
+- **Motivo:** R180 pedia que o sucesso deixasse a missão `queued`, mas o `retryMission` já inicia a tentativa e a regra do ruling mandava seguir o contrato atual. Mudar isso exigiria um início separado, que não está na especificação.
+- **Consequência:** o botão "Tentar de novo" aparece em `failed` e `cancelled`. Se o início falhar antes do agente, a missão fica `queued`, como em qualquer início que falha.
+
+### 2026-10-20, Tarefa 10b: aba da decisão e a Conversa montada (R182)
+
+- **Decisão:** a aba inicial é a Conversa quando a missão está em `waiting_approval` ou `waiting_input`, e o Plano nos outros casos. Enquanto a pessoa não escolhe uma aba, a escolha segue a situação. Um aviso no cabeçalho ("Aguarda sua decisão") leva à Conversa. A Conversa fica montada e escondida quando outra aba está ativa.
+- **Motivo:** a resposta digitada é estado da tela. Desmontar a Conversa perderia o texto não enviado.

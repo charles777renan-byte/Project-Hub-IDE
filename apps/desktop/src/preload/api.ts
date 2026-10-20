@@ -80,6 +80,9 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       approvePlan: (missionId: string) => call<void>(CHANNELS.missionsApprovePlan, { missionId }),
       start: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsStart, { missionId }),
       cancel: (missionId: string) => call<void>(CHANNELS.missionsCancel, { missionId }),
+      pause: (missionId: string) => call<void>(CHANNELS.missionsPause, { missionId }),
+      resume: (missionId: string) => call<void>(CHANNELS.missionsResume, { missionId }),
+      retry: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsRetry, { missionId }),
       provideInput: (input: ProvideInput) => call<void>(CHANNELS.missionsProvideInput, input),
       subscribe: (listener: (event: MissionEventDto) => void) =>
         subscribe(CHANNELS.missionsEvent, (payload) => {
