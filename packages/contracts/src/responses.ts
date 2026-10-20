@@ -26,6 +26,9 @@ export const responseSchemas = {
   [CHANNELS.missionsApprovePlan]: appResultSchema(z.undefined()),
   [CHANNELS.missionsStart]: appResultSchema(executionDtoSchema),
   [CHANNELS.missionsCancel]: appResultSchema(z.undefined()),
+  [CHANNELS.missionsPause]: appResultSchema(z.undefined()),
+  [CHANNELS.missionsResume]: appResultSchema(z.undefined()),
+  [CHANNELS.missionsRetry]: appResultSchema(executionDtoSchema),
   [CHANNELS.missionsProvideInput]: appResultSchema(z.undefined()),
   [CHANNELS.approvalsDecide]: appResultSchema(z.undefined()),
 } as const;

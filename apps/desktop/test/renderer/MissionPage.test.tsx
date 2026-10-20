@@ -52,6 +52,9 @@ function installApi(initial: MissionViewDto) {
       plan: vi.fn(() => Promise.resolve({ ok: true, data: { missionId: 'm1', steps: [] } })),
       start: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e1' } })),
       cancel: vi.fn(() => Promise.resolve(OK)),
+      pause: vi.fn(() => Promise.resolve(OK)),
+      resume: vi.fn(() => Promise.resolve(OK)),
+      retry: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e2', attempt: 2 } })),
       provideInput: vi.fn(() => Promise.resolve(OK)),
       subscribe: vi.fn((next: Listener) => {
         listener = next;
@@ -275,5 +278,124 @@ describe('MissionPage: conversa', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(hub.api.missions.get.mock.calls.length).toBe(before);
+  });
+});
+
+describe('MissionPage: pausa, retomada e nova tentativa (R180, R181)', () => {
+  it('com a missão em execução, Pausar chama pause e busca a visão de novo', async () => {
+    const hub = installApi(viewOf({ status: 'running' }));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pausar' }));
+
+    await waitFor(() => expect(hub.api.missions.pause).toHaveBeenCalledWith('m1'));
+    expect(hub.api.missions.get.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('com a missão pausada, mostra Retomar sem Pausar, e Cancelar continua disponível', async () => {
+    const hub = installApi(viewOf({ status: 'paused' }));
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Retomar' }));
+
+    expect(screen.queryByRole('button', { name: 'Pausar' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeInTheDocument();
+    await waitFor(() => expect(hub.api.missions.resume).toHaveBeenCalledWith('m1'));
+  });
+
+  it.each(['failed', 'cancelled'] as const)(
+    'missão %s oferece Tentar de novo, que chama retry',
+    async (status) => {
+      const hub = installApi(viewOf({ status }));
+      renderPage();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Tentar de novo' }));
+
+      await waitFor(() => expect(hub.api.missions.retry).toHaveBeenCalledWith('m1'));
+    },
+  );
+
+  it('missão concluída não oferece Tentar de novo', async () => {
+    installApi(viewOf({ status: 'succeeded' }));
+    renderPage();
+
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument();
+  });
+});
+
+describe('MissionPage: aba da decisão (R182)', () => {
+  it('com a missão aguardando sua aprovação, abre na Conversa e mostra o aviso', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }));
+    renderPage();
+
+    expect(await screen.findByRole('tab', { name: 'Conversa' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('Aguarda sua decisão')).toBeInTheDocument();
+  });
+
+  it('com o agente aguardando resposta, abre na Conversa', async () => {
+    installApi(viewOf({ status: 'waiting_input' }));
+    renderPage();
+
+    expect(await screen.findByRole('tab', { name: 'Conversa' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('sem decisão pendente, abre no Plano e não mostra o aviso', async () => {
+    installApi(viewOf({ status: 'running' }));
+    renderPage();
+
+    expect(await screen.findByRole('tab', { name: 'Plano' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.queryByText('Aguarda sua decisão')).not.toBeInTheDocument();
+  });
+
+  it('o aviso leva de volta à Conversa', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Plano' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ver na conversa' }));
+
+    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('a resposta não enviada continua na caixa quando a pessoa troca de aba', async () => {
+    installApi(
+      viewOf(
+        { status: 'waiting_input' },
+        {
+          events: [
+            {
+              id: 'ev1',
+              missionId: 'm1',
+              aggregateType: 'execution',
+              aggregateId: 'e1',
+              eventType: 'input.requested',
+              severity: 'info',
+              actor: 'agent',
+              payload: { request: { id: 'entrada', prompt: 'Qual o nome do arquivo?' } },
+              sequence: 1,
+              createdAt: '2026-10-20T09:00:00.000Z',
+            },
+          ],
+        },
+      ),
+    );
+    renderPage();
+    const answer = await screen.findByLabelText('Qual o nome do arquivo?');
+    await userEvent.type(answer, 'notas');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Plano' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Conversa' }));
+
+    expect(screen.getByLabelText('Qual o nome do arquivo?')).toHaveValue('notas');
   });
 });

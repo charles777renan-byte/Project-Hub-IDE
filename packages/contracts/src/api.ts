@@ -39,8 +39,14 @@ export type ProjectHubApi = {
     approvePlan(missionId: string): Promise<AppResult<void>>;
     /** Inicia a execução de uma missão aprovada. Devolve a tentativa no estado em que parou. */
     start(missionId: string): Promise<AppResult<ExecutionDto>>;
-    /** Cancela a missão, encerrando o agente se ele estiver rodando. */
+    /** Cancela a missão, encerrando o agente se ele estiver rodando (também a pausada). */
     cancel(missionId: string): Promise<AppResult<void>>;
+    /** Pausa a missão em execução: o agente para de emitir e de agir até a retomada (R181). */
+    pause(missionId: string): Promise<AppResult<void>>;
+    /** Retoma a missão pausada, do ponto em que o agente parou (R181). */
+    resume(missionId: string): Promise<AppResult<void>>;
+    /** Nova tentativa de uma missão que falhou ou foi cancelada. Devolve a tentativa (R180). */
+    retry(missionId: string): Promise<AppResult<ExecutionDto>>;
     /** Resposta do usuário ao pedido de entrada do agente. */
     provideInput(input: ProvideInput): Promise<AppResult<void>>;
     /**

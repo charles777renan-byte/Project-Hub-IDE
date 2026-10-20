@@ -54,7 +54,7 @@ export function handleGetMission(deps: MissionQueryDeps, payload: unknown) {
  */
 export function handleMissionAction(
   orchestrator: Orchestrator,
-  action: 'plan' | 'approvePlan' | 'start' | 'cancel',
+  action: 'plan' | 'approvePlan' | 'start' | 'cancel' | 'pause' | 'resume' | 'retry',
   payload: unknown,
 ) {
   const input = missionIdInputSchema.safeParse(payload);
@@ -69,6 +69,12 @@ export function handleMissionAction(
       return orchestrator.startMission(missionId);
     case 'cancel':
       return orchestrator.cancelMission(missionId);
+    case 'pause':
+      return orchestrator.pauseMission(missionId);
+    case 'resume':
+      return orchestrator.resumeMission(missionId);
+    case 'retry':
+      return orchestrator.retryMission(missionId);
   }
 }
 
@@ -102,5 +108,8 @@ export function registerMissionHandlers(
   );
   on(CHANNELS.missionsStart, (payload) => handleMissionAction(orchestrator, 'start', payload));
   on(CHANNELS.missionsCancel, (payload) => handleMissionAction(orchestrator, 'cancel', payload));
+  on(CHANNELS.missionsPause, (payload) => handleMissionAction(orchestrator, 'pause', payload));
+  on(CHANNELS.missionsResume, (payload) => handleMissionAction(orchestrator, 'resume', payload));
+  on(CHANNELS.missionsRetry, (payload) => handleMissionAction(orchestrator, 'retry', payload));
   on(CHANNELS.missionsProvideInput, (payload) => handleProvideInput(orchestrator, payload));
 }

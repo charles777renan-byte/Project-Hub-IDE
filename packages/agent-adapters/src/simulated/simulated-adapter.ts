@@ -232,26 +232,35 @@ function createSession(
   const stamp = (event: Unstamped<AgentEvent>): AgentEvent =>
     ({ ...event, at: new Date().toISOString() }) as AgentEvent;
 
+  /**
+   * Enquanto a sessão está pausada, devolve a espera pela retomada ou pela interrupção. Devolve
+   * `undefined` quando não há mais o que esperar. Cada `yield` e cada gravação em disco usa o laço
+   * `for (let wait = pauseWait(); ...)` logo antes: a conferência é síncrona com a ação, então nada
+   * sai nem é gravado entre a pausa e a retomada (seção 9.3, RF-MIS-005).
+   */
+  const pauseWait = (): Promise<unknown> | undefined =>
+    pauseGate === undefined || halted ? undefined : untilOrHalt(pauseGate.promise);
+
   async function* run(): AsyncGenerator<AgentEvent, void> {
+    for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
     if (halted) return;
     yield stamp({ type: 'session.started', sessionId: id });
 
     for (const step of script) {
-      while (pauseGate !== undefined) {
-        const paused = pauseGate;
-        await untilOrHalt(paused.promise);
-        if (halted) return;
-      }
       if (halted) return;
 
       switch (step.type) {
         case 'emit':
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
+          if (halted) return;
           yield stamp(step.event);
           break;
 
         case 'create-file': {
           calls += 1;
           const callId = `${id}-call-${calls}`;
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
+          if (halted) return;
           yield stamp({
             type: 'tool.requested',
             call: {
@@ -260,11 +269,14 @@ function createSession(
               input: { relativePath: step.relativePath },
             },
           });
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
           if (halted) return;
           const result = await createFile(cwd, step);
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
           if (halted) return;
           yield stamp({ type: 'tool.completed', callId, result });
           if (!result.ok) {
+            for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
             if (halted) return;
             yield stamp({ type: 'session.failed', error: result.error });
             return;
@@ -275,6 +287,8 @@ function createSession(
         case 'await-approval': {
           const pending = gate<AgentApprovalDecision>();
           approvalGate = pending;
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
+          if (halted) return;
           yield stamp({
             type: 'approval.requested',
             request: {
@@ -287,6 +301,7 @@ function createSession(
           const decision = await untilOrHalt(pending.promise);
           if (decision === undefined || halted) return;
           if (decision.decision === 'rejected') {
+            for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
             if (halted) return;
             yield stamp({
               type: 'session.failed',
@@ -304,6 +319,8 @@ function createSession(
         case 'await-input': {
           const pending = gate<AgentUserInput>();
           inputGate = pending;
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
+          if (halted) return;
           yield stamp({
             type: 'input.requested',
             request: { id: 'entrada', prompt: 'O roteiro simulado espera uma resposta.' },
@@ -314,6 +331,7 @@ function createSession(
         }
 
         case 'fail':
+          for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
           if (halted) return;
           yield stamp({
             type: 'session.failed',
@@ -323,6 +341,7 @@ function createSession(
       }
     }
 
+    for (let wait = pauseWait(); wait !== undefined; wait = pauseWait()) await wait;
     if (halted) return;
     yield stamp({
       type: 'session.completed',

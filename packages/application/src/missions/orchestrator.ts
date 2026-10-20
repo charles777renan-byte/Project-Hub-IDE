@@ -50,6 +50,10 @@ export interface Orchestrator {
   /** `queued` -> `running`. Devolve a execução no estado em que o agente parou. */
   startMission(missionId: string): Promise<AppResult<Execution>>;
   cancelMission(missionId: string): Promise<AppResult<void>>;
+  /** `running` -> `paused`. Pausa a sessão do agente (R181). Nunca lança: falha vira resultado. */
+  pauseMission(missionId: string): Promise<AppResult<void>>;
+  /** `paused` -> `running`. Retoma a sessão do agente (R181). Nunca lança: falha vira resultado. */
+  resumeMission(missionId: string): Promise<AppResult<void>>;
   decideApproval(input: {
     approvalId: string;
     decision: 'approved' | 'rejected';
@@ -278,13 +282,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   /**
-   * Fecha as execuções `running` da missão como canceladas pelo usuário, na transação do
-   * cancelamento. Vale com ou sem processo ativo: sem ele, a execução ficaria aberta e a
+   * Fecha as execuções abertas (`running` ou `paused`) da missão como canceladas pelo usuário, na
+   * transação do cancelamento. Vale com ou sem processo ativo: sem ele, a execução ficaria aberta e a
    * recuperação depois teria de adivinhar o motivo (R136).
    */
   function cancelRunningExecutions(missionId: string, at: string): void {
     for (const execution of repo.listExecutions(missionId)) {
-      if (execution.status !== 'running') continue;
+      if (execution.status !== 'running' && execution.status !== 'paused') continue;
       repo.updateExecution(execution.id, {
         status: 'cancelled',
         exitReason: 'cancelled_by_user',
@@ -608,6 +612,128 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return { ok: true, data: undefined };
   }
 
+  /**
+   * Roda um caso de uso que não pode lançar (R181). Um erro inesperado, o do banco por exemplo, vira
+   * `UNKNOWN` e é registrado no console.
+   */
+  async function guarded(work: () => Promise<AppResult<void>>): Promise<AppResult<void>> {
+    try {
+      return await work();
+    } catch (error) {
+      console.error('Falha inesperada na missão:', error);
+      return failure('UNKNOWN', 'Algo deu errado. Tente de novo.');
+    }
+  }
+
+  /**
+   * Pausa a missão em execução (R181). O agente pausa primeiro: se ele recusar, nada muda e a missão
+   * segue `running`. Depois, missão e execução vão para `paused` numa transação que confere o estado
+   * de novo, porque o agente pode ter terminado enquanto a pausa era pedida. Se a transação falhar,
+   * o agente volta a rodar, para ficar de acordo com o banco.
+   */
+  function pauseMission(missionId: string): Promise<AppResult<void>> {
+    return guarded(async () => {
+      const mission = repo.getMission(missionId);
+      if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+      if (mission.status !== 'running') {
+        return failure('MISSION_INVALID_STATE', 'Só uma missão em execução pode ser pausada.');
+      }
+      const run = active.get(missionId);
+      if (run?.session === undefined || run.executionId === undefined) {
+        return failure('AGENT_UNAVAILABLE', 'A sessão do agente não está mais ativa.');
+      }
+      const session = run.session;
+      const executionId = run.executionId;
+      const paused = await tryAgent('Não foi possível pausar o agente:', () => session.pause());
+      if (!paused) return failure('AGENT_UNAVAILABLE', 'O agente não pausou. A execução continua.');
+
+      let moved: boolean;
+      try {
+        moved = repo.transaction(() => {
+          const current = repo.getMission(missionId);
+          const execution = repo.getExecution(executionId);
+          if (current?.status !== 'running' || execution?.status !== 'running') return false;
+          const at = now();
+          repo.updateExecution(executionId, { status: 'paused' });
+          repo.appendAudit({
+            aggregateType: 'execution',
+            aggregateId: executionId,
+            eventType: 'execution.paused',
+            severity: 'info',
+            actor: 'user',
+            payload: {},
+            createdAt: at,
+          });
+          moveMission(repo, missionId, 'paused', { actor: 'user', at });
+          return true;
+        });
+      } catch (error) {
+        await tryAgent('Não foi possível desfazer a pausa do agente:', () => session.resume());
+        throw error;
+      }
+      if (!moved) {
+        await tryAgent('Não foi possível desfazer a pausa do agente:', () => session.resume());
+        return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto era pausada.');
+      }
+      return { ok: true, data: undefined };
+    });
+  }
+
+  /**
+   * Retoma a missão pausada (R181): o agente volta a rodar do ponto em que parou, e missão e execução
+   * voltam a `running` numa transação. Se o agente recusar, a missão segue `paused`. Se a transação
+   * falhar, o agente pausa de novo.
+   */
+  function resumeMission(missionId: string): Promise<AppResult<void>> {
+    return guarded(async () => {
+      const mission = repo.getMission(missionId);
+      if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+      if (mission.status !== 'paused') {
+        return failure('MISSION_INVALID_STATE', 'Só uma missão pausada pode ser retomada.');
+      }
+      const run = active.get(missionId);
+      if (run?.session === undefined || run.executionId === undefined) {
+        return failure('AGENT_UNAVAILABLE', 'A sessão do agente não está mais ativa.');
+      }
+      const session = run.session;
+      const executionId = run.executionId;
+      const resumed = await tryAgent('Não foi possível retomar o agente:', () => session.resume());
+      if (!resumed) {
+        return failure('AGENT_UNAVAILABLE', 'O agente não retomou. A missão continua pausada.');
+      }
+
+      let moved: boolean;
+      try {
+        moved = repo.transaction(() => {
+          const current = repo.getMission(missionId);
+          const execution = repo.getExecution(executionId);
+          if (current?.status !== 'paused' || execution?.status !== 'paused') return false;
+          const at = now();
+          repo.updateExecution(executionId, { status: 'running' });
+          repo.appendAudit({
+            aggregateType: 'execution',
+            aggregateId: executionId,
+            eventType: 'execution.resumed',
+            severity: 'info',
+            actor: 'user',
+            payload: {},
+            createdAt: at,
+          });
+          moveMission(repo, missionId, 'running', { actor: 'user', at });
+          return true;
+        });
+      } catch (error) {
+        await tryAgent('Não foi possível pausar de novo o agente:', () => session.pause());
+        throw error;
+      }
+      if (!moved) {
+        await tryAgent('Não foi possível pausar de novo o agente:', () => session.pause());
+        return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto era retomada.');
+      }
+      return { ok: true, data: undefined };
+    });
+  }
+
   async function decideApproval(input: {
     approvalId: string;
     decision: 'approved' | 'rejected';
@@ -811,6 +937,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     approvePlan,
     startMission,
     cancelMission,
+    pauseMission,
+    resumeMission,
     decideApproval,
     provideInput,
     retryMission,

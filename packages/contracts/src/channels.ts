@@ -11,6 +11,10 @@ export const CHANNELS = {
   missionsApprovePlan: 'missions:approve-plan:v1',
   missionsStart: 'missions:start:v1',
   missionsCancel: 'missions:cancel:v1',
+  missionsPause: 'missions:pause:v1',
+  missionsResume: 'missions:resume:v1',
+  /** Nova tentativa de missão `failed` ou `cancelled` (R180). Devolve a tentativa nova. */
+  missionsRetry: 'missions:retry:v1',
   missionsProvideInput: 'missions:provide-input:v1',
   /** Evento da missão, do processo principal para o renderer. Não tem resposta. */
   missionsEvent: 'missions:event:v1',
