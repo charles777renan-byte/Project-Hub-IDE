@@ -23,7 +23,7 @@ import { registerApprovalHandlers } from './ipc/approvals';
 import { registerMissionHandlers } from './ipc/missions';
 import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
-import { handleStartupFailure } from './startup-failure';
+import { handleWindowLoadFailure } from './startup-failure';
 import {
   applyContentSecurityPolicy,
   denyAllPermissions,
@@ -45,10 +45,34 @@ const devServerUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER
 const appOrigin = devServerUrl === undefined ? 'file://' : new URL(devServerUrl).origin;
 
 /**
+ * O aplicativo foi mandado sair (`before-quit`). Fica ligado até o fim do processo, e vale também
+ * para uma saída pedida antes do `ready`.
+ */
+let quitting = false;
+app.once('before-quit', () => {
+  quitting = true;
+});
+
+/**
+ * Fechando = saída do aplicativo em andamento, janela já em fechamento (`windowClosing`) ou
+ * destruída. É o estado, e não o código do erro, que separa o fechamento de uma falha real: ao
+ * fechar durante o carregamento, o Chromium rejeita com ERR_FAILED, igual a uma falha de verdade.
+ */
+function isClosing(win: BrowserWindow | undefined, windowClosing: boolean): boolean {
+  return quitting || windowClosing || (win !== undefined && win.isDestroyed());
+}
+
+/**
  * Confirmação nativa antes de abrir um endereço fora do aplicativo (seção 17.2). Mostra o endereço
  * normalizado. Cancelar é o botão padrão e também a resposta do Esc.
  */
-async function confirmExternal(owner: BrowserWindow, url: string): Promise<boolean> {
+async function confirmExternal(
+  owner: BrowserWindow,
+  url: string,
+  closing: () => boolean,
+): Promise<boolean> {
+  // Um diálogo nativo aberto durante a saída seguraria o encerramento do processo.
+  if (closing()) return false;
   const { response } = await dialog.showMessageBox(owner, {
     type: 'question',
     title: 'Project Hub',
@@ -64,10 +88,12 @@ async function confirmExternal(owner: BrowserWindow, url: string): Promise<boole
 
 /**
  * Falha de inicialização, vinda do `whenReady` ou do carregamento da janela. Sem janela, a caixa
- * nativa é a única forma de mostrar o erro, e o processo encerra com código 1.
+ * nativa é a única forma de mostrar o erro, e o processo encerra com código 1. Se o aplicativo já
+ * está fechando, só registra (`logIgnored`): a saída em andamento termina sozinha.
  */
 const startupFailure = {
   log: (cause: unknown) => console.error('Falha ao iniciar o aplicativo:', cause),
+  logIgnored: (message: string) => console.warn(message),
   showError: (message: string) => dialog.showErrorBox('Project Hub', message),
   exit: (code: number) => app.exit(code),
 };
@@ -90,11 +116,17 @@ function createMainWindow(): void {
     webPreferences: buildWebPreferences(preloadPath),
   });
   mainWindow = win;
+  // A janela começa a fechar antes de ser destruída; o carregamento pendente rejeita nesse intervalo.
+  let windowClosing = false;
+  const closing = (): boolean => isClosing(win, windowClosing);
+  win.once('close', () => {
+    windowClosing = true;
+  });
   win.once('closed', () => {
     if (mainWindow === win) mainWindow = undefined;
   });
   restrictNavigation(win.webContents, appOrigin, {
-    confirmExternal: (url) => confirmExternal(win, url),
+    confirmExternal: (url) => confirmExternal(win, url, closing),
     openExternal: (url) => shell.openExternal(url),
   });
   win.once('ready-to-show', () => win.show());
@@ -104,7 +136,7 @@ function createMainWindow(): void {
       ? win.loadFile(join(rendererDirectory, 'index.html'))
       : win.loadURL(devServerUrl);
   loading.catch((error: unknown) => {
-    handleStartupFailure(error, startupFailure);
+    handleWindowLoadFailure(error, { closing: closing() }, startupFailure);
   });
 }
 
@@ -150,7 +182,7 @@ app
     });
   })
   .catch((error: unknown) => {
-    handleStartupFailure(error, startupFailure);
+    handleWindowLoadFailure(error, { closing: quitting }, startupFailure);
   });
 
 app.on('window-all-closed', () => {
