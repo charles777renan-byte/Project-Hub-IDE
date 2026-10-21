@@ -78,11 +78,14 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Iniciar missão' }).click();
 
-  // A missão para no pedido de aprovação do agente, e a página volta à aba Conversa e mostra o pedido.
+  // A missão para no pedido de aprovação do agente. O pedido aparece no banner, e a página continua
+  // na aba do usuário (Plano). O cartão completo mora na aba Conversa, então o banner leva até ele.
   await expect(
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('region', { name: DECISION_BANNER })).toBeVisible();
+  const banner = page.getByRole('region', { name: DECISION_BANNER });
+  await expect(banner).toBeVisible();
+  await banner.getByRole('button', { name: 'Ver a decisão' }).click();
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
 }
 
@@ -177,6 +180,8 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await page.getByRole('tab', { name: 'Diff' }).click();
   const changes = page.getByRole('list', { name: 'Arquivos alterados' });
   await expect(changes.getByRole('button', { name: /project-hub-demo\.md/ })).toBeVisible();
+  // A linha do tempo mora na aba Conversa: volta para ela antes de contar os eventos.
+  await page.getByRole('tab', { name: 'Conversa' }).click();
   const eventsBeforeRestart = await timelineOf(page);
   expect(eventsBeforeRestart.length).toBeGreaterThan(5);
 
