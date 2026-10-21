@@ -187,13 +187,14 @@ export function MissionPage() {
     );
   }
 
-  const { mission, project, events, steps } = state.view;
+  const { mission, project, events, steps, conclusion } = state.view;
   const hasWorktree = mission.worktreePath !== undefined;
   return (
     <div className="mission-workspace">
       <MissionHeader
         mission={mission}
         project={project}
+        conclusion={conclusion}
         busy={busy}
         controlBusy={controlBusy}
         onPause={() => void runControl(() => window.projectHub.missions.pause(missionId))}
