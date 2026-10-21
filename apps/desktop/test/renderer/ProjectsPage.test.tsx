@@ -44,6 +44,24 @@ afterEach(() => {
 });
 
 describe('ProjectsPage: listagem', () => {
+  it('o caminho do projeto ganha um ponto de quebra depois de cada separador', async () => {
+    installApi({
+      list: () => Promise.resolve<AppResult<ProjectSummary[]>>({ ok: true, data: [hub] }),
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('Project Hub');
+    const path = container.querySelector('.project-path');
+    expect(path).not.toBeNull();
+    // C:\Projetos\Project Hub tem dois separadores.
+    expect(path!.querySelectorAll('wbr')).toHaveLength(2);
+    expect(path).toHaveTextContent('C:\\Projetos\\Project Hub');
+  });
+
   it('mostra o título Projetos e, sem projetos, o estado vazio', async () => {
     installApi();
     render(

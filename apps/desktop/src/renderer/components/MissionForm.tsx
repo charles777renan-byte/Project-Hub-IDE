@@ -9,6 +9,9 @@ export type MissionFormValues = {
   planOnly: boolean;
 };
 
+const NO_GIT_WARNING =
+  'Este projeto não é um repositório Git. Missões que alteram código precisam de Git. Inicialize o Git na pasta ou desmarque "Esta missão altera código".';
+
 type FieldErrors = Partial<Record<'title' | 'objective' | 'criteria', string>>;
 
 /**
@@ -18,9 +21,12 @@ type FieldErrors = Partial<Record<'title' | 'objective' | 'criteria', string>>;
 export function MissionForm({
   onSubmit,
   onCancel,
+  projectHasGit = true,
 }: {
   onSubmit: (values: MissionFormValues) => void | Promise<void>;
   onCancel?: () => void;
+  /** Sem Git, uma missão que altera código não pode rodar num worktree (R214): o formulário avisa e não envia. */
+  projectHasGit?: boolean;
 }) {
   const [title, setTitle] = useState('');
   const [objective, setObjective] = useState('');
@@ -29,8 +35,11 @@ export function MissionForm({
   const [planOnly, setPlanOnly] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
 
+  const blockedByGit = altersCode && !projectHasGit;
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (blockedByGit) return;
     const criteria = criteriaText
       .split('\n')
       .map((line) => line.trim())
@@ -118,6 +127,12 @@ export function MissionForm({
         <label htmlFor="mission-alters-code">Esta missão altera código</label>
       </div>
 
+      {blockedByGit ? (
+        <p role="alert" className="page-alert">
+          {NO_GIT_WARNING}
+        </p>
+      ) : null}
+
       <div className="check">
         <input
           id="mission-plan-only"
@@ -129,7 +144,7 @@ export function MissionForm({
       </div>
 
       <div className="form-actions">
-        <button type="submit" className="btn-primary">
+        <button type="submit" className="btn-primary" disabled={blockedByGit}>
           Criar missão
         </button>
         {onCancel === undefined ? null : (

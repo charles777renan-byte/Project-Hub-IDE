@@ -108,17 +108,85 @@ describe('ProjectDetailPage: cabeçalho e aba Missões', () => {
     expect(within(cards[1]!).getByText('Em execução')).toBeInTheDocument();
   });
 
-  it('outras abas do projeto dizem que ficam para a próxima etapa', async () => {
+  it('o caminho do cabeçalho ganha um ponto de quebra depois de cada separador', async () => {
+    installApi([]);
+    const { container } = renderAt('/projects/p1');
+    await screen.findByRole('heading', { level: 1, name: 'Project Hub' });
+
+    const path = container.querySelector('.project-path');
+    expect(path).not.toBeNull();
+    expect(path!.querySelectorAll('wbr')).toHaveLength(2);
+  });
+});
+
+describe('ProjectDetailPage: outras abas', () => {
+  it('Visão geral mostra as contagens das missões por situação', async () => {
+    installApi([
+      missionOf({ id: 'a', status: 'running' }),
+      missionOf({ id: 'b', status: 'running' }),
+      missionOf({ id: 'c', status: 'planned' }),
+      missionOf({ id: 'd', status: 'waiting_input' }),
+      missionOf({ id: 'e', status: 'succeeded' }),
+      missionOf({ id: 'f', status: 'failed' }),
+    ]);
+    renderAt('/projects/p1');
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Visão geral' }));
+
+    const panel = screen.getByRole('tabpanel');
+    const counts = within(panel).getByRole('list', { name: 'Missões por situação' });
+    const itemOf = (label: string) => within(counts).getByText(label).closest('li') as HTMLElement;
+    expect(itemOf('Total')).toHaveTextContent('6');
+    expect(itemOf('Em execução')).toHaveTextContent('2');
+    expect(itemOf('Aguardando você')).toHaveTextContent('2');
+    expect(itemOf('Concluídas')).toHaveTextContent('1');
+    expect(itemOf('Falharam')).toHaveTextContent('1');
+    expect(screen.queryByText('Disponível na próxima etapa.')).not.toBeInTheDocument();
+  });
+
+  it('Repositório mostra o tipo, a branch padrão e a pasta', async () => {
     installApi([]);
     renderAt('/projects/p1');
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Repositório' }));
 
+    const panel = screen.getByRole('tabpanel');
+    expect(within(panel).getByText('Repositório Git')).toBeInTheDocument();
+    expect(within(panel).getByText('main')).toBeInTheDocument();
+    expect(within(panel).getByText('C:\\Projetos\\Project Hub')).toBeInTheDocument();
+    expect(screen.queryByText('Disponível na próxima etapa.')).not.toBeInTheDocument();
+  });
+
+  it('Worktrees e Configurações e permissões mantêm o texto de próxima etapa', async () => {
+    installApi([]);
+    renderAt('/projects/p1');
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Worktrees' }));
+    expect(screen.getByText('Disponível na próxima etapa.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Configurações e permissões' }));
     expect(screen.getByText('Disponível na próxima etapa.')).toBeInTheDocument();
   });
 });
 
 describe('ProjectDetailPage: criar missão', () => {
+  it('em projeto sem Git, marcar "altera código" mostra o aviso e desabilita Criar missão', async () => {
+    const api = installApi([]);
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...project, repositoryKind: 'none', defaultBranch: undefined }],
+    } as never);
+    renderAt('/projects/p1');
+    await screen.findByText('Nenhuma missão ainda. Crie a primeira.');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    const form = screen.getByRole('form', { name: 'Nova missão' });
+    await userEvent.click(within(form).getByLabelText('Esta missão altera código'));
+
+    expect(within(form).getByText(/Este projeto não é um repositório Git/)).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Criar missão' })).toBeDisabled();
+  });
+
   it('criar e planejar leva ao workspace da missão', async () => {
     const api = installApi([]);
     renderAt('/projects/p1');

@@ -252,6 +252,45 @@ describe('MissionPage: plano', () => {
     await waitFor(() => expect(hub.api.missions.start).toHaveBeenCalledWith('m1'));
   });
 
+  it.each(['WORKTREE_CREATE_FAILED', 'WORKTREE_COLLISION', 'PROJECT_WITHOUT_GIT'] as const)(
+    'falha de início por %s mostra a mensagem do worktree, e a missão segue na fila',
+    async (code) => {
+      const hub = installApi(viewOf({ status: 'queued' }));
+      hub.api.missions.start.mockResolvedValueOnce({
+        ok: false,
+        error: { code, message: 'Mensagem técnica.', retryable: false },
+      } as never);
+      renderPage();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Iniciar missão' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Não foi possível criar o worktree da missão. Inicialize o Git na pasta e tente de novo.',
+      );
+      expect(screen.queryByText('Mensagem técnica.')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeEnabled();
+      expect(screen.getByText('Plano aprovado, na fila')).toBeInTheDocument();
+    },
+  );
+
+  it('falha de início por outro erro mantém a mensagem da ação, sem a do worktree', async () => {
+    const hub = installApi(viewOf({ status: 'queued' }));
+    hub.api.missions.start.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'AGENT_UNAVAILABLE',
+        message: 'O agente não está disponível.',
+        retryable: true,
+      },
+    } as never);
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Iniciar missão' }));
+
+    expect(await screen.findByText('O agente não está disponível.')).toBeInTheDocument();
+    expect(screen.queryByText(/Não foi possível criar o worktree/)).not.toBeInTheDocument();
+  });
+
   it('uma falha da API aparece como alerta, sem derrubar a tela', async () => {
     const hub = installApi(viewOf());
     hub.api.missions.approvePlan.mockResolvedValueOnce({
