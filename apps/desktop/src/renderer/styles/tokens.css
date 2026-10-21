@@ -51,4 +51,6 @@
   --space-4: 1.5rem;
   --space-5: 2rem;
   --radius: 2px;
+  /* Raio só do painel do workspace; --radius (botões, campos e cartões) continua em 2px. */
+  --radius-panel: 12px;
 }

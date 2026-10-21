@@ -232,6 +232,99 @@ button:disabled {
 }
 
 /*
+ * Painel do workspace (components/Panel.tsx): fundo --panel, borda --line, raio --radius-panel e
+ * faixa de 3px no topo na cor do acento. A classe panel--<acento> só define --panel-accent; a faixa e
+ * o ponto do cabeçalho leem essa variável. O corpo rola sozinho (min-height: 0 deixa o painel
+ * encolher dentro de uma grade). O corpo base não força fonte mono: quem mostra log usa a classe do log.
+ */
+.panel {
+  --panel-accent: var(--violet);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--panel-accent);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+}
+
+.panel--violet {
+  --panel-accent: var(--violet);
+}
+
+.panel--red {
+  --panel-accent: var(--red);
+}
+
+.panel--blue {
+  --panel-accent: var(--blue);
+}
+
+.panel--magenta {
+  --panel-accent: var(--magenta);
+}
+
+.panel--orange {
+  --panel-accent: var(--orange);
+}
+
+.panel--lime {
+  --panel-accent: var(--lime);
+}
+
+.panel--cyan {
+  --panel-accent: var(--cyan);
+}
+
+.panel--yellow {
+  --panel-accent: var(--yellow);
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.panel__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--panel-accent);
+}
+
+.panel__title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.panel__meta {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+.panel__tag {
+  margin-left: auto;
+}
+
+.panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3);
+}
+
+.panel__empty {
+  color: var(--muted);
+}
+
+/*
  * Abas: sublinhado na cor da aba na seção; no workspace da missão, a aba ativa é um botão cheio
  * nessa cor. A cor vem de --tab-accent: ciano por padrão (projetos), e cada aba da missão tem a sua
  * (Plano azul, Conversa magenta, Terminal e Diff ciano, Testes lima, Logs amarelo, Artefatos laranja).
