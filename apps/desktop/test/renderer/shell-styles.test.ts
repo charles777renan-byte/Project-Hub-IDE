@@ -77,3 +77,33 @@ describe('leitor de regras dos testes', () => {
     expect(mediaBlock('@media (x)', '(x)')).toBe('');
   });
 });
+
+/**
+ * Contadores do cabeçalho (Tarefa 7): a linha de contadores é flex, e cada contador tem um ponto de
+ * 8px com a cor do próprio estado (lima para executando, violeta para aguarda você).
+ */
+describe('contadores do cabeçalho', () => {
+  const appCss = readCss('app.css');
+
+  it('o contêiner dos contadores é uma linha flex', () => {
+    expect(ruleDeclarations(appCss, '.overview-counters').get('display')).toBe('flex');
+  });
+
+  it('o ponto de cada contador tem 8px', () => {
+    const dot = ruleDeclarations(appCss, '.overview-counter::before');
+    expect(dot.get('width')).toBe('8px');
+    expect(dot.get('height')).toBe('8px');
+  });
+
+  it('o ponto do contador "executando" é lima', () => {
+    expect(ruleDeclarations(appCss, '.overview-counter--lime::before').get('background')).toBe(
+      'var(--lime)',
+    );
+  });
+
+  it('o ponto do contador "aguarda você" é violeta', () => {
+    expect(ruleDeclarations(appCss, '.overview-counter--violet::before').get('background')).toBe(
+      'var(--violet)',
+    );
+  });
+});

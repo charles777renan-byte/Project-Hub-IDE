@@ -762,3 +762,41 @@ button:disabled {
 .workspace-panel {
   max-width: 48rem;
 }
+
+/*
+ * Contadores globais do cabeçalho (components/OverviewCounters.tsx): texto em caixa alta, fonte mono,
+ * 11.5px e cor --muted. Cada contador tem o seu ponto de 8px no ::before, na cor do próprio estado:
+ * lima para executando e violeta para aguarda você. Só tokens.
+ */
+.overview-counters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.overview-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.overview-counter::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius);
+}
+
+.overview-counter--lime::before {
+  background: var(--lime);
+}
+
+.overview-counter--violet::before {
+  background: var(--violet);
+}

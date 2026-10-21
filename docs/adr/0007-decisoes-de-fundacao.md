@@ -430,3 +430,10 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Contadores:** `App` aceita `headerStatus?: ReactNode`, mostrado à direita em `.app-header__status`; sem ele, nada é renderizado. A Tarefa 7 passa os contadores.
 - **Minor da Tarefa 2 corrigidos:** meta vazia não cria o `span`; o comentário do `.panel` não cita mais uma classe de log inexistente; o teste de forma afirma as cores de título, meta e vazio. O leitor de regras dos testes (`test/renderer/css-rules.ts`) passou a juntar todas as regras com o mesmo seletor.
 - **Correção da revisão (Critical):** a navegação tem `overflow-x: auto`, que cortava o anel de foco (2px, recuo 2px por fora) dos links. `.app-nav a:focus-visible` usa `outline-offset: -2px`, com o anel por dentro do link. O E2E `e2e/shell.spec.ts` mede na janela real que o anel cabe na navegação e que o documento não rola. `headerStatus` nulo também não cria o espaço vazio. O leitor de regras dos testes lê grupos (`a, b {}`) e deixa de fora o `@media`, que se lê por `mediaBlock`.
+
+### 2026-10-20, interface do workspace, Tarefa 7: contadores globais no cabeçalho
+
+- **Decisão:** a contagem sai de `use-overview.ts` no cliente. O hook lê `projects.list` e `missions.list` de cada projeto e refaz a leitura a cada evento de `missions.subscribe`, sem canal novo. A assinatura é cancelada ao desmontar.
+- **Contagem:** `running` conta em "executando"; `planned`, `waiting_approval` e `waiting_input` contam em "aguarda você". `failed`, `draft`, `queued`, `paused`, `succeeded` e `cancelled` não entram em nenhum dos dois. `items` traz só as missões que contam.
+- **Falha:** a resposta com erro, ou a exceção, de um projeto entra em `failedProjects` e não zera a contagem dos outros. Se a própria lista de projetos falha numa releitura, a tela mantém a última contagem, em vez de mostrar zero por engano.
+- **Forma:** `.overview-counters` é uma linha flex, e cada `.overview-counter` tem um ponto de 8px no `::before`: lima para executando e violeta para aguarda você. O contêiner é `aria-live="polite"`. A ligação em `App` e `main.tsx` fica para a integração das tarefas.
