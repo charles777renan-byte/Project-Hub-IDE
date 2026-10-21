@@ -1,9 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import type { AppResult, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectsPage } from '../../src/renderer/pages/ProjectsPage';
+import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 
 const hub: ProjectSummary = {
   id: 'p1',
@@ -154,6 +155,37 @@ describe('ProjectsPage: adicionar projeto', () => {
     expect(await screen.findByRole('heading', { name: 'Novo' })).toBeInTheDocument();
     expect(projects.add).toHaveBeenCalledWith({ path: 'C:\\Projetos\\Novo' });
     expect(projects.list).toHaveBeenCalledTimes(2);
+  });
+
+  it('avisa a barra lateral, pelo evento da janela, quando um projeto é cadastrado', async () => {
+    const novo: ProjectSummary = {
+      id: 'p3',
+      name: 'Novo',
+      path: 'C:\\Projetos\\Novo',
+      repositoryKind: 'none',
+      available: true,
+    };
+    installApi({
+      chooseDirectory: () => Promise.resolve({ ok: true, data: { path: 'C:\\Projetos\\Novo' } }),
+      add: () => Promise.resolve({ ok: true, data: novo }),
+    });
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    try {
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <ProjectsPage />
+        </MemoryRouter>,
+      );
+      await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.');
+
+      await user.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+      await waitFor(() => expect(avisos).toHaveBeenCalledTimes(1));
+    } finally {
+      window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    }
   });
 
   it('cancelar a escolha não cadastra nada e não mostra erro', async () => {

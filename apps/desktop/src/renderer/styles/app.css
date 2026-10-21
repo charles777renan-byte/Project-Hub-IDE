@@ -156,9 +156,9 @@ nav[aria-label='Principal'] {
 
 /*
  * Corpo da janela: a barra lateral de projetos e missões e a área da página, lado a lado, abaixo do
- * cabeçalho. A barra tem 230px e rola sozinha. Os itens ocupam a largura toda dela (o texto tem recuo
- * dentro de cada um), e o contorno de foco fica por dentro (recuo -2px): o que saísse da borda seria
- * cortado pela rolagem. Abaixo de 1000px a barra some, e a navegação continua no cabeçalho.
+ * cabeçalho. A barra tem 230px e rola sozinha. Quando a rolagem leva um item até a borda da barra, um
+ * contorno de foco de 2px por fora seria cortado por ela; por isso o contorno fica por dentro (recuo
+ * -2px). Abaixo de 1000px a barra some, e a navegação continua no cabeçalho.
  */
 .app-body {
   display: flex;

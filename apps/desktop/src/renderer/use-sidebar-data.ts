@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import type { MissionDto, ProjectSummary } from '@project-hub/contracts';
+import { PROJECTS_CHANGED_EVENT } from './projects-events';
 
 /** Dados da barra lateral: os projetos, e as missões de cada um, na ordem que a API devolve. */
 export type SidebarData = {
@@ -11,9 +12,6 @@ export type SidebarData = {
 };
 
 const LOAD_ERROR = 'Não foi possível carregar os projetos. Tente de novo.';
-
-/** Evento da janela disparado quando um projeto é cadastrado: a barra recarrega sem trocar de rota. */
-export const PROJECTS_CHANGED_EVENT = 'project-hub:projects-changed';
 
 const LOADING: SidebarData = { status: 'loading', projects: [], missionsByProject: {} };
 const FAILED: SidebarData = {

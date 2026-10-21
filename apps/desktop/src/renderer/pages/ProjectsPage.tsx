@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ProjectSummary } from '@project-hub/contracts';
 import { ProjectCard } from '../components/ProjectCard';
-import { PROJECTS_CHANGED_EVENT } from '../use-sidebar-data';
+import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 
 type ListState =
   | { status: 'loading' }

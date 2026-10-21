@@ -28,7 +28,11 @@ export function Sidebar({ currentProjectId }: { currentProjectId?: string }) {
         <p id={`${ids}-projetos`} className="sidebar__title">
           Projetos
         </p>
-        <ProjectItems data={data} currentId={projectId} />
+        <ProjectItems
+          data={data}
+          currentId={projectId}
+          onMissionRoute={currentMissionId !== undefined}
+        />
         <button
           type="button"
           className="sidebar__action"
@@ -57,7 +61,19 @@ export function Sidebar({ currentProjectId }: { currentProjectId?: string }) {
   );
 }
 
-function ProjectItems({ data, currentId }: { data: SidebarData; currentId?: string | undefined }) {
+/**
+ * Lista de projetos. Na rota de uma missão, o projeto dela tem o ponto ciano, mas não leva
+ * `aria-current`: a página atual é a missão, e só ela deve ser anunciada assim.
+ */
+function ProjectItems({
+  data,
+  currentId,
+  onMissionRoute,
+}: {
+  data: SidebarData;
+  currentId?: string | undefined;
+  onMissionRoute: boolean;
+}) {
   if (data.status === 'loading') return <p className="muted">Carregando…</p>;
   if (data.status === 'error') {
     return (
@@ -77,13 +93,15 @@ function ProjectItems({ data, currentId }: { data: SidebarData; currentId?: stri
             <Link
               to={projectPath(project.id)}
               className="sidebar__link"
-              aria-current={isCurrent ? 'page' : undefined}
+              aria-current={isCurrent && !onMissionRoute ? 'page' : undefined}
             >
               <span
                 aria-hidden="true"
                 className={isCurrent ? 'sidebar__dot sidebar__dot--cyan' : 'sidebar__dot'}
               />
-              <span className="sidebar__name">{project.name}</span>
+              <span className="sidebar__name" title={project.name}>
+                {project.name}
+              </span>
             </Link>
             {project.repositoryKind === 'git' ? null : <StatusChip label="sem Git" tone="muted" />}
           </li>
@@ -119,7 +137,9 @@ function MissionItems({
               aria-current={mission.id === currentMissionId ? 'page' : undefined}
             >
               <span aria-hidden="true" className={`sidebar__dot sidebar__dot--${tone}`} />
-              <span className="sidebar__name">{mission.title}</span>
+              <span className="sidebar__name" title={mission.title}>
+                {mission.title}
+              </span>
             </Link>
             <StatusChip label={statusLabel(mission.status)} tone={tone} />
           </li>
