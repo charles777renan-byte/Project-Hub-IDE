@@ -6,7 +6,7 @@
 
 ## Contexto
 
-O plano de travas do Git acrescentou ao adaptador a recusa de worktree travado, uma nova tentativa para `index.lock` e a cópia dos caminhos ignorados listados em `.worktreeinclude`. Na revisão final, três pontos do plano original não se sustentaram contra o Git 2.54.0.windows.1 e precisam de registro formal.
+O plano de travas do Git acrescentou ao adaptador a recusa de worktree travado, uma nova tentativa para `index.lock` e a cópia dos caminhos ignorados listados em `.worktreeinclude`. Na revisão final, dois pontos do plano original não se sustentaram contra o Git 2.54.0.windows.1 e precisam de registro formal: a forma `check-ignore -z`, que o Git rejeita, e a premissa de que o `index.lock` faz `worktree add` e `worktree remove` falharem.
 
 ## Decisão
 
@@ -17,7 +17,7 @@ O plano de travas do Git acrescentou ao adaptador a recusa de worktree travado, 
 
 ## Por quê
 
-- O Git é a fonte de verdade sobre o que é ignorado, e `check-ignore` sem `-z` é a única forma que ele aceita sem stdin.
+- O Git é a fonte de verdade sobre o que é ignorado, e `check-ignore` sem `-z` é a única forma que a lista de permissão aceita, e que funciona sem stdin.
 - A recusa do worktree travado é o único comportamento de trava reproduzido contra o Git, e o `GIT_LOCKED` dá à pessoa o motivo.
 - O worktree já foi criado quando a cópia roda; transformar uma falha de cópia em falha de criação deixaria uma pasta órfã. Campo novo e opcional para quem lê não quebra quem já usa `CreatedWorktree`.
 
