@@ -1,14 +1,15 @@
 # Project Hub
 
-Aplicativo desktop, feito com Electron, para organizar projetos, missões e agentes de IA em um só lugar. A plataforma de lançamento é o Windows, e a matriz de testes cobre Windows, macOS e Linux.
+Aplicativo desktop, feito com Electron, para acompanhar projetos, missões e agentes de IA num só lugar.
 
-O repositório está na primeira etapa: um aplicativo Electron seguro que cadastra projetos, mostra o estado do Git, cria e remove worktrees e executa uma missão com agente simulado, gravando eventos persistidos.
+## O que já funciona
 
-## Documentos
+- Cadastra pastas como projetos e mostra o estado do Git de cada uma.
+- Cria e remove worktrees de missão, sem apagar trabalho que ainda não foi salvo.
+- Executa uma missão com um agente simulado: plano, aprovação e eventos gravados no banco local.
+- Tem uma interface nova em construção: barra lateral, contadores no cabeçalho e o workspace da missão, com a coluna "Aguardando você". O painel inicial e as abas de diff, testes e terminal ainda não estão prontos.
 
-- [Planejamento](planejamento-project-hub.md): a especificação completa.
-- [Plano de implementação](docs/superpowers/plans/2026-10-19-fundacao-project-hub.md): as tarefas da primeira etapa.
-- [Decisões de arquitetura](docs/adr/): os ADRs 0001 a 0007.
+**Plataforma:** o alvo de lançamento é o Windows, que é onde o app é desenvolvido e testado hoje. macOS e Linux estão no planejamento.
 
 ## Requisitos
 
@@ -18,61 +19,60 @@ O repositório está na primeira etapa: um aplicativo Electron seguro que cadast
 | pnpm       | 12.14.0          | `packageManager` do `package.json` |
 | Git        | recente, no PATH | -                                  |
 
-Se o seu Node não trouxer o Corepack, instale o pnpm com `npm install -g pnpm@12.14.0`. Com Corepack, `corepack enable` basta.
+Com o Corepack, `corepack enable` basta. Sem ele, `npm install -g pnpm@12.14.0`.
 
-O `better-sqlite3` é um módulo nativo. Quando não existe binário pré-compilado, ele precisa de ferramentas de compilação: no Windows, Visual Studio Build Tools com C++ e Python 3; no macOS, Xcode Command Line Tools; no Linux, compilador e Python. O ADR 0007 explica o rebuild para o Electron.
+O `better-sqlite3` é um módulo nativo. Se não houver binário pronto para a sua versão do Node, ele precisa compilar: no Windows, instale o Visual Studio Build Tools com C++ e o Python 3. Os detalhes estão no ADR 0007.
 
 ## Começando
 
 ```bash
 pnpm install
+pnpm dev
+```
+
+Na primeira vez, `pnpm dev` baixa o binário do Electron. Antes de mudar algo, rode a verificação:
+
+```bash
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
-Copie `.env.example` para `.env` se quiser mudar alguma variável. O `.env` não vai para o Git.
+Para mudar alguma variável, copie `.env.example` para `.env`. O `.env` não vai para o Git.
 
-## Scripts da raiz
+## Comandos principais
 
-| Comando                 | O que faz                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| `pnpm dev`              | Abre o aplicativo em desenvolvimento. Delega ao pacote `@project-hub/desktop`.              |
-| `pnpm build`            | Provisório: confere os tipos de todos os pacotes. Será trocado pelo build real dos bundles. |
-| `pnpm lint`             | Roda o ESLint em todo o repositório.                                                        |
-| `pnpm format`           | Roda o Prettier e reescreve os arquivos.                                                    |
-| `pnpm typecheck`        | Roda o `tsc` na raiz e o script `typecheck` de cada pacote.                                 |
-| `pnpm test`             | Testes unitários: `*.test.ts` no Node e `*.test.tsx` do renderer, em jsdom.                 |
-| `pnpm test:integration` | Testes com Git ou SQLite reais (`*.integration.test.ts`).                                   |
-| `pnpm test:e2e`         | Constrói o app e roda o E2E (Playwright). Filtro: `pnpm test:e2e security`.                 |
-| `pnpm db:generate`      | Gera migrações. Delega ao pacote `@project-hub/database`.                                   |
-| `pnpm db:migrate`       | Aplica migrações. Delega ao pacote `@project-hub/database`.                                 |
+| Comando                 | O que faz                                                     |
+| ----------------------- | ------------------------------------------------------------- |
+| `pnpm dev`              | Abre o aplicativo em desenvolvimento                          |
+| `pnpm build`            | Gera os bundles do aplicativo                                 |
+| `pnpm lint`             | Roda o ESLint em todo o repositório                           |
+| `pnpm format`           | Roda o Prettier e reescreve os arquivos                       |
+| `pnpm typecheck`        | Confere os tipos de todos os pacotes                          |
+| `pnpm test`             | Testes unitários, no Node e no renderer (jsdom)               |
+| `pnpm test:integration` | Testes com Git e SQLite reais                                 |
+| `pnpm test:e2e`         | Gera o aplicativo e roda os testes ponta a ponta (Playwright) |
+| `pnpm db:generate`      | Gera uma nova migração do banco                               |
 
-`db:generate` e `db:migrate` delegam a scripts que chegam nas próximas tarefas e, até lá, terminam com erro. Na primeira vez, `pnpm dev` baixa o binário do Electron (ADR 0007, "Registros posteriores").
+As migrações do banco são aplicadas quando o aplicativo abre, então não há um comando separado para isso.
 
 ## Estrutura
 
 ```text
-apps/desktop      processo principal, preload e renderer
-packages/domain   regras de negócio, sem dependência de Electron
-packages/*        demais pacotes internos (contracts, application, database, git-adapter, ...)
-docs/adr          decisões de arquitetura
+apps/desktop       processo principal, preload e renderer (Electron)
+packages/domain    regras de negócio, sem dependência de Electron
+packages/*         demais pacotes internos (contracts, application, database, git-adapter, ...)
+docs/              plano de implementação, ADRs e planejamento
 ```
+
+## Documentação
+
+- [Planejamento](planejamento-project-hub.md): a especificação completa.
+- [Plano da fundação](docs/superpowers/plans/2026-10-19-fundacao-project-hub.md): a primeira etapa, já concluída.
+- [Plano da interface](docs/superpowers/plans/2026-10-20-interface-workspace.md): a etapa em andamento.
+- [Decisões de arquitetura](docs/adr/): os ADRs 0001 a 0007.
 
 ## Convenções
 
-- **Pacotes.** Cada pasta de `apps/` e `packages/` é um pacote chamado `@project-hub/<pasta>`. Para criar um, copie `packages/domain`: `package.json` com `"private": true` e `"type": "module"`, os scripts `typecheck` e `test`, e um `tsconfig.json` que estende `../../tsconfig.base.json`.
-- **TypeScript.** Modo estrito, com `noUncheckedIndexedAccess` e `exactOptionalPropertyTypes`, em `tsconfig.base.json`. A base não inclui tipos do Node nem do DOM: um pacote que usa `node:*` declara `"types": ["node"]`, e o renderer acrescenta `"DOM"` em `lib`.
-- **Testes.** Os nomes dos arquivos e a separação entre unitários e integração estão no ADR 0007, item 8. A configuração do Vitest fica na raiz, em `vitest.config.ts`. `pnpm --filter <pacote> test` roda o Vitest dentro do pacote e inclui os testes de integração dele. Os testes do renderer (`apps/desktop/test/renderer/`) dependem do jsdom e do arquivo de setup da configuração da raiz: rode-os por `pnpm test`, ou por `pnpm exec vitest run <arquivo>` na raiz.
-- **Importações.** Os pacotes de `packages/` não importam Electron. O ESLint confere.
-- **Segredos.** Nenhum segredo entra no repositório nem no `.env.example`. Tokens reais vão para o cofre do sistema, pela interface do aplicativo.
-
-## Decisões de arquitetura
-
-| ADR                                                         | Decisão                                    |
-| ----------------------------------------------------------- | ------------------------------------------ |
-| [0001](docs/adr/0001-electron-renderer-isolado.md)          | Electron com renderer isolado              |
-| [0002](docs/adr/0002-sqlite-fonte-local-de-verdade.md)      | SQLite como fonte local de verdade         |
-| [0003](docs/adr/0003-eventos-persistidos-com-snapshots.md)  | Eventos persistidos com snapshots          |
-| [0004](docs/adr/0004-um-worktree-por-missao-executavel.md)  | Um worktree por missão executável          |
-| [0005](docs/adr/0005-adaptadores-de-agente-por-contrato.md) | Adaptadores de agente por contrato         |
-| [0006](docs/adr/0006-aprovacao-por-politicas.md)            | Aprovação por políticas                    |
-| [0007](docs/adr/0007-decisoes-de-fundacao.md)               | Versões, Git, banco, CSP e outras escolhas |
+- Cada pasta de `apps/` e `packages/` é um pacote chamado `@project-hub/<pasta>`.
+- Os pacotes de `packages/` não importam Electron. O ESLint confere.
+- Testes unitários são `*.test.ts` e `*.test.tsx`. Os que usam Git ou SQLite reais são `*.integration.test.ts`. Os testes do renderer ficam em `apps/desktop/test/renderer/`.
+- Nenhum segredo entra no repositório. Tokens reais ficam no cofre do sistema, pela interface do aplicativo.
