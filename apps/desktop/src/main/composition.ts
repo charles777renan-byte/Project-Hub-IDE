@@ -7,11 +7,13 @@ import {
   type AddProjectDeps,
   type CreateMissionDeps,
   type DeleteMissionDeps,
+  type ListWorktreesDeps,
   type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
   type Platform,
   type ProjectLifecycleDeps,
+  type RemoveWorktreeDeps,
 } from '@project-hub/application';
 import {
   createMissionRepository,
@@ -37,6 +39,8 @@ export type MissionServices = {
   queryDeps: MissionQueryDeps;
   diffDeps: MissionDiffDeps;
   deleteDeps: DeleteMissionDeps;
+  /** Aba Worktrees: a lista derivada das missões e a remoção protegida. */
+  worktreeDeps: { list: ListWorktreesDeps; remove: RemoveWorktreeDeps };
 };
 
 /**
@@ -153,8 +157,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     newId,
   });
   recoverInterruptedExecutions(repo, now);
-
   const fs = { isDirectory: createIsDirectory() };
+  const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
   return {
     repo: projects,
     git: createGitDetector(),
@@ -167,8 +171,12 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       orchestrator,
       createDeps: { repo, projects, now, newId },
       queryDeps: { repo, projects },
-      diffDeps: { repo, diff: { diff: (worktreePath) => getWorktreeDiff(worktreePath) } },
+      diffDeps: { repo, diff },
       deleteDeps: { repo, projects, worktrees: { remove: removeWorktree }, fs },
+      worktreeDeps: {
+        list: { repo, projects, fs },
+        remove: { repo, projects, worktrees: { remove: removeWorktree }, fs, diff, now },
+      },
     },
     close: () => {
       db.$client.close();

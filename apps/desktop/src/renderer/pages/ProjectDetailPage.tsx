@@ -6,13 +6,14 @@ import { MissionCard } from '../components/MissionCard';
 import { MissionForm, type MissionFormValues } from '../components/MissionForm';
 import { PathText } from '../components/PathText';
 import { Tabs, type TabItem } from '../components/Tabs';
+import { WorktreesTab } from '../components/WorktreesTab';
 import { needsAttention } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { missionPath, ROUTE_PATHS } from '../routes';
 
 type ProjectTab = 'overview' | 'missions' | 'repository' | 'worktrees' | 'settings';
 
-/** Abas do projeto (seção 10.5). Worktrees e Configurações e permissões ainda não têm conteúdo. */
+/** Abas do projeto (seção 10.5). Configurações e permissões ainda não tem conteúdo. */
 const TABS: readonly TabItem<ProjectTab>[] = [
   { id: 'overview', label: 'Visão geral' },
   { id: 'missions', label: 'Missões' },
@@ -225,6 +226,8 @@ export function ProjectDetailPage() {
             <MissionCounts missions={missions} />
           ) : tab === 'repository' ? (
             <RepositoryInfo project={project} />
+          ) : tab === 'worktrees' ? (
+            <WorktreesTab projectId={projectId} />
           ) : (
             <p className="page-note">Disponível na próxima etapa.</p>
           )}

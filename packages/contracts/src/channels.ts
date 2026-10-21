@@ -29,4 +29,8 @@ export const CHANNELS = {
   /** Evento da missão, do processo principal para o renderer. Não tem resposta. */
   missionsEvent: 'missions:event:v1',
   approvalsDecide: 'approvals:decide:v1',
+  /** Worktrees do projeto, derivados das missões (Tarefa 14 da interface). */
+  worktreesList: 'worktrees:list:v1',
+  /** Remove o worktree de uma missão encerrada, sem apagar a branch. */
+  worktreesRemove: 'worktrees:remove:v1',
 } as const;
