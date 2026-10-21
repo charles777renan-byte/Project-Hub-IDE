@@ -4,6 +4,9 @@ import { PanelEmpty } from '../Panel';
 import { Tabs, type TabItem } from '../Tabs';
 import { ArtifactsPanel } from './ArtifactsPanel';
 
+/** O que o resumo da missão mostra do diff: quantos arquivos mudaram e se a lista foi cortada. */
+export type DiffSummary = { count: number; truncated: boolean };
+
 type DiffView = 'changes' | 'artifacts';
 
 const VIEWS: readonly TabItem<DiffView>[] = [
@@ -26,18 +29,22 @@ type DiffState =
   | { status: 'error'; message: string };
 
 /**
- * Corpo do painel "Diff" (laranja): os arquivos que a missão alterou no worktree e o diff do arquivo
+ * Conteúdo da aba "Diff": os arquivos que a missão alterou no worktree e o diff do arquivo
  * escolhido, com as linhas adicionadas e removidas. A lista carrega ao abrir a missão e de novo quando
  * `refreshKey` muda (a página passa a contagem de eventos). Caminho e conteúdo entram como texto.
+ * `onSummary` recebe a contagem de arquivos para o resumo da missão, ou `undefined` enquanto não há
+ * diff lido (sem worktree, carregando ou com erro).
  */
 export function DiffPanel({
   missionId,
   hasWorktree,
   refreshKey,
+  onSummary,
 }: {
   missionId: string;
   hasWorktree: boolean;
   refreshKey: number;
+  onSummary?: (summary: DiffSummary | undefined) => void;
 }) {
   const [state, setState] = useState<DiffState>({ status: 'loading' });
   const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
@@ -64,6 +71,14 @@ export function DiffPanel({
       current = false;
     };
   }, [missionId, hasWorktree, refreshKey]);
+
+  useEffect(() => {
+    onSummary?.(
+      hasWorktree && state.status === 'ready'
+        ? { count: state.diff.files.length, truncated: state.diff.truncatedFiles }
+        : undefined,
+    );
+  }, [state, hasWorktree, onSummary]);
 
   return (
     <div className="diff-tabs">

@@ -3,9 +3,9 @@ import { terminalEntries } from '../../mission-text';
 import { PanelEmpty } from '../Panel';
 
 /**
- * Corpo do painel "Terminal" (ciano), somente leitura: os comandos que o agente pediu (`$ comando`, em
+ * Conteúdo da aba "Terminal", somente leitura: os comandos que o agente pediu (`$ comando`, em
  * ciano) e a saída que as ferramentas devolveram, o mais antigo em cima e o mais recente no fim. Não
- * executa nada e não aceita digitação. Quem rola é o corpo do painel (`Panel`). Comando e saída vêm do
+ * executa nada e não aceita digitação. Quem rola é o painel da aba. Comando e saída vêm do
  * agente e entram como texto, sem sequências ANSI e nunca como HTML.
  */
 export function TerminalPanel({ events }: { events: readonly MissionEventDto[] }) {

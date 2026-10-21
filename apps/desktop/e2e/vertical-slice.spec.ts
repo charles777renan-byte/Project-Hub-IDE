@@ -21,7 +21,8 @@ const MISSION = {
 };
 
 /** Aviso do cabeçalho enquanto a missão espera uma decisão (R182). */
-const MISSION_NOTICE = 'Aguarda sua decisão';
+/** Nome do banner que aparece em todas as abas enquanto há uma decisão pendente. */
+const DECISION_BANNER = 'Aguardando você';
 
 const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
 
@@ -68,6 +69,7 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   await expect(
     page.getByRole('main').getByText('Aguarda aprovação do plano', { exact: true }),
   ).toBeVisible();
+  await page.getByRole('tab', { name: 'Plano' }).click();
   await expect(page.getByRole('list', { name: 'Etapas do plano' })).toBeVisible();
   await page.getByRole('button', { name: 'Aprovar plano' }).click();
 
@@ -76,10 +78,11 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Iniciar missão' }).click();
 
-  // A missão para no pedido de aprovação do agente, e a página mostra o pedido na coluna Aguardando você.
+  // A missão para no pedido de aprovação do agente, e a página volta à aba Conversa e mostra o pedido.
   await expect(
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole('region', { name: DECISION_BANNER })).toBeVisible();
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
 }
 
@@ -163,13 +166,15 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   // 5. A missão fica concluída, e a linha do tempo da Conversa mostra o fim da sessão
   // (`session.completed`).
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  // A Conversa é um painel da grade (sem abas): fica sempre visível na página da missão.
-  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
+  // A Conversa é a aba de abertura da página da missão, e o banner some com a decisão tomada.
+  await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
   await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
-  // O painel Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
+  // A aba Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
+  await page.getByRole('tab', { name: 'Diff' }).click();
   const changes = page.getByRole('list', { name: 'Arquivos alterados' });
   await expect(changes.getByRole('button', { name: /project-hub-demo\.md/ })).toBeVisible();
   const eventsBeforeRestart = await timelineOf(page);
@@ -189,7 +194,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
 
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Eventos da missão' }).getByText('Sessão do agente concluída.'),
   ).toBeVisible();
@@ -265,13 +270,13 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Em execução', { exact: true })).toHaveCount(0);
-  await expect(page.getByText(MISSION_NOTICE)).toHaveCount(0);
+  await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
   // A pessoa pode tentar de novo, e a conversa explica o que houve.
   await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Execução interrompida ao fechar o aplicativo.')).toBeVisible();
   await expect(timeline.getByText('Aprovação expirou sem decisão.')).toBeVisible();

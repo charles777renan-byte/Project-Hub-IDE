@@ -3,7 +3,7 @@ import { formatDuration, verificationEntries } from '../../mission-text';
 import { PanelEmpty } from '../Panel';
 
 /**
- * Corpo do painel "Testes" (lima): as verificações que o agente rodou (`verification.completed`), da
+ * Conteúdo da aba "Testes": as verificações que o agente rodou (`verification.completed`), da
  * mais antiga para a mais recente. Cada uma mostra o comando, o total `passou/total` e o tempo. Com
  * falha, o total e a saída ficam em vermelho. O comando e a saída vêm do agente e entram como texto,
  * nunca como HTML. Não executa nada.
