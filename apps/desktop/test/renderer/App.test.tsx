@@ -103,7 +103,10 @@ describe('cabeçalho', () => {
 
   beforeEach(() => {
     window.projectHub = {
-      projects: { list: () => Promise.resolve({ ok: true, data: [] }) },
+      projects: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        listArchived: () => Promise.resolve({ ok: true, data: [] }),
+      },
       missions: {
         list: () => Promise.resolve({ ok: true, data: [] }),
         subscribe: () => () => undefined,
@@ -171,6 +174,7 @@ describe('página de Projetos', () => {
       ping: () => Promise.resolve({ ok: true, data: 'pong' }),
       projects: {
         list: () => Promise.resolve({ ok: true, data: [] }),
+        listArchived: () => Promise.resolve({ ok: true, data: [] }),
         chooseDirectory: () => Promise.resolve({ ok: true, data: null }),
         add: () => Promise.reject(new Error('add não é chamado nesta página')),
       },

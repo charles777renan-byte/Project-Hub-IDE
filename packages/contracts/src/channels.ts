@@ -4,6 +4,12 @@ export const CHANNELS = {
   projectsList: 'projects:list:v1',
   projectsAdd: 'projects:add:v1',
   projectsChooseDirectory: 'projects:choose-directory:v1',
+  /** Projetos arquivados, para a seção de arquivados (sem os removidos). */
+  projectsListArchived: 'projects:list-archived:v1',
+  projectsArchive: 'projects:archive:v1',
+  projectsUnarchive: 'projects:unarchive:v1',
+  /** Tira o projeto da lista. Não apaga a pasta, o Git nem as missões. */
+  projectsRemove: 'projects:remove:v1',
   missionsCreate: 'missions:create:v1',
   missionsList: 'missions:list:v1',
   missionsGet: 'missions:get:v1',
@@ -17,6 +23,8 @@ export const CHANNELS = {
   missionsResume: 'missions:resume:v1',
   /** Nova tentativa de missão `failed` ou `cancelled` (R180). Devolve a tentativa nova. */
   missionsRetry: 'missions:retry:v1',
+  /** Exclui uma missão encerrada, com o plano, as tentativas, as aprovações e a auditoria. */
+  missionsDelete: 'missions:delete:v1',
   missionsProvideInput: 'missions:provide-input:v1',
   /** Evento da missão, do processo principal para o renderer. Não tem resposta. */
   missionsEvent: 'missions:event:v1',

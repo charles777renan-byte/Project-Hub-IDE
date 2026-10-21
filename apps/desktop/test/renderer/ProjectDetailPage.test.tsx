@@ -1,10 +1,11 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MissionDto, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
+import type { AppResult, MissionDto, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { ProjectDetailPage } from '../../src/renderer/pages/ProjectDetailPage';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
+import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
 const project: ProjectSummary = {
@@ -35,6 +36,8 @@ function installApi(missions: MissionDto[]) {
   const api = {
     projects: {
       list: vi.fn(() => Promise.resolve({ ok: true, data: [project] })),
+      archive: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
+      remove: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
     },
     missions: {
       list: vi.fn(() => Promise.resolve({ ok: true, data: missions })),
@@ -64,6 +67,7 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
+        <Route path={ROUTE_PATHS.projects} element={<p>Lista de projetos</p>} />
         <Route path={ROUTE_PATHS.projectDetail} element={<ProjectDetailPage />} />
         <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
       </Routes>
@@ -249,5 +253,57 @@ describe('ProjectDetailPage: criar missão', () => {
       'Informe ao menos um critério de aceite.',
     );
     expect(api.missions.plan).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectDetailPage: arquivar e remover', () => {
+  it('Arquivar projeto arquiva, avisa a barra lateral e volta à lista de projetos', async () => {
+    const api = installApi([]);
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    const user = userEvent.setup();
+    renderAt('/projects/p1');
+
+    await user.click(await screen.findByRole('button', { name: 'Arquivar projeto' }));
+
+    expect(api.projects.archive).toHaveBeenCalledWith('p1');
+    expect(await screen.findByText('Lista de projetos')).toBeInTheDocument();
+    expect(avisos).toHaveBeenCalled();
+    window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+  });
+
+  it('Remover da lista pede confirmação antes de tirar o projeto', async () => {
+    const api = installApi([]);
+    const user = userEvent.setup();
+    renderAt('/projects/p1');
+
+    await user.click(await screen.findByRole('button', { name: 'Remover da lista' }));
+    expect(api.projects.remove).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    expect(api.projects.remove).toHaveBeenCalledWith('p1');
+    expect(await screen.findByText('Lista de projetos')).toBeInTheDocument();
+  });
+
+  it('falha ao arquivar mostra a mensagem da API e o projeto segue na tela', async () => {
+    const api = installApi([]);
+    api.projects.archive.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'MISSION_INVALID_STATE',
+        message:
+          'Há missões em andamento neste projeto. Cancele ou aguarde antes de arquivar ou remover.',
+        retryable: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderAt('/projects/p1');
+
+    await user.click(await screen.findByRole('button', { name: 'Arquivar projeto' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Há missões em andamento');
+    expect(screen.getByRole('heading', { level: 1, name: 'Project Hub' })).toBeInTheDocument();
+    expect(screen.queryByText('Lista de projetos')).not.toBeInTheDocument();
   });
 });

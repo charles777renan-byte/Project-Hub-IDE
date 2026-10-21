@@ -29,11 +29,18 @@ function installApi(overrides: Partial<ProjectHubApi['projects']> = {}) {
       overrides.list ??
         (() => Promise.resolve<AppResult<ProjectSummary[]>>({ ok: true, data: [] })),
     ),
+    listArchived: vi.fn(
+      overrides.listArchived ??
+        (() => Promise.resolve<AppResult<ProjectSummary[]>>({ ok: true, data: [] })),
+    ),
     chooseDirectory: vi.fn(
       overrides.chooseDirectory ??
         (() => Promise.resolve<AppResult<{ path: string } | null>>({ ok: true, data: null })),
     ),
     add: vi.fn(overrides.add ?? (() => Promise.reject(new Error('add não deveria ser chamado')))),
+    unarchive: vi.fn(
+      overrides.unarchive ?? (() => Promise.reject(new Error('unarchive não deveria ser chamado'))),
+    ),
   };
   window.projectHub = { ping: vi.fn(), projects } as unknown as ProjectHubApi;
   return projects;
@@ -275,5 +282,92 @@ describe('ProjectsPage: adicionar projeto', () => {
 
     finishChoice({ ok: true, data: null });
     expect(await screen.findByRole('button', { name: 'Adicionar projeto' })).toBeEnabled();
+  });
+});
+
+describe('ProjectsPage: arquivados', () => {
+  it('mostra os arquivados numa seção própria, com a disponibilidade da pasta', async () => {
+    installApi({
+      list: () => Promise.resolve({ ok: true, data: [hub] }),
+      listArchived: () => Promise.resolve({ ok: true, data: [{ ...outro, available: false }] }),
+    });
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    const arquivados = await screen.findByRole('list', { name: 'Projetos arquivados' });
+    expect(screen.getByRole('heading', { name: 'Arquivados' })).toBeInTheDocument();
+    expect(within(arquivados).getByText('Outro')).toBeInTheDocument();
+    expect(within(arquivados).getByText('Pasta indisponível')).toBeInTheDocument();
+  });
+
+  it('sem projetos arquivados, a seção não aparece', async () => {
+    installApi({ list: () => Promise.resolve({ ok: true, data: [hub] }) });
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('list', { name: 'Projetos cadastrados' });
+    expect(screen.queryByRole('heading', { name: 'Arquivados' })).not.toBeInTheDocument();
+  });
+
+  it('Restaurar desarquiva o projeto, refaz as listas e avisa a barra lateral', async () => {
+    let restored = false;
+    const projects = installApi({
+      list: () => Promise.resolve({ ok: true, data: restored ? [hub, outro] : [hub] }),
+      listArchived: () => Promise.resolve({ ok: true, data: restored ? [] : [outro] }),
+      unarchive: () => {
+        restored = true;
+        return Promise.resolve({ ok: true, data: undefined });
+      },
+    });
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Restaurar Outro' }));
+
+    await waitFor(() => expect(projects.unarchive).toHaveBeenCalledWith('p2'));
+    const cadastrados = await screen.findByRole('list', { name: 'Projetos cadastrados' });
+    expect(within(cadastrados).getByText('Outro')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Projetos arquivados' })).not.toBeInTheDocument();
+    expect(avisos).toHaveBeenCalled();
+    window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+  });
+
+  it('falha ao restaurar mostra a mensagem da API e o projeto segue arquivado', async () => {
+    installApi({
+      list: () => Promise.resolve({ ok: true, data: [hub] }),
+      listArchived: () => Promise.resolve({ ok: true, data: [outro] }),
+      unarchive: () =>
+        Promise.resolve({
+          ok: false,
+          error: {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'O projeto não foi encontrado.',
+            retryable: false,
+          },
+        }),
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Restaurar Outro' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O projeto não foi encontrado.');
+    expect(screen.getByRole('list', { name: 'Projetos arquivados' })).toBeInTheDocument();
   });
 });

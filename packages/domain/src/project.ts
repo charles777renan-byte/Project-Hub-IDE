@@ -13,6 +13,8 @@ export type ProjectRecord = {
   createdAt: string;
   updatedAt: string;
   lastOpenedAt?: string;
+  /** Arquivado: sai da listagem principal e fica na seção de arquivados, que permite restaurar. */
+  archivedAt?: string;
   /** Remoção lógica: o registro continua no banco, mas sai da listagem. */
   removedAt?: string;
 };

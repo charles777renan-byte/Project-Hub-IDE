@@ -38,6 +38,7 @@ export const projects = sqliteTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     lastOpenedAt: text('last_opened_at'),
+    archivedAt: text('archived_at'),
     removedAt: text('removed_at'),
   },
   (table) => [

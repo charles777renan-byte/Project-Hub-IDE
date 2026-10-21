@@ -1,4 +1,11 @@
 export { addProject, type AddProjectDeps } from './projects/add-project';
+export {
+  archiveProject,
+  listArchivedProjects,
+  removeProject,
+  unarchiveProject,
+  type ProjectLifecycleDeps,
+} from './projects/project-lifecycle';
 export { listProjects, toProjectSummary, type ListProjectsDeps } from './projects/list-projects';
 export { normalizePath, type Platform } from './projects/normalize-path';
 export {
@@ -23,6 +30,7 @@ export {
   type MissionQueryDeps,
   type MissionView,
 } from './missions/mission-queries';
+export { deleteMission, type DeleteMissionDeps } from './missions/delete-mission';
 export { recoverInterruptedExecutions } from './missions/startup-recovery';
 export type {
   ApprovalChanges,

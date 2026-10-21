@@ -1,10 +1,12 @@
 import {
   createMission,
+  deleteMission,
   failure,
   getMissionDiff,
   getMissionView,
   listMissions,
   type CreateMissionDeps,
+  type DeleteMissionDeps,
   type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
@@ -19,12 +21,16 @@ import {
 } from '@project-hub/contracts';
 import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
 
-/** O que os canais de missão precisam: o orquestrador e as consultas (criação, leitura e alterações). */
+/**
+ * O que os canais de missão precisam: o orquestrador e as consultas (criação, leitura, alterações e
+ * exclusão).
+ */
 export type MissionsIpcDeps = {
   orchestrator: Orchestrator;
   createDeps: CreateMissionDeps;
   queryDeps: MissionQueryDeps;
   diffDeps: MissionDiffDeps;
+  deleteDeps: DeleteMissionDeps;
 };
 
 const INVALID_MISSION = 'Confira os campos da missão: título, objetivo e um critério de aceite.';
@@ -56,6 +62,13 @@ export function handleMissionDiff(deps: MissionDiffDeps, payload: unknown) {
   const input = missionIdInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION_ID);
   return getMissionDiff(deps, input.data.missionId);
+}
+
+/** Exclui a missão. Quem confere se ela já encerrou é o caso de uso, não o IPC. */
+export function handleDeleteMission(deps: DeleteMissionDeps, payload: unknown) {
+  const input = missionIdInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION_ID);
+  return deleteMission(deps, input.data.missionId);
 }
 
 /**
@@ -122,5 +135,6 @@ export function registerMissionHandlers(
   on(CHANNELS.missionsPause, (payload) => handleMissionAction(orchestrator, 'pause', payload));
   on(CHANNELS.missionsResume, (payload) => handleMissionAction(orchestrator, 'resume', payload));
   on(CHANNELS.missionsRetry, (payload) => handleMissionAction(orchestrator, 'retry', payload));
+  on(CHANNELS.missionsDelete, (payload) => handleDeleteMission(deps.deleteDeps, payload));
   on(CHANNELS.missionsProvideInput, (payload) => handleProvideInput(orchestrator, payload));
 }
