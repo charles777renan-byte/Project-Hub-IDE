@@ -464,9 +464,15 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só os métodos de ping, projetos, missões e aprovações, sem envio genérico', () => {
+  it('a API exposta tem só os métodos de ping, projetos, missões, worktrees e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
-    expect(Object.keys(api).sort()).toEqual(['approvals', 'missions', 'ping', 'projects']);
+    expect(Object.keys(api).sort()).toEqual([
+      'approvals',
+      'missions',
+      'ping',
+      'projects',
+      'worktrees',
+    ]);
     expect(Object.keys(api.projects).sort()).toEqual([
       'add',
       'archive',
@@ -493,6 +499,7 @@ describe('buildProjectHubApi', () => {
       'subscribe',
     ]);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
+    expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);
   });
 
   it('projects.list e projects.add usam os canais de contracts, e add leva o caminho', async () => {
@@ -744,6 +751,66 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     await expect(api.missions.delete('m1')).resolves.toEqual({ ok: true, data: undefined });
 
     expect(calls).toEqual([[CHANNELS.missionsDelete, { missionId: 'm1' }]]);
+  });
+
+  it('worktrees.list e worktrees.remove levam só o id pelos canais de worktrees e conferem a resposta', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      if (channel === CHANNELS.worktreesList) {
+        return Promise.resolve({
+          ok: true,
+          data: [
+            {
+              missionId: 'm1',
+              missionTitle: 'Ajustar login',
+              status: 'failed',
+              path: 'C:\\worktrees\\app\\m1',
+              branch: 'ph/m1-ajustar-login',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        error: {
+          code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+          message: 'Há alterações não salvas.',
+          details: { files: ['a.ts'] },
+          retryable: false,
+        },
+      });
+    }, noEvents);
+
+    const listed = await api.worktrees.list('p1');
+    const removed = await api.worktrees.remove('m1');
+
+    expect(calls).toEqual([
+      [CHANNELS.worktreesList, { projectId: 'p1' }],
+      [CHANNELS.worktreesRemove, { missionId: 'm1' }],
+    ]);
+    expect(listed).toMatchObject({ ok: true, data: [{ missionId: 'm1', status: 'failed' }] });
+    expect(removed).toMatchObject({
+      ok: false,
+      error: { code: 'WORKTREE_HAS_UNSAVED_CHANGES', details: { files: ['a.ts'] } },
+    });
+  });
+
+  it('worktrees.list recusa uma lista fora do contrato', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const api = buildProjectHubApi(
+      () => Promise.resolve({ ok: true, data: [{ missionId: 'm1', status: 'inventado' }] }),
+      noEvents,
+    );
+
+    try {
+      expect(await api.worktrees.list('p1')).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('approvals.decide envia a decisão pelo canal de aprovações', async () => {

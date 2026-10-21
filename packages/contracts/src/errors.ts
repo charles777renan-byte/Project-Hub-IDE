@@ -34,6 +34,9 @@ export const ERROR_CODES = [
   'APPROVAL_NOT_FOUND',
   // Acrescentado pela Tarefa 10b: nenhum código da seção 13.7 serve para um agente que não pausa.
   'AGENT_CAPABILITY_UNSUPPORTED',
+  // Acrescentado pelo plano de travas do Git: nenhum código da seção 13.7 diz "o Git está travado,
+  // tente depois".
+  'GIT_LOCKED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

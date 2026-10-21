@@ -834,6 +834,33 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Painel Terminal: o comando em ciano, a saída em fonte monoespaçada e com quebra de linha. */
+.terminal-log {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.terminal-log__entry {
+  margin-bottom: 0.75em;
+}
+
+.terminal-log__command {
+  color: var(--cyan);
+  overflow-wrap: anywhere;
+}
+
+.terminal-log__output {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: inherit;
+  color: inherit;
+}
+
+.terminal-log__output--failed {
+  color: var(--red);
+}
+
 /* Plano: passos numerados e o cartão de decisão. */
 .plan-steps {
   display: grid;
@@ -1457,4 +1484,52 @@ button:disabled {
 
 .project-facts dd {
   margin: 0;
+}
+
+/* Painel Testes: uma linha por verificação (comando, passou/total e tempo) e a saída por baixo. */
+.tests-runs {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tests-run__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.tests-run__command {
+  overflow-wrap: anywhere;
+}
+
+.tests-run__total {
+  color: var(--lime);
+  font-weight: 600;
+}
+
+.tests-run__total--failed {
+  color: var(--red);
+}
+
+.tests-run__time {
+  color: var(--muted);
+}
+
+.tests-run__output {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: inherit;
+}
+
+.tests-run__output--failed {
+  color: var(--red);
 }

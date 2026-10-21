@@ -3,6 +3,7 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ErrorCode } from '@project-hub/contracts';
+import { withLockAwareness } from './git-locks';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 /**
@@ -83,9 +84,12 @@ export class GitError extends Error {
 /**
  * Lista de permissão (RF-GIT-007, seção 11 de docs/regras-subagentes.md): só leitura. `branch` só
  * vale como `branch --show-current`, `symbolic-ref` só na forma de leitura, com um nome e sem as
- * opções que escrevem, e `diff` só contra `HEAD`, com as opções de `DIFF_READ_OPTIONS`. Tudo o que não está aqui é recusado antes de criar um processo. Opções
- * antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando precisa ser o primeiro
- * argumento.
+ * opções que escrevem, e `diff` só contra `HEAD`, com as opções de `DIFF_READ_OPTIONS`.
+ * `check-ignore` só vale como `check-ignore -- <caminhos>` (a leitura do `.worktreeinclude`): ao
+ * menos um caminho, nenhum vazio, e sem `-z` (que o Git só aceita com `--stdin`), `--stdin`,
+ * `--no-index` ou qualquer outra opção. Tudo o que não está aqui é recusado antes de criar um
+ * processo. Opções antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando
+ * precisa ser o primeiro argumento.
  */
 function isReadOnly(args: readonly string[]): boolean {
   const [subcommand, ...rest] = args;
@@ -102,6 +106,11 @@ function isReadOnly(args: readonly string[]): boolean {
     }
     case 'diff':
       return isDiffRead(rest);
+    case 'check-ignore': {
+      // Depois do `--` só há caminhos, que o Git lê como arquivos e nunca como opção.
+      const [separator, ...paths] = rest;
+      return separator === '--' && paths.length > 0 && paths.every((path) => path !== '');
+    }
     default:
       return false;
   }
@@ -302,6 +311,11 @@ export async function runGit(
  * uma fixa nem uma opção do chamador: ninguém consegue plantar hooks numa pasta de nome previsível,
  * e quem chama não tem como esquecer o `-c`. O `-c` de linha de comando vale mais que o
  * `core.hooksPath` da configuração do repositório. O `worktree remove` não faz checkout e não leva o `-c`.
+ *
+ * Os dois passam por `withLockAwareness` (git-locks.ts): worktree travado recusa com GIT_LOCKED e o
+ * motivo, sem criar processo, e `index.lock` no repositório ganha novas tentativas curtas antes de
+ * virar GIT_LOCKED (defensivo: não observado contra o Git para add e remove; ver git-locks.ts e a
+ * ADR 0008). Nunca com `--force` nem `worktree unlock`.
  */
 export async function runGitWorktree(
   args: readonly string[],
@@ -314,12 +328,20 @@ export async function runGitWorktree(
     );
   }
   const withTimeout = { ...options, timeoutMs: options.timeoutMs ?? WORKTREE_TIMEOUT_MS };
-  if (args[1] !== 'add') return runApproved(args, withTimeout);
+  // Só o `remove` tem um worktree existente que pode estar travado (`git worktree lock`); o `add`
+  // cria o seu. As duas formas sofrem com `index.lock` do repositório, que vale uma nova tentativa.
+  const targets = {
+    repo: options.cwd,
+    ...(args[1] === 'remove' && args[2] !== undefined ? { worktree: args[2] } : {}),
+  };
+  if (args[1] !== 'add') return withLockAwareness(targets, () => runApproved(args, withTimeout));
 
   let noHooks: string | undefined;
   try {
     noHooks = await mkdtemp(join(tmpdir(), 'project-hub-sem-hooks-'));
-    return await runApproved(args, withTimeout, ['-c', `core.hooksPath=${noHooks}`]);
+    // A pasta de hooks fica fora das novas tentativas: é uma só, criada antes e apagada depois.
+    const hooksConfig = ['-c', `core.hooksPath=${noHooks}`];
+    return await withLockAwareness(targets, () => runApproved(args, withTimeout, hooksConfig));
   } catch (error) {
     // Sem a pasta de hooks vazia o `add` não pode rodar com segurança: nenhum processo é criado, e o
     // erro de fs (pasta temporária sem permissão ou cheia) não vaza cru. Falha do próprio Git sobe.

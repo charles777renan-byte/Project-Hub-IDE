@@ -1,5 +1,6 @@
 import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
+import type { WorktreeDto } from './responses';
 import type {
   CreateMissionInput,
   DecideApprovalInput,
@@ -67,6 +68,15 @@ export type ProjectHubApi = {
      * assinatura.
      */
     subscribe(listener: (event: MissionEventDto) => void): () => void;
+  };
+  worktrees: {
+    /** Worktrees do projeto que ainda existem em disco, derivados das missões. */
+    list(projectId: string): Promise<AppResult<WorktreeDto[]>>;
+    /**
+     * Remove o worktree de uma missão encerrada, sem forçar e sem apagar a branch. Com alteração não
+     * salva, recusa com WORKTREE_HAS_UNSAVED_CHANGES e traz os arquivos em `details.files`.
+     */
+    remove(missionId: string): Promise<AppResult<void>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

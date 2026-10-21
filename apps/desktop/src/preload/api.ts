@@ -15,6 +15,7 @@ import {
   type ProjectHubApi,
   type ProjectSummary,
   type ProvideInput,
+  type WorktreeDto,
 } from '@project-hub/contracts';
 
 /** Chamada ao processo principal. No preload, é `ipcRenderer.invoke`. */
@@ -103,6 +104,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           }
           listener(parsed.data);
         }),
+    },
+    worktrees: {
+      list: (projectId: string) => call<WorktreeDto[]>(CHANNELS.worktreesList, { projectId }),
+      remove: (missionId: string) => call<void>(CHANNELS.worktreesRemove, { missionId }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

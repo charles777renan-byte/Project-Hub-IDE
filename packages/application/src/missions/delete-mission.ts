@@ -1,7 +1,8 @@
 import type { AppResult } from '@project-hub/contracts';
 import type { Mission } from '@project-hub/domain';
 import type { FileSystemPort, MissionRepository, ProjectRepository, WorktreePort } from '../ports';
-import { errorCode, failure } from '../result';
+import { failure } from '../result';
+import { dropWorktree } from '../worktrees/worktrees';
 
 export type DeleteMissionDeps = {
   repo: Pick<MissionRepository, 'getMission' | 'deleteMission'>;
@@ -15,7 +16,8 @@ const ENDED_STATUSES: readonly Mission['status'][] = ['succeeded', 'failed', 'ca
 
 /**
  * Exclui uma missão encerrada, com o plano, as tentativas, as aprovações e a auditoria. O worktree
- * sai antes, pelo Git: se ele tiver alterações não salvas, a remoção recusa e a missão fica como está.
+ * sai antes, pelo Git, na mesma remoção da aba Worktrees (`dropWorktree`): se ele tiver alterações
+ * não salvas, a remoção recusa e a missão fica como está.
  * A branch do worktree continua no repositório. Pasta de worktree que já sumiu não bloqueia a exclusão.
  */
 export async function deleteMission(
@@ -36,13 +38,11 @@ export async function deleteMission(
   }
 
   if (mission.worktreePath !== undefined && (await deps.fs.isDirectory(mission.worktreePath))) {
-    try {
-      await deps.worktrees.remove({ repoPath: project.path, worktreePath: mission.worktreePath });
-    } catch (error) {
-      const code = errorCode(error);
-      if (code === undefined) throw error;
-      return failure(code, error instanceof Error ? error.message : 'Falha ao remover o worktree.');
-    }
+    const dropped = await dropWorktree(deps, {
+      repoPath: project.path,
+      worktreePath: mission.worktreePath,
+    });
+    if (!dropped.ok) return dropped;
   }
 
   deps.repo.deleteMission(mission.id);

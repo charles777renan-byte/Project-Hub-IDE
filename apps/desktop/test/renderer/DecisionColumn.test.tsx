@@ -146,6 +146,37 @@ describe('DecisionColumn: Critérios de aceite', () => {
     // A ordenação copia o array: a ordem que o contrato entregou não muda.
     expect(criteria.map((criterion) => criterion.id)).toEqual(['c2', 'c1']);
   });
+
+  it('marca "✓ verificado" o critério que uma verificação que passou associou', () => {
+    const criteria = [
+      { id: 'c1', position: 1, text: 'Primeiro critério' },
+      { id: 'c2', position: 2, text: 'Segundo critério' },
+    ];
+    const verification: MissionEventDto = {
+      id: 'v1',
+      missionId: 'm1',
+      aggregateType: 'execution',
+      aggregateId: 'e1',
+      eventType: 'verification.completed',
+      severity: 'info',
+      actor: 'agent',
+      payload: {
+        type: 'verification.completed',
+        command: 'pnpm test',
+        passed: 14,
+        failed: 0,
+        durationMs: 2300,
+        criteria: ['Primeiro critério'],
+      },
+      sequence: 1,
+      createdAt: '2026-10-20T09:00:00.000Z',
+    };
+    renderColumn(viewOf({ acceptanceCriteria: criteria }, { events: [verification] }));
+
+    const panel = screen.getByRole('region', { name: 'Critérios de aceite' });
+    expect(within(panel).getByText('✓ verificado')).toBeInTheDocument();
+    expect(within(panel).getByText('○ não verificado')).toBeInTheDocument();
+  });
 });
 
 describe('DecisionColumn: Git', () => {
