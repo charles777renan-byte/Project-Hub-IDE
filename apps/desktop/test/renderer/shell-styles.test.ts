@@ -71,4 +71,9 @@ describe('leitor de regras dos testes', () => {
       'block',
     );
   });
+
+  it('termina num @media sem bloco, em vez de travar', () => {
+    expect(ruleDeclarations('.a{color:red} @media (x)', '.a').get('color')).toBe('red');
+    expect(mediaBlock('@media (x)', '(x)')).toBe('');
+  });
 });
