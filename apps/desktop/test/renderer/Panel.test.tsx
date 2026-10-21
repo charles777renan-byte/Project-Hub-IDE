@@ -47,6 +47,15 @@ describe('Panel', () => {
     }
   });
 
+  it('não cria a meta quando ela vem vazia', () => {
+    const { container } = render(
+      <Panel title="Plano" accent="blue" meta="">
+        x
+      </Panel>,
+    );
+    expect(container.querySelector('.panel__meta')).toBeNull();
+  });
+
   it('só mostra a meta e a tag quando elas são passadas', () => {
     const { container, rerender } = render(
       <Panel title="Plano" accent="blue">
