@@ -1227,6 +1227,18 @@ button:disabled {
 }
 
 /*
+ * Região `status` que fica montada em volta do banner. Vazia, não ocupa espaço: a margem negativa
+ * desfaz o vão que o `gap` do workspace abriria para ela.
+ */
+.decision-status {
+  flex: none;
+}
+
+.decision-status:empty {
+  margin-top: calc(var(--space-3) * -1);
+}
+
+/*
  * Banner "Aguardando você" (components/workspace/DecisionBanner.tsx): borda violeta, os itens pendentes
  * em lista compacta e o botão que leva à Conversa. A lista rola quando há muitos itens.
  */
@@ -1309,10 +1321,11 @@ button:disabled {
   opacity: 1;
 }
 
+/* O respiro dos lados deixa o contorno de foco (2px, afastado 2px) inteiro nos controles rente à borda. */
 .mission-tabpanel {
   flex: 1;
   min-height: 0;
-  padding: var(--space-3) 0 var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
   overflow: auto;
 }
 

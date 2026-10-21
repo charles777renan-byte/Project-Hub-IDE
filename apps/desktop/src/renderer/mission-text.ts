@@ -82,7 +82,6 @@ export const MISSION_TEXT = {
   generatePlan: 'Gerar plano',
   approvePlan: 'Aprovar plano',
   start: 'Iniciar missão',
-  decision: 'Ver decisão',
   decisionLink: 'Ver a decisão',
 } as const;
 
@@ -99,14 +98,12 @@ export function needsDecisionInConversation(status: MissionStatus): boolean {
 
 /** A ação principal que o resumo da missão oferece, quando a situação pede uma. */
 export type PrimaryAction =
-  'generate_plan' | 'approve_plan' | 'start' | 'view_decision' | 'resume' | 'retry';
+  'generate_plan' | 'approve_plan' | 'start' | 'resume' | 'retry';
 
 const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
   draft: 'generate_plan',
   planned: 'approve_plan',
   queued: 'start',
-  waiting_approval: 'view_decision',
-  waiting_input: 'view_decision',
   paused: 'resume',
   failed: 'retry',
   cancelled: 'retry',
@@ -114,7 +111,8 @@ const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
 
 /**
  * Uma única ação principal por situação. Em execução e concluída a missão não espera nada da pessoa,
- * e ficam só as ações secundárias (pausar, cancelar ou excluir).
+ * e ficam só as ações secundárias (pausar, cancelar ou excluir). Nas situações que esperam a decisão
+ * (aprovação ou resposta) o resumo não tem ação principal: o banner "Aguardando você" é o único convite.
  */
 export function primaryActionOf(status: MissionStatus): PrimaryAction | undefined {
   return PRIMARY_ACTION[status];
