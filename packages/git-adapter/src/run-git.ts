@@ -84,9 +84,12 @@ export class GitError extends Error {
 /**
  * Lista de permissão (RF-GIT-007, seção 11 de docs/regras-subagentes.md): só leitura. `branch` só
  * vale como `branch --show-current`, `symbolic-ref` só na forma de leitura, com um nome e sem as
- * opções que escrevem, e `diff` só contra `HEAD`, com as opções de `DIFF_READ_OPTIONS`. Tudo o que não está aqui é recusado antes de criar um processo. Opções
- * antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando precisa ser o primeiro
- * argumento.
+ * opções que escrevem, e `diff` só contra `HEAD`, com as opções de `DIFF_READ_OPTIONS`.
+ * `check-ignore` só vale como `check-ignore -- <caminhos>` (a leitura do `.worktreeinclude`): ao
+ * menos um caminho, nenhum vazio, e sem `-z` (que o Git só aceita com `--stdin`), `--stdin`,
+ * `--no-index` ou qualquer outra opção. Tudo o que não está aqui é recusado antes de criar um
+ * processo. Opções antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando
+ * precisa ser o primeiro argumento.
  */
 function isReadOnly(args: readonly string[]): boolean {
   const [subcommand, ...rest] = args;
@@ -103,6 +106,11 @@ function isReadOnly(args: readonly string[]): boolean {
     }
     case 'diff':
       return isDiffRead(rest);
+    case 'check-ignore': {
+      // Depois do `--` só há caminhos, que o Git lê como arquivos e nunca como opção.
+      const [separator, ...paths] = rest;
+      return separator === '--' && paths.length > 0 && paths.every((path) => path !== '');
+    }
     default:
       return false;
   }

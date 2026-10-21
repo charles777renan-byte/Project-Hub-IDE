@@ -8,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -394,6 +395,249 @@ describe('createWorktree', () => {
       expect(branchExists(repoPath, names.branch)).toBe(false);
       expect(registeredWorktrees(repoPath)).toHaveLength(1);
     });
+  });
+});
+
+/** Diz se este computador deixa criar link simbólico (o Windows sem Modo de Desenvolvedor recusa com EPERM). */
+function canCreateSymlink(): boolean {
+  const folder = mkdtempSync(join(tmpdir(), 'project-hub-link-'));
+  try {
+    writeFileSync(join(folder, 'alvo.txt'), 'x');
+    symlinkSync(join(folder, 'alvo.txt'), join(folder, 'link.txt'), 'file');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+const symlinkSupported = canCreateSymlink();
+
+// O `.worktreeinclude` lista o que o Git ignora e o `worktree add` não traz (`.env`, `.vscode`). Cada
+// teste monta um repositório com `.gitignore` versionado, para o Git de verdade decidir o que é ignorado.
+describe('createWorktree: .worktreeinclude', () => {
+  /** Repositório com `.gitignore` versionado e o `.worktreeinclude` (que fica sem versionar) com `include`. */
+  function setUpRepo(gitignore: string, include?: string): string {
+    const { path: repoPath } = repo();
+    writeFileSync(join(repoPath, '.gitignore'), gitignore);
+    git(repoPath, 'add', '.gitignore');
+    git(repoPath, 'commit', '--no-verify', '-m', 'adiciona .gitignore');
+    if (include !== undefined) writeFileSync(join(repoPath, '.worktreeinclude'), include);
+    return repoPath;
+  }
+
+  function create(repoPath: string): ReturnType<typeof createWorktree> {
+    return createWorktree({ repoPath, worktreesRoot: worktreesRoot(), names, baseRef: 'HEAD' });
+  }
+
+  it('copia para o worktree novo o .env e a pasta .vscode listados e ignorados', async () => {
+    const repoPath = setUpRepo('.env\n.vscode/\n', '.env\n.vscode\n');
+    writeFileSync(join(repoPath, '.env'), 'SEGREDO=1\n');
+    mkdirSync(join(repoPath, '.vscode'));
+    writeFileSync(join(repoPath, '.vscode', 'settings.json'), '{"a":1}\n');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual(['.env', '.vscode']);
+    expect(wt.included.skipped).toEqual([]);
+    expect(wt.included.warning).toBeUndefined();
+    expect(readFileSync(join(wt.path, '.env'), 'utf8')).toBe('SEGREDO=1\n');
+    expect(readFileSync(join(wt.path, '.vscode', 'settings.json'), 'utf8')).toBe('{"a":1}\n');
+    // A cópia não cria diferença: o que veio é ignorado, e o status continua limpo.
+    expect(git(wt.path, 'status', '--porcelain')).toBe('');
+    // O original continua onde estava.
+    expect(readFileSync(join(repoPath, '.env'), 'utf8')).toBe('SEGREDO=1\n');
+  });
+
+  // Sem `-z`, o Git cita o nome com acento (`"configura\303\247\303\243o.env"`): a leitura tem de desfazer a citação.
+  it('copia um arquivo ignorado cujo nome tem acento e espaço', async () => {
+    const repoPath = setUpRepo(
+      'configuração.env\ncom espaço.env\n',
+      'configuração.env\ncom espaço.env\n',
+    );
+    writeFileSync(join(repoPath, 'configuração.env'), 'acento\n');
+    writeFileSync(join(repoPath, 'com espaço.env'), 'espaço\n');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.skipped).toEqual([]);
+    expect(wt.included.copied).toEqual(['configuração.env', 'com espaço.env']);
+    expect(readFileSync(join(wt.path, 'configuração.env'), 'utf8')).toBe('acento\n');
+    expect(readFileSync(join(wt.path, 'com espaço.env'), 'utf8')).toBe('espaço\n');
+  });
+
+  it('copia um arquivo dentro de uma pasta ignorada, criando a pasta no destino', async () => {
+    const repoPath = setUpRepo('config/\n', 'config/local.json\n');
+    mkdirSync(join(repoPath, 'config'));
+    writeFileSync(join(repoPath, 'config', 'local.json'), '{}\n');
+    writeFileSync(join(repoPath, 'config', 'outro.json'), '{}\n');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual(['config/local.json']);
+    expect(readFileSync(join(wt.path, 'config', 'local.json'), 'utf8')).toBe('{}\n');
+    expect(existsSync(join(wt.path, 'config', 'outro.json'))).toBe(false);
+  });
+
+  it('não copia arquivo versionado nem arquivo que o Git não ignora', async () => {
+    const repoPath = setUpRepo('.env\n', 'README.md\nsolto.txt\n');
+    commit(repoPath, 'README.md');
+    writeFileSync(join(repoPath, 'solto.txt'), 'solto');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual(
+      expect.arrayContaining([
+        { path: 'README.md', reason: 'nao-ignorado' },
+        { path: 'solto.txt', reason: 'nao-ignorado' },
+      ]),
+    );
+    expect(wt.included.skipped).toHaveLength(2);
+    // O arquivo não ignorado ficaria como "novo" no worktree: não foi levado.
+    expect(existsSync(join(wt.path, 'solto.txt'))).toBe(false);
+    expect(git(wt.path, 'status', '--porcelain')).toBe('');
+  });
+
+  it('lista caminho inseguro e inexistente em skipped e cria o worktree mesmo assim', async () => {
+    const repoPath = setUpRepo('.env\n', '../fora\n.git/config\nnao-existe.env\n');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual([
+      { path: '../fora', reason: 'caminho-inseguro' },
+      { path: '.git/config', reason: 'caminho-inseguro' },
+      { path: 'nao-existe.env', reason: 'inexistente' },
+    ]);
+    expect(existsSync(wt.path)).toBe(true);
+    expect(git(wt.path, 'branch', '--show-current')).toBe(names.branch);
+  });
+
+  it('lista os padrões com curinga como não suportados, sem copiar nada', async () => {
+    const repoPath = setUpRepo('.env\n.env.local\n', '.env*\n');
+    writeFileSync(join(repoPath, '.env'), 'x');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual([{ path: '.env*', reason: 'padrao-nao-suportado' }]);
+    expect(existsSync(join(wt.path, '.env'))).toBe(false);
+  });
+
+  it.skipIf(!symlinkSupported)('não segue link simbólico', async () => {
+    const outside = newFolder('project-hub-fora-');
+    writeFileSync(join(outside, 'segredo.txt'), 'de fora');
+    const repoPath = setUpRepo('.env-link\n', '.env-link\n');
+    symlinkSync(join(outside, 'segredo.txt'), join(repoPath, '.env-link'), 'file');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual([{ path: '.env-link', reason: 'link-simbolico' }]);
+    expect(existsSync(join(wt.path, '.env-link'))).toBe(false);
+  });
+
+  // `junction` é a ligação de pasta do Windows, que não pede privilégio; no resto dos sistemas é um link comum.
+  it('não segue um link simbólico no meio do caminho', async () => {
+    const outside = newFolder('project-hub-fora-');
+    writeFileSync(join(outside, 'segredo.env'), 'de fora');
+    const repoPath = setUpRepo('desvio/\nsegredo.env\n', 'desvio/segredo.env\n');
+    symlinkSync(outside, join(repoPath, 'desvio'), 'junction');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual([{ path: 'desvio/segredo.env', reason: 'link-simbolico' }]);
+    expect(existsSync(join(wt.path, 'desvio'))).toBe(false);
+  });
+
+  it('deixa para trás o link simbólico que está dentro de uma pasta copiada', async () => {
+    const outside = newFolder('project-hub-fora-');
+    const repoPath = setUpRepo('dados/\n', 'dados\n');
+    mkdirSync(join(repoPath, 'dados'));
+    writeFileSync(join(repoPath, 'dados', 'real.txt'), 'real');
+    symlinkSync(outside, join(repoPath, 'dados', 'desvio'), 'junction');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual(['dados']);
+    expect(readFileSync(join(wt.path, 'dados', 'real.txt'), 'utf8')).toBe('real');
+    expect(existsSync(join(wt.path, 'dados', 'desvio'))).toBe(false);
+  });
+
+  // O arquivo era versionado numa base mais antiga e hoje é ignorado no checkout principal: o worktree
+  // parte da base antiga, já traz o arquivo, e a cópia não o sobrescreve.
+  it('não sobrescreve o que já existe no worktree', async () => {
+    const repoPath = setUpRepo('.env\n', '.env\n');
+    writeFileSync(join(repoPath, '.env'), 'versao do commit antigo');
+    git(repoPath, 'add', '--force', '.env');
+    git(repoPath, 'commit', '--no-verify', '-m', 'versiona .env');
+    git(repoPath, 'rm', '--cached', '.env');
+    git(repoPath, 'commit', '--no-verify', '-m', 'deixa de versionar .env');
+    writeFileSync(join(repoPath, '.env'), 'versao local');
+
+    const wt = await createWorktree({
+      repoPath,
+      worktreesRoot: worktreesRoot(),
+      names,
+      baseRef: 'HEAD~1',
+    });
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual([{ path: '.env', reason: 'ja-existe' }]);
+    expect(readFileSync(join(wt.path, '.env'), 'utf8')).toBe('versao do commit antigo');
+  });
+
+  it('sem .worktreeinclude, included vem vazio e sem aviso', async () => {
+    const repoPath = setUpRepo('.env\n');
+    writeFileSync(join(repoPath, '.env'), 'x');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included).toEqual({ copied: [], skipped: [] });
+    expect(existsSync(join(wt.path, '.env'))).toBe(false);
+  });
+
+  it('.worktreeinclude maior que 256 KiB é ignorado com aviso', async () => {
+    const repoPath = setUpRepo('.env\n', `.env\n${'#'.repeat(256 * 1024)}`);
+    writeFileSync(join(repoPath, '.env'), 'x');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual([]);
+    expect(wt.included.skipped).toEqual([]);
+    expect(wt.included.warning).toBe('O .worktreeinclude passa de 256 KiB e foi ignorado.');
+    expect(existsSync(wt.path)).toBe(true);
+    expect(existsSync(join(wt.path, '.env'))).toBe(false);
+  });
+
+  it('uma pasta com o nome .worktreeinclude não é lista, e não gera aviso', async () => {
+    const repoPath = setUpRepo('.env\n');
+    mkdirSync(join(repoPath, '.worktreeinclude'));
+
+    const wt = await create(repoPath);
+
+    expect(wt.included).toEqual({ copied: [], skipped: [] });
+  });
+
+  // 120 caminhos de ~80 caracteres passam dos 8000 de um lote do `check-ignore`: a consulta vai em mais
+  // de uma chamada, e todos os ignorados têm de voltar.
+  it('consulta o Git em mais de um lote quando a lista é grande', async () => {
+    const files = Array.from(
+      { length: 120 },
+      (_, index) => `ignorados/arquivo-com-um-nome-bem-comprido-para-encher-o-lote-${index}.txt`,
+    );
+    const repoPath = setUpRepo('ignorados/\n', `${files.join('\n')}\n`);
+    mkdirSync(join(repoPath, 'ignorados'));
+    for (const file of files) writeFileSync(join(repoPath, file), file);
+    expect(files.join(' ').length).toBeGreaterThan(8000);
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.skipped).toEqual([]);
+    expect(wt.included.copied).toEqual(files);
+    expect(readFileSync(join(wt.path, files[119] as string), 'utf8')).toBe(files[119]);
   });
 });
 
