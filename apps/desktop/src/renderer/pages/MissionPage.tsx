@@ -1,32 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import type { AppResult, MissionViewDto } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
+import { Panel, PanelEmpty } from '../components/Panel';
 import { PlanPanel } from '../components/PlanPanel';
-import { StatusChip } from '../components/StatusChip';
-import { Tabs, type TabItem } from '../components/Tabs';
-import {
-  MISSION_TEXT,
-  canRetry,
-  isEnded,
-  needsDecisionInConversation,
-  statusLabel,
-  statusTone,
-} from '../mission-text';
-import { projectPath } from '../routes';
-
-type MissionTab = 'plan' | 'conversation' | 'terminal' | 'diff' | 'tests' | 'logs' | 'artifacts';
-
-/** Abas do workspace da missão (seção 10.7). Só Plano e Conversa têm conteúdo nesta etapa. */
-const TABS: readonly TabItem<MissionTab>[] = [
-  { id: 'plan', label: 'Plano' },
-  { id: 'conversation', label: 'Conversa' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'diff', label: 'Diff' },
-  { id: 'tests', label: 'Testes' },
-  { id: 'logs', label: 'Logs' },
-  { id: 'artifacts', label: 'Artefatos' },
-];
+import { LogsPanel } from '../components/workspace/LogsPanel';
+import { MissionHeader } from '../components/workspace/MissionHeader';
+import { needsDecisionInConversation } from '../mission-text';
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
 
@@ -36,44 +16,59 @@ type ViewState =
   | { status: 'error'; message: string };
 
 /**
- * Workspace de uma missão (seção 10.7, R168). Cabeçalho com título, situação e as ações (pausar,
- * retomar, tentar de novo e cancelar); as abas, e a conversa e o plano com ação. A visão vem do
- * processo principal e é buscada de novo a cada ação e a cada evento da missão (R165). Uma resposta
- * antiga, que chega depois de uma mais nova, não substitui a tela.
+ * Texto do estado vazio de um painel que chega numa tarefa futura. Sem worktree, o texto diz o porquê
+ * antes de dizer a tarefa.
+ */
+function pendingNote(hasWorktree: boolean, task: number): string {
+  const note = `Chega com a Tarefa ${task}.`;
+  return hasWorktree ? note : `A missão ainda não tem worktree. ${note}`;
+}
+
+/**
+ * Workspace de uma missão (seção 10.7, R168): o cabeçalho com título, situação e ações, e seis painéis
+ * numa grade 2×3 (Conversa, Plano, Diff, Testes, Terminal e Logs do sistema), com uma reserva à direita
+ * para a coluna "Aguardando você" (Tarefa 6). A visão vem do processo principal e é buscada de novo a
+ * cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma mais nova,
+ * não substitui a tela.
  *
- * A aba começa na Conversa quando a missão espera a decisão da pessoa (R182). Enquanto a pessoa não
- * escolhe uma aba, a escolha segue a situação. A Conversa fica montada quando não está visível, para
- * que a resposta não enviada não se perca.
+ * Os painéis ficam montados o tempo todo, então a resposta digitada na Conversa não se perde quando a
+ * pessoa age em outro painel. Quando a missão espera a decisão (R182), o foco vai para a Conversa.
  */
 export function MissionPage() {
-  const { projectId = '', missionId = '' } = useParams();
+  const { missionId = '' } = useParams();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
-  /**
-   * Aba que a pessoa escolheu, com a missão a que a escolha vale. Outra missão não herda a escolha, e
-   * sem escolha vale a aba da situação.
-   */
-  const [choice, setChoice] = useState<{ missionId: string; tab: MissionTab } | null>(null);
-  /** Chamadas longas (início, decisão, resposta, nova tentativa). Não bloqueiam os controles. */
+  /** Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima da grade. */
+  const [reloadError, setReloadError] = useState<string | null>(null);
+  /** Chamadas longas (início, decisão, resposta, nova tentativa e planejamento). Não bloqueiam os controles. */
   const [busy, setBusy] = useState(false);
   /** Pausar, retomar e cancelar: cada uma só cobre a própria chamada, e vale com a longa em curso. */
   const [controlBusy, setControlBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const chosenTab = choice !== null && choice.missionId === missionId ? choice.tab : null;
-  const chooseTab = (tab: MissionTab) => setChoice({ missionId, tab });
+  const conversationRef = useRef<HTMLDivElement>(null);
   const latestRequest = useRef(0);
 
   const reload = useCallback(async () => {
     const request = ++latestRequest.current;
-    let next: ViewState;
+    let view: MissionViewDto | null = null;
+    let failure: string | null = null;
     try {
       const result = await window.projectHub.missions.get(missionId);
-      next = result.ok
-        ? { status: 'ready', view: result.data }
-        : { status: 'error', message: result.error.message };
+      if (result.ok) view = result.data;
+      else failure = result.error.message;
     } catch {
-      next = { status: 'error', message: GENERIC_ERROR };
+      failure = GENERIC_ERROR;
     }
-    if (request === latestRequest.current) setState(next);
+    if (request !== latestRequest.current) return;
+    if (view !== null) {
+      setState({ status: 'ready', view });
+      setReloadError(null);
+      return;
+    }
+    // Com a visão já na tela, uma falha de recarga não a apaga: a Conversa e a resposta digitada seguem.
+    setState((current) =>
+      current.status === 'ready' ? current : { status: 'error', message: failure ?? GENERIC_ERROR },
+    );
+    setReloadError(failure ?? GENERIC_ERROR);
   }, [missionId]);
 
   useEffect(() => {
@@ -87,6 +82,13 @@ export function MissionPage() {
       }),
     [missionId, reload],
   );
+
+  const needsDecision =
+    state.status === 'ready' && needsDecisionInConversation(state.view.mission.status);
+  /** Quando a missão passa a esperar a decisão da pessoa, o foco vai para a Conversa (R182). */
+  useEffect(() => {
+    if (needsDecision) conversationRef.current?.focus();
+  }, [needsDecision]);
 
   /**
    * Roda uma ação da missão, marcando `pending` enquanto ela não volta. Falha vira mensagem na tela,
@@ -130,108 +132,73 @@ export function MissionPage() {
     );
   }
 
-  const { mission, project } = state.view;
-  const tab: MissionTab =
-    chosenTab ?? (needsDecisionInConversation(mission.status) ? 'conversation' : 'plan');
+  const { mission, project, events, steps } = state.view;
+  const hasWorktree = mission.worktreePath !== undefined;
   return (
-    <>
-      <p className="eyebrow">
-        <Link to={projectPath(projectId)}>{project.name}</Link>
-      </p>
-      <header className="mission-header">
-        <h1>{mission.title}</h1>
-        <div className="inline-actions">
-          <StatusChip label={statusLabel(mission.status)} tone={statusTone(mission.status)} />
-          {mission.status === 'running' ? (
-            <button
-              type="button"
-              className="btn-pause"
-              disabled={controlBusy}
-              onClick={() => void runControl(() => window.projectHub.missions.pause(missionId))}
-            >
-              {MISSION_TEXT.pause}
-            </button>
-          ) : null}
-          {mission.status === 'paused' ? (
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={controlBusy}
-              onClick={() => void runControl(() => window.projectHub.missions.resume(missionId))}
-            >
-              {MISSION_TEXT.resume}
-            </button>
-          ) : null}
-          {canRetry(mission.status) ? (
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busy}
-              onClick={() => void run(() => window.projectHub.missions.retry(missionId))}
-            >
-              {MISSION_TEXT.retry}
-            </button>
-          ) : null}
-          {isEnded(mission.status) ? null : (
-            <button
-              type="button"
-              className="btn-danger"
-              disabled={controlBusy}
-              onClick={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
-            >
-              Cancelar missão
-            </button>
-          )}
-        </div>
-        {needsDecisionInConversation(mission.status) ? (
-          <p className="mission-notice">
-            <StatusChip label={MISSION_TEXT.decisionNotice} tone="violet" />
-            <button type="button" className="btn-link" onClick={() => chooseTab('conversation')}>
-              {MISSION_TEXT.decisionLink}
-            </button>
-          </p>
-        ) : null}
-        <p className="mission-meta">
-          {project.name} · branch {project.defaultBranch ?? 'sem Git'} · worktree{' '}
-          {mission.worktreePath ?? 'ainda não criado'}
-        </p>
-      </header>
+    <div className="mission-workspace">
+      <MissionHeader
+        mission={mission}
+        project={project}
+        busy={busy}
+        controlBusy={controlBusy}
+        onPause={() => void runControl(() => window.projectHub.missions.pause(missionId))}
+        onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
+        onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
+        onCancel={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
+        onOpenDecision={() => conversationRef.current?.focus()}
+      />
 
       {actionError === null ? null : (
         <p role="alert" className="page-alert">
           {actionError}
         </p>
       )}
+      {reloadError === null ? null : (
+        <p role="alert" className="page-alert">
+          {reloadError}
+        </p>
+      )}
 
-      <Tabs label="Seções da missão" tabs={TABS} active={tab} onChange={chooseTab} filled />
-      <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'plan' ? (
+      <div className="mission-grid">
+        <Panel title="Conversa" accent="magenta">
+          <div ref={conversationRef} tabIndex={-1} className="mission-focus">
+            <ConversationPanel
+              view={state.view}
+              busy={busy}
+              onDecide={(approvalId, decision) =>
+                void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+              }
+              onAnswer={(text) =>
+                run(() => window.projectHub.missions.provideInput({ missionId, text }))
+              }
+            />
+          </div>
+        </Panel>
+        <Panel title="Plano" accent="blue">
           <PlanPanel
             mission={mission}
-            steps={state.view.steps}
+            steps={steps}
             busy={busy}
             onGeneratePlan={() => void run(() => window.projectHub.missions.plan(missionId))}
             onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
             onRequestNewPlan={() => void run(() => window.projectHub.missions.plan(missionId))}
             onStart={() => void run(() => window.projectHub.missions.start(missionId))}
           />
-        ) : null}
-        <div hidden={tab !== 'conversation'}>
-          <ConversationPanel
-            view={state.view}
-            busy={busy}
-            onDecide={(approvalId, decision) =>
-              void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
-            }
-            onAnswer={(text) =>
-              run(() => window.projectHub.missions.provideInput({ missionId, text }))
-            }
-          />
-        </div>
-        {tab !== 'plan' && tab !== 'conversation' ? (
-          <p className="page-note">Disponível na próxima etapa.</p>
-        ) : null}
+        </Panel>
+        <Panel title="Diff" accent="orange">
+          <PanelEmpty>{pendingNote(hasWorktree, 10)}</PanelEmpty>
+        </Panel>
+        <Panel title="Testes" accent="lime">
+          <PanelEmpty>{pendingNote(hasWorktree, 12)}</PanelEmpty>
+        </Panel>
+        <Panel title="Terminal" accent="cyan">
+          <PanelEmpty>{pendingNote(hasWorktree, 13)}</PanelEmpty>
+        </Panel>
+        <Panel title="Logs do sistema" accent="yellow">
+          <LogsPanel events={events} />
+        </Panel>
+        <div aria-hidden="true" className="mission-grid__reserve" />
       </div>
-    </>
+    </div>
   );
 }

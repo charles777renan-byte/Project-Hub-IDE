@@ -155,3 +155,79 @@ describe('contadores do cabeçalho', () => {
     );
   });
 });
+
+/**
+ * Grade do workspace da missão (Tarefa 5 do plano da interface do workspace): seis painéis em 2×3 e
+ * a reserva de 370px à direita, para a coluna "Aguardando você". Abaixo de 1000px a grade vira uma
+ * coluna. Este teste fica aqui, e não no renderer-styles, porque junta os dois pontos de quebra da
+ * casca (a barra lateral e a grade) num lugar só. `mediaBlock` pega o primeiro bloco com a consulta;
+ * como a barra lateral também tem um bloco de 1000px, o bloco da grade é o que contém `.mission-grid`.
+ */
+/** O bloco `@media (max-width: 1000px)` que contém a grade da missão, ou texto vazio se não existir. */
+function gridNarrowBlock(css: string): string {
+  const query = '(max-width: 1000px)';
+  let from = 0;
+  for (
+    let at = css.indexOf(`@media ${query}`, from);
+    at >= 0;
+    at = css.indexOf(`@media ${query}`, from)
+  ) {
+    const block = mediaBlock(css.slice(at), query);
+    if (block.includes('.mission-grid')) return block;
+    from = at + 1;
+  }
+  return '';
+}
+
+describe('grade do workspace da missão', () => {
+  const appCss = readCss('app.css');
+  const narrow = gridNarrowBlock(appCss);
+
+  it('tem duas colunas de painel iguais e a reserva de 370px, em três linhas com piso de 10rem', () => {
+    const grid = ruleDeclarations(appCss, '.mission-grid');
+    expect(grid.get('display')).toBe('grid');
+    expect(grid.get('grid-template-columns')).toBe('minmax(0, 1fr) minmax(0, 1fr) 370px');
+    expect(grid.get('grid-template-rows')).toBe('repeat(3, minmax(10rem, 1fr))');
+    expect(grid.get('min-height')).toBe('0');
+  });
+
+  it('os painéis não crescem além da linha, e o corpo deles rola sozinho', () => {
+    const panel = ruleDeclarations(appCss, '.panel');
+    expect(panel.get('min-height')).toBe('0');
+    expect(panel.get('overflow')).toBe('hidden');
+    const body = ruleDeclarations(appCss, '.panel__body');
+    expect(body.get('min-height')).toBe('0');
+    expect(body.get('overflow')).toBe('auto');
+  });
+
+  it('a reserva da direita ocupa a coluna 3 nas três linhas', () => {
+    const reserve = ruleDeclarations(appCss, '.mission-grid__reserve');
+    expect(reserve.get('grid-column')).toBe('3');
+    expect(reserve.get('grid-row')).toBe('1 / span 3');
+  });
+
+  it('o workspace ocupa a altura da página e a grade enche o que sobra, sem crescer', () => {
+    expect(
+      ruleDeclarations(appCss, '.app-main__content:has(> .mission-workspace)').get('height'),
+    ).toBe('100%');
+    const workspace = ruleDeclarations(appCss, '.mission-workspace');
+    expect(workspace.get('display')).toBe('flex');
+    expect(workspace.get('flex-direction')).toBe('column');
+    expect(workspace.get('height')).toBe('100%');
+    expect(ruleDeclarations(appCss, '.mission-grid').get('flex')).toBe('1');
+  });
+
+  it('abaixo de 1000px a grade vira uma coluna, sem colunas de largura fixa', () => {
+    expect(ruleDeclarations(narrow, '.mission-grid').get('grid-template-columns')).toBe(
+      'minmax(0, 1fr)',
+    );
+  });
+
+  it('abaixo de 1000px a reserva da direita some, e a página passa a rolar na vertical', () => {
+    expect(ruleDeclarations(narrow, '.mission-grid__reserve').get('display')).toBe('none');
+    expect(ruleDeclarations(narrow, '.mission-workspace').get('height')).toBe('auto');
+    expect(
+      ruleDeclarations(narrow, '.app-main__content:has(> .mission-workspace)').get('height'),
+    ).toBe('auto');
+  });
+});

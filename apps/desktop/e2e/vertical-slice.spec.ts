@@ -76,7 +76,7 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Iniciar missão' }).click();
 
-  // A missão para no pedido de aprovação do agente, e a página abre na aba Conversa.
+  // A missão para no pedido de aprovação do agente, e a página mostra o pedido no painel Conversa.
   await expect(
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();
@@ -107,7 +107,7 @@ function readDatabase<T>(dataDir: string, read: (repo: MissionRepository) => T):
   }
 }
 
-/** Frases da linha do tempo da aba Conversa, na ordem em que aparecem (com a hora de cada uma). */
+/** Frases da linha do tempo da Conversa, na ordem em que aparecem (com a hora de cada uma). */
 async function timelineOf(page: Page): Promise<string[]> {
   return page
     .getByRole('list', { name: 'Eventos da missão' })
@@ -160,10 +160,11 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await expect(card.getByText('O roteiro simulado pediu aprovação.')).toBeVisible();
   await card.getByRole('button', { name: 'Aprovar', exact: true }).click();
 
-  // 5. A missão fica concluída (a página volta ao Plano, porque a decisão acabou), e a linha do
-  // tempo da Conversa mostra o fim da sessão (`session.completed`).
+  // 5. A missão fica concluída, e a linha do tempo da Conversa mostra o fim da sessão
+  // (`session.completed`).
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversa' }).click();
+  // A Conversa é um painel da grade (sem abas): fica sempre visível na página da missão.
+  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
   await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
@@ -185,7 +186,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
 
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversa' }).click();
+  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Eventos da missão' }).getByText('Sessão do agente concluída.'),
   ).toBeVisible();
@@ -267,7 +268,7 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
   // A pessoa pode tentar de novo, e a conversa explica o que houve.
   await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversa' }).click();
+  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Execução interrompida ao fechar o aplicativo.')).toBeVisible();
   await expect(timeline.getByText('Aprovação expirou sem decisão.')).toBeVisible();

@@ -7,9 +7,10 @@ import type {
   ProjectHubApi,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Link, MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
+import { readCss, ruleDeclarations } from './css-rules';
 
 const OK = { ok: true as const, data: undefined };
 
@@ -103,7 +104,7 @@ afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
 });
 
-describe('MissionPage: cabeçalho e abas', () => {
+describe('MissionPage: cabeçalho', () => {
   it('mostra o título, a situação em linguagem clara e o projeto, branch e worktree', async () => {
     installApi(viewOf());
     renderPage();
@@ -123,14 +124,99 @@ describe('MissionPage: cabeçalho e abas', () => {
     expect(screen.queryByRole('button', { name: 'Pausar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancelar missão' })).not.toBeInTheDocument();
   });
+});
 
-  it('abas sem conteúdo nesta etapa dizem que ficam para a próxima', async () => {
+const PANEL_TITLES = ['Conversa', 'Plano', 'Diff', 'Testes', 'Terminal', 'Logs do sistema'];
+
+describe('MissionPage: grade de painéis', () => {
+  it('mostra os seis painéis com os títulos, todos na grade, e nenhuma aba', async () => {
     installApi(viewOf());
     renderPage();
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Terminal' }));
+    for (const title of PANEL_TITLES) {
+      const panel = await screen.findByRole('region', { name: title });
+      expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
+      expect(panel.parentElement).toHaveClass('mission-grid');
+    }
+    expect(screen.queryByRole('tab')).toBeNull();
+  });
 
-    expect(screen.getByText('Disponível na próxima etapa.')).toBeInTheDocument();
+  it('com a missão em rascunho, Diff, Testes e Terminal dizem que ainda não há worktree', async () => {
+    installApi(viewOf({ status: 'draft' }));
+    renderPage();
+
+    for (const title of ['Diff', 'Testes', 'Terminal']) {
+      const panel = await screen.findByRole('region', { name: title });
+      expect(within(panel).getByText(/A missão ainda não tem worktree/)).toBeInTheDocument();
+    }
+  });
+
+  it('com worktree, cada painel de tarefa futura diz em qual tarefa chega', async () => {
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    renderPage();
+
+    expect(
+      within(await screen.findByRole('region', { name: 'Diff' })).getByText(
+        'Chega com a Tarefa 10.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Testes' })).getByText('Chega com a Tarefa 12.'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Terminal' })).getByText('Chega com a Tarefa 13.'),
+    ).toBeInTheDocument();
+  });
+
+  it('com 300 eventos, a lista fica no corpo do painel de logs, que rola sozinho', async () => {
+    const events = Array.from({ length: 300 }, (_, index) => ({
+      id: `e${index}`,
+      missionId: 'm1',
+      aggregateType: 'execution' as const,
+      aggregateId: 'e1',
+      eventType: 'message.delta',
+      severity: 'info' as const,
+      actor: 'agent' as const,
+      payload: { content: `linha ${index}` },
+      sequence: index + 1,
+      createdAt: new Date(Date.UTC(2026, 9, 20, 9, 0, index)).toISOString(),
+    }));
+    installApi(viewOf({ status: 'running' }, { events }));
+    renderPage();
+
+    const logs = await screen.findByRole('region', { name: 'Logs do sistema' });
+    const list = within(logs).getByRole('list', { name: 'Eventos do sistema' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(300);
+    expect(logs.querySelector('.panel__body')).toContainElement(list);
+    expect(ruleDeclarations(readCss('app.css'), '.panel__body').get('overflow')).toBe('auto');
+  });
+
+  it('um evento com markup aparece como texto na Conversa e nos Logs, sem elemento img', async () => {
+    installApi(
+      viewOf(
+        { status: 'running' },
+        {
+          events: [
+            {
+              id: 'ev1',
+              missionId: 'm1',
+              aggregateType: 'execution',
+              aggregateId: 'e1',
+              eventType: 'message.delta',
+              severity: 'info',
+              actor: 'agent',
+              payload: { content: '<img src=x onerror=alert(1)>' },
+              sequence: 1,
+              createdAt: '2026-10-20T09:00:00.000Z',
+            },
+          ],
+        },
+      ),
+    );
+    renderPage();
+
+    expect(await screen.findAllByText('<img src=x onerror=alert(1)>')).toHaveLength(2);
+    expect(document.querySelector('img')).toBeNull();
   });
 });
 
@@ -206,8 +292,7 @@ describe('MissionPage: conversa', () => {
     );
     renderPage();
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Conversa' }));
-    const card = screen.getByRole('region', { name: 'Gravar arquivo' });
+    const card = await screen.findByRole('region', { name: 'Gravar arquivo' });
     await userEvent.click(within(card).getByRole('button', { name: 'Aprovar' }));
 
     await waitFor(() =>
@@ -242,8 +327,7 @@ describe('MissionPage: conversa', () => {
     );
     renderPage();
 
-    await userEvent.click(await screen.findByRole('tab', { name: 'Conversa' }));
-    const answer = screen.getByLabelText('Qual o nome do arquivo?');
+    const answer = await screen.findByLabelText('Qual o nome do arquivo?');
     await userEvent.type(answer, 'notas.md');
     await userEvent.click(screen.getByRole('button', { name: 'Enviar resposta' }));
 
@@ -253,6 +337,44 @@ describe('MissionPage: conversa', () => {
         text: 'notas.md',
       }),
     );
+  });
+
+  it('se a recarga falha, mantém a Conversa com a resposta digitada e mostra o erro acima da grade', async () => {
+    const hub = installApi(
+      viewOf(
+        { status: 'waiting_input' },
+        {
+          events: [
+            {
+              id: 'ev1',
+              missionId: 'm1',
+              aggregateType: 'execution',
+              aggregateId: 'e1',
+              eventType: 'input.requested',
+              severity: 'info',
+              actor: 'agent',
+              payload: { request: { id: 'entrada', prompt: 'Qual o nome do arquivo?' } },
+              sequence: 1,
+              createdAt: '2026-10-20T09:00:00.000Z',
+            },
+          ],
+        },
+      ),
+    );
+    renderPage();
+    const answer = await screen.findByLabelText('Qual o nome do arquivo?');
+    await userEvent.type(answer, 'notas.md');
+
+    hub.api.missions.get.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'UNKNOWN', message: 'Falha ao reler a missão.', retryable: true },
+    } as unknown as AppResult<MissionViewDto>);
+    hub.emit({ eventType: 'execution.paused' });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao reler a missão.');
+    expect(screen.getByLabelText('Qual o nome do arquivo?')).toHaveValue('notas.md');
+    expect(screen.getByRole('region', { name: 'Conversa' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Ajustar login' })).toBeInTheDocument();
   });
 
   it('um evento da missão faz a visão ser buscada de novo', async () => {
@@ -324,51 +446,53 @@ describe('MissionPage: pausa, retomada e nova tentativa (R180, R181)', () => {
   });
 });
 
-describe('MissionPage: aba da decisão (R182)', () => {
-  it('com a missão aguardando sua aprovação, abre na Conversa e mostra o aviso', async () => {
+describe('MissionPage: foco da decisão (R182)', () => {
+  /** Verdadeiro quando o foco está dentro do painel dado (ou no próprio painel). */
+  function focusIsIn(panel: HTMLElement): boolean {
+    return panel.contains(document.activeElement);
+  }
+
+  it('com a missão aguardando sua aprovação, o foco vai para o painel Conversa e o aviso aparece', async () => {
     installApi(viewOf({ status: 'waiting_approval' }));
     renderPage();
 
-    expect(await screen.findByRole('tab', { name: 'Conversa' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    const conversation = await screen.findByRole('region', { name: 'Conversa' });
+    await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
     expect(screen.getByText('Aguarda sua decisão')).toBeInTheDocument();
   });
 
-  it('com o agente aguardando resposta, abre na Conversa', async () => {
+  it('com o agente aguardando resposta, o foco também vai para o painel Conversa', async () => {
     installApi(viewOf({ status: 'waiting_input' }));
     renderPage();
 
-    expect(await screen.findByRole('tab', { name: 'Conversa' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    const conversation = await screen.findByRole('region', { name: 'Conversa' });
+    await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
   });
 
-  it('sem decisão pendente, abre no Plano e não mostra o aviso', async () => {
+  it('sem decisão pendente, o foco não vai para a Conversa e o aviso não aparece', async () => {
     installApi(viewOf({ status: 'running' }));
     renderPage();
 
-    expect(await screen.findByRole('tab', { name: 'Plano' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await screen.findByRole('region', { name: 'Plano' });
+    expect(focusIsIn(screen.getByRole('region', { name: 'Conversa' }))).toBe(false);
     expect(screen.queryByText('Aguarda sua decisão')).not.toBeInTheDocument();
   });
 
-  it('o aviso leva de volta à Conversa', async () => {
+  it('o aviso leva o foco de volta ao painel Conversa', async () => {
     installApi(viewOf({ status: 'waiting_approval' }));
     renderPage();
-    await userEvent.click(await screen.findByRole('tab', { name: 'Plano' }));
+    const conversation = await screen.findByRole('region', { name: 'Conversa' });
+    await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
+    (document.activeElement as HTMLElement).blur();
+    expect(focusIsIn(conversation)).toBe(false);
 
     await userEvent.click(screen.getByRole('button', { name: 'Ver na conversa' }));
 
-    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
+    expect(focusIsIn(conversation)).toBe(true);
   });
 
-  it('a resposta não enviada continua na caixa quando a pessoa troca de aba', async () => {
-    installApi(
+  it('a resposta não enviada continua na caixa depois de uma ação da missão', async () => {
+    const hub = installApi(
       viewOf(
         { status: 'waiting_input' },
         {
@@ -393,30 +517,10 @@ describe('MissionPage: aba da decisão (R182)', () => {
     const answer = await screen.findByLabelText('Qual o nome do arquivo?');
     await userEvent.type(answer, 'notas');
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Plano' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Conversa' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar missão' }));
 
+    await waitFor(() => expect(hub.api.missions.cancel).toHaveBeenCalledWith('m1'));
     expect(screen.getByLabelText('Qual o nome do arquivo?')).toHaveValue('notas');
-  });
-
-  it('ao abrir outra missão, a escolha de aba da anterior não vale: volta a aba da situação', async () => {
-    installApi(viewOf({ status: 'waiting_approval' }));
-    render(
-      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
-        <Link to="/projects/p1/missions/m2">outra missão</Link>
-        <Routes>
-          <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    await userEvent.click(await screen.findByRole('tab', { name: 'Plano' }));
-
-    await userEvent.click(screen.getByRole('link', { name: 'outra missão' }));
-
-    expect(await screen.findByRole('tab', { name: 'Conversa' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
   });
 });
 
