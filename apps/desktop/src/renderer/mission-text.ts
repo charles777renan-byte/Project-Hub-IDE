@@ -208,6 +208,76 @@ export function lastInputPrompt(events: readonly MissionEventDto[]): string | un
   return undefined;
 }
 
+/** Sequências de escape ANSI (cores, cursor, limpeza de linha) que um comando pode imprimir. */
+/* eslint-disable no-control-regex */
+const ANSI_PATTERN =
+  /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+/* eslint-enable no-control-regex */
+
+/** Tira as sequências ANSI da saída: o painel mostra só o texto. */
+export function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, '');
+}
+
+/** Uma linha do terminal somente leitura: o que o agente pediu e o que a ferramenta devolveu. */
+export type TerminalEntry = {
+  id: string;
+  command: string;
+  output: string;
+  failed: boolean;
+};
+
+/** Texto do comando de uma chamada: `input.command`, ou o nome com o primeiro argumento de texto. */
+function commandOf(call: Record<string, unknown>): string {
+  const input = asRecord(call['input']) ?? {};
+  const command = textOf(input['command']);
+  if (command !== undefined) return command;
+  const name = textOf(call['name']) ?? 'ferramenta';
+  const firstText = Object.values(input).find((value) => typeof value === 'string');
+  return typeof firstText === 'string' ? `${name} ${firstText}` : name;
+}
+
+/**
+ * Comandos e saídas dos eventos de ferramenta (`tool.requested` e `tool.completed`), ligados pelo
+ * `callId`, do mais antigo para o mais recente. Conclusão sem pedido é ignorada; pedido ainda sem
+ * conclusão aparece com a saída vazia. A saída vem sem sequências ANSI. Falha da ferramenta mostra a
+ * mensagem do erro como saída.
+ */
+export function terminalEntries(events: readonly MissionEventDto[]): TerminalEntry[] {
+  const results = new Map<string, { output: string; failed: boolean }>();
+  for (const event of events) {
+    if (event.eventType !== 'tool.completed') continue;
+    const callId = textOf(event.payload['callId']);
+    const result = asRecord(event.payload['result']);
+    if (callId === undefined || result === undefined) continue;
+    if (result['ok'] === false) {
+      results.set(callId, {
+        output: stripAnsi(textOf(asRecord(result['error'])?.['message']) ?? 'A ferramenta falhou.'),
+        failed: true,
+      });
+    } else {
+      results.set(callId, { output: stripAnsi(textOf(result['output']) ?? ''), failed: false });
+    }
+  }
+  return events
+    .filter((event) => event.eventType === 'tool.requested')
+    .sort((a, b) => a.sequence - b.sequence)
+    .flatMap((event) => {
+      const call = asRecord(event.payload['call']);
+      if (call === undefined) return [];
+      const callId = textOf(call['callId']) ?? event.id;
+      const result = results.get(callId);
+      return [
+        {
+          id: callId,
+          command: stripAnsi(commandOf(call)),
+          output: result?.output ?? '',
+          failed: result?.failed ?? false,
+        },
+      ];
+    });
+}
+
 /** Hora de um evento no fuso local: horas, minutos e segundos. */
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('pt-BR', {

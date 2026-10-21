@@ -198,14 +198,16 @@ describe('MissionPage: grade de painéis', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(2);
   });
 
-  it('com a missão em rascunho, Diff, Testes e Terminal dizem que ainda não há worktree', async () => {
+  it('com a missão em rascunho, Diff e Testes dizem que ainda não há worktree, e o Terminal diz que não há comandos', async () => {
     installApi(viewOf({ status: 'draft' }));
     renderPage();
 
-    for (const title of ['Diff', 'Testes', 'Terminal']) {
+    for (const title of ['Diff', 'Testes']) {
       const panel = await screen.findByRole('region', { name: title });
       expect(within(panel).getByText(/A missão ainda não tem worktree/)).toBeInTheDocument();
     }
+    const terminal = await screen.findByRole('region', { name: 'Terminal' });
+    expect(within(terminal).getByText('O agente ainda não executou comandos.')).toBeInTheDocument();
   });
 
   it('com worktree, cada painel de tarefa futura diz em qual tarefa chega', async () => {
@@ -221,7 +223,9 @@ describe('MissionPage: grade de painéis', () => {
       within(screen.getByRole('region', { name: 'Testes' })).getByText('Chega com a Tarefa 12.'),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Terminal' })).getByText('Chega com a Tarefa 13.'),
+      within(screen.getByRole('region', { name: 'Terminal' })).getByText(
+        'O agente ainda não executou comandos.',
+      ),
     ).toBeInTheDocument();
   });
 

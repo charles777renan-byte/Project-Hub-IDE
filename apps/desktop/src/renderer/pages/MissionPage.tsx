@@ -8,6 +8,7 @@ import { DecisionColumn } from '../components/workspace/DecisionColumn';
 import { DiffPanel } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionHeader } from '../components/workspace/MissionHeader';
+import { TerminalPanel } from '../components/workspace/TerminalPanel';
 import { needsDecisionInConversation } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
@@ -257,7 +258,7 @@ export function MissionPage() {
           <PanelEmpty>{pendingNote(hasWorktree, 12)}</PanelEmpty>
         </Panel>
         <Panel title="Terminal" accent="cyan">
-          <PanelEmpty>{pendingNote(hasWorktree, 13)}</PanelEmpty>
+          <TerminalPanel events={events} />
         </Panel>
         <Panel title="Logs do sistema" accent="yellow">
           <LogsPanel events={events} />

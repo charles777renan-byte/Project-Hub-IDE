@@ -834,6 +834,33 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Painel Terminal: o comando em ciano, a saída em fonte monoespaçada e com quebra de linha. */
+.terminal-log {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.terminal-log__entry {
+  margin-bottom: 0.75em;
+}
+
+.terminal-log__command {
+  color: var(--cyan);
+  overflow-wrap: anywhere;
+}
+
+.terminal-log__output {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: inherit;
+  color: inherit;
+}
+
+.terminal-log__output--failed {
+  color: var(--red);
+}
+
 /* Plano: passos numerados e o cartão de decisão. */
 .plan-steps {
   display: grid;
