@@ -32,6 +32,8 @@
 
 ### Tarefa 1: Travas do Git com motivo e nova tentativa
 
+Nota da revisão final: a nova tentativa do index.lock não foi observada contra o Git para add e remove; ver a ADR 0008.
+
 **Arquivos:**
 - Criar: `packages/git-adapter/src/git-locks.ts`
 - Modificar: `packages/git-adapter/src/run-git.ts` (`runGitWorktree`, linhas 306-341)

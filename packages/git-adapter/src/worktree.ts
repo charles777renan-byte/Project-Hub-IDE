@@ -148,7 +148,9 @@ export async function createWorktree(input: {
  *
  * Arquivo ou pasta que o Git ignora (`node_modules`, `.env`, saídas de build) NÃO é trabalho não
  * salvo (R198): o status comum não os lista, o `git worktree remove` sem `--force` não os trata como
- * sujeira e os apaga junto com a pasta. Quem precisa de um `.env` deve versioná-lo ou copiá-lo antes.
+ * sujeira e os apaga junto com a pasta. Os arquivos que o `createWorktree` copiou por causa do
+ * `.worktreeinclude` são cópias: os originais continuam na pasta do projeto. Qualquer outro arquivo
+ * ignorado que não esteja listado ali precisa ser salvo à mão antes da remoção.
  */
 export async function removeWorktree(input: {
   repoPath: string;
