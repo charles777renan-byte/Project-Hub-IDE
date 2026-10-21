@@ -22,6 +22,10 @@ export interface ProjectRepository {
   list(): ProjectRecord[];
   /** Inclui os removidos: o caminho continua ocupado enquanto o registro existir. */
   findByNormalizedPath(normalizedPath: string): ProjectRecord | undefined;
+  /** Lista os arquivados, sem os removidos. */
+  listArchived(): ProjectRecord[];
+  archive(id: string, archivedAt: string): void;
+  unarchive(id: string, updatedAt: string): void;
   markRemoved(id: string, removedAt: string): void;
   /**
    * Desfaz a remoção: o mesmo registro volta à lista, sem inserir outro. A pasta pode ter ganhado ou
@@ -96,6 +100,8 @@ export interface MissionRepository {
   appendAudit(event: NewAuditEvent): AuditEvent;
   /** A auditoria de um agregado, em ordem de `sequence`. */
   listAudit(aggregateId: string): AuditEvent[];
+  /** Apaga a missão com as etapas, os critérios, as tentativas, as aprovações e a auditoria dela. */
+  deleteMission(id: string): void;
   transaction<T>(work: () => T): T;
 }
 

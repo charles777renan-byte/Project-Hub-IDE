@@ -175,6 +175,7 @@ app
     );
     registerProjectHandlers(ipcMain, isTrustedSender, {
       services,
+      lifecycle: services.lifecycle,
       chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);

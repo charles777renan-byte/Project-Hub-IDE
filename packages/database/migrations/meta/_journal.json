@@ -15,6 +15,13 @@
       "when": 1792467421175,
       "tag": "0001_missoes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792595027468,
+      "tag": "0002_arquivamento_projetos",
+      "breakpoints": true
     }
   ]
 }

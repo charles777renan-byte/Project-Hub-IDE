@@ -72,6 +72,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       list: () => call<ProjectSummary[]>(CHANNELS.projectsList),
       chooseDirectory: () => call<{ path: string } | null>(CHANNELS.projectsChooseDirectory),
       add: (input: AddProjectInput) => call<ProjectSummary>(CHANNELS.projectsAdd, input),
+      listArchived: () => call<ProjectSummary[]>(CHANNELS.projectsListArchived),
+      archive: (projectId: string) => call<void>(CHANNELS.projectsArchive, { projectId }),
+      unarchive: (projectId: string) => call<void>(CHANNELS.projectsUnarchive, { projectId }),
+      remove: (projectId: string) => call<void>(CHANNELS.projectsRemove, { projectId }),
     },
     missions: {
       create: (input: CreateMissionInput) => call<MissionDto>(CHANNELS.missionsCreate, input),
@@ -85,6 +89,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       pause: (missionId: string) => call<void>(CHANNELS.missionsPause, { missionId }),
       resume: (missionId: string) => call<void>(CHANNELS.missionsResume, { missionId }),
       retry: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsRetry, { missionId }),
+      delete: (missionId: string) => call<void>(CHANNELS.missionsDelete, { missionId }),
       provideInput: (input: ProvideInput) => call<void>(CHANNELS.missionsProvideInput, input),
       subscribe: (listener: (event: MissionEventDto) => void) =>
         subscribe(CHANNELS.missionsEvent, (payload) => {

@@ -3,7 +3,8 @@ import type { FileSystemPort, GitDetector, ProjectRepository } from '../src/port
 
 /**
  * Repositório em memória que segue o contrato do ProjectRepository do banco: `list` esconde os
- * removidos, `findByNormalizedPath` os inclui e `insert` recusa caminho repetido, como o índice único.
+ * removidos e os arquivados, `listArchived` mostra só os arquivados, `findByNormalizedPath` inclui
+ * todos e `insert` recusa caminho repetido, como o índice único.
  */
 export function fakeRepository(): ProjectRepository & { records(): ProjectRecord[] } {
   const byId = new Map<string, ProjectRecord>();
@@ -22,9 +23,28 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       });
     },
     get: (id) => copy(byId.get(id)),
-    list: () => [...byId.values()].filter((r) => r.removedAt === undefined).map((r) => ({ ...r })),
+    list: () =>
+      [...byId.values()]
+        .filter((r) => r.removedAt === undefined && r.archivedAt === undefined)
+        .map((r) => ({ ...r })),
+    listArchived: () =>
+      [...byId.values()]
+        .filter((r) => r.removedAt === undefined && r.archivedAt !== undefined)
+        .sort((a, b) => (a.archivedAt ?? '').localeCompare(b.archivedAt ?? ''))
+        .map((r) => ({ ...r })),
     findByNormalizedPath: (normalizedPath) =>
       copy([...byId.values()].find((r) => r.normalizedPath === normalizedPath)),
+    archive(id, archivedAt) {
+      const record = byId.get(id);
+      if (record !== undefined) byId.set(id, { ...record, archivedAt, updatedAt: archivedAt });
+    },
+    unarchive(id, updatedAt) {
+      const record = byId.get(id);
+      if (record === undefined) return;
+      const unarchived: ProjectRecord = { ...record, updatedAt };
+      delete unarchived.archivedAt;
+      byId.set(id, unarchived);
+    },
     markRemoved(id, removedAt) {
       const record = byId.get(id);
       if (record !== undefined) byId.set(id, { ...record, removedAt, updatedAt: removedAt });
@@ -35,6 +55,7 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       // Como o banco: a detecção nova substitui a antiga, inclusive a branch (some se não houver).
       const restored: ProjectRecord = { ...record, repositoryKind: git.repositoryKind, updatedAt };
       delete restored.removedAt;
+      delete restored.archivedAt;
       delete restored.defaultBranch;
       if (git.defaultBranch !== undefined) restored.defaultBranch = git.defaultBranch;
       byId.set(id, restored);

@@ -24,3 +24,8 @@ export const projectSummarySchema: z.ZodType<ProjectSummary> = z.object({
 export const addProjectInputSchema = z.object({ path: z.string().min(1) });
 
 export type AddProjectInput = z.infer<typeof addProjectInputSchema>;
+
+/** Entrada de arquivar, desarquivar e remover: o projeto que a pessoa escolheu. */
+export const projectIdInputSchema = z.object({ projectId: z.string().min(1) });
+
+export type ProjectIdInput = z.infer<typeof projectIdInputSchema>;

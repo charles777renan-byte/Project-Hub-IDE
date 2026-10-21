@@ -2,10 +2,15 @@ import { CHANNELS } from '@project-hub/contracts';
 import { GitError } from '@project-hub/git-adapter';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import type { AddProjectDeps } from '@project-hub/application';
+import {
+  archiveProject,
+  type AddProjectDeps,
+  type ProjectLifecycleDeps,
+} from '@project-hub/application';
 import {
   handleAddProject,
   handleChooseDirectory,
+  handleProjectLifecycle,
   registerProjectHandlers,
 } from '../src/main/ipc/projects';
 import { registerTrustedHandler, type IpcRegistry } from '../src/main/ipc/trusted-handler';
@@ -39,6 +44,36 @@ const isTrusted = (event: IpcMainInvokeEvent) => event === trusted;
 
 // Serviços vazios: qualquer uso deles quebra o teste, porque a entrada devia ser recusada antes.
 const neverCalled = {} as AddProjectDeps;
+const neverCalledLifecycle = {} as ProjectLifecycleDeps;
+
+const NOW = '2026-10-21T09:00:00.000Z';
+type ProjectRecord = NonNullable<ReturnType<ProjectLifecycleDeps['repo']['get']>>;
+const PROJECT: ProjectRecord = {
+  id: 'p1',
+  name: 'app',
+  path: 'C:\\Projetos\\app',
+  normalizedPath: 'c:\\projetos\\app',
+  repositoryKind: 'git',
+  isFavorite: false,
+  trusted: false,
+  createdAt: '2026-10-19T10:00:00.000Z',
+  updatedAt: '2026-10-19T10:00:00.000Z',
+};
+
+/** Caso de uso de ciclo de vida com o repositório falso: o projeto existe e a pasta também. */
+function lifecycleWith(repo: Partial<ProjectLifecycleDeps['repo']> = {}): ProjectLifecycleDeps {
+  return {
+    repo: {
+      get: () => PROJECT,
+      listArchived: () => [],
+      archive: () => undefined,
+      ...repo,
+    } as ProjectLifecycleDeps['repo'],
+    missions: { listMissions: () => [] },
+    fs: { isDirectory: () => Promise.resolve(true) },
+    now: () => NOW,
+  };
+}
 
 describe('registerTrustedHandler', () => {
   it('remetente confiável recebe o resultado do handler', async () => {
@@ -124,6 +159,32 @@ describe('handleAddProject', () => {
   );
 });
 
+describe('handleProjectLifecycle', () => {
+  it.each([null, {}, { projectId: '' }, { projectId: 1 }, 'p1'])(
+    'payload inválido (%j) vira VALIDATION_FAILED, sem chegar ao caso de uso',
+    (payload) => {
+      const action = vi.fn(archiveProject);
+
+      expect(handleProjectLifecycle(action, neverCalledLifecycle, payload)).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+      expect(action).not.toHaveBeenCalled();
+    },
+  );
+
+  it('payload válido chama o caso de uso com o id do projeto', () => {
+    const action = vi.fn(() => ({ ok: true as const, data: undefined }));
+    const deps = lifecycleWith();
+
+    expect(handleProjectLifecycle(action, deps, { projectId: 'p1' })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(action).toHaveBeenCalledWith(deps, { projectId: 'p1' });
+  });
+});
+
 describe('handleChooseDirectory', () => {
   it('devolve { path } quando a pessoa escolhe uma pasta', async () => {
     await expect(
@@ -140,16 +201,64 @@ describe('handleChooseDirectory', () => {
 });
 
 describe('registerProjectHandlers', () => {
-  it('registra os três canais de projetos', () => {
+  it('registra os canais de projetos, inclusive arquivar, desarquivar, remover e listar arquivados', () => {
     const { registry, channels } = fakeRegistry();
     registerProjectHandlers(registry, isTrusted, {
       services: neverCalled,
+      lifecycle: neverCalledLifecycle,
       chooseDirectory: () => Promise.resolve(null),
     });
 
     expect(channels()).toEqual(
-      [CHANNELS.projectsAdd, CHANNELS.projectsChooseDirectory, CHANNELS.projectsList].sort(),
+      [
+        CHANNELS.projectsAdd,
+        CHANNELS.projectsArchive,
+        CHANNELS.projectsChooseDirectory,
+        CHANNELS.projectsList,
+        CHANNELS.projectsListArchived,
+        CHANNELS.projectsRemove,
+        CHANNELS.projectsUnarchive,
+      ].sort(),
     );
+  });
+
+  it('projects:archive chama o caso de uso e grava o arquivamento com a data de agora', async () => {
+    const { registry, call } = fakeRegistry();
+    const archive = vi.fn();
+    registerProjectHandlers(registry, isTrusted, {
+      services: neverCalled,
+      lifecycle: lifecycleWith({ archive }),
+      chooseDirectory: () => Promise.resolve(null),
+    });
+
+    await expect(call(CHANNELS.projectsArchive, trusted, { projectId: 'p1' })).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(archive).toHaveBeenCalledWith('p1', NOW);
+  });
+
+  it('projects:list-archived devolve o resumo dos arquivados, com a disponibilidade da pasta', async () => {
+    const { registry, call } = fakeRegistry();
+    const archived = { ...PROJECT, archivedAt: NOW };
+    registerProjectHandlers(registry, isTrusted, {
+      services: neverCalled,
+      lifecycle: lifecycleWith({ listArchived: () => [archived] }),
+      chooseDirectory: () => Promise.resolve(null),
+    });
+
+    await expect(call(CHANNELS.projectsListArchived, trusted)).resolves.toEqual({
+      ok: true,
+      data: [
+        {
+          id: 'p1',
+          name: 'app',
+          path: 'C:\\Projetos\\app',
+          repositoryKind: 'git',
+          available: true,
+        },
+      ],
+    });
   });
 
   it('projects:add com o Git ausente responde GIT_NOT_AVAILABLE com a instrução, e não UNKNOWN', async () => {
@@ -171,6 +280,7 @@ describe('registerProjectHandlers', () => {
     } as unknown as AddProjectDeps;
     registerProjectHandlers(registry, isTrusted, {
       services,
+      lifecycle: neverCalledLifecycle,
       chooseDirectory: () => Promise.resolve(null),
     });
 
@@ -183,10 +293,14 @@ describe('registerProjectHandlers', () => {
     log.mockRestore();
   });
 
-  it('recusa os três canais para remetente de outra origem, sem tocar na aplicação', async () => {
+  it('recusa todos os canais de projetos para remetente de outra origem, sem tocar na aplicação', async () => {
     const { registry, call, channels } = fakeRegistry();
     const chooseDirectory = vi.fn(() => Promise.resolve('C:\\Projetos\\app'));
-    registerProjectHandlers(registry, isTrusted, { services: neverCalled, chooseDirectory });
+    registerProjectHandlers(registry, isTrusted, {
+      services: neverCalled,
+      lifecycle: neverCalledLifecycle,
+      chooseDirectory,
+    });
 
     for (const channel of channels()) {
       await expect(call(channel, foreign, { path: 'C:\\Projetos\\app' })).resolves.toMatchObject({

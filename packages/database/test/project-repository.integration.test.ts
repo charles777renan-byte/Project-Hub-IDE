@@ -156,4 +156,76 @@ describe('ProjectRepository', () => {
     expect(repo.get('p1')).not.toHaveProperty('defaultBranch');
     expect(repo.get('p1')).not.toHaveProperty('removedAt');
   });
+
+  it('arquivar tira o projeto da lista, e ele aparece em listArchived com a data do arquivamento', () => {
+    repo.insert(hub);
+    repo.insert(outro);
+
+    repo.archive('p1', '2026-10-21T09:00:00Z');
+
+    expect(repo.list().map((project) => project.id)).toEqual(['p2']);
+    expect(repo.listArchived().map((project) => project.id)).toEqual(['p1']);
+    expect(repo.get('p1')).toMatchObject({
+      archivedAt: '2026-10-21T09:00:00Z',
+      updatedAt: '2026-10-21T09:00:00Z',
+    });
+  });
+
+  it('o caminho de um projeto arquivado continua ocupado', () => {
+    repo.insert(hub);
+    repo.archive('p1', '2026-10-21T09:00:00Z');
+
+    expect(repo.findByNormalizedPath('c:/dev/project-hub')?.archivedAt).toBe(
+      '2026-10-21T09:00:00Z',
+    );
+    expect(() => repo.insert({ ...outro, normalizedPath: hub.normalizedPath })).toThrow(
+      /UNIQUE constraint failed/,
+    );
+  });
+
+  it('os arquivados saem em ordem de arquivamento, do mais antigo para o mais recente', () => {
+    repo.insert(hub);
+    repo.insert(outro);
+
+    repo.archive('p2', '2026-10-21T10:00:00Z');
+    repo.archive('p1', '2026-10-21T09:00:00Z');
+
+    expect(repo.listArchived().map((project) => project.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('desarquivar devolve o projeto à lista, sem campo de arquivamento e com a data nova', () => {
+    repo.insert(hub);
+    repo.archive('p1', '2026-10-21T09:00:00Z');
+
+    repo.unarchive('p1', '2026-10-21T10:00:00Z');
+
+    expect(repo.list().map((project) => project.id)).toEqual(['p1']);
+    expect(repo.listArchived()).toEqual([]);
+    expect(repo.get('p1')).not.toHaveProperty('archivedAt');
+    expect(repo.get('p1')?.updatedAt).toBe('2026-10-21T10:00:00Z');
+  });
+
+  it('um projeto arquivado e depois removido sai dos dois lados', () => {
+    repo.insert(hub);
+    repo.archive('p1', '2026-10-21T09:00:00Z');
+
+    repo.markRemoved('p1', '2026-10-21T10:00:00Z');
+
+    expect(repo.list()).toEqual([]);
+    expect(repo.listArchived()).toEqual([]);
+    expect(repo.get('p1')?.removedAt).toBe('2026-10-21T10:00:00Z');
+  });
+
+  it('restaurar um projeto removido também tira o arquivamento que ele tinha', () => {
+    repo.insert(hub);
+    repo.archive('p1', '2026-10-21T09:00:00Z');
+    repo.markRemoved('p1', '2026-10-21T10:00:00Z');
+
+    repo.restore('p1', '2026-10-21T11:00:00Z', { repositoryKind: 'git' });
+
+    expect(repo.list().map((project) => project.id)).toEqual(['p1']);
+    expect(repo.listArchived()).toEqual([]);
+    expect(repo.get('p1')).not.toHaveProperty('archivedAt');
+    expect(repo.get('p1')).not.toHaveProperty('removedAt');
+  });
 });
