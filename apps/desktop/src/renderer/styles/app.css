@@ -940,3 +940,93 @@ button:disabled {
 .overview-counter--violet::before {
   background: var(--violet);
 }
+
+/*
+ * Workspace da missão em grade de painéis (pages/MissionPage.tsx): seis painéis em 2×3 à esquerda e
+ * uma reserva de 370px à direita, para a coluna "Aguardando você" (Tarefa 6). A grade enche a altura
+ * que sobra da página, e cada linha divide essa altura em três partes iguais, com piso de 10rem: numa
+ * janela baixa a grade passa a altura da página, que rola na vertical. O corpo de cada painel rola
+ * dentro de si, e a página não cresce com o número de eventos. As colunas são minmax(0, 1fr),
+ * para que nenhuma largura fixa cause rolagem horizontal da página. Abaixo de 1000px a grade vira uma
+ * coluna, cada painel com altura fixa, a reserva some e a página rola na vertical.
+ */
+.app-main__content:has(> .mission-workspace) {
+  height: 100%;
+}
+
+.mission-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.mission-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 370px;
+  grid-template-rows: repeat(3, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.mission-grid__reserve {
+  grid-column: 3;
+  grid-row: 1 / span 3;
+}
+
+/* Conversa: quando a missão pede a decisão, o foco vem para cá; o contorno fica por dentro do painel. */
+.mission-focus:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Logs do sistema: uma linha por evento, em fonte mono, com a hora e a fonte antes da frase. */
+.logs {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.logs li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.logs time {
+  color: var(--muted);
+}
+
+.logs__source {
+  margin-right: var(--space-2);
+  color: var(--yellow);
+  font-weight: 600;
+}
+
+@media (max-width: 1000px) {
+  .app-main__content:has(> .mission-workspace) {
+    height: auto;
+  }
+
+  .mission-workspace {
+    height: auto;
+  }
+
+  .mission-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: 24rem;
+  }
+
+  .mission-grid__reserve {
+    display: none;
+  }
+}
