@@ -1,6 +1,6 @@
 import type { Ref } from 'react';
 import type { MissionViewDto } from '@project-hub/contracts';
-import { lastInputPrompt, requiredActionOf } from '../../mission-text';
+import { lastInputPrompt, requiredActionOf, verifiedCriteria } from '../../mission-text';
 import { ApprovalCard } from '../ApprovalCard';
 import { Panel, PanelEmpty } from '../Panel';
 import { AcceptancePanel } from './AcceptancePanel';
@@ -71,7 +71,7 @@ export function DecisionColumn({
           </div>
         ) : null}
       </Panel>
-      <AcceptancePanel criteria={mission.acceptanceCriteria} />
+      <AcceptancePanel criteria={mission.acceptanceCriteria} verified={verifiedCriteria(events)} />
       <GitPanel
         defaultBranch={project.defaultBranch}
         hasWorktree={mission.worktreePath !== undefined}

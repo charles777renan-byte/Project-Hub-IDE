@@ -3,10 +3,17 @@ import { Panel, PanelEmpty } from '../Panel';
 
 /**
  * Painel "Critérios de aceite" (acento lima) da coluna Aguardando você. Cada critério sai na ordem de
- * `position`, com `○ não verificado` em `--muted`: a verificação que muda essa marca chega na Tarefa 12.
- * O array recebido não é ordenado no lugar, para a visão da página continuar como veio do contrato.
+ * `position`, com `○ não verificado`, ou `✓ verificado` quando uma verificação que passou o associou
+ * (`verified`, pelo texto do critério). O array recebido não é ordenado no lugar, para a visão da
+ * página continuar como veio do contrato.
  */
-export function AcceptancePanel({ criteria }: { criteria: MissionDto['acceptanceCriteria'] }) {
+export function AcceptancePanel({
+  criteria,
+  verified = new Set<string>(),
+}: {
+  criteria: MissionDto['acceptanceCriteria'];
+  verified?: ReadonlySet<string>;
+}) {
   const ordered = [...criteria].sort((a, b) => a.position - b.position);
 
   if (ordered.length === 0) {
@@ -22,7 +29,9 @@ export function AcceptancePanel({ criteria }: { criteria: MissionDto['acceptance
         {ordered.map((criterion) => (
           <li key={criterion.id}>
             <span>{criterion.text}</span>
-            <span className="criteria__status">○ não verificado</span>
+            <span className="criteria__status">
+              {verified.has(criterion.text.trim()) ? '✓ verificado' : '○ não verificado'}
+            </span>
           </li>
         ))}
       </ol>

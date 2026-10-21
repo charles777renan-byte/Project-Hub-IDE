@@ -47,6 +47,21 @@ export type InputRequest = { id: string; prompt: string };
 
 export type AgentResult = { summary: string };
 
+/**
+ * Resultado de um comando de verificação (testes, lint, build) que o agente rodou. `passed` e `failed`
+ * contam testes (ou checagens). `output` é o texto que o comando imprimiu, e entra na tela como texto.
+ * `criteria` lista, pelo texto, os critérios de aceite da missão que esta verificação comprova: só
+ * eles ganham ✓, e só quando `failed` é 0. Sem `criteria`, nenhum critério é marcado.
+ */
+export type VerificationResult = {
+  command: string;
+  passed: number;
+  failed: number;
+  durationMs: number;
+  output?: string;
+  criteria?: string[];
+};
+
 /** Eventos normalizados do agente (seção 13.6). Todo evento leva o instante em que ocorreu. */
 export type AgentEvent =
   | { type: 'session.started'; sessionId: string; at: string }
@@ -59,6 +74,7 @@ export type AgentEvent =
   | { type: 'approval.requested'; request: ApprovalRequestDraft; at: string }
   | { type: 'input.requested'; request: InputRequest; at: string }
   | { type: 'usage.updated'; usage: UsageSummary; at: string }
+  | ({ type: 'verification.completed'; at: string } & VerificationResult)
   | { type: 'session.completed'; result: AgentResult; at: string }
   | { type: 'session.failed'; error: AgentError; at: string };
 
