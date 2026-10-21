@@ -162,6 +162,18 @@ function verificationOf(event: MissionEventDto): VerificationEntry | undefined {
   };
 }
 
+/**
+ * Resultado de uma verificação: `failed` com qualquer falha, `empty` quando nenhum teste rodou (0/0, que
+ * não prova nada e não pode aparecer como sucesso) e `passed` nos demais casos.
+ */
+export function verificationOutcome(
+  entry: Pick<VerificationEntry, 'passed' | 'failed'>,
+): 'passed' | 'failed' | 'empty' {
+  if (entry.failed > 0) return 'failed';
+  if (entry.passed === 0) return 'empty';
+  return 'passed';
+}
+
 /** As verificações da missão, da mais antiga para a mais recente. Evento malformado fica de fora. */
 export function verificationEntries(events: readonly MissionEventDto[]): VerificationEntry[] {
   return [...events]
@@ -238,9 +250,14 @@ export function describeEvent(event: MissionEventDto): string | null {
       if (run === undefined) return 'Verificação concluída.';
       const total = run.passed + run.failed;
       const time = formatDuration(run.durationMs);
-      return run.failed > 0
-        ? `Verificação falhou: ${run.command}, ${run.failed} de ${total} testes falharam em ${time}.`
-        : `Verificação concluída: ${run.command}, ${run.passed}/${total} testes passaram em ${time}.`;
+      const outcome = verificationOutcome(run);
+      if (outcome === 'failed') {
+        return `Verificação falhou: ${run.command}, ${run.failed} de ${total} testes falharam em ${time}.`;
+      }
+      if (outcome === 'empty') {
+        return `Verificação sem testes: ${run.command}, nenhum teste rodou em ${time}.`;
+      }
+      return `Verificação concluída: ${run.command}, ${run.passed}/${total} testes passaram em ${time}.`;
     }
     case 'approval.requested': {
       const title = textOf(asRecord(payload['request'])?.['title']);
