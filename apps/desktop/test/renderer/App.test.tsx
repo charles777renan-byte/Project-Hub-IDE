@@ -94,6 +94,13 @@ describe('App', () => {
 
 // Cabeçalho do workspace (Tarefa 3): marca, navegação e o espaço à direita para os contadores.
 describe('cabeçalho', () => {
+  // Os painéis (<header> do Panel) também contam como banner no testing-library; o cabeçalho do app é achado pela classe.
+  function appHeader(): HTMLElement {
+    const header = document.querySelector<HTMLElement>('.app-header');
+    expect(header).not.toBeNull();
+    return header as HTMLElement;
+  }
+
   beforeEach(() => {
     window.projectHub = {
       projects: { list: () => Promise.resolve({ ok: true, data: [] }) },
@@ -116,7 +123,7 @@ describe('cabeçalho', () => {
           <App />
         </MemoryRouter>,
       );
-      const banner = screen.getByRole('banner');
+      const banner = appHeader();
       expect(within(banner).getByText('Project Hub')).toBeInTheDocument();
       expect(within(banner).getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
     },
@@ -128,7 +135,7 @@ describe('cabeçalho', () => {
         <App />
       </MemoryRouter>,
     );
-    const mark = screen.getByRole('banner').querySelector('.app-brand__mark');
+    const mark = appHeader().querySelector('.app-brand__mark');
     expect(mark).not.toBeNull();
     expect(mark).toHaveAttribute('aria-hidden', 'true');
   });
@@ -139,7 +146,7 @@ describe('cabeçalho', () => {
         <App headerStatus={<span>2 executando</span>} />
       </MemoryRouter>,
     );
-    const status = screen.getByRole('banner').querySelector('.app-header__status');
+    const status = appHeader().querySelector('.app-header__status');
     expect(status).toHaveTextContent('2 executando');
   });
 
@@ -152,7 +159,7 @@ describe('cabeçalho', () => {
         <App headerStatus={headerStatus} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('banner').querySelector('.app-header__status')).toBeNull();
+    expect(appHeader().querySelector('.app-header__status')).toBeNull();
   });
 });
 
