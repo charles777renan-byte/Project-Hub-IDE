@@ -183,7 +183,7 @@ describe('MissionPage: cabeçalho', () => {
 const PANEL_TITLES = ['Conversa', 'Plano', 'Diff', 'Testes', 'Terminal', 'Logs do sistema'];
 
 describe('MissionPage: grade de painéis', () => {
-  it('mostra os seis painéis com os títulos, todos na grade, e nenhuma aba', async () => {
+  it('mostra os seis painéis com os títulos, todos na grade, e só as abas do Diff', async () => {
     installApi(viewOf());
     renderPage();
 
@@ -192,7 +192,10 @@ describe('MissionPage: grade de painéis', () => {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
       expect(panel.parentElement).toHaveClass('mission-grid');
     }
-    expect(screen.queryByRole('tab')).toBeNull();
+    // Sem abas de página: as únicas são as duas do painel Diff (Alterações e Artefatos).
+    const diffPanel = screen.getByRole('region', { name: 'Diff' });
+    expect(within(diffPanel).getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
   });
 
   it('com a missão em rascunho, Diff, Testes e Terminal dizem que ainda não há worktree', async () => {
