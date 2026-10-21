@@ -57,6 +57,15 @@ type ViewState =
   | { status: 'error'; message: string };
 
 /**
+ * Rota da missão. O workspace é remontado a cada missão (a chave é o `missionId`), para a aba aberta, o
+ * resumo do Diff, o pedido de foco e a visão carregada não passarem de uma missão para a outra.
+ */
+export function MissionPage() {
+  const { missionId = '' } = useParams();
+  return <MissionWorkspace key={missionId} missionId={missionId} />;
+}
+
+/**
  * Workspace de uma missão (seção 10.7, R168): o resumo fixo no topo (título, situação, ação principal e
  * indicadores), o banner "Aguardando você" quando há decisão pendente, e seis abas (Conversa, Plano,
  * Diff, Testes, Terminal e Logs), cada uma com a própria rolagem. A visão vem do processo principal e é
@@ -65,10 +74,10 @@ type ViewState =
  *
  * Os painéis das abas ficam montados o tempo todo (os de fora ficam escondidos), então a resposta
  * digitada na Conversa não se perde quando a pessoa olha outra aba. Quando a missão espera a decisão
- * (R182), a página vai para a Conversa e o foco vai para o lugar da decisão.
+ * (R182), o foco vai para o lugar da decisão, mas só quando a pessoa já está na Conversa: em outra aba,
+ * nada troca e nada toma o foco, e o banner avisa.
  */
-export function MissionPage() {
-  const { missionId = '' } = useParams();
+function MissionWorkspace({ missionId }: { missionId: string }) {
   const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   /** Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima da grade. */
@@ -85,6 +94,7 @@ export function MissionPage() {
   const [diffSummary, setDiffSummary] = useState<DiffSummary | undefined>(undefined);
   const conversationRef = useRef<HTMLDivElement>(null);
   const decisionRef = useRef<HTMLElement>(null);
+  const answerRef = useRef<HTMLTextAreaElement>(null);
   const latestRequest = useRef(0);
 
   const reload = useCallback(async () => {
@@ -125,28 +135,39 @@ export function MissionPage() {
 
   const decisionStatus = state.status === 'ready' ? state.view.mission.status : undefined;
   const needsDecision = decisionStatus !== undefined && needsDecisionInConversation(decisionStatus);
-  /** A situação mais recente, lida só no momento de pôr o foco (sem refazer o efeito a cada mudança). */
+  /** A aba e a situação mais recentes, lidas só ao pedir ou pôr o foco (sem refazer os efeitos a cada mudança). */
+  const tabRef = useRef(tab);
   const decisionStatusRef = useRef(decisionStatus);
-  decisionStatusRef.current = decisionStatus;
-  /** Leva à Conversa, onde ficam os controles da decisão, e pede o foco para depois da troca de aba. */
+  useEffect(() => {
+    tabRef.current = tab;
+    decisionStatusRef.current = decisionStatus;
+  });
+  const requestFocus = useCallback(() => setFocusRequest((count) => count + 1), []);
+  /** Pedido da pessoa (banner): leva à Conversa, onde ficam os controles da decisão, e pede o foco. */
   const openDecision = useCallback(() => {
     setTab('conversation');
-    setFocusRequest((count) => count + 1);
-  }, []);
+    requestFocus();
+  }, [requestFocus]);
 
-  /** Quando a missão passa a esperar a decisão da pessoa, o foco vai para o lugar dela (R182). */
+  /**
+   * Quando a missão passa a esperar a decisão da pessoa, o foco vai para o lugar dela (R182), mas só se
+   * ela já está na Conversa. Em outra aba nada troca e nada toma o foco: o banner avisa.
+   */
   useEffect(() => {
-    if (needsDecision) openDecision();
-  }, [needsDecision, decisionStatus, openDecision]);
+    if (needsDecision && tabRef.current === 'conversation') requestFocus();
+  }, [needsDecision, decisionStatus, requestFocus]);
 
-  /** O foco vai para a aprovação, ou para a Conversa quando o agente pede uma resposta. */
+  /** O foco vai para a aprovação, para a caixa de resposta ou, na falta delas, para a Conversa. */
   useEffect(() => {
     if (focusRequest === 0) return;
+    const status = decisionStatusRef.current;
     const target =
-      decisionStatusRef.current === 'waiting_approval'
-        ? (decisionRef.current ?? conversationRef.current)
-        : conversationRef.current;
-    target?.focus();
+      status === 'waiting_approval'
+        ? decisionRef.current
+        : status === 'waiting_input'
+          ? answerRef.current
+          : null;
+    (target ?? conversationRef.current)?.focus();
   }, [focusRequest]);
 
   /**
@@ -235,7 +256,6 @@ export function MissionPage() {
         onGeneratePlan={() => void run(() => window.projectHub.missions.plan(missionId))}
         onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
         onStart={() => void runStart()}
-        onOpenDecision={openDecision}
         onPause={() => void runControl(() => window.projectHub.missions.pause(missionId))}
         onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
         onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
@@ -243,7 +263,10 @@ export function MissionPage() {
         onDelete={() => void removeMission(project.id)}
       />
 
-      <DecisionBanner view={state.view} onOpen={openDecision} />
+      {/* A região fica montada o tempo todo: só assim o leitor de tela anuncia o banner quando ele entra. */}
+      <div role="status" aria-live="polite" className="decision-status">
+        <DecisionBanner view={state.view} onOpen={openDecision} />
+      </div>
 
       {actionError === null ? null : (
         <p role="alert" className="page-alert">
@@ -276,6 +299,7 @@ export function MissionPage() {
                 void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
               }
               decisionRef={decisionRef}
+              answerRef={answerRef}
             />
           </div>
         </TabPanel>

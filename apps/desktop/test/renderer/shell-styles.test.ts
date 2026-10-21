@@ -228,6 +228,20 @@ describe('layout do workspace da missão', () => {
     expect(ruleDeclarations(appCss, '.mission-tabpanel[hidden]').get('display')).toBe('none');
   });
 
+  it('o painel de aba tem respiro dos dois lados, para o contorno de foco não ser cortado pela rolagem', () => {
+    // O contorno tem 2px e fica 2px afastado: o respiro lateral tem de ser maior que isso.
+    expect(ruleDeclarations(appCss, '.mission-tabpanel').get('padding')).toBe(
+      'var(--space-3) var(--space-2) var(--space-2)',
+    );
+  });
+
+  it('a região status do banner não ocupa espaço quando está vazia', () => {
+    expect(ruleDeclarations(appCss, '.decision-status').get('flex')).toBe('none');
+    expect(ruleDeclarations(appCss, '.decision-status:empty').get('margin-top')).toBe(
+      'calc(var(--space-3) * -1)',
+    );
+  });
+
   it('o resumo é o bloco de maior peso: faixa de 3px na cor da situação, e os acentos do tom', () => {
     const summary = ruleDeclarations(appCss, '.mission-summary');
     expect(summary.get('border-top')).toBe('3px solid var(--summary-accent)');

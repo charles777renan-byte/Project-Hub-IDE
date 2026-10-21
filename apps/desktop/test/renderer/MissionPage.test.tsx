@@ -7,7 +7,7 @@ import type {
   ProjectHubApi,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { Link, MemoryRouter, Route, Routes } from 'react-router';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
@@ -428,13 +428,16 @@ describe('MissionPage: abas', () => {
   });
 });
 
-/** O que cada situação oferece como ação principal no resumo (e nada além dela em destaque). */
+/**
+ * O que cada situação oferece como ação principal no resumo (e nada além dela em destaque). Esperando a
+ * decisão, o resumo não tem ação: o banner "Aguardando você" é o único convite.
+ */
 const PRIMARY_BY_STATUS = [
   ['draft', 'Gerar plano'],
   ['planned', 'Aprovar plano'],
   ['queued', 'Iniciar missão'],
-  ['waiting_approval', 'Ver decisão'],
-  ['waiting_input', 'Ver decisão'],
+  ['waiting_approval', undefined],
+  ['waiting_input', undefined],
   ['paused', 'Retomar'],
   ['failed', 'Tentar de novo'],
   ['cancelled', 'Tentar de novo'],
@@ -665,6 +668,91 @@ describe('MissionPage: banner Aguardando você', () => {
     await waitFor(() =>
       expect(screen.queryByRole('region', { name: 'Aguardando você' })).toBeNull(),
     );
+  });
+});
+
+describe('MissionPage: banner e leitor de tela', () => {
+  function statusRegion(): HTMLElement {
+    const region = document.querySelector<HTMLElement>('[role="status"].decision-status');
+    if (region === null) throw new Error('A região status do banner não existe.');
+    return region;
+  }
+
+  it('o banner fica dentro de uma região status educada que já existe antes de ele entrar', async () => {
+    const hub = installApi(viewOf({ status: 'running' }));
+    renderPage();
+    await screen.findByRole('region', { name: 'Resumo da missão' });
+    const status = statusRegion();
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toBeEmptyDOMElement();
+
+    hub.setView(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    hub.emit({ eventType: 'approval.requested', payload: {} });
+
+    const banner = await within(status).findByRole('region', { name: 'Aguardando você' });
+    // A mesma região, sem ser refeita: é a entrada do conteúdo que o leitor de tela anuncia.
+    expect(statusRegion()).toBe(status);
+    expect(status).toContainElement(banner);
+  });
+
+  it('o banner é nomeado pelo próprio título, sem aria-label repetido', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    renderPage();
+
+    const banner = await screen.findByRole('region', { name: 'Aguardando você' });
+    const title = within(banner).getByRole('heading', { level: 2, name: 'Aguardando você' });
+    expect(banner).toHaveAttribute('aria-labelledby', title.id);
+    expect(title.id).not.toBe('');
+    expect(banner).not.toHaveAttribute('aria-label');
+  });
+});
+
+describe('MissionPage: troca de missão', () => {
+  it('não leva a aba aberta nem a contagem de arquivos de uma missão para a outra', async () => {
+    const worktree = { worktreePath: 'C:\\app\\.worktrees\\m' };
+    const views: Record<string, MissionViewDto> = {
+      m1: viewOf({ id: 'm1', title: 'Missão A', status: 'running', ...worktree }),
+      m2: viewOf({ id: 'm2', title: 'Missão B', status: 'running', ...worktree }),
+    };
+    const hub = installApi(views.m1 as MissionViewDto);
+    hub.api.missions.get.mockImplementation(((id: string) =>
+      Promise.resolve({ ok: true, data: views[id] })) as never);
+    // A missão A tem 2 arquivos alterados; o diff da B demora (nunca chega neste teste).
+    hub.api.missions.diff.mockImplementation(((id: string) =>
+      id === 'm1'
+        ? Promise.resolve({
+            ok: true,
+            data: {
+              files: [
+                { path: 'a.ts', status: 'modified', added: 1, removed: 0, binary: false },
+                { path: 'b.ts', status: 'added', added: 2, removed: 0, binary: false },
+              ],
+              truncatedFiles: false,
+            },
+          })
+        : new Promise(() => undefined)) as never);
+
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <Link to="/projects/p1/missions/m2">Ir para a missão B</Link>
+        <Routes>
+          <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { level: 1, name: 'Missão A' });
+    expect(await screen.findByText('2 arquivos')).toBeInTheDocument();
+    await openTab('Logs');
+    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+
+    await userEvent.click(screen.getByRole('link', { name: 'Ir para a missão B' }));
+
+    await screen.findByRole('heading', { level: 1, name: 'Missão B' });
+    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'false');
+    const indicators = screen.getByRole('list', { name: 'Indicadores da missão' });
+    expect(within(indicators).getByText('Arquivos alterados').nextSibling).toHaveTextContent('—');
+    expect(screen.queryByText('2 arquivos')).toBeNull();
   });
 });
 
@@ -950,12 +1038,13 @@ describe('MissionPage: foco da decisão (R182)', () => {
     expect(screen.getByRole('region', { name: 'Aguardando você' })).toBeInTheDocument();
   });
 
-  it('com o agente aguardando resposta, o foco também vai para a Conversa', async () => {
+  it('com o agente aguardando resposta, o foco vai direto para a caixa de resposta', async () => {
     installApi(viewOf({ status: 'waiting_input' }));
     renderPage();
 
-    const conversation = await screen.findByRole('tabpanel', { name: 'Conversa' });
-    await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
+    const answer = await screen.findByLabelText('O agente aguarda a sua resposta.');
+    expect(answer.tagName).toBe('TEXTAREA');
+    await waitFor(() => expect(answer).toHaveFocus());
   });
 
   it('sem decisão pendente, o foco não vai para a Conversa e o banner não aparece', async () => {
@@ -967,10 +1056,31 @@ describe('MissionPage: foco da decisão (R182)', () => {
     expect(screen.queryByRole('region', { name: 'Aguardando você' })).not.toBeInTheDocument();
   });
 
-  it('quando a missão passa a esperar a decisão com outra aba aberta, a página volta à Conversa e foca a decisão', async () => {
+  it('quando a missão passa a esperar a decisão com outra aba aberta, nada troca e nada toma o foco; só o banner aparece', async () => {
     const hub = installApi(viewOf({ status: 'running' }));
     renderPage();
     await openTab('Logs');
+    const logsTab = screen.getByRole('tab', { name: 'Logs' });
+    expect(logsTab).toHaveFocus();
+
+    hub.setView(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    hub.emit({
+      eventType: 'mission.status_changed',
+      payload: { from: 'running', to: 'waiting_approval' },
+    });
+
+    expect(await screen.findByRole('region', { name: 'Aguardando você' })).toBeVisible();
+    expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'false');
+    expect(logsTab).toHaveFocus();
+    const decisions = document.querySelector('[aria-label="Decisões da missão"]') as HTMLElement;
+    expect(focusIsIn(decisions)).toBe(false);
+  });
+
+  it('quando a missão passa a esperar a aprovação com a Conversa aberta, o foco vai para a decisão', async () => {
+    const hub = installApi(viewOf({ status: 'running' }));
+    renderPage();
+    await screen.findByRole('tabpanel', { name: 'Conversa' });
 
     hub.setView(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
     hub.emit({
@@ -979,8 +1089,22 @@ describe('MissionPage: foco da decisão (R182)', () => {
     });
 
     const decisions = await screen.findByRole('region', { name: 'Decisões da missão' });
-    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(focusIsIn(decisions)).toBe(true));
+  });
+
+  it('quando o agente passa a pedir resposta com a Conversa aberta, o foco vai para a caixa de resposta', async () => {
+    const hub = installApi(viewOf({ status: 'running' }));
+    renderPage();
+    await screen.findByRole('tabpanel', { name: 'Conversa' });
+
+    hub.setView(viewOf({ status: 'waiting_input' }));
+    hub.emit({
+      eventType: 'mission.status_changed',
+      payload: { from: 'running', to: 'waiting_input' },
+    });
+
+    const answer = await screen.findByLabelText('O agente aguarda a sua resposta.');
+    await waitFor(() => expect(answer).toHaveFocus());
   });
 
   it('com aprovação pendente, o banner leva o foco de volta às decisões', async () => {
@@ -996,30 +1120,35 @@ describe('MissionPage: foco da decisão (R182)', () => {
     expect(focusIsIn(decisions)).toBe(true);
   });
 
-  it('a ação principal "Ver decisão" do resumo faz o mesmo que o banner', async () => {
-    installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
-    renderPage();
-    const decisions = await screen.findByRole('region', { name: 'Decisões da missão' });
-    await waitFor(() => expect(focusIsIn(decisions)).toBe(true));
-    await openTab('Terminal');
+  it.each<[MissionViewDto['mission']['status'], Partial<MissionViewDto>]>([
+    ['waiting_approval', { pendingApprovals: [APPROVAL] }],
+    ['waiting_input', {}],
+  ])(
+    'com a missão em %s, o resumo não tem ação principal e o banner é o único convite',
+    async (status, rest) => {
+      installApi(viewOf({ status }, rest));
+      renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Ver decisão' }));
+      const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
+      expect(summary.querySelectorAll('.mission-summary__primary')).toHaveLength(0);
+      expect(within(summary).queryByRole('button', { name: 'Ver decisão' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Ver decisão' })).toBeNull();
+      const banner = screen.getByRole('region', { name: 'Aguardando você' });
+      expect(within(banner).getByRole('button', { name: 'Ver a decisão' })).toBeEnabled();
+    },
+  );
 
-    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
-    expect(focusIsIn(decisions)).toBe(true);
-  });
-
-  it('com o agente aguardando resposta, o banner leva o foco à Conversa, onde fica a resposta', async () => {
+  it('com o agente aguardando resposta, o banner leva o foco à caixa de resposta', async () => {
     installApi(viewOf({ status: 'waiting_input' }));
     renderPage();
-    const conversation = await screen.findByRole('tabpanel', { name: 'Conversa' });
-    await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
-    (document.activeElement as HTMLElement).blur();
-    expect(focusIsIn(conversation)).toBe(false);
+    const answer = await screen.findByLabelText('O agente aguarda a sua resposta.');
+    await waitFor(() => expect(answer).toHaveFocus());
+    answer.blur();
+    expect(answer).not.toHaveFocus();
 
     await userEvent.click(screen.getByRole('button', { name: 'Ver a decisão' }));
 
-    expect(focusIsIn(conversation)).toBe(true);
+    expect(answer).toHaveFocus();
   });
 
   it('a resposta não enviada continua na caixa depois de uma ação da missão', async () => {

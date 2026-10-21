@@ -17,6 +17,7 @@ export function ConversationPanel({
   onAnswer,
   onDecide,
   decisionRef,
+  answerRef,
 }: {
   view: MissionViewDto;
   busy: boolean;
@@ -25,6 +26,8 @@ export function ConversationPanel({
   onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
   /** Recebe o foco quando a missão espera a aprovação (o banner e o resumo levam até aqui). */
   decisionRef?: Ref<HTMLElement>;
+  /** Recebe o foco quando o agente espera uma resposta: o foco vai direto para a caixa de texto. */
+  answerRef?: Ref<HTMLTextAreaElement>;
 }) {
   const [answer, setAnswer] = useState('');
   const waitingInput = view.mission.status === 'waiting_input';
@@ -63,6 +66,7 @@ export function ConversationPanel({
             <label htmlFor="mission-answer">{prompt}</label>
             <textarea
               id="mission-answer"
+              ref={answerRef}
               value={answer}
               onChange={(event) => setAnswer(event.target.value)}
             />

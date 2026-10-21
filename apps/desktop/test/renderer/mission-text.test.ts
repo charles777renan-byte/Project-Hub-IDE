@@ -66,8 +66,9 @@ describe('ação principal do resumo da missão', () => {
     ['draft', 'generate_plan'],
     ['planned', 'approve_plan'],
     ['queued', 'start'],
-    ['waiting_approval', 'view_decision'],
-    ['waiting_input', 'view_decision'],
+    // Esperando a decisão, o banner "Aguardando você" é o único convite: o resumo não tem ação principal.
+    ['waiting_approval', undefined],
+    ['waiting_input', undefined],
     ['paused', 'resume'],
     ['failed', 'retry'],
     ['cancelled', 'retry'],

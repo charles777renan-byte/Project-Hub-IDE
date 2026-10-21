@@ -19,7 +19,6 @@ const PRIMARY_LABEL: Record<PrimaryAction, string> = {
   generate_plan: MISSION_TEXT.generatePlan,
   approve_plan: MISSION_TEXT.approvePlan,
   start: MISSION_TEXT.start,
-  view_decision: MISSION_TEXT.decision,
   resume: MISSION_TEXT.resume,
   retry: MISSION_TEXT.retry,
 };
@@ -64,7 +63,6 @@ export function MissionSummary({
   onGeneratePlan,
   onApprovePlan,
   onStart,
-  onOpenDecision,
   onPause,
   onResume,
   onRetry,
@@ -83,8 +81,6 @@ export function MissionSummary({
   onGeneratePlan: () => void;
   onApprovePlan: () => void;
   onStart: () => void;
-  /** Leva à aba Conversa e ao foco da decisão. */
-  onOpenDecision: () => void;
   onPause: () => void;
   onResume: () => void;
   onRetry: () => void;
@@ -109,7 +105,6 @@ export function MissionSummary({
     generate_plan: { run: onGeneratePlan, disabled: busy },
     approve_plan: { run: onApprovePlan, disabled: busy },
     start: { run: onStart, disabled: busy },
-    view_decision: { run: onOpenDecision, disabled: false },
     resume: { run: onResume, disabled: controlBusy },
     retry: { run: onRetry, disabled: busy },
   };

@@ -5,7 +5,8 @@ import { MISSION_TEXT, lastInputPrompt } from '../../mission-text';
  * Banner "Aguardando você", fixo logo abaixo do resumo da missão e visível em todas as abas. Só existe
  * quando há algo pendente: uma aprovação de ação protegida ou o pedido de resposta do agente (os
  * mesmos dados que a Conversa usa para mostrar a decisão). Lista os itens em uma linha cada e leva
- * até a Conversa, onde ficam os controles da decisão. Quem troca de aba e põe o foco é a página.
+ * até a Conversa, onde ficam os controles da decisão. Quem troca de aba e põe o foco é a página, que
+ * também mantém montada a região `status` em volta dele (o leitor de tela anuncia a entrada do banner).
  */
 export function DecisionBanner({ view, onOpen }: { view: MissionViewDto; onOpen: () => void }) {
   const { mission, pendingApprovals, events } = view;
@@ -13,8 +14,8 @@ export function DecisionBanner({ view, onOpen }: { view: MissionViewDto; onOpen:
   if (pendingApprovals.length === 0 && !waitingInput) return null;
 
   return (
-    <section aria-label="Aguardando você" className="decision-banner">
-      <h2 className="decision-banner__title">Aguardando você</h2>
+    <section aria-labelledby="decision-banner-title" className="decision-banner">
+      <h2 id="decision-banner-title" className="decision-banner__title">Aguardando você</h2>
       <ul className="decision-banner__items">
         {pendingApprovals.map((approval) => (
           <li key={approval.id}>
