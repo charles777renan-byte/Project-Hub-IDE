@@ -1,22 +1,30 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type Ref } from 'react';
 import type { MissionViewDto } from '@project-hub/contracts';
-import { lastInputPrompt } from '../mission-text';
+import { conversationEvents, lastInputPrompt } from '../mission-text';
+import { ApprovalCard } from './ApprovalCard';
 import { Timeline } from './Timeline';
 
 /**
- * Painel Conversa do workspace da missão (seção 10.7): a caixa de resposta quando o agente pede
- * entrada, e a linha do tempo dos eventos. As aprovações pendentes não aparecem aqui: a decisão fica
- * na coluna "Aguardando você" (DecisionColumn), e a Conversa guarda só o histórico.
+ * Aba Conversa do workspace da missão (seção 10.7): onde a decisão acontece (os cartões das aprovações
+ * pendentes e a caixa de resposta quando o agente pede entrada) e, abaixo, a história da missão em
+ * linguagem simples. O detalhe técnico (ferramentas, worktree, tentativas) fica só nos Logs. O banner
+ * "Aguardando você" leva até aqui. As ações chegam por props da página, que é quem chama o processo
+ * principal.
  */
 export function ConversationPanel({
   view,
   busy,
   onAnswer,
+  onDecide,
+  decisionRef,
 }: {
   view: MissionViewDto;
   busy: boolean;
   /** Devolve `true` quando a resposta foi enviada, para a caixa limpar. */
   onAnswer: (text: string) => Promise<boolean>;
+  onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
+  /** Recebe o foco quando a missão espera a aprovação (o banner e o resumo levam até aqui). */
+  decisionRef?: Ref<HTMLElement>;
 }) {
   const [answer, setAnswer] = useState('');
   const waitingInput = view.mission.status === 'waiting_input';
@@ -31,6 +39,24 @@ export function ConversationPanel({
 
   return (
     <section aria-label="Conversa da missão" className="workspace-panel">
+      {view.pendingApprovals.length === 0 ? null : (
+        <section
+          ref={decisionRef}
+          tabIndex={-1}
+          aria-label="Decisões da missão"
+          className="mission-focus"
+        >
+          {view.pendingApprovals.map((approval) => (
+            <ApprovalCard
+              key={approval.id}
+              approval={approval}
+              busy={busy}
+              onDecide={(decision) => onDecide(approval.id, decision)}
+            />
+          ))}
+        </section>
+      )}
+
       {waitingInput ? (
         <form className="form" aria-label="Resposta ao agente" onSubmit={handleAnswer}>
           <div className="field">
@@ -49,7 +75,7 @@ export function ConversationPanel({
         </form>
       ) : null}
 
-      <Timeline events={view.events} />
+      <Timeline events={conversationEvents(view.events)} />
     </section>
   );
 }

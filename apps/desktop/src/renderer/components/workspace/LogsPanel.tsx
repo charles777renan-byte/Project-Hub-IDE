@@ -3,10 +3,10 @@ import { describeEvent, formatTime } from '../../mission-text';
 import { PanelEmpty } from '../Panel';
 
 /**
- * Corpo do painel "Logs do sistema" (amarelo) do workspace da missão: cada evento com a hora, a fonte
+ * Conteúdo da aba "Logs" do workspace da missão (o registro completo, com o detalhe técnico): cada evento com a hora, a fonte
  * (Aprovação, Plano, Git...) e a frase de `describeEvent`, o mais recente primeiro. Com a mesma hora, a
  * ordem é pela sequência do evento. Eventos sem frase ficam de fora, como na Conversa. Quem rola é o
- * corpo do painel (`Panel`). A frase vem do agente ou do Git e entra como texto, nunca como HTML.
+ * painel da aba. A frase vem do agente ou do Git e entra como texto, nunca como HTML.
  */
 export function LogsPanel({ events }: { events: readonly MissionEventDto[] }) {
   const rows = events
