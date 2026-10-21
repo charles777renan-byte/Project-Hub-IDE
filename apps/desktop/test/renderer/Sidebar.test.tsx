@@ -9,6 +9,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { Sidebar } from '../../src/renderer/components/Sidebar';
+import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/use-sidebar-data';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
 // Barra lateral (Tarefa 4 do plano da interface): projetos na seção Projetos e, na rota de um projeto,
@@ -358,5 +359,30 @@ describe('Sidebar: carregamento e atualização', () => {
 
     await act(async () => replies[0]!([gitProject]));
     expect(screen.getByRole('link', { name: 'Notas' })).toBeInTheDocument();
+  });
+  it('recarrega quando um projeto é cadastrado, sem trocar de rota', async () => {
+    let calls = 0;
+    window.projectHub = {
+      projects: {
+        list: () => {
+          calls += 1;
+          return Promise.resolve({ ok: true, data: calls === 1 ? [] : [gitProject] });
+        },
+      },
+      missions: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        subscribe: () => () => undefined,
+      },
+    } as unknown as ProjectHubApi;
+    render(
+      <MemoryRouter initialEntries={['/projects']}>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Nenhum projeto ainda.')).toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+    });
+    expect(await screen.findByRole('link', { name: 'Project Hub' })).toBeInTheDocument();
   });
 });

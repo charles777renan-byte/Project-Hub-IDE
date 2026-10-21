@@ -12,6 +12,9 @@ export type SidebarData = {
 
 const LOAD_ERROR = 'Não foi possível carregar os projetos. Tente de novo.';
 
+/** Evento da janela disparado quando um projeto é cadastrado: a barra recarrega sem trocar de rota. */
+export const PROJECTS_CHANGED_EVENT = 'project-hub:projects-changed';
+
 const LOADING: SidebarData = { status: 'loading', projects: [], missionsByProject: {} };
 const FAILED: SidebarData = {
   status: 'error',
@@ -60,6 +63,12 @@ export function useSidebarData(): SidebarData {
     return () => {
       mounted.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const reload = () => setReloads((count) => count + 1);
+    window.addEventListener(PROJECTS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, reload);
   }, []);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ProjectSummary } from '@project-hub/contracts';
 import { ProjectCard } from '../components/ProjectCard';
+import { PROJECTS_CHANGED_EVENT } from '../use-sidebar-data';
 
 type ListState =
   | { status: 'loading' }
@@ -53,6 +54,7 @@ export function ProjectsPage() {
         return;
       }
       await loadProjects();
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
     } catch {
       setActionError(GENERIC_ERROR);
     } finally {
