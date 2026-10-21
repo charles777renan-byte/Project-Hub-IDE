@@ -3,12 +3,14 @@ import { useNavigate, useParams } from 'react-router';
 import type { MissionDto, ProjectSummary } from '@project-hub/contracts';
 import { MissionCard } from '../components/MissionCard';
 import { MissionForm, type MissionFormValues } from '../components/MissionForm';
+import { PathText } from '../components/PathText';
 import { Tabs, type TabItem } from '../components/Tabs';
+import { needsAttention } from '../mission-text';
 import { missionPath } from '../routes';
 
 type ProjectTab = 'overview' | 'missions' | 'repository' | 'worktrees' | 'settings';
 
-/** Abas do projeto (seção 10.5). Só Missões tem conteúdo nesta etapa. */
+/** Abas do projeto (seção 10.5). Worktrees e Configurações e permissões ainda não têm conteúdo. */
 const TABS: readonly TabItem<ProjectTab>[] = [
   { id: 'overview', label: 'Visão geral' },
   { id: 'missions', label: 'Missões' },
@@ -119,7 +121,9 @@ export function ProjectDetailPage() {
     <>
       <p className="eyebrow">{project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}</p>
       <h1>{project.name}</h1>
-      <p className="mission-meta">{project.path}</p>
+      <p className="project-path">
+        <PathText path={project.path} />
+      </p>
       <p className="mission-meta">Branch: {project.defaultBranch ?? 'sem Git'}</p>
 
       <div className="workspace-panel">
@@ -138,7 +142,11 @@ export function ProjectDetailPage() {
                 </p>
               )}
               {creating ? (
-                <MissionForm onSubmit={createMission} onCancel={() => setCreating(false)} />
+                <MissionForm
+                  onSubmit={createMission}
+                  onCancel={() => setCreating(false)}
+                  projectHasGit={project.repositoryKind === 'git'}
+                />
               ) : (
                 <p>
                   <button
@@ -165,11 +173,52 @@ export function ProjectDetailPage() {
                 </ul>
               )}
             </>
+          ) : tab === 'overview' ? (
+            <MissionCounts missions={missions} />
+          ) : tab === 'repository' ? (
+            <RepositoryInfo project={project} />
           ) : (
             <p className="page-note">Disponível na próxima etapa.</p>
           )}
         </div>
       </div>
     </>
+  );
+}
+
+/** Aba Visão geral (R217): contagens das missões do projeto por situação, com a lista já carregada. */
+function MissionCounts({ missions }: { missions: MissionDto[] }) {
+  const counts: readonly { label: string; value: number }[] = [
+    { label: 'Total', value: missions.length },
+    { label: 'Em execução', value: missions.filter((m) => m.status === 'running').length },
+    { label: 'Aguardando você', value: missions.filter((m) => needsAttention(m.status)).length },
+    { label: 'Concluídas', value: missions.filter((m) => m.status === 'succeeded').length },
+    { label: 'Falharam', value: missions.filter((m) => m.status === 'failed').length },
+  ];
+  return (
+    <ul className="project-counts" aria-label="Missões por situação">
+      {counts.map((count) => (
+        <li key={count.label}>
+          <span className="project-counts__value">{count.value}</span>
+          <span className="project-counts__label">{count.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Aba Repositório (R217): tipo, branch padrão e pasta do projeto. */
+function RepositoryInfo({ project }: { project: ProjectSummary }) {
+  return (
+    <dl className="project-facts">
+      <dt>Tipo</dt>
+      <dd>{project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}</dd>
+      <dt>Branch padrão</dt>
+      <dd>{project.defaultBranch ?? 'sem Git'}</dd>
+      <dt>Pasta</dt>
+      <dd className="project-path">
+        <PathText path={project.path} />
+      </dd>
+    </dl>
   );
 }

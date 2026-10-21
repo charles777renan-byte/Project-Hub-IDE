@@ -11,6 +11,20 @@ import { needsDecisionInConversation } from '../mission-text';
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
 
+const WORKTREE_ERROR =
+  'Não foi possível criar o worktree da missão. Inicialize o Git na pasta e tente de novo.';
+
+/**
+ * Códigos que o início da missão devolve quando o worktree não pôde ser criado (R213): a criação do
+ * worktree do git-adapter (`WORKTREE_CREATE_FAILED`, `WORKTREE_COLLISION`) e a recusa do orquestrador
+ * em projeto sem Git (`PROJECT_WITHOUT_GIT`). Erro de agente e outros seguem com a própria mensagem.
+ */
+const WORKTREE_ERROR_CODES: readonly string[] = [
+  'WORKTREE_CREATE_FAILED',
+  'WORKTREE_COLLISION',
+  'PROJECT_WITHOUT_GIT',
+];
+
 type ViewState =
   | { status: 'loading' }
   | { status: 'ready'; view: MissionViewDto }
@@ -105,6 +119,7 @@ export function MissionPage() {
   async function execute(
     action: () => Promise<AppResult<unknown>>,
     setPending: (pending: boolean) => void,
+    failureText: (error: { code: string; message: string }) => string = (error) => error.message,
   ): Promise<boolean> {
     setPending(true);
     setActionError(null);
@@ -114,7 +129,7 @@ export function MissionPage() {
       if (result.ok) {
         ok = true;
       } else {
-        setActionError(result.error.message);
+        setActionError(failureText(result.error));
       }
     } catch {
       setActionError(GENERIC_ERROR);
@@ -126,6 +141,13 @@ export function MissionPage() {
 
   /** Chamada longa: início, decisão, resposta, nova tentativa e planejamento. */
   const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
+  /** Início da missão: falha de worktree ganha a mensagem própria (R213). */
+  const runStart = () =>
+    execute(
+      () => window.projectHub.missions.start(missionId),
+      setBusy,
+      (error) => (WORKTREE_ERROR_CODES.includes(error.code) ? WORKTREE_ERROR : error.message),
+    );
   /** Controle da execução: pausar, retomar e cancelar. Não espera a chamada longa terminar. */
   const runControl = (action: () => Promise<AppResult<unknown>>) => execute(action, setControlBusy);
 
@@ -192,7 +214,7 @@ export function MissionPage() {
             onGeneratePlan={() => void run(() => window.projectHub.missions.plan(missionId))}
             onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
             onRequestNewPlan={() => void run(() => window.projectHub.missions.plan(missionId))}
-            onStart={() => void run(() => window.projectHub.missions.start(missionId))}
+            onStart={() => void runStart()}
           />
         </Panel>
         <Panel title="Diff" accent="orange">

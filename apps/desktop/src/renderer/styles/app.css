@@ -681,8 +681,14 @@ button:disabled {
   font-size: 1.125rem;
 }
 
+.project-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .project-path {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
@@ -1217,4 +1223,48 @@ button:disabled {
   .home__grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Abas Visão geral e Repositório do projeto (Tarefa 9). */
+.project-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-counts li {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 7rem;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.project-counts__value {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.project-counts__label {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.project-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.project-facts dt {
+  color: var(--muted);
+}
+
+.project-facts dd {
+  margin: 0;
 }
