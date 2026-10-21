@@ -280,7 +280,8 @@ describe('useOverview', () => {
       emit('m1');
     });
 
-    expect(api.projects.list).toHaveBeenCalledTimes(2);
+    // O evento agora espera 250 ms (carga compartilhada, Tarefa 8a) antes de recarregar.
+    await waitFor(() => expect(api.projects.list).toHaveBeenCalledTimes(2));
     expect(result.current.running).toBe(1);
   });
 });
