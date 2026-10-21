@@ -50,7 +50,7 @@ Nota da revisão final: a nova tentativa do index.lock não foi observada contra
   - Código de erro `GIT_LOCKED` no contrato.
 
 **Comportamento de `withLockAwareness`, na ordem:**
-1. Com `worktree` informado e `adminLockReason(worktree)` definido, lança `GitError('GIT_LOCKED', 'O worktree está travado pelo Git (<motivo>). Destrave-o e tente de novo.')` sem chamar `run`.
+1. Com `worktree` informado e `adminLockReason(worktree)` definido, lança `GitError('GIT_LOCKED', 'O worktree está travado pelo Git (<motivo>). Destrave-o com `git worktree unlock <caminho>` e tente de novo.')` sem chamar `run`.
 2. Chama `run`. Se der certo, devolve o resultado.
 3. Na falha, refaz a conferência do passo 1. Se o worktree estiver travado, lança o mesmo erro.
 4. Se existir `<gitAdminDir(repo)>/index.lock` e ainda houver espera na lista, chama `sleep(delaysMs[tentativa])` e volta ao passo 2.
