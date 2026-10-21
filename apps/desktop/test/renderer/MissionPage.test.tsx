@@ -9,6 +9,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
+import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 import { readCss, ruleDeclarations } from './css-rules';
 
@@ -57,6 +58,7 @@ function installApi(initial: MissionViewDto) {
       pause: vi.fn(() => Promise.resolve(OK)),
       resume: vi.fn(() => Promise.resolve(OK)),
       retry: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e2', attempt: 2 } })),
+      delete: vi.fn(() => Promise.resolve<AppResult<void>>(OK)),
       provideInput: vi.fn(() => Promise.resolve(OK)),
       subscribe: vi.fn((next: Listener) => {
         listener = next;
@@ -96,6 +98,7 @@ function renderPage() {
     <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
       <Routes>
         <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
+        <Route path={ROUTE_PATHS.projectDetail} element={<p>Página do projeto</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -124,6 +127,56 @@ describe('MissionPage: cabeçalho', () => {
     await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
     expect(screen.queryByRole('button', { name: 'Pausar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancelar missão' })).not.toBeInTheDocument();
+  });
+
+  it('missão em andamento não oferece Excluir missão', async () => {
+    installApi(viewOf({ status: 'running' }));
+    renderPage();
+
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+    expect(screen.queryByRole('button', { name: 'Excluir missão' })).not.toBeInTheDocument();
+  });
+
+  it('missão encerrada: Excluir missão pede confirmação, apaga e volta ao projeto', async () => {
+    const { api } = installApi(viewOf({ status: 'succeeded' }));
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Excluir missão' }));
+    expect(screen.getByRole('group', { name: /Excluir esta missão/ })).toBeInTheDocument();
+    expect(api.missions.delete).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    await waitFor(() => expect(api.missions.delete).toHaveBeenCalledWith('m1'));
+    expect(await screen.findByText('Página do projeto')).toBeInTheDocument();
+    expect(avisos).toHaveBeenCalled();
+    window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+  });
+
+  it('falha ao excluir mostra a mensagem da API e a missão segue na tela', async () => {
+    const { api } = installApi(viewOf({ status: 'failed' }));
+    api.missions.delete.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+        message: 'O worktree tem alterações não salvas.',
+        retryable: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'O worktree tem alterações não salvas.',
+    );
+    expect(screen.getByRole('heading', { level: 1, name: 'Ajustar login' })).toBeInTheDocument();
+    expect(screen.queryByText('Página do projeto')).not.toBeInTheDocument();
   });
 });
 
@@ -156,10 +209,10 @@ describe('MissionPage: grade de painéis', () => {
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     renderPage();
 
+    // O diff chega depois da primeira pintura: a espera é pelo texto, não pela região.
+    const diff = await screen.findByRole('region', { name: 'Diff' });
     expect(
-      within(await screen.findByRole('region', { name: 'Diff' })).getByText(
-        'A missão ainda não alterou arquivos.',
-      ),
+      await within(diff).findByText('A missão ainda não alterou arquivos.'),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Testes' })).getByText('Chega com a Tarefa 12.'),

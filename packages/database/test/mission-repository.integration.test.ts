@@ -359,3 +359,76 @@ describe('consultas para a interface', () => {
     ]);
   });
 });
+
+describe('exclusão de missão', () => {
+  const step = (id: string, missionId: string): MissionStep => ({
+    id,
+    missionId,
+    position: 1,
+    title: 'Passo',
+    description: '',
+    kind: 'custom',
+    status: 'failed',
+    dependsOn: [],
+  });
+  const audit = (aggregateType: 'mission' | 'execution' | 'project', aggregateId: string) => ({
+    aggregateType,
+    aggregateId,
+    eventType: 'evento.teste',
+    severity: 'info' as const,
+    actor: 'system' as const,
+    payload: {},
+    createdAt: T0,
+  });
+
+  it('apaga a missão com plano, critérios, tentativas, aprovações e auditoria dela e das tentativas', () => {
+    repo.insertMission(mission({ status: 'failed' }));
+    repo.insertSteps([step('s1', 'missao-1')]);
+    repo.insertExecution(execution({ status: 'failed' }));
+    repo.insertApproval({
+      id: 'appr-1',
+      missionId: 'missao-1',
+      executionId: 'exec-1',
+      actionType: 'write_outside_worktree',
+      title: 'Gravar fora do worktree',
+      rationale: 'O roteiro pediu',
+      affectedResources: [],
+      status: 'pending',
+      requestedAt: T0,
+    });
+    repo.appendAudit(audit('mission', 'missao-1'));
+    repo.appendAudit(audit('execution', 'exec-1'));
+
+    repo.deleteMission('missao-1');
+
+    expect(repo.getMission('missao-1')).toBeUndefined();
+    expect(repo.listSteps('missao-1')).toEqual([]);
+    expect(repo.getExecution('exec-1')).toBeUndefined();
+    expect(repo.getApproval('appr-1')).toBeUndefined();
+    expect(auditRows('missao-1')).toEqual([]);
+    expect(auditRows('exec-1')).toEqual([]);
+    const criteria = db.$client
+      .prepare('SELECT COUNT(*) AS total FROM mission_acceptance_criteria WHERE mission_id = ?')
+      .get('missao-1');
+    expect(criteria).toEqual({ total: 0 });
+  });
+
+  it('não toca em outra missão nem na auditoria de outro agregado', () => {
+    repo.insertMission(mission({ status: 'failed' }));
+    repo.insertMission(
+      mission({
+        id: 'missao-2',
+        title: 'Outra',
+        acceptanceCriteria: [{ id: 'c3', position: 1, text: 'Outro critério' }],
+      }),
+    );
+    repo.insertSteps([step('s1', 'missao-1'), { ...step('s2', 'missao-2'), position: 2 }]);
+    repo.appendAudit(audit('project', 'p1'));
+
+    repo.deleteMission('missao-1');
+
+    expect(repo.getMission('missao-2')).toMatchObject({ title: 'Outra' });
+    expect(repo.listSteps('missao-2').map((s) => s.id)).toEqual(['s2']);
+    expect(auditRows('p1')).toEqual([{ event_type: 'evento.teste', sequence: 1 }]);
+  });
+});

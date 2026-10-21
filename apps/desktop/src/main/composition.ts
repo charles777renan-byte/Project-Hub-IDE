@@ -6,10 +6,12 @@ import {
   recoverInterruptedExecutions,
   type AddProjectDeps,
   type CreateMissionDeps,
+  type DeleteMissionDeps,
   type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
   type Platform,
+  type ProjectLifecycleDeps,
 } from '@project-hub/application';
 import {
   createMissionRepository,
@@ -28,16 +30,24 @@ import { createDemoAgent } from './demo-agent';
 import { createIsDirectory } from './filesystem';
 import { withMissionEvents, type MissionEventPublisher } from './mission-events';
 
-/** Serviços de missões: o orquestrador e as consultas que o IPC usa (visão e alterações). */
+/** Serviços de missões: o orquestrador e as consultas que o IPC usa (visão, alterações e exclusão). */
 export type MissionServices = {
   orchestrator: Orchestrator;
   createDeps: CreateMissionDeps;
   queryDeps: MissionQueryDeps;
   diffDeps: MissionDiffDeps;
+  deleteDeps: DeleteMissionDeps;
 };
 
-/** Serviços do processo principal, com `close` para fechar o banco ao sair do aplicativo. */
-export type AppServices = AddProjectDeps & { missions: MissionServices; close(): void };
+/**
+ * Serviços do processo principal, com `close` para fechar o banco ao sair do aplicativo. `lifecycle`
+ * é o que arquivar, desarquivar e remover projetos precisa.
+ */
+export type AppServices = AddProjectDeps & {
+  missions: MissionServices;
+  lifecycle: ProjectLifecycleDeps;
+  close(): void;
+};
 
 export type AppServicesOptions = {
   dbFile: string;
@@ -144,18 +154,21 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   });
   recoverInterruptedExecutions(repo, now);
 
+  const fs = { isDirectory: createIsDirectory() };
   return {
     repo: projects,
     git: createGitDetector(),
-    fs: { isDirectory: createIsDirectory() },
+    fs,
     platform: options.platform,
     now,
     newId,
+    lifecycle: { repo: projects, missions: repo, fs, now },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },
       queryDeps: { repo, projects },
       diffDeps: { repo, diff: { diff: (worktreePath) => getWorktreeDiff(worktreePath) } },
+      deleteDeps: { repo, projects, worktrees: { remove: removeWorktree }, fs },
     },
     close: () => {
       db.$client.close();

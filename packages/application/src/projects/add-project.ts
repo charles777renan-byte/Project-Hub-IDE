@@ -22,6 +22,11 @@ export type AddProjectDeps = {
 
 const ALREADY_EXISTS = 'Esta pasta já está cadastrada.';
 
+/** Ativo é o que aparece na lista: nem removido, nem arquivado. Pasta fora disso volta pelo mesmo registro. */
+function isActive(project: ProjectRecord): boolean {
+  return project.removedAt === undefined && project.archivedAt === undefined;
+}
+
 /**
  * Cadastra uma pasta como projeto (RF-PROJ-001 a RF-PROJ-003). O caminho precisa ser absoluto e
  * apontar para um diretório. Uma pasta já cadastrada e ativa é recusada, sem rodar o Git. Uma pasta
@@ -44,7 +49,7 @@ export async function addProject(
 
   // Primeira consulta: uma pasta já cadastrada e ativa nunca chega ao Git (R85).
   const known = deps.repo.findByNormalizedPath(normalizedPath);
-  if (known !== undefined && known.removedAt === undefined) {
+  if (known !== undefined && isActive(known)) {
     return failure('PROJECT_ALREADY_EXISTS', ALREADY_EXISTS);
   }
   const detection = await deps.git.detect(path);
@@ -53,7 +58,7 @@ export async function addProject(
   // consulta que vale é esta, e daqui até a escrita não há await: ela e a gravação não se intercalam.
   const existing = deps.repo.findByNormalizedPath(normalizedPath);
   const timestamp = deps.now();
-  if (existing !== undefined && existing.removedAt === undefined) {
+  if (existing !== undefined && isActive(existing)) {
     return failure('PROJECT_ALREADY_EXISTS', ALREADY_EXISTS);
   }
   if (existing !== undefined) {
@@ -64,6 +69,7 @@ export async function addProject(
     deps.repo.restore(existing.id, timestamp, git);
     const restored: ProjectRecord = { ...existing, ...git, updatedAt: timestamp };
     delete restored.removedAt;
+    delete restored.archivedAt;
     // A branch antiga não vale mais: sem `defaultBranch` na detecção nova, ela sai do registro.
     if (git.defaultBranch === undefined) delete restored.defaultBranch;
     return { ok: true, data: restored };

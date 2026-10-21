@@ -196,10 +196,12 @@ describe('grade do workspace da missão', () => {
   const appCss = readCss('app.css');
   const narrow = gridNarrowBlock(appCss);
 
-  it('tem duas colunas de painel iguais e a reserva de 370px, em três linhas com piso de 10rem', () => {
+  it('tem duas colunas de painel, a do Plano mais larga, e a reserva de até 370px, em três linhas com piso de 10rem', () => {
     const grid = ruleDeclarations(appCss, '.mission-grid');
     expect(grid.get('display')).toBe('grid');
-    expect(grid.get('grid-template-columns')).toBe('minmax(0, 1fr) minmax(0, 1fr) 370px');
+    expect(grid.get('grid-template-columns')).toBe(
+      'minmax(0, 1fr) minmax(0, 1.25fr) clamp(240px, 34cqw, 370px)',
+    );
     expect(grid.get('grid-template-rows')).toBe('repeat(3, minmax(10rem, 1fr))');
     expect(grid.get('min-height')).toBe('0');
   });
@@ -227,6 +229,8 @@ describe('grade do workspace da missão', () => {
     expect(workspace.get('display')).toBe('flex');
     expect(workspace.get('flex-direction')).toBe('column');
     expect(workspace.get('height')).toBe('100%');
+    // A reserva usa cqw: o workspace é o contêiner que mede a largura.
+    expect(workspace.get('container-type')).toBe('inline-size');
     expect(ruleDeclarations(appCss, '.mission-grid').get('flex')).toBe('1');
   });
 

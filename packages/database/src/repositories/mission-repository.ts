@@ -51,6 +51,11 @@ export interface MissionRepository {
   listPendingApprovals(executionId: string): ApprovalRequest[];
   appendAudit(event: NewAuditEvent): AuditEvent;
   listAudit(aggregateId: string): AuditEvent[];
+  /**
+   * Apaga a missão com as etapas, os critérios, as tentativas, as aprovações e a auditoria dela e das
+   * tentativas. Tudo na mesma transação; quem chama confere antes que a missão está encerrada.
+   */
+  deleteMission(id: string): void;
   transaction<T>(work: () => T): T;
 }
 
@@ -377,6 +382,28 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
         .orderBy(asc(auditEvents.sequence))
         .all()
         .map(toAuditEvent);
+    },
+
+    deleteMission(id) {
+      db.transaction(() => {
+        const attempts = db
+          .select({ id: executions.id })
+          .from(executions)
+          .where(eq(executions.missionId, id))
+          .all()
+          .map((row) => row.id);
+        // Sem `ON DELETE CASCADE` em auditoria, que não tem chave estrangeira: apaga-se pelo agregado.
+        for (const aggregateId of [id, ...attempts]) {
+          db.delete(auditEvents).where(eq(auditEvents.aggregateId, aggregateId)).run();
+        }
+        db.delete(approvalRequests).where(eq(approvalRequests.missionId, id)).run();
+        db.delete(executions).where(eq(executions.missionId, id)).run();
+        db.delete(missionSteps).where(eq(missionSteps.missionId, id)).run();
+        db.delete(missionAcceptanceCriteria)
+          .where(eq(missionAcceptanceCriteria.missionId, id))
+          .run();
+        db.delete(missions).where(eq(missions.id, id)).run();
+      });
     },
 
     transaction(work) {

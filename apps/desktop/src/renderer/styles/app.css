@@ -4,6 +4,26 @@
   box-sizing: border-box;
 }
 
+/*
+ * Barras de rolagem finas e invisíveis até o mouse passar sobre o elemento que rola, sobre o painel
+ * dele, ou até o foco entrar ali. A rolagem continua pela roda e pelo teclado. O Chromium do Electron
+ * lê `scrollbar-width` e `scrollbar-color`, e com isso sai a barra grossa do Windows, com setas.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+
+.panel:hover .panel__body,
+.panel:focus-within .panel__body {
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -786,6 +806,34 @@ button:disabled {
   gap: var(--space-2);
 }
 
+/* Confirmação de uma ação que apaga ou tira da lista: a pergunta e os botões ficam na mesma linha. */
+.confirm-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Projetos arquivados: nome, caminho e o botão Restaurar, uma linha por projeto. */
+.archived-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.archived-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.archived-list__name {
+  font-weight: 600;
+}
+
 /* Plano: passos numerados e o cartão de decisão. */
 .plan-steps {
   display: grid;
@@ -795,14 +843,46 @@ button:disabled {
   list-style: none;
 }
 
+/*
+ * Em painel estreito, o chip de estado desce para baixo do texto, alinhado com ele. Em painel largo
+ * (a partir de 24rem), o chip fica à direita, na mesma linha. A coluna do texto encolhe e quebra linha:
+ * sem isso o passo mais largo que o painel rola de lado.
+ */
+.plan-steps {
+  container-type: inline-size;
+}
+
 .plan-step {
   display: grid;
-  grid-template-columns: 2.5rem 1fr auto;
+  grid-template-columns: 2rem minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2);
   border: 1px solid var(--line);
   background: var(--surface-glass);
+}
+
+.plan-step > span:not(.chip) {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.plan-step > .chip {
+  grid-column: 2;
+  justify-self: start;
+}
+
+@container (min-width: 24rem) {
+  .plan-step {
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .plan-step > .chip {
+    grid-column: auto;
+    justify-self: auto;
+  }
 }
 
 .plan-step-number {
@@ -993,8 +1073,10 @@ button:disabled {
  * uma reserva de 370px à direita, para a coluna "Aguardando você" (Tarefa 6). A grade enche a altura
  * que sobra da página, e cada linha divide essa altura em três partes iguais, com piso de 10rem: numa
  * janela baixa a grade passa a altura da página, que rola na vertical. O corpo de cada painel rola
- * dentro de si, e a página não cresce com o número de eventos. As colunas são minmax(0, 1fr),
- * para que nenhuma largura fixa cause rolagem horizontal da página. Abaixo de 1000px a grade vira uma
+ * dentro de si, e a página não cresce com o número de eventos. As colunas do meio são fracionárias
+ * (minmax(0, 1fr) e minmax(0, 1.25fr), a do Plano é a mais larga), para que nenhuma largura fixa cause
+ * rolagem horizontal da página. A reserva da direita tem 370px em telas largas e encolhe com a largura
+ * do workspace (34cqw, entre 240px e 370px), para que o Plano não fique estreito em janelas de 1024px. Abaixo de 1000px a grade vira uma
  * coluna, cada painel com altura fixa de 24rem; a coluna "Aguardando você" vem depois deles, na mesma
  * largura, e a página rola na vertical. A coluna da direita é a reserva `.mission-grid__reserve`.
  */
@@ -1007,12 +1089,13 @@ button:disabled {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  container-type: inline-size;
 }
 
 .mission-grid {
   display: grid;
   flex: 1;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 370px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) clamp(240px, 34cqw, 370px);
   grid-template-rows: repeat(3, minmax(10rem, 1fr));
   gap: var(--space-3);
   min-height: 0;
@@ -1046,7 +1129,7 @@ button:disabled {
   padding: var(--space-1) 0;
   border-bottom: 1px solid var(--line);
   color: var(--text);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .logs time {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import type { AppError, AppResult, ErrorCode, MissionViewDto } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
 import { Panel, PanelEmpty } from '../components/Panel';
@@ -9,6 +9,8 @@ import { DiffPanel } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionHeader } from '../components/workspace/MissionHeader';
 import { needsDecisionInConversation } from '../mission-text';
+import { PROJECTS_CHANGED_EVENT } from '../projects-events';
+import { projectPath } from '../routes';
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
 
@@ -58,6 +60,7 @@ function pendingNote(hasWorktree: boolean, task: number): string {
  */
 export function MissionPage() {
   const { missionId = '' } = useParams();
+  const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   /** Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima da grade. */
   const [reloadError, setReloadError] = useState<string | null>(null);
@@ -158,6 +161,28 @@ export function MissionPage() {
   /** Controle da execução: pausar, retomar e cancelar. Não espera a chamada longa terminar. */
   const runControl = (action: () => Promise<AppResult<unknown>>) => execute(action, setControlBusy);
 
+  /**
+   * Exclui a missão encerrada e volta ao projeto. Fora do `execute`: quando dá certo, não há visão para
+   * recarregar, então a página só troca de rota. Falha fica na tela, e a visão é buscada de novo.
+   */
+  async function removeMission(projectId: string) {
+    setControlBusy(true);
+    setActionError(null);
+    try {
+      const result = await window.projectHub.missions.delete(missionId);
+      if (result.ok) {
+        window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+        navigate(projectPath(projectId));
+        return;
+      }
+      setActionError(result.error.message);
+    } catch {
+      setActionError(GENERIC_ERROR);
+    }
+    setControlBusy(false);
+    await reload();
+  }
+
   if (state.status === 'loading') {
     return <p role="status">Carregando missão…</p>;
   }
@@ -182,6 +207,7 @@ export function MissionPage() {
         onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
         onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
         onCancel={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
+        onDelete={() => void removeMission(project.id)}
         onOpenDecision={() =>
           (decisionStatus === 'waiting_approval'
             ? decisionRef.current

@@ -8,6 +8,7 @@ import { createAppServices, platformOf, type AppServices } from '../src/main/com
 import { handleAddProject } from '../src/main/ipc/projects';
 import {
   handleCreateMission,
+  handleDeleteMission,
   handleGetMission,
   handleMissionAction,
 } from '../src/main/ipc/missions';
@@ -241,5 +242,52 @@ describe('missão de ponta a ponta, com banco, Git e agente simulado', () => {
     const view = await handleGetMission(services.missions.queryDeps, { missionId });
     if (!view.ok) throw new Error('a visão deveria existir');
     expect(view.data.mission.status).toBe('waiting_approval');
+  });
+
+  it('excluir missão em andamento recusa; depois de cancelar, o worktree com alterações segura a missão', async () => {
+    const created = await handleCreateMission(services.missions.createDeps, newMissionInput());
+    if (!created.ok) throw new Error('a criação deveria dar certo');
+    const missionId = created.data.id;
+    await handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'approvePlan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'start', { missionId });
+    const running = await handleGetMission(services.missions.queryDeps, { missionId });
+    if (!running.ok) throw new Error('a visão deveria existir');
+    const worktreePath = running.data.mission.worktreePath;
+    if (worktreePath === undefined) throw new Error('a missão iniciada deveria ter worktree');
+
+    expect(await handleDeleteMission(services.missions.deleteDeps, { missionId })).toMatchObject({
+      ok: false,
+      error: { code: 'MISSION_INVALID_STATE' },
+    });
+    expect(existsSync(worktreePath)).toBe(true);
+
+    // O agente simulado deixa alterações no worktree: a remoção recusa, e a missão fica como está.
+    await handleMissionAction(services.missions.orchestrator, 'cancel', { missionId });
+    expect(await handleDeleteMission(services.missions.deleteDeps, { missionId })).toMatchObject({
+      ok: false,
+      error: { code: 'WORKTREE_HAS_UNSAVED_CHANGES' },
+    });
+    expect(existsSync(worktreePath)).toBe(true);
+    expect(services.missions.queryDeps.repo.getMission(missionId)).toMatchObject({
+      status: 'cancelled',
+    });
+  });
+
+  it('excluir missão planejada e cancelada, sem worktree, tira a missão, o plano e a auditoria', async () => {
+    const created = await handleCreateMission(services.missions.createDeps, newMissionInput());
+    if (!created.ok) throw new Error('a criação deveria dar certo');
+    const missionId = created.data.id;
+    await handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'cancel', { missionId });
+
+    expect(await handleDeleteMission(services.missions.deleteDeps, { missionId })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+
+    expect(services.missions.queryDeps.repo.getMission(missionId)).toBeUndefined();
+    expect(services.missions.queryDeps.repo.listSteps(missionId)).toEqual([]);
+    expect(services.missions.queryDeps.repo.listAudit(missionId)).toEqual([]);
   });
 });

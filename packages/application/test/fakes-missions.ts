@@ -112,6 +112,22 @@ export function fakeMissionRepository(): FakeMissionRepository {
         .filter((a) => a.aggregateId === aggregateId)
         .sort((a, b) => a.sequence - b.sequence)
         .map(copy),
+    deleteMission(id) {
+      // Como o banco: a auditoria sai pelo agregado da missão e pelo das tentativas.
+      const attemptIds = [...state.executions.values()]
+        .filter((execution) => execution.missionId === id)
+        .map((execution) => execution.id);
+      const aggregates = new Set([id, ...attemptIds]);
+      state.missions.delete(id);
+      state.steps = state.steps.filter((step) => step.missionId !== id);
+      for (const execution of [...state.executions.values()]) {
+        if (execution.missionId === id) state.executions.delete(execution.id);
+      }
+      for (const approval of [...state.approvals.values()]) {
+        if (attemptIds.includes(approval.executionId)) state.approvals.delete(approval.id);
+      }
+      state.audit = state.audit.filter((event) => !aggregates.has(event.aggregateId));
+    },
     transaction<T>(work: () => T): T {
       const snapshot = copy(state);
       try {
