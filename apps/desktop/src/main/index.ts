@@ -24,6 +24,7 @@ import { registerApprovalHandlers } from './ipc/approvals';
 import { registerMissionHandlers } from './ipc/missions';
 import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
+import { registerWorktreeHandlers } from './ipc/worktrees';
 import { handleWindowLoadFailure } from './startup-failure';
 import {
   applyContentSecurityPolicy,
@@ -180,6 +181,7 @@ app
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
+    registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
     createMainWindow();
 
     // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.

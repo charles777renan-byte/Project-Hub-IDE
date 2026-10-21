@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { MissionDiffDto, MissionDiffFileDto } from '@project-hub/contracts';
 import { PanelEmpty } from '../Panel';
+import { Tabs, type TabItem } from '../Tabs';
+import { ArtifactsPanel } from './ArtifactsPanel';
+
+type DiffView = 'changes' | 'artifacts';
+
+const VIEWS: readonly TabItem<DiffView>[] = [
+  { id: 'changes', label: 'Alterações' },
+  { id: 'artifacts', label: 'Artefatos' },
+];
 
 const GENERIC_ERROR = 'Não foi possível ler as alterações da missão. Tente de novo.';
 
@@ -32,6 +41,7 @@ export function DiffPanel({
 }) {
   const [state, setState] = useState<DiffState>({ status: 'loading' });
   const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
+  const [view, setView] = useState<DiffView>('changes');
 
   useEffect(() => {
     if (!hasWorktree) return;
@@ -55,6 +65,35 @@ export function DiffPanel({
     };
   }, [missionId, hasWorktree, refreshKey]);
 
+  return (
+    <div className="diff-tabs">
+      <Tabs label="Visões do painel" tabs={VIEWS} active={view} onChange={setView} filled />
+      {view === 'artifacts' ? (
+        <ArtifactsPanel files={hasWorktree && state.status === 'ready' ? state.diff.files : []} />
+      ) : (
+        <ChangesView
+          state={state}
+          hasWorktree={hasWorktree}
+          selectedPath={selectedPath}
+          onSelect={setSelectedPath}
+        />
+      )}
+    </div>
+  );
+}
+
+/** A aba "Alterações": a lista de arquivos e o diff do escolhido. */
+function ChangesView({
+  state,
+  hasWorktree,
+  selectedPath,
+  onSelect,
+}: {
+  state: DiffState;
+  hasWorktree: boolean;
+  selectedPath: string | undefined;
+  onSelect: (path: string) => void;
+}) {
   if (!hasWorktree) {
     return (
       <PanelEmpty>
@@ -93,7 +132,7 @@ export function DiffPanel({
               type="button"
               className="diff__file"
               aria-pressed={file.path === selected?.path}
-              onClick={() => setSelectedPath(file.path)}
+              onClick={() => onSelect(file.path)}
             >
               <span className={`diff__status diff__status--${file.status}`}>
                 {STATUS_LABEL[file.status]}

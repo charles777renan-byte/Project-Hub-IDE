@@ -45,3 +45,9 @@ export type {
   WorktreePort,
 } from './ports';
 export { failure } from './result';
+export {
+  listWorktrees,
+  removeMissionWorktree,
+  type ListWorktreesDeps,
+  type RemoveWorktreeDeps,
+} from './worktrees/worktrees';

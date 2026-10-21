@@ -122,6 +122,92 @@ function textOf(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/** Uma verificação que o agente rodou (evento `verification.completed`), já validada para a tela. */
+export type VerificationEntry = {
+  id: string;
+  command: string;
+  passed: number;
+  failed: number;
+  durationMs: number;
+  output?: string;
+  /** Textos dos critérios de aceite que esta verificação comprova (vazio quando o agente não associou). */
+  criteria: string[];
+};
+
+function countOf(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** Lê o payload de um `verification.completed`. Payload sem comando ou com contagem inválida é descartado. */
+function verificationOf(event: MissionEventDto): VerificationEntry | undefined {
+  if (event.eventType !== 'verification.completed') return undefined;
+  const payload = event.payload;
+  const command = textOf(payload['command']);
+  const passed = countOf(payload['passed']);
+  const failed = countOf(payload['failed']);
+  const durationMs = countOf(payload['durationMs']);
+  if (command === undefined || passed === undefined || failed === undefined) return undefined;
+  const output = textOf(payload['output']);
+  const criteria = Array.isArray(payload['criteria'])
+    ? payload['criteria'].filter((item): item is string => typeof item === 'string')
+    : [];
+  return {
+    id: event.id,
+    command,
+    passed,
+    failed,
+    durationMs: durationMs ?? 0,
+    ...(output === undefined ? {} : { output }),
+    criteria,
+  };
+}
+
+export type VerificationOutcome = 'passed' | 'failed' | 'empty';
+
+/**
+ * Resultado de uma verificação: `failed` com qualquer falha, `empty` quando nenhum teste rodou (0/0, que
+ * não prova nada e não pode aparecer como sucesso) e `passed` nos demais casos.
+ */
+export function verificationOutcome(
+  entry: Pick<VerificationEntry, 'passed' | 'failed'>,
+): VerificationOutcome {
+  if (entry.failed > 0) return 'failed';
+  if (entry.passed === 0) return 'empty';
+  return 'passed';
+}
+
+/** As verificações da missão, da mais antiga para a mais recente. Evento malformado fica de fora. */
+export function verificationEntries(events: readonly MissionEventDto[]): VerificationEntry[] {
+  return [...events]
+    .sort((a, b) => a.sequence - b.sequence)
+    .flatMap((event) => {
+      const entry = verificationOf(event);
+      return entry === undefined ? [] : [entry];
+    });
+}
+
+/**
+ * Textos dos critérios de aceite comprovados: só os que o agente associou a uma verificação que passou
+ * (sem falhas e com ao menos um teste). Critério sem associação não entra, e continua "não verificado".
+ */
+export function verifiedCriteria(events: readonly MissionEventDto[]): Set<string> {
+  const verified = new Set<string>();
+  for (const entry of verificationEntries(events)) {
+    if (entry.failed > 0 || entry.passed === 0) continue;
+    for (const criterion of entry.criteria) verified.add(criterion.trim());
+  }
+  return verified;
+}
+
+/** Duração para a tela: `450 ms`, `2,3 s` ou `1 min 5 s`. */
+export function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
+  const seconds = durationMs / 1000;
+  if (seconds < 60) return `${String(Math.round(seconds * 10) / 10).replace('.', ',')} s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)} min ${whole % 60} s`;
+}
+
 /**
  * Frase da linha do tempo para um evento da auditoria. O `payload` é lido com cuidado: cada tipo de
  * evento leva campos diferentes. Evento sem frase (uso, fim de mensagem) devolve `null` e não aparece
@@ -160,6 +246,20 @@ export function describeEvent(event: MissionEventDto): string | null {
         return message === undefined ? 'Ferramenta falhou.' : `Ferramenta falhou: ${message}`;
       }
       return 'Ferramenta concluída.';
+    }
+    case 'verification.completed': {
+      const run = verificationOf(event);
+      if (run === undefined) return 'Verificação concluída.';
+      const total = run.passed + run.failed;
+      const time = formatDuration(run.durationMs);
+      const outcome = verificationOutcome(run);
+      if (outcome === 'failed') {
+        return `Verificação falhou: ${run.command}, ${run.failed} de ${total} testes falharam em ${time}.`;
+      }
+      if (outcome === 'empty') {
+        return `Verificação sem testes: ${run.command}, nenhum teste rodou em ${time}.`;
+      }
+      return `Verificação concluída: ${run.command}, ${run.passed}/${total} testes passaram em ${time}.`;
     }
     case 'approval.requested': {
       const title = textOf(asRecord(payload['request'])?.['title']);
@@ -206,6 +306,76 @@ export function lastInputPrompt(events: readonly MissionEventDto[]): string | un
     }
   }
   return undefined;
+}
+
+/** Sequências de escape ANSI (cores, cursor, limpeza de linha) que um comando pode imprimir. */
+/* eslint-disable no-control-regex */
+const ANSI_PATTERN =
+  /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+/* eslint-enable no-control-regex */
+
+/** Tira as sequências ANSI da saída: o painel mostra só o texto. */
+export function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, '');
+}
+
+/** Uma linha do terminal somente leitura: o que o agente pediu e o que a ferramenta devolveu. */
+export type TerminalEntry = {
+  id: string;
+  command: string;
+  output: string;
+  failed: boolean;
+};
+
+/** Texto do comando de uma chamada: `input.command`, ou o nome com o primeiro argumento de texto. */
+function commandOf(call: Record<string, unknown>): string {
+  const input = asRecord(call['input']) ?? {};
+  const command = textOf(input['command']);
+  if (command !== undefined) return command;
+  const name = textOf(call['name']) ?? 'ferramenta';
+  const firstText = Object.values(input).find((value) => typeof value === 'string');
+  return typeof firstText === 'string' ? `${name} ${firstText}` : name;
+}
+
+/**
+ * Comandos e saídas dos eventos de ferramenta (`tool.requested` e `tool.completed`), ligados pelo
+ * `callId`, do mais antigo para o mais recente. Conclusão sem pedido é ignorada; pedido ainda sem
+ * conclusão aparece com a saída vazia. A saída vem sem sequências ANSI. Falha da ferramenta mostra a
+ * mensagem do erro como saída.
+ */
+export function terminalEntries(events: readonly MissionEventDto[]): TerminalEntry[] {
+  const results = new Map<string, { output: string; failed: boolean }>();
+  for (const event of events) {
+    if (event.eventType !== 'tool.completed') continue;
+    const callId = textOf(event.payload['callId']);
+    const result = asRecord(event.payload['result']);
+    if (callId === undefined || result === undefined) continue;
+    if (result['ok'] === false) {
+      results.set(callId, {
+        output: stripAnsi(textOf(asRecord(result['error'])?.['message']) ?? 'A ferramenta falhou.'),
+        failed: true,
+      });
+    } else {
+      results.set(callId, { output: stripAnsi(textOf(result['output']) ?? ''), failed: false });
+    }
+  }
+  return events
+    .filter((event) => event.eventType === 'tool.requested')
+    .sort((a, b) => a.sequence - b.sequence)
+    .flatMap((event) => {
+      const call = asRecord(event.payload['call']);
+      if (call === undefined) return [];
+      const callId = textOf(call['callId']) ?? event.id;
+      const result = results.get(callId);
+      return [
+        {
+          id: callId,
+          command: stripAnsi(commandOf(call)),
+          output: result?.output ?? '',
+          failed: result?.failed ?? false,
+        },
+      ];
+    });
 }
 
 /** Hora de um evento no fuso local: horas, minutos e segundos. */

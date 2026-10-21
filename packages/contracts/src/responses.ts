@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CHANNELS } from './channels';
 import { projectSummarySchema } from './project';
 import {
+  MISSION_STATUS_VALUES,
   executionDtoSchema,
   missionDiffDtoSchema,
   missionDtoSchema,
@@ -9,6 +10,22 @@ import {
   missionViewSchema,
 } from './mission';
 import { appResultSchema } from './result';
+
+/** Entrada de `worktrees:list:v1`. */
+export const listWorktreesInputSchema = z.object({ projectId: z.string().min(1) });
+
+/** Entrada de `worktrees:remove:v1`: o worktree é o da missão. */
+export const removeWorktreeInputSchema = z.object({ missionId: z.string().min(1) });
+
+/** Um worktree do projeto, como a aba Worktrees o mostra. A branch some se a auditoria não a guardou. */
+export const worktreeDtoSchema = z.object({
+  missionId: z.string(),
+  missionTitle: z.string(),
+  status: z.enum(MISSION_STATUS_VALUES),
+  path: z.string(),
+  branch: z.string().optional(),
+});
+export type WorktreeDto = z.infer<typeof worktreeDtoSchema>;
 
 /**
  * Schema da resposta de cada canal de pedido e resposta (seção 13.1 e R28). O preload confere o que
@@ -38,4 +55,6 @@ export const responseSchemas = {
   [CHANNELS.missionsDelete]: appResultSchema(z.undefined()),
   [CHANNELS.missionsProvideInput]: appResultSchema(z.undefined()),
   [CHANNELS.approvalsDecide]: appResultSchema(z.undefined()),
+  [CHANNELS.worktreesList]: appResultSchema(z.array(worktreeDtoSchema)),
+  [CHANNELS.worktreesRemove]: appResultSchema(z.undefined()),
 } as const;
