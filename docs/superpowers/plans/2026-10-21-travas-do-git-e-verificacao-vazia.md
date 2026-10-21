@@ -15,7 +15,7 @@
 - Nenhum comentário, nome, commit ou documento cita outro projeto como origem. O texto é do Project Hub.
 - Nenhum código é copiado de fora: cada parte é escrita aqui, a partir da descrição deste plano.
 - Não tocar nos arquivos com alteração não commitada: `packages/application/src/missions/mission-queries.ts`, `packages/application/src/missions/orchestrator.ts`, `packages/contracts/src/mission.ts`, `apps/desktop/src/renderer/pages/MissionPage.tsx`, `apps/desktop/src/renderer/styles/app.css` e os demais da lista do `git status`.
-- O Git continua sem shell, com argumentos em array e com a lista de permissão de `run-git.ts`. Só uma forma nova entra na lista, a de leitura `check-ignore -z -- <caminhos>` da Tarefa 3.
+- O Git continua sem shell, com argumentos em array e com a lista de permissão de `run-git.ts`. Só uma forma nova entra na lista, a de leitura `check-ignore -- <caminhos>` da Tarefa 3. (Corrigido na execução: `-z` exige `--stdin` no Git, então a forma com `-z` do plano original era inválida. A saída sem `-z` pode vir entre aspas, e a Tarefa 3 a decodifica.)
 - Nada usa `--force` nem `git worktree unlock`: destravar continua sendo ação da pessoa.
 - Commit só quando o usuário pedir, e sem linha de coautoria.
 - Gate antes de integrar, pela raiz: `pnpm lint`, `pnpm typecheck`, `pnpm test` e `pnpm test:integration`.
@@ -213,7 +213,7 @@ git commit -m "fix(renderer): verificação sem testes não aparece como sucesso
    - Maior que 256 KiB: devolve vazio, com `warning: 'O .worktreeinclude passa de 256 KiB e foi ignorado.'`.
 2. Faz o parse.
 3. Para cada entrada, faz `lstat` em `<repoPath>/<entrada>`. Ausente vira `inexistente`, e link simbólico vira `link-simbolico`.
-4. Consulta `git check-ignore -z -- <caminhos>` em `repoPath`. A pasta vai com `/` no fim, para casar com padrões como `.vscode/`, e a `/` sai de novo na leitura. Os caminhos vão em lotes de até 8000 caracteres, por causa do limite de linha de comando do Windows. Saída com código 1 quer dizer que nenhum caminho do lote é ignorado. O que não volta na saída vira `nao-ignorado`: arquivo versionado já está no worktree, e arquivo não ignorado criaria diferença falsa.
+4. Consulta `git check-ignore -- <caminhos>` em `repoPath` (forma corrigida na execução, sem `-z`; a saída vem uma linha por caminho, e linha entre aspas é decodificada). A pasta vai com `/` no fim, para casar com padrões como `.vscode/`, e a `/` sai de novo na leitura. Os caminhos vão em lotes de até 8000 caracteres, por causa do limite de linha de comando do Windows. Saída com código 1 quer dizer que nenhum caminho do lote é ignorado. O que não volta na saída vira `nao-ignorado`: arquivo versionado já está no worktree, e arquivo não ignorado criaria diferença falsa.
 5. Confere que o destino `<worktreePath>/<entrada>`, resolvido, fica estritamente dentro de `worktreePath`, com a mesma conta de `isStrictlyInside`. Senão, o caso vira `caminho-inseguro`. Destino que já existe vira `ja-existe`.
 6. Copia com `cp` de `node:fs/promises`, usando `{ recursive: true, force: false, errorOnExist: true }` e um `filter` que recusa link simbólico (`lstat`) em qualquer nível, porque link nunca é seguido. Erro de cópia vira `falha-ao-copiar`, e as outras entradas continuam.
 7. Qualquer erro inesperado devolve o que já foi copiado, com `warning: 'Não foi possível concluir a cópia do .worktreeinclude.'`.
@@ -233,10 +233,10 @@ it('aceita no máximo 1000 entradas e marca o resto com limite')
 // 1001 linhas distintas → entries.length === 1000; skipped[0].reason === 'limite'
 
 // run-git.test.ts (lista de permissão, com execFile imitado)
-it('aceita check-ignore -z -- com caminhos')                     // ['check-ignore', '-z', '--', '.env', '.vscode/']
+it('aceita check-ignore -- com caminhos')                        // ['check-ignore', '--', '.env', '.vscode/']
 it('recusa as outras formas de check-ignore sem criar processo')
-// ['check-ignore', '--stdin'], ['check-ignore', '-z', '.env'], ['check-ignore', '-z', '--'],
-// ['check-ignore', '--no-index', '-z', '--', 'a'] → PERMISSION_DENIED; execFileMock não chamado
+// ['check-ignore', '-z', '--', 'a'], ['check-ignore', '--stdin'], ['check-ignore', '--no-index', '--', 'a'],
+// ['check-ignore', 'a'] (sem --), ['check-ignore', '--'] (sem caminhos) → PERMISSION_DENIED; execFileMock não chamado
 ```
 
 - [ ] **Passo 2: rodar e ver a falha**
@@ -246,7 +246,7 @@ Esperado: FAIL, porque o módulo não existe e `check-ignore` é recusado.
 
 - [ ] **Passo 3: implementar `parseWorktreeInclude` e a forma `check-ignore` em `isReadOnly`**
 
-A forma aceita é exatamente `['check-ignore', '-z', '--', ...caminhos]`, com ao menos um caminho e nenhum caminho vazio. Atualizar o comentário da lista de permissão para incluir essa forma.
+A forma aceita é exatamente `['check-ignore', '--', ...caminhos]`, com ao menos um caminho e nenhum caminho vazio. Atualizar o comentário da lista de permissão para incluir essa forma.
 
 - [ ] **Passo 4: rodar os testes unitários**
 
