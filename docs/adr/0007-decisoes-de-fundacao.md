@@ -438,3 +438,10 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Dados:** `use-sidebar-data.ts` carrega os projetos e as missões de cada um. Recarrega a cada evento de missão e a cada troca de rota: o cadastro de projeto não emite evento, e sem a troca de rota um projeto novo só apareceria na barra depois de um evento. Um evento não cancela a carga em curso, para a barra seguir atualizada com eventos seguidos; cada carga tem um número, e uma carga antiga que termina depois da nova não sobrescreve o resultado. Erro vira a mensagem geral, e a página segue.
 - **Foco:** os links e botões da barra têm `outline-offset: -2px`, e os itens ocupam a largura toda da barra, então um contorno de 2px por fora seria cortado pela rolagem. O E2E `e2e/sidebar.spec.ts` anda pelo Tab por cada item e mede que o contorno cabe no retângulo da `aside`. Com `outline-offset: 2px` o E2E falha (mutação feita).
 - **Botões de criação:** "+ Novo projeto" e "+ Nova missão" são `button` que navegam, como pede a tarefa. Os itens da lista são `Link`.
+
+### 2026-10-20, interface do workspace, Tarefa 7: contadores globais no cabeçalho
+
+- **Decisão:** a contagem sai de `use-overview.ts` no cliente. O hook lê `projects.list` e `missions.list` de cada projeto e refaz a leitura a cada evento de `missions.subscribe`, sem canal novo. A assinatura é cancelada ao desmontar.
+- **Contagem:** `running` conta em "executando"; `planned`, `waiting_approval` e `waiting_input` contam em "aguarda você". `failed`, `draft`, `queued`, `paused`, `succeeded` e `cancelled` não entram em nenhum dos dois. `items` traz só as missões que contam.
+- **Falha:** a resposta com erro, ou a exceção, de um projeto entra em `failedProjects` e não zera a contagem dos outros. Se a própria lista de projetos falha numa releitura, a tela mantém a última contagem, em vez de mostrar zero por engano.
+- **Forma:** `.overview-counters` é uma linha flex, e cada `.overview-counter` tem um ponto de 8px no `::before`: lima para executando e violeta para aguarda você. O contêiner é `aria-live="polite"`. A ligação em `App` e `main.tsx` fica para a integração das tarefas.
