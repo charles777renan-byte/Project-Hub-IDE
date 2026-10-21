@@ -1,5 +1,10 @@
 import type { MissionEventDto } from '@project-hub/contracts';
-import { formatDuration, verificationEntries, verificationOutcome } from '../../mission-text';
+import {
+  formatDuration,
+  verificationEntries,
+  verificationOutcome,
+  type VerificationOutcome,
+} from '../../mission-text';
 import { PanelEmpty } from '../Panel';
 
 /**
@@ -19,15 +24,18 @@ export function TestsPanel({ events }: { events: readonly MissionEventDto[] }) {
       {runs.map((run) => {
         const outcome = verificationOutcome(run);
         const failed = outcome === 'failed';
-        const totalClass =
-          outcome === 'passed'
-            ? 'tests-run__total'
-            : `tests-run__total tests-run__total--${outcome}`;
+        // A classe base `tests-run__total` carrega a cor de sucesso (lima). Por isso o total vazio
+        // não a leva: fica só com o gancho `--empty` e herda a cor neutra do texto.
+        const totalClass: Record<VerificationOutcome, string> = {
+          passed: 'tests-run__total',
+          failed: 'tests-run__total tests-run__total--failed',
+          empty: 'tests-run__total--empty',
+        };
         return (
           <li key={run.id} className="tests-run">
             <div className="tests-run__head">
               <span className="tests-run__command">{run.command}</span>
-              <span className={totalClass}>
+              <span className={totalClass[outcome]}>
                 {outcome === 'empty'
                   ? 'Nenhum teste rodou'
                   : `${run.passed}/${run.passed + run.failed}`}

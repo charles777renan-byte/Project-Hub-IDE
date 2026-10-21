@@ -101,6 +101,8 @@ describe('TestsPanel', () => {
     const total = screen.getByText('Nenhum teste rodou');
     expect(total).not.toHaveClass('tests-run__total--failed');
     expect(total).toHaveClass('tests-run__total--empty');
+    // A classe base carrega a cor de sucesso: o total vazio não pode levá-la.
+    expect(total).not.toHaveClass('tests-run__total');
     expect(screen.queryByText('0/0')).toBeNull();
   });
 

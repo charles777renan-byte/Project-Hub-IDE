@@ -162,13 +162,15 @@ function verificationOf(event: MissionEventDto): VerificationEntry | undefined {
   };
 }
 
+export type VerificationOutcome = 'passed' | 'failed' | 'empty';
+
 /**
  * Resultado de uma verificação: `failed` com qualquer falha, `empty` quando nenhum teste rodou (0/0, que
  * não prova nada e não pode aparecer como sucesso) e `passed` nos demais casos.
  */
 export function verificationOutcome(
   entry: Pick<VerificationEntry, 'passed' | 'failed'>,
-): 'passed' | 'failed' | 'empty' {
+): VerificationOutcome {
   if (entry.failed > 0) return 'failed';
   if (entry.passed === 0) return 'empty';
   return 'passed';
