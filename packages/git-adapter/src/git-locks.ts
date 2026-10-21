@@ -99,6 +99,11 @@ async function indexLockExists(repo: string): Promise<boolean> {
  *    espera e tenta de novo, nos tempos de `delaysMs`. Se ela persistir depois da última espera,
  *    vira GIT_LOCKED, com `stderr` e `exitCode` copiados do erro do Git e o erro em `cause`.
  *
+ * Só a recusa do worktree travado (`git worktree lock`, GIT_LOCKED) foi verificada contra o Git de
+ * verdade. A nova tentativa do `index.lock` é defensiva e NÃO foi observada para `worktree add` nem
+ * `worktree remove`: com `.git/index.lock` presente, os dois saem com código 0 no Git 2.54.0, então
+ * ela pode nunca rodar (ADR 0008).
+ *
  * Qualquer outra falha sobe como veio, sem esperar. O `stderr` em inglês é estável porque o
  * adaptador fixa `LC_ALL=C`. `sleep` existe para os testes não esperarem de verdade.
  */

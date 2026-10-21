@@ -8,8 +8,10 @@ import {
   WORKTREE_INCLUDE_MAX_ENTRIES,
 } from '../src/worktree-include';
 
-// Unitário: só a leitura do texto do `.worktreeinclude`. A cópia, que depende do Git e do disco, é
-// coberta em worktree.integration.test.ts.
+// Unitário: a leitura do texto do `.worktreeinclude` (`parseWorktreeInclude`), a decodificação de
+// caminhos entre aspas do Git (`unquoteGitPath`) e a garantia de que `copyWorktreeIncludes` nunca
+// rejeita. A cópia de verdade, que depende do Git e do disco, é coberta em
+// worktree.integration.test.ts.
 
 describe('parseWorktreeInclude', () => {
   it('as constantes têm os valores combinados', () => {
@@ -33,6 +35,16 @@ describe('parseWorktreeInclude', () => {
       { path: '*.env', reason: 'padrao-nao-suportado' },
       { path: 'a?.txt', reason: 'padrao-nao-suportado' },
       { path: '!x', reason: 'padrao-nao-suportado' },
+    ]);
+  });
+
+  it('recusa entrada que começa com : (pathspec mágico) com o motivo padrao-nao-suportado', () => {
+    const parsed = parseWorktreeInclude(':(exclude)x\n:/x\n');
+
+    expect(parsed.entries).toEqual([]);
+    expect(parsed.skipped).toEqual([
+      { path: ':(exclude)x', reason: 'padrao-nao-suportado' },
+      { path: ':/x', reason: 'padrao-nao-suportado' },
     ]);
   });
 

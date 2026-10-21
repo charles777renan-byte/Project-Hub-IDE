@@ -86,7 +86,8 @@ export function parseWorktreeInclude(content: string): {
     if (seen.has(shown)) continue;
     seen.add(shown);
 
-    if (/[*?]/.test(path) || path.startsWith('!')) {
+    // `:` no começo abriria um pathspec mágico no `git check-ignore`, que lê os argumentos assim.
+    if (/[*?]/.test(path) || path.startsWith('!') || path.startsWith(':')) {
       skipped.push({ path: shown, reason: 'padrao-nao-suportado' });
     } else if (isUnsafePath(path)) {
       skipped.push({ path: shown, reason: 'caminho-inseguro' });
@@ -240,7 +241,10 @@ async function isNotSymlink(source: string): Promise<boolean> {
  *
  * As entradas vão das mais rasas para as mais fundas, na ordem do arquivo dentro de cada nível. Uma
  * entrada dentro de uma pasta já copiada nesta chamada está coberta por essa cópia: não é copiada de
- * novo e não aparece em `copied` nem em `skipped`.
+ * novo e não aparece em `copied` nem em `skipped`. Isso vale só para a que a cópia da raiz de fato
+ * trouxe: uma entrada interna que não existe, ou que é link simbólico, é registrada antes, na leitura
+ * do disco, como `inexistente` ou `link-simbolico`. A ordem de `copied` é a de profundidade (a das
+ * cópias feitas), não a ordem do arquivo.
  *
  * Nunca rejeita: um erro inesperado, inclusive uma entrada malformada, devolve o que já foi
  * copiado, com um aviso. A criação do worktree, que já deu certo, nunca vira falha por causa da cópia.
@@ -303,13 +307,13 @@ export async function copyWorktreeIncludes(input: {
         skipped.push({ path, reason: 'caminho-inseguro' });
         continue;
       }
-      const existing = { kind: before.get(path) };
+      const existing = before.get(path);
       // Um link no destino (uma pasta versionada como link, por exemplo) levaria a escrita para fora.
-      if (existing.kind === 'link') {
+      if (existing === 'link') {
         skipped.push({ path, reason: 'caminho-inseguro' });
         continue;
       }
-      if (existing.kind !== 'ausente') {
+      if (existing !== 'ausente') {
         skipped.push({ path, reason: 'ja-existe' });
         continue;
       }
