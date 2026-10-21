@@ -77,3 +77,43 @@ describe('leitor de regras dos testes', () => {
     expect(mediaBlock('@media (x)', '(x)')).toBe('');
   });
 });
+
+/**
+ * Barra lateral de projetos e missões (Tarefa 4 do plano da interface): 230px à esquerda da página,
+ * com rolagem própria; o corpo da janela é uma linha flex; e abaixo de 1000px a barra some, e a
+ * navegação continua no cabeçalho.
+ */
+describe('barra lateral', () => {
+  const appCss = readCss('app.css');
+
+  it('tem 230px, não encolhe e rola sozinha', () => {
+    const sidebar = ruleDeclarations(appCss, '.sidebar');
+    expect(sidebar.get('width')).toBe('230px');
+    expect(sidebar.get('flex')).toBe('none');
+    expect(sidebar.get('min-height')).toBe('0');
+    expect(sidebar.get('overflow')).toBe('auto');
+  });
+
+  it('o corpo da janela é uma linha flex que ocupa o resto da altura', () => {
+    const body = ruleDeclarations(appCss, '.app-body');
+    expect(body.get('display')).toBe('flex');
+    expect(body.get('flex')).toBe('1');
+    expect(body.get('min-height')).toBe('0');
+  });
+
+  it('a página continua ocupando o espaço que a barra deixa', () => {
+    expect(ruleDeclarations(appCss, '.app-main').get('flex')).toBe('1');
+  });
+
+  it('abaixo de 1000px a barra some (display: none)', () => {
+    const narrow = mediaBlock(appCss, '(max-width: 1000px)');
+    expect(ruleDeclarations(narrow, '.sidebar').get('display')).toBe('none');
+  });
+
+  it('o contorno de foco de links e botões da barra fica por dentro dela', () => {
+    expect(ruleDeclarations(appCss, '.sidebar a:focus-visible').get('outline-offset')).toBe('-2px');
+    expect(ruleDeclarations(appCss, '.sidebar button:focus-visible').get('outline-offset')).toBe(
+      '-2px',
+    );
+  });
+});

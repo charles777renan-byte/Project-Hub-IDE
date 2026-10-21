@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
+import { Sidebar } from './components/Sidebar';
 import { AppRoutes, NAV_ITEMS } from './routes';
 
 /**
  * Estrutura da janela: cabeçalho de 50px com a marca, a navegação e, à direita, o que vier em
- * `headerStatus` (os contadores da visão geral); abaixo, a área da página, que ocupa o resto da
- * altura e rola sozinha. O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes),
- * então o App funciona com qualquer um dos dois.
+ * `headerStatus` (os contadores da visão geral); abaixo, a barra lateral de projetos e missões e a
+ * área da página, que ocupa o resto da altura e rola sozinha. O roteador fica fora (HashRouter em
+ * main.tsx, MemoryRouter nos testes), então o App funciona com qualquer um dos dois.
  */
 export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
   return (
@@ -30,11 +31,14 @@ export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
           <div className="app-header__status">{headerStatus}</div>
         )}
       </header>
-      <main className="app-main">
-        <div className="app-main__content">
-          <AppRoutes />
-        </div>
-      </main>
+      <div className="app-body">
+        <Sidebar />
+        <main className="app-main">
+          <div className="app-main__content">
+            <AppRoutes />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
