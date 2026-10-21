@@ -252,9 +252,22 @@ describe('MissionPage: plano', () => {
     await waitFor(() => expect(hub.api.missions.start).toHaveBeenCalledWith('m1'));
   });
 
-  it.each(['WORKTREE_CREATE_FAILED', 'WORKTREE_COLLISION', 'PROJECT_WITHOUT_GIT'] as const)(
-    'falha de início por %s mostra a mensagem do worktree, e a missão segue na fila',
-    async (code) => {
+  it.each([
+    [
+      'WORKTREE_CREATE_FAILED',
+      'Não foi possível criar o worktree da missão. Tente de novo; se o erro voltar, confira o repositório do projeto no Git.',
+    ],
+    [
+      'WORKTREE_COLLISION',
+      'Já existe uma branch ou uma pasta com o nome do worktree desta missão, provavelmente de uma tentativa anterior. Confira o que sobrou no Git antes de apagar algo e tente de novo.',
+    ],
+    [
+      'PROJECT_WITHOUT_GIT',
+      'Este projeto não é um repositório Git. Inicialize o Git na pasta e tente de novo.',
+    ],
+  ] as const)(
+    'falha de início por %s mostra a mensagem desse código, e a missão segue na fila',
+    async (code, message) => {
       const hub = installApi(viewOf({ status: 'queued' }));
       hub.api.missions.start.mockResolvedValueOnce({
         ok: false,
@@ -264,9 +277,9 @@ describe('MissionPage: plano', () => {
 
       await userEvent.click(await screen.findByRole('button', { name: 'Iniciar missão' }));
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Não foi possível criar o worktree da missão. Inicialize o Git na pasta e tente de novo.',
-      );
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(message);
+      if (code !== 'PROJECT_WITHOUT_GIT') expect(alert).not.toHaveTextContent('Inicialize o Git');
       expect(screen.queryByText('Mensagem técnica.')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeEnabled();
       expect(screen.getByText('Plano aprovado, na fila')).toBeInTheDocument();

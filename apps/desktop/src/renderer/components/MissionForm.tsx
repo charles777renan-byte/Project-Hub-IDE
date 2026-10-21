@@ -10,7 +10,7 @@ export type MissionFormValues = {
 };
 
 const NO_GIT_WARNING =
-  'Este projeto não é um repositório Git. Missões que alteram código precisam de Git. Inicialize o Git na pasta ou desmarque "Esta missão altera código".';
+  'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.';
 
 type FieldErrors = Partial<Record<'title' | 'objective' | 'criteria', string>>;
 
@@ -21,12 +21,12 @@ type FieldErrors = Partial<Record<'title' | 'objective' | 'criteria', string>>;
 export function MissionForm({
   onSubmit,
   onCancel,
-  projectHasGit = true,
+  projectHasGit,
 }: {
   onSubmit: (values: MissionFormValues) => void | Promise<void>;
   onCancel?: () => void;
-  /** Sem Git, uma missão que altera código não pode rodar num worktree (R214): o formulário avisa e não envia. */
-  projectHasGit?: boolean;
+  /** Toda missão roda num worktree, e o worktree exige Git (R160, R214): sem Git, o formulário não cria a missão. */
+  projectHasGit: boolean;
 }) {
   const [title, setTitle] = useState('');
   const [objective, setObjective] = useState('');
@@ -35,7 +35,7 @@ export function MissionForm({
   const [planOnly, setPlanOnly] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
 
-  const blockedByGit = altersCode && !projectHasGit;
+  const blockedByGit = !projectHasGit;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,6 +61,12 @@ export function MissionForm({
 
   return (
     <form className="form" aria-label="Nova missão" onSubmit={handleSubmit} noValidate>
+      {blockedByGit ? (
+        <p role="alert" className="page-alert">
+          {NO_GIT_WARNING}
+        </p>
+      ) : null}
+
       <div className="field">
         <label htmlFor="mission-title">Título</label>
         <input
@@ -126,12 +132,6 @@ export function MissionForm({
         />
         <label htmlFor="mission-alters-code">Esta missão altera código</label>
       </div>
-
-      {blockedByGit ? (
-        <p role="alert" className="page-alert">
-          {NO_GIT_WARNING}
-        </p>
-      ) : null}
 
       <div className="check">
         <input

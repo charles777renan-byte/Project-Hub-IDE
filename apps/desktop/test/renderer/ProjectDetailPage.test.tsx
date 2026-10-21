@@ -170,7 +170,7 @@ describe('ProjectDetailPage: outras abas', () => {
 });
 
 describe('ProjectDetailPage: criar missão', () => {
-  it('em projeto sem Git, marcar "altera código" mostra o aviso e desabilita Criar missão', async () => {
+  it('em projeto sem Git, o aviso aparece e desabilita Criar missão, sem marcar "altera código"', async () => {
     const api = installApi([]);
     api.projects.list.mockResolvedValue({
       ok: true,
@@ -181,7 +181,6 @@ describe('ProjectDetailPage: criar missão', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
     const form = screen.getByRole('form', { name: 'Nova missão' });
-    await userEvent.click(within(form).getByLabelText('Esta missão altera código'));
 
     expect(within(form).getByText(/Este projeto não é um repositório Git/)).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: 'Criar missão' })).toBeDisabled();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
-import type { AppResult, MissionViewDto } from '@project-hub/contracts';
+import type { AppError, AppResult, ErrorCode, MissionViewDto } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
 import { Panel, PanelEmpty } from '../components/Panel';
 import { PlanPanel } from '../components/PlanPanel';
@@ -11,19 +11,25 @@ import { needsDecisionInConversation } from '../mission-text';
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
 
-const WORKTREE_ERROR =
-  'Não foi possível criar o worktree da missão. Inicialize o Git na pasta e tente de novo.';
-
 /**
- * Códigos que o início da missão devolve quando o worktree não pôde ser criado (R213): a criação do
- * worktree do git-adapter (`WORKTREE_CREATE_FAILED`, `WORKTREE_COLLISION`) e a recusa do orquestrador
- * em projeto sem Git (`PROJECT_WITHOUT_GIT`). Erro de agente e outros seguem com a própria mensagem.
+ * Mensagens do início da missão para as falhas do worktree (R213). Cada código diz o que aconteceu
+ * e o que fazer. Só `PROJECT_WITHOUT_GIT` manda inicializar o Git, porque é o único caso em que isso
+ * resolve. Os demais códigos seguem com a própria mensagem.
  */
-const WORKTREE_ERROR_CODES: readonly string[] = [
-  'WORKTREE_CREATE_FAILED',
-  'WORKTREE_COLLISION',
-  'PROJECT_WITHOUT_GIT',
-];
+const WORKTREE_START_MESSAGES: ReadonlyMap<ErrorCode, string> = new Map<ErrorCode, string>([
+  [
+    'WORKTREE_COLLISION',
+    'Já existe uma branch ou uma pasta com o nome do worktree desta missão, provavelmente de uma tentativa anterior. Confira o que sobrou no Git antes de apagar algo e tente de novo.',
+  ],
+  [
+    'WORKTREE_CREATE_FAILED',
+    'Não foi possível criar o worktree da missão. Tente de novo; se o erro voltar, confira o repositório do projeto no Git.',
+  ],
+  [
+    'PROJECT_WITHOUT_GIT',
+    'Este projeto não é um repositório Git. Inicialize o Git na pasta e tente de novo.',
+  ],
+]);
 
 type ViewState =
   | { status: 'loading' }
@@ -119,7 +125,7 @@ export function MissionPage() {
   async function execute(
     action: () => Promise<AppResult<unknown>>,
     setPending: (pending: boolean) => void,
-    failureText: (error: { code: string; message: string }) => string = (error) => error.message,
+    failureText: (error: AppError) => string = (error) => error.message,
   ): Promise<boolean> {
     setPending(true);
     setActionError(null);
@@ -141,12 +147,12 @@ export function MissionPage() {
 
   /** Chamada longa: início, decisão, resposta, nova tentativa e planejamento. */
   const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
-  /** Início da missão: falha de worktree ganha a mensagem própria (R213). */
+  /** Início da missão: falha de worktree ganha a mensagem do seu código (R213). */
   const runStart = () =>
     execute(
       () => window.projectHub.missions.start(missionId),
       setBusy,
-      (error) => (WORKTREE_ERROR_CODES.includes(error.code) ? WORKTREE_ERROR : error.message),
+      (error) => WORKTREE_START_MESSAGES.get(error.code) ?? error.message,
     );
   /** Controle da execução: pausar, retomar e cancelar. Não espera a chamada longa terminar. */
   const runControl = (action: () => Promise<AppResult<unknown>>) => execute(action, setControlBusy);
