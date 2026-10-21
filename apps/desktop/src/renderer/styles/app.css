@@ -119,6 +119,12 @@ nav[aria-label='Principal'] {
   color: var(--text);
 }
 
+/* A navegação tem overflow (rola de lado), que cortaria um anel de foco por fora do link: aqui o anel
+   fica por dentro (largura 2px, recuo -2px). */
+.app-nav a:focus-visible {
+  outline-offset: -2px;
+}
+
 .app-nav a[aria-current='page'] {
   background: var(--magenta);
   color: var(--bg);
