@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readCss, ruleDeclarations } from './css-rules';
+import { mediaBlock, readCss, ruleDeclarations } from './css-rules';
 
 /**
  * Casca do app (Tarefa 3 do plano da interface do workspace): cabeçalho de 50px, item ativo da
@@ -40,6 +40,11 @@ describe('casca do app', () => {
     );
   });
 
+  it('o anel de foco da navegação fica dentro do link, que a navegação com rolagem cortaria', () => {
+    expect(ruleDeclarations(appCss, '.app-nav a:focus-visible').get('outline-offset')).toBe('-2px');
+    expect(ruleDeclarations(appCss, ':focus-visible').get('outline')).toBe('2px solid var(--text)');
+  });
+
   it('os contadores ficam no canto direito', () => {
     expect(ruleDeclarations(appCss, '.app-header__status').get('margin-left')).toBe('auto');
   });
@@ -49,5 +54,21 @@ describe('casca do app', () => {
     expect(main.get('flex')).toBe('1');
     expect(main.get('min-height')).toBe('0');
     expect(main.get('overflow')).toBe('auto');
+  });
+});
+
+describe('leitor de regras dos testes', () => {
+  it('lê regras agrupadas e não confunde um seletor com o prefixo dele', () => {
+    const css = '.a{color:red} .b, .a{color:blue} .a__x{color:green}';
+    expect(ruleDeclarations(css, '.a').get('color')).toBe('blue');
+    expect(ruleDeclarations(css, '.a__x').get('color')).toBe('green');
+  });
+
+  it('não deixa uma regra de @media passar pela regra base, e lê o bloco quando pedido', () => {
+    const css = '.g{display:grid} @media (max-width: 1000px){.g{display:block}}';
+    expect(ruleDeclarations(css, '.g').get('display')).toBe('grid');
+    expect(ruleDeclarations(mediaBlock(css, '(max-width: 1000px)'), '.g').get('display')).toBe(
+      'block',
+    );
   });
 });

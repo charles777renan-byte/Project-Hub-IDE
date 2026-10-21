@@ -26,7 +26,7 @@ export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
             ))}
           </ul>
         </nav>
-        {headerStatus === undefined ? null : (
+        {headerStatus === undefined || headerStatus === null ? null : (
           <div className="app-header__status">{headerStatus}</div>
         )}
       </header>

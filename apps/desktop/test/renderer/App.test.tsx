@@ -143,10 +143,13 @@ describe('cabeçalho', () => {
     expect(status).toHaveTextContent('2 executando');
   });
 
-  it('sem headerStatus, não deixa um espaço vazio no cabeçalho', () => {
+  it.each([
+    ['sem headerStatus', undefined],
+    ['com headerStatus nulo', null],
+  ])('%s, não deixa um espaço vazio no cabeçalho', (_caso, headerStatus) => {
     render(
       <MemoryRouter>
-        <App />
+        <App headerStatus={headerStatus} />
       </MemoryRouter>,
     );
     expect(screen.getByRole('banner').querySelector('.app-header__status')).toBeNull();
