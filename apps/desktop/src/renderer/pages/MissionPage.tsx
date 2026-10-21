@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import type { AppError, AppResult, ErrorCode, MissionViewDto } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
-import { Panel, PanelEmpty } from '../components/Panel';
+import { Panel } from '../components/Panel';
 import { PlanPanel } from '../components/PlanPanel';
 import { DecisionColumn } from '../components/workspace/DecisionColumn';
 import { DiffPanel } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionHeader } from '../components/workspace/MissionHeader';
 import { TerminalPanel } from '../components/workspace/TerminalPanel';
+import { TestsPanel } from '../components/workspace/TestsPanel';
 import { needsDecisionInConversation } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
@@ -39,15 +40,6 @@ type ViewState =
   | { status: 'loading' }
   | { status: 'ready'; view: MissionViewDto }
   | { status: 'error'; message: string };
-
-/**
- * Texto do estado vazio de um painel que chega numa tarefa futura. Sem worktree, o texto diz o porquê
- * antes de dizer a tarefa.
- */
-function pendingNote(hasWorktree: boolean, task: number): string {
-  const note = `Chega com a Tarefa ${task}.`;
-  return hasWorktree ? note : `A missão ainda não tem worktree. ${note}`;
-}
 
 /**
  * Workspace de uma missão (seção 10.7, R168): o cabeçalho com título, situação e ações, e seis painéis
@@ -255,7 +247,7 @@ export function MissionPage() {
           <DiffPanel missionId={missionId} hasWorktree={hasWorktree} refreshKey={events.length} />
         </Panel>
         <Panel title="Testes" accent="lime">
-          <PanelEmpty>{pendingNote(hasWorktree, 12)}</PanelEmpty>
+          <TestsPanel events={events} />
         </Panel>
         <Panel title="Terminal" accent="cyan">
           <TerminalPanel events={events} />

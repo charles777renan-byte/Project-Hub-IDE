@@ -198,19 +198,21 @@ describe('MissionPage: grade de painéis', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(2);
   });
 
-  it('com a missão em rascunho, Diff e Testes dizem que ainda não há worktree, e o Terminal diz que não há comandos', async () => {
+  it('com a missão em rascunho, o Diff diz que ainda não há worktree, e Testes e Terminal dizem que nada foi executado', async () => {
     installApi(viewOf({ status: 'draft' }));
     renderPage();
 
-    for (const title of ['Diff', 'Testes']) {
-      const panel = await screen.findByRole('region', { name: title });
-      expect(within(panel).getByText(/A missão ainda não tem worktree/)).toBeInTheDocument();
-    }
+    const diff = await screen.findByRole('region', { name: 'Diff' });
+    expect(within(diff).getByText(/A missão ainda não tem worktree/)).toBeInTheDocument();
+    const tests = await screen.findByRole('region', { name: 'Testes' });
+    expect(
+      within(tests).getByText('Nenhum comando de verificação foi executado'),
+    ).toBeInTheDocument();
     const terminal = await screen.findByRole('region', { name: 'Terminal' });
     expect(within(terminal).getByText('O agente ainda não executou comandos.')).toBeInTheDocument();
   });
 
-  it('com worktree, cada painel de tarefa futura diz em qual tarefa chega', async () => {
+  it('com worktree e sem eventos, Diff, Testes e Terminal mostram o estado vazio', async () => {
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     renderPage();
 
@@ -220,7 +222,9 @@ describe('MissionPage: grade de painéis', () => {
       await within(diff).findByText('A missão ainda não alterou arquivos.'),
     ).toBeInTheDocument();
     expect(
-      within(screen.getByRole('region', { name: 'Testes' })).getByText('Chega com a Tarefa 12.'),
+      within(screen.getByRole('region', { name: 'Testes' })).getByText(
+        'Nenhum comando de verificação foi executado',
+      ),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Terminal' })).getByText(

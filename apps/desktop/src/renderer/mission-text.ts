@@ -122,6 +122,78 @@ function textOf(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/** Uma verificação que o agente rodou (evento `verification.completed`), já validada para a tela. */
+export type VerificationEntry = {
+  id: string;
+  command: string;
+  passed: number;
+  failed: number;
+  durationMs: number;
+  output?: string;
+  /** Textos dos critérios de aceite que esta verificação comprova (vazio quando o agente não associou). */
+  criteria: string[];
+};
+
+function countOf(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** Lê o payload de um `verification.completed`. Payload sem comando ou com contagem inválida é descartado. */
+function verificationOf(event: MissionEventDto): VerificationEntry | undefined {
+  if (event.eventType !== 'verification.completed') return undefined;
+  const payload = event.payload;
+  const command = textOf(payload['command']);
+  const passed = countOf(payload['passed']);
+  const failed = countOf(payload['failed']);
+  const durationMs = countOf(payload['durationMs']);
+  if (command === undefined || passed === undefined || failed === undefined) return undefined;
+  const output = textOf(payload['output']);
+  const criteria = Array.isArray(payload['criteria'])
+    ? payload['criteria'].filter((item): item is string => typeof item === 'string')
+    : [];
+  return {
+    id: event.id,
+    command,
+    passed,
+    failed,
+    durationMs: durationMs ?? 0,
+    ...(output === undefined ? {} : { output }),
+    criteria,
+  };
+}
+
+/** As verificações da missão, da mais antiga para a mais recente. Evento malformado fica de fora. */
+export function verificationEntries(events: readonly MissionEventDto[]): VerificationEntry[] {
+  return [...events]
+    .sort((a, b) => a.sequence - b.sequence)
+    .flatMap((event) => {
+      const entry = verificationOf(event);
+      return entry === undefined ? [] : [entry];
+    });
+}
+
+/**
+ * Textos dos critérios de aceite comprovados: só os que o agente associou a uma verificação que passou
+ * (sem falhas e com ao menos um teste). Critério sem associação não entra, e continua "não verificado".
+ */
+export function verifiedCriteria(events: readonly MissionEventDto[]): Set<string> {
+  const verified = new Set<string>();
+  for (const entry of verificationEntries(events)) {
+    if (entry.failed > 0 || entry.passed === 0) continue;
+    for (const criterion of entry.criteria) verified.add(criterion.trim());
+  }
+  return verified;
+}
+
+/** Duração para a tela: `450 ms`, `2,3 s` ou `1 min 5 s`. */
+export function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
+  const seconds = durationMs / 1000;
+  if (seconds < 60) return `${String(Math.round(seconds * 10) / 10).replace('.', ',')} s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)} min ${whole % 60} s`;
+}
+
 /**
  * Frase da linha do tempo para um evento da auditoria. O `payload` é lido com cuidado: cada tipo de
  * evento leva campos diferentes. Evento sem frase (uso, fim de mensagem) devolve `null` e não aparece
@@ -160,6 +232,15 @@ export function describeEvent(event: MissionEventDto): string | null {
         return message === undefined ? 'Ferramenta falhou.' : `Ferramenta falhou: ${message}`;
       }
       return 'Ferramenta concluída.';
+    }
+    case 'verification.completed': {
+      const run = verificationOf(event);
+      if (run === undefined) return 'Verificação concluída.';
+      const total = run.passed + run.failed;
+      const time = formatDuration(run.durationMs);
+      return run.failed > 0
+        ? `Verificação falhou: ${run.command}, ${run.failed} de ${total} testes falharam em ${time}.`
+        : `Verificação concluída: ${run.command}, ${run.passed}/${total} testes passaram em ${time}.`;
     }
     case 'approval.requested': {
       const title = textOf(asRecord(payload['request'])?.['title']);
