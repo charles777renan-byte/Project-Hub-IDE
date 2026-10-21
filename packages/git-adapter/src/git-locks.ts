@@ -74,6 +74,11 @@ async function refuseIfWorktreeLocked(worktree: string | undefined): Promise<voi
   }
 }
 
+/** A falha do Git que cita `index.lock` no `stderr`. Qualquer outra não é desta trava. */
+function isIndexLockFailure(error: unknown): error is GitError {
+  return error instanceof GitError && error.stderr.includes('index.lock');
+}
+
 async function indexLockExists(repo: string): Promise<boolean> {
   const admin = await gitAdminDir(repo);
   return admin !== undefined && (await exists(join(admin, 'index.lock')));
@@ -86,11 +91,16 @@ async function indexLockExists(repo: string): Promise<boolean> {
  * 1. worktree travado (`git worktree lock`): o Git recusa remover, mas com uma mensagem seca. Com
  *    `targets.worktree`, a trava é conferida antes de rodar, sem criar processo, e de novo se o
  *    comando falhar, caso ela tenha surgido no meio. Vira GIT_LOCKED com o motivo;
- * 2. `index.lock` no repositório: outro processo do Git está escrevendo o índice. Se o comando
- *    falhou e o arquivo existe, espera e tenta de novo, nos tempos de `delaysMs`. Se ele persistir
- *    depois da última espera, vira GIT_LOCKED, com o erro do Git em `cause`.
+ * 2. `index.lock` no repositório: outro processo do Git está escrevendo o índice. Só conta como
+ *    esta trava a falha que é um GitError com `index.lock` no `stderr` E com o arquivo presente na
+ *    pasta administrativa. O arquivo sozinho não basta: ele pode existir por um instante e a falha
+ *    ser outra, como a recusa tardia do `git worktree remove` por alteração não salva, e relabelar
+ *    essa falha esconderia a causa verdadeira de quem a classifica pelo `stderr`. Sendo a trava,
+ *    espera e tenta de novo, nos tempos de `delaysMs`. Se ela persistir depois da última espera,
+ *    vira GIT_LOCKED, com `stderr` e `exitCode` copiados do erro do Git e o erro em `cause`.
  *
- * Qualquer outra falha sobe como veio. `sleep` existe para os testes não esperarem de verdade.
+ * Qualquer outra falha sobe como veio, sem esperar. O `stderr` em inglês é estável porque o
+ * adaptador fixa `LC_ALL=C`. `sleep` existe para os testes não esperarem de verdade.
  */
 export async function withLockAwareness<T>(
   targets: { repo: string; worktree?: string },
@@ -110,13 +120,13 @@ export async function withLockAwareness<T>(
       return await run();
     } catch (error) {
       await refuseIfWorktreeLocked(targets.worktree);
-      if (!(await indexLockExists(targets.repo))) throw error;
+      if (!isIndexLockFailure(error) || !(await indexLockExists(targets.repo))) throw error;
       const delay = delaysMs[attempt];
       if (delay === undefined) {
         throw new GitError(
           'GIT_LOCKED',
           'Outro processo do Git está usando o repositório. Feche-o e tente de novo.',
-          { cause: error },
+          { exitCode: error.exitCode, stderr: error.stderr, cause: error },
         );
       }
       await sleep(delay);

@@ -36,6 +36,14 @@ function fakeWorktree(): { worktree: string; admin: string } {
   return { worktree, admin };
 }
 
+/** A falha que o Git dá quando `index.lock` existe: o texto de `stderr` é o que identifica a trava. */
+function indexLockError(admin: string): GitError {
+  return new GitError('UNKNOWN', 'O comando "git worktree" terminou com erro (código 128).', {
+    exitCode: 128,
+    stderr: `fatal: Unable to create '${join(admin, 'index.lock')}': File exists.\n`,
+  });
+}
+
 afterEach(() => {
   for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true });
 });
@@ -171,7 +179,7 @@ describe('withLockAwareness', () => {
     });
     const run = vi
       .fn<() => Promise<string>>()
-      .mockRejectedValueOnce(new GitError('UNKNOWN', 'index.lock existe'))
+      .mockRejectedValueOnce(indexLockError(admin))
       .mockResolvedValueOnce('ok');
 
     await expect(withLockAwareness({ repo }, run, { sleep })).resolves.toBe('ok');
@@ -185,7 +193,7 @@ describe('withLockAwareness', () => {
     const { repo, admin } = fakeRepo();
     writeFileSync(join(admin, 'index.lock'), '');
     const sleep = vi.fn(async (_ms: number) => {});
-    const original = new GitError('UNKNOWN', 'index.lock existe');
+    const original = indexLockError(admin);
     const run = vi.fn(async () => {
       throw original;
     });
@@ -199,6 +207,9 @@ describe('withLockAwareness', () => {
       code: 'GIT_LOCKED',
       message: 'Outro processo do Git está usando o repositório. Feche-o e tente de novo.',
       cause: original,
+      // O que o chamador usa para classificar a falha continua à mão no erro novo.
+      stderr: original.stderr,
+      exitCode: 128,
     });
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([200, 400, 800]);
     expect(run).toHaveBeenCalledTimes(4);
@@ -209,7 +220,7 @@ describe('withLockAwareness', () => {
     writeFileSync(join(admin, 'index.lock'), '');
     const sleep = vi.fn(async (_ms: number) => {});
     const run = vi.fn(async () => {
-      throw new GitError('UNKNOWN', 'x');
+      throw indexLockError(admin);
     });
 
     await expect(withLockAwareness({ repo }, run, { delaysMs: [5], sleep })).rejects.toMatchObject({
@@ -218,6 +229,42 @@ describe('withLockAwareness', () => {
 
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([5]);
     expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('relança o erro original, sem esperar, quando o erro não é de index.lock, mesmo com o arquivo presente', async () => {
+    const { repo, admin } = fakeRepo();
+    writeFileSync(join(admin, 'index.lock'), '');
+    // A recusa tardia do `git worktree remove`: o trabalho não salvo chegou depois do status.
+    const erro = new GitError(
+      'UNKNOWN',
+      'O comando "git worktree" terminou com erro (código 128).',
+      {
+        exitCode: 128,
+        stderr: "fatal: 'x' contains modified or untracked files, use --force to delete it\n",
+      },
+    );
+    const sleep = vi.fn(async (_ms: number) => {});
+    const run = vi.fn(async () => {
+      throw erro;
+    });
+
+    await expect(withLockAwareness({ repo }, run, { sleep })).rejects.toBe(erro);
+
+    expect(sleep).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('relança o erro original quando o erro que não é GitError chega com index.lock presente', async () => {
+    const { repo, admin } = fakeRepo();
+    writeFileSync(join(admin, 'index.lock'), '');
+    const erro = new Error('index.lock');
+    const sleep = vi.fn(async (_ms: number) => {});
+
+    await expect(
+      withLockAwareness({ repo }, vi.fn().mockRejectedValue(erro), { sleep }),
+    ).rejects.toBe(erro);
+
+    expect(sleep).not.toHaveBeenCalled();
   });
 
   it('relança o erro original, sem esperar, quando não há trava', async () => {
