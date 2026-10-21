@@ -347,7 +347,7 @@ describe('MissionPage: plano', () => {
       if (code !== 'PROJECT_WITHOUT_GIT') expect(alert).not.toHaveTextContent('Inicialize o Git');
       expect(screen.queryByText('Mensagem técnica.')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeEnabled();
-      expect(screen.getByText('Plano aprovado, na fila')).toBeInTheDocument();
+      expect(screen.getByText('Plano aprovado, aguardando início')).toBeInTheDocument();
     },
   );
 

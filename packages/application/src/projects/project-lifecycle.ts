@@ -22,7 +22,7 @@ const LIVE_STATUSES: readonly Mission['status'][] = [
 
 const NOT_FOUND = 'O projeto não foi encontrado.';
 const HAS_LIVE_MISSIONS =
-  'Há missões em andamento neste projeto. Cancele ou aguarde antes de arquivar ou remover.';
+  'Há missões ativas ou aguardando início neste projeto. Cancele ou aguarde antes de arquivar ou remover.';
 
 /** Projeto que aparece na lista: nem removido, nem arquivado. */
 function listedProject(deps: ProjectLifecycleDeps, projectId: string): ProjectRecord | undefined {

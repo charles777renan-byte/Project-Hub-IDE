@@ -72,7 +72,7 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Aprovar plano' }).click();
 
   await expect(
-    page.getByRole('main').getByText('Plano aprovado, na fila', { exact: true }),
+    page.getByRole('main').getByText('Plano aprovado, aguardando início', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Iniciar missão' }).click();
 
