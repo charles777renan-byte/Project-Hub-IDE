@@ -98,6 +98,10 @@ describe('ERROR_CODES', () => {
     expect(ERROR_CODES).toEqual(expect.arrayContaining(['AGENT_CAPABILITY_UNSUPPORTED']));
   });
 
+  it('acrescenta o código de trava do Git do plano de travas', () => {
+    expect(ERROR_CODES).toEqual(expect.arrayContaining(['GIT_LOCKED']));
+  });
+
   it('não repete códigos', () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
   });

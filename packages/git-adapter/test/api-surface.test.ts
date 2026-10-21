@@ -26,6 +26,11 @@ describe('superfície da API', () => {
         'buildWorktreeNames',
         'createWorktree',
         'removeWorktree',
+        'copyWorktreeIncludes',
+        'parseWorktreeInclude',
+        'WORKTREE_INCLUDE_FILE',
+        'WORKTREE_INCLUDE_MAX_BYTES',
+        'WORKTREE_INCLUDE_MAX_ENTRIES',
       ]),
     );
   });
