@@ -422,3 +422,10 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 
 - **Decisão:** `components/Panel.tsx` exporta `Panel` (seção com `aria-labelledby` por `useId`, faixa de 3px no topo na cor do acento por `panel--<acento>`, cabeçalho com ponto, título, meta e tag via `StatusChip`, corpo com rolagem própria) e `PanelEmpty`. Nenhuma página o usa ainda (Tarefas 5 e 6). Sem par de cores novo: título em `--text` e meta e vazio em `--muted`, sobre `--panel`, já medidos em `contrast.test.ts`.
 - **Ajuste ao plano:** o plano pedia `--radius: 12px`, mas `--radius` (2px) é usado por botões, campos e cartões, e mudá-lo arredondaria tudo. Entrou `--radius-panel: 12px` em `tokens.css`, usado só pelo painel; `--radius` continua em 2px. Provado por `test/renderer/panel-styles.test.ts`.
+
+### 2026-10-20, interface do workspace, Tarefa 3: cabeçalho de 50px
+
+- **Casca:** `.app-shell` é uma coluna com `height: 100vh`; o cabeçalho tem 50px e não quebra linha; `.app-main` ocupa o resto (`flex: 1; min-height: 0; overflow: auto`) e rola sozinha, com o conteúdo limitado a 72rem em `.app-main__content`. Prepara a barra lateral (Tarefa 4) e a grade de painéis (Tarefa 5), que precisam de altura definida.
+- **Marca e navegação:** símbolo em duas metades (violeta e vermelho, por `::before` e `::after`, `aria-hidden`) e o nome em caixa alta pela CSS (o texto continua "Project Hub"). O item ativo da navegação é magenta cheio com texto `--bg` (par medido no teste de contraste). A navegação rola de lado em janela estreita.
+- **Contadores:** `App` aceita `headerStatus?: ReactNode`, mostrado à direita em `.app-header__status`; sem ele, nada é renderizado. A Tarefa 7 passa os contadores.
+- **Minor da Tarefa 2 corrigidos:** meta vazia não cria o `span`; o comentário do `.panel` não cita mais uma classe de log inexistente; o teste de forma afirma as cores de título, meta e vazio. O leitor de regras dos testes (`test/renderer/css-rules.ts`) passou a juntar todas as regras com o mesmo seletor.

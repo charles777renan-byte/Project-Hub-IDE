@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readCss, ruleDeclarations } from './css-rules';
 
 /**
  * Forma do painel (Tarefa 2 do plano da interface do workspace): faixa de 3px na cor do acento,
@@ -8,26 +7,7 @@ import { describe, expect, it } from 'vitest';
  * verdade e confere as regras por texto, então trocar o token de um acento ou o raio derruba-o.
  */
 
-const stylesDirectory = resolve(import.meta.dirname, '../../src/renderer/styles');
-const readCss = (name: string) =>
-  readFileSync(join(stylesDirectory, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-
 const ACCENTS = ['violet', 'red', 'blue', 'magenta', 'orange', 'lime', 'cyan', 'yellow'] as const;
-
-/** As declarações da regra cujo seletor é exatamente `selector` (sem agrupar com outros). */
-function ruleDeclarations(css: string, selector: string): Map<string, string> {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`(?:^|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(css);
-  const found = new Map<string, string>();
-  for (const [, name, value] of (match?.[1] ?? '').matchAll(
-    /([\w-]+)\s*:\s*([^;]+?)\s*(?:;|$)/g,
-  )) {
-    if (name !== undefined && value !== undefined) {
-      found.set(name, value);
-    }
-  }
-  return found;
-}
 
 describe('forma do painel', () => {
   const appCss = readCss('app.css');
@@ -60,5 +40,11 @@ describe('forma do painel', () => {
     const body = ruleDeclarations(appCss, '.panel__body');
     expect(body.get('overflow')).toBe('auto');
     expect(body.get('min-height')).toBe('0');
+  });
+
+  it('o título usa --text, e a meta e o estado vazio usam --muted (pares medidos em contrast.test.ts)', () => {
+    expect(ruleDeclarations(appCss, '.panel__title').get('color')).toBe('var(--text)');
+    expect(ruleDeclarations(appCss, '.panel__meta').get('color')).toBe('var(--muted)');
+    expect(ruleDeclarations(appCss, '.panel__empty').get('color')).toBe('var(--muted)');
   });
 });

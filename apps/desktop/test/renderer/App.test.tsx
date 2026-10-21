@@ -92,6 +92,67 @@ describe('App', () => {
   });
 });
 
+// Cabeçalho do workspace (Tarefa 3): marca, navegação e o espaço à direita para os contadores.
+describe('cabeçalho', () => {
+  beforeEach(() => {
+    window.projectHub = {
+      projects: { list: () => Promise.resolve({ ok: true, data: [] }) },
+      missions: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        subscribe: () => () => undefined,
+      },
+    } as unknown as ProjectHubApi;
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'projectHub');
+  });
+
+  it.each(['/', '/projects', '/projects/p1'])(
+    'aparece com a marca e a navegação na rota %s',
+    (route) => {
+      render(
+        <MemoryRouter initialEntries={[route]}>
+          <App />
+        </MemoryRouter>,
+      );
+      const banner = screen.getByRole('banner');
+      expect(within(banner).getByText('Project Hub')).toBeInTheDocument();
+      expect(within(banner).getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
+    },
+  );
+
+  it('a marca tem o símbolo escondido dos leitores de tela', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    const mark = screen.getByRole('banner').querySelector('.app-brand__mark');
+    expect(mark).not.toBeNull();
+    expect(mark).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('mostra no canto direito o que vier em headerStatus', () => {
+    render(
+      <MemoryRouter>
+        <App headerStatus={<span>2 executando</span>} />
+      </MemoryRouter>,
+    );
+    const status = screen.getByRole('banner').querySelector('.app-header__status');
+    expect(status).toHaveTextContent('2 executando');
+  });
+
+  it('sem headerStatus, não deixa um espaço vazio no cabeçalho', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('banner').querySelector('.app-header__status')).toBeNull();
+  });
+});
+
 // A página de Projetos chama a API do preload ao abrir. Aqui ela responde com lista vazia; o
 // comportamento da página está em ProjectsPage.test.tsx.
 describe('página de Projetos', () => {

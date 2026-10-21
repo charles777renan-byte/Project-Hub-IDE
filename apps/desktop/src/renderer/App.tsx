@@ -1,16 +1,21 @@
+import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 import { AppRoutes, NAV_ITEMS } from './routes';
 
 /**
- * Estrutura da janela: barra superior com a marca e as abas de seção, e a área da página abaixo.
- * O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes), então o App funciona com
- * qualquer um dos dois.
+ * Estrutura da janela: cabeçalho de 50px com a marca, a navegação e, à direita, o que vier em
+ * `headerStatus` (os contadores da visão geral); abaixo, a área da página, que ocupa o resto da
+ * altura e rola sozinha. O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes),
+ * então o App funciona com qualquer um dos dois.
  */
-export function App() {
+export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <p className="app-brand">Project Hub</p>
+        <p className="app-brand">
+          <span aria-hidden="true" className="app-brand__mark" />
+          Project Hub
+        </p>
         <nav aria-label="Principal">
           <ul className="app-nav">
             {NAV_ITEMS.map(({ to, label }) => (
@@ -21,9 +26,14 @@ export function App() {
             ))}
           </ul>
         </nav>
+        {headerStatus === undefined ? null : (
+          <div className="app-header__status">{headerStatus}</div>
+        )}
       </header>
       <main className="app-main">
-        <AppRoutes />
+        <div className="app-main__content">
+          <AppRoutes />
+        </div>
       </main>
     </div>
   );
