@@ -1,3 +1,4 @@
+import type { Stats } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { GitError } from './run-git';
@@ -11,21 +12,15 @@ import { GitError } from './run-git';
 export const INDEX_LOCK_RETRY_DELAYS_MS: readonly number[] = [200, 400, 800];
 
 const NO_REASON = 'sem motivo informado';
+/** Limite, em caracteres, do motivo da trava na mensagem. O `…` do corte conta nele. */
+const MAX_REASON_CHARS = 200;
 
-async function isDirectory(path: string): Promise<boolean> {
+/** O `stat` de `path`, ou `undefined` quando ele não existe ou não pode ser lido. */
+async function statOrUndefined(path: string): Promise<Stats | undefined> {
   try {
-    return (await stat(path)).isDirectory();
+    return await stat(path);
   } catch {
-    return false;
-  }
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -37,9 +32,9 @@ async function exists(path: string): Promise<boolean> {
  */
 export async function gitAdminDir(dir: string): Promise<string | undefined> {
   const dotGit = join(dir, '.git');
-  if (await isDirectory(dotGit)) return dotGit;
+  if ((await statOrUndefined(dotGit))?.isDirectory() === true) return dotGit;
   try {
-    const match = /^gitdir:\s*(.+?)\s*$/m.exec(await readFile(dotGit, 'utf8'));
+    const match = /^gitdir:[ \t]*(.+?)\s*$/m.exec(await readFile(dotGit, 'utf8'));
     return match?.[1] === undefined ? undefined : resolve(dir, match[1]);
   } catch {
     return undefined;
@@ -63,13 +58,25 @@ export async function adminLockReason(dir: string): Promise<string | undefined> 
   }
 }
 
+/**
+ * O motivo como cabe numa mensagem: quebras de linha e espaços seguidos viram um espaço só, e um
+ * texto com mais de `MAX_REASON_CHARS` caracteres é cortado, com `…` no fim.
+ */
+function reasonForMessage(reason: string): string {
+  const oneLine = reason.replace(/\s+/g, ' ').trim();
+  if (oneLine === '') return NO_REASON;
+  const chars = Array.from(oneLine);
+  if (chars.length <= MAX_REASON_CHARS) return oneLine;
+  return `${chars.slice(0, MAX_REASON_CHARS - 1).join('')}…`;
+}
+
 async function refuseIfWorktreeLocked(worktree: string | undefined): Promise<void> {
   if (worktree === undefined) return;
   const reason = await adminLockReason(worktree);
   if (reason !== undefined) {
     throw new GitError(
       'GIT_LOCKED',
-      `O worktree está travado pelo Git (${reason}). Destrave-o e tente de novo.`,
+      `O worktree está travado pelo Git (${reasonForMessage(reason)}). Destrave-o com \`git worktree unlock ${worktree}\` e tente de novo.`,
     );
   }
 }
@@ -81,7 +88,7 @@ function isIndexLockFailure(error: unknown): error is GitError {
 
 async function indexLockExists(repo: string): Promise<boolean> {
   const admin = await gitAdminDir(repo);
-  return admin !== undefined && (await exists(join(admin, 'index.lock')));
+  return admin !== undefined && (await statOrUndefined(join(admin, 'index.lock'))) !== undefined;
 }
 
 /**

@@ -137,8 +137,34 @@ describe('withLockAwareness', () => {
       withLockAwareness({ repo, worktree }, vi.fn(), { sleep: vi.fn(async (_ms: number) => {}) }),
     ).rejects.toMatchObject({
       code: 'GIT_LOCKED',
-      message:
-        'O worktree está travado pelo Git (sem motivo informado). Destrave-o e tente de novo.',
+      message: `O worktree está travado pelo Git (sem motivo informado). Destrave-o com \`git worktree unlock ${worktree}\` e tente de novo.`,
+    });
+  });
+
+  it('troca quebras de linha e espaços seguidos por um espaço só no motivo', async () => {
+    const { repo } = fakeRepo();
+    const { worktree, admin } = fakeWorktree();
+    writeFileSync(join(admin, 'locked'), 'em uso\n\n  pela\r\n   IDE');
+
+    await expect(
+      withLockAwareness({ repo, worktree }, vi.fn(), { sleep: vi.fn(async (_ms: number) => {}) }),
+    ).rejects.toMatchObject({
+      code: 'GIT_LOCKED',
+      message: expect.stringContaining('(em uso pela IDE)'),
+    });
+  });
+
+  it('corta o motivo em 200 caracteres, com … no fim', async () => {
+    const { repo } = fakeRepo();
+    const { worktree, admin } = fakeWorktree();
+    writeFileSync(join(admin, 'locked'), 'a'.repeat(300));
+    const motivoCortado = `${'a'.repeat(199)}…`;
+
+    await expect(
+      withLockAwareness({ repo, worktree }, vi.fn(), { sleep: vi.fn(async (_ms: number) => {}) }),
+    ).rejects.toMatchObject({
+      code: 'GIT_LOCKED',
+      message: `O worktree está travado pelo Git (${motivoCortado}). Destrave-o com \`git worktree unlock ${worktree}\` e tente de novo.`,
     });
   });
 
@@ -206,11 +232,12 @@ describe('withLockAwareness', () => {
     expect(error).toMatchObject({
       code: 'GIT_LOCKED',
       message: 'Outro processo do Git está usando o repositório. Feche-o e tente de novo.',
-      cause: original,
       // O que o chamador usa para classificar a falha continua à mão no erro novo.
       stderr: original.stderr,
       exitCode: 128,
     });
+    // `toMatchObject` compara erros só pela mensagem: o `cause` tem que ser o próprio erro original.
+    expect((error as GitError).cause).toBe(original);
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([200, 400, 800]);
     expect(run).toHaveBeenCalledTimes(4);
   });

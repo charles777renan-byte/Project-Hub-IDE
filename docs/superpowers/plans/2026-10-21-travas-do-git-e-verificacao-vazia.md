@@ -162,7 +162,7 @@ Esperado: FAIL, porque `verificationOutcome` não existe e o texto ainda diz "0/
 
 - [ ] **Passo 3: implementar `verificationOutcome` e usá-la nos dois lugares**
 
-No `TestsPanel`, o total vazio mostra "Nenhum teste rodou" com a classe `tests-run__total--empty`. A classe não ganha regra nova em `app.css`, que tem alteração não commitada: o estilo neutro é o do total sem modificador, e a classe serve de gancho para depois. `verifiedCriteria` já ignora `passed === 0` e não muda.
+No `TestsPanel`, o total vazio mostra "Nenhum teste rodou" com a classe `tests-run__total--empty`. A classe não ganha regra nova em `app.css`, que tem alteração não commitada: o total vazio usa só `tests-run__total--empty`, sem a classe base `tests-run__total`, que leva a cor de sucesso, e a classe serve de gancho para depois. `verifiedCriteria` já ignora `passed === 0` e não muda.
 
 - [ ] **Passo 4: rodar os testes do renderer**
 
