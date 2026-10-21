@@ -74,16 +74,19 @@ export function isEnded(status: MissionStatus): boolean {
   return ENDED.includes(status);
 }
 
-/** Textos da ação e do aviso da missão (cabeçalho e aba Conversa). */
+/** Textos da ação e do aviso da missão (cabeçalho e painéis da missão). */
 export const MISSION_TEXT = {
   pause: 'Pausar',
   resume: 'Retomar',
   retry: 'Tentar de novo',
   decisionNotice: 'Aguarda sua decisão',
-  decisionLink: 'Ver na conversa',
+  decisionLink: 'Ver a decisão',
 } as const;
 
-/** Estados que pedem uma decisão na aba Conversa: a aba abre ali e o aviso aparece no cabeçalho (R182). */
+/**
+ * Estados que pedem uma decisão da pessoa: a aprovação fica na coluna Aguardando você e a resposta do
+ * agente fica na Conversa. O aviso aparece no cabeçalho e o foco vai para o lugar da decisão (R182).
+ */
 const DECISION_IN_CONVERSATION: readonly MissionStatus[] = ['waiting_approval', 'waiting_input'];
 
 export function needsDecisionInConversation(status: MissionStatus): boolean {

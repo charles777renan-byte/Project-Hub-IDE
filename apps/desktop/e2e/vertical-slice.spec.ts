@@ -20,7 +20,7 @@ const MISSION = {
   criterion: 'O arquivo project-hub-demo.md existe no worktree',
 };
 
-/** Aviso do cabeçalho enquanto a missão espera uma decisão na Conversa (R182). */
+/** Aviso do cabeçalho enquanto a missão espera uma decisão (R182). */
 const MISSION_NOTICE = 'Aguarda sua decisão';
 
 const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
@@ -76,7 +76,7 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Iniciar missão' }).click();
 
-  // A missão para no pedido de aprovação do agente, e a página mostra o pedido no painel Conversa.
+  // A missão para no pedido de aprovação do agente, e a página mostra o pedido na coluna Aguardando você.
   await expect(
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();

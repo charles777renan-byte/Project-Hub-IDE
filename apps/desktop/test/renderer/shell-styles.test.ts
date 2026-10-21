@@ -223,8 +223,27 @@ describe('grade do workspace da missão', () => {
     );
   });
 
-  it('abaixo de 1000px a reserva da direita some, e a página passa a rolar na vertical', () => {
-    expect(ruleDeclarations(narrow, '.mission-grid__reserve').get('display')).toBe('none');
+  it('abaixo de 1000px a coluna da direita continua visível: vem depois dos painéis, numa coluna só', () => {
+    const reserve = ruleDeclarations(narrow, '.mission-grid__reserve');
+    expect(reserve.has('display')).toBe(false);
+    // Sem zerar a posição da grade larga, a coluna 3 criaria colunas implícitas na grade estreita.
+    expect(reserve.get('grid-column')).toBe('1');
+    expect(reserve.get('grid-row')).toBe('auto');
+  });
+
+  it('a coluna de decisões rola inteira, e os painéis de baixo não encolhem para caber nela', () => {
+    const column = ruleDeclarations(appCss, '.decision-column');
+    expect(column.get('overflow-y')).toBe('auto');
+    expect(column.get('min-height')).toBe('0');
+    expect(ruleDeclarations(appCss, '.decision-column > .panel').get('flex')).toBe('0 0 auto');
+  });
+
+  it('abaixo de 1000px, as linhas da grade são automáticas e cada painel mede 24rem', () => {
+    expect(ruleDeclarations(narrow, '.mission-grid').get('grid-auto-rows')).toBe('auto');
+    expect(ruleDeclarations(narrow, '.mission-grid > .panel').get('height')).toBe('24rem');
+  });
+
+  it('abaixo de 1000px a página passa a rolar na vertical', () => {
     expect(ruleDeclarations(narrow, '.mission-workspace').get('height')).toBe('auto');
     expect(
       ruleDeclarations(narrow, '.app-main__content:has(> .mission-workspace)').get('height'),
