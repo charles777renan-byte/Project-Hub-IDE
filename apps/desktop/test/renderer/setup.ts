@@ -7,3 +7,11 @@ import { afterEach } from 'vitest';
 afterEach(() => {
   cleanup();
 });
+
+// jsdom não tem canvas. Sem o pacote `canvas`, getContext imprime um aviso a cada chamada. Devolver null
+// deixa o componente sem contexto, que é o caminho que o fundo topográfico já trata.
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  writable: true,
+  value: () => null,
+});

@@ -22,7 +22,20 @@ describe('casca do app', () => {
     expect(header.get('height')).toBe('50px');
     expect(header.get('flex')).toBe('none');
     expect(header.get('flex-wrap')).toBe('nowrap');
-    expect(header.get('border-bottom')).toBe('1px solid var(--line)');
+    expect(header.get('box-shadow')).toBe('inset 0 -1px 0 var(--line)');
+  });
+
+  it('o cabeçalho arrasta a janela e deixa 140px à direita para os botões do Windows', () => {
+    const header = ruleDeclarations(appCss, '.app-header');
+    expect(header.get('-webkit-app-region')).toBe('drag');
+    expect(header.get('padding')).toBe('0 140px 0 var(--space-3)');
+  });
+
+  it('navegação e contadores ficam fora da área de arrastar, para continuar clicáveis', () => {
+    expect(ruleDeclarations(appCss, '.app-nav').get('-webkit-app-region')).toBe('no-drag');
+    expect(ruleDeclarations(appCss, '.app-nav a').get('-webkit-app-region')).toBe('no-drag');
+    const status = ruleDeclarations(appCss, '.app-header__status');
+    expect(status.get('-webkit-app-region')).toBe('no-drag');
   });
 
   it('o item ativo da navegação é magenta cheio com o texto na cor do fundo', () => {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 import { Sidebar } from './components/Sidebar';
+import { TopographicBackground } from './components/TopographicBackground';
 import { AppRoutes, NAV_ITEMS } from './routes';
 
 /**
@@ -12,6 +13,7 @@ import { AppRoutes, NAV_ITEMS } from './routes';
 export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
   return (
     <div className="app-shell">
+      <TopographicBackground />
       <header className="app-header">
         <p className="app-brand">
           <span aria-hidden="true" className="app-brand__mark" />
