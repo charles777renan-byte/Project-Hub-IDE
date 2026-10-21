@@ -242,7 +242,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     );
   }
 
-  const { mission, project, events, steps } = state.view;
+  const { mission, project, events, steps, conclusion } = state.view;
   const hasWorktree = mission.worktreePath !== undefined;
   return (
     <div className="mission-workspace">
@@ -251,6 +251,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         project={project}
         events={events}
         diff={diffSummary}
+        conclusion={conclusion}
         busy={busy}
         controlBusy={controlBusy}
         onGeneratePlan={() => void run(() => window.projectHub.missions.plan(missionId))}

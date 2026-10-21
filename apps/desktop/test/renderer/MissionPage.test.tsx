@@ -591,6 +591,58 @@ describe('MissionPage: resumo', () => {
   });
 });
 
+describe('MissionPage: resumo de conclusão', () => {
+  const CONCLUSION = {
+    summary: 'Login corrigido.',
+    verification: { passed: 14, failed: 0 },
+    changedFiles: 3,
+    gitState: 'uncommitted' as const,
+  };
+
+  it('missão concluída mostra a frase final, o indicador de verificação e a nota do Git', async () => {
+    installApi(
+      viewOf(
+        { status: 'succeeded', worktreePath: 'C:\\app\\.worktrees\\m1' },
+        {
+          conclusion: CONCLUSION,
+          events: [verificationEvent('v1', 1, { command: 'pnpm test', passed: 14, failed: 0 })],
+        },
+      ),
+    );
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
+    const block = within(summary).getByRole('region', { name: 'Resumo da conclusão' });
+    expect(within(block).getByText('Login corrigido.')).toBeInTheDocument();
+    expect(within(block).getByText('Git: alterações sem commit')).toBeInTheDocument();
+    const indicators = within(summary).getByRole('list', { name: 'Indicadores da missão' });
+    expect(within(indicators).getByText('14 de 14 passaram')).toBeInTheDocument();
+    // Sem ação principal: só Excluir missão.
+    expect(summary.querySelectorAll('.mission-summary__primary')).toHaveLength(0);
+    expect(within(summary).getByRole('button', { name: 'Excluir missão' })).toBeInTheDocument();
+  });
+
+  it.each(['running', 'failed', 'cancelled', 'planned'] as const)(
+    'missão %s não mostra o bloco de conclusão',
+    async (status) => {
+      installApi(viewOf({ status }, { conclusion: CONCLUSION }));
+      renderPage();
+
+      await screen.findByRole('region', { name: 'Resumo da missão' });
+      expect(screen.queryByRole('region', { name: 'Resumo da conclusão' })).toBeNull();
+      expect(screen.queryByText('Login corrigido.')).toBeNull();
+    },
+  );
+
+  it('missão concluída sem resumo não mostra o bloco', async () => {
+    installApi(viewOf({ status: 'succeeded' }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Resumo da missão' });
+    expect(screen.queryByRole('region', { name: 'Resumo da conclusão' })).toBeNull();
+  });
+});
+
 describe('MissionPage: banner Aguardando você', () => {
   it.each(['draft', 'planned', 'queued', 'running', 'paused', 'succeeded', 'failed'] as const)(
     'com a missão em %s e nada pendente, o banner não aparece',

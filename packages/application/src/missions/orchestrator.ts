@@ -15,7 +15,13 @@ import {
   type MissionStep,
   type ProjectRecord,
 } from '@project-hub/domain';
-import type { MissionRepository, ProjectRepository, WorktreeNames, WorktreePort } from '../ports';
+import type {
+  DiffPort,
+  MissionRepository,
+  ProjectRepository,
+  WorktreeNames,
+  WorktreePort,
+} from '../ports';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
 import { expirePendingApprovals, moveMission } from './transitions';
@@ -35,6 +41,11 @@ export type OrchestratorDeps = {
   /** Pasta absoluta onde os worktrees ficam (seção 16.2). */
   worktreesRoot: string;
   agent: AgentAdapter;
+  /**
+   * Lê as alterações do worktree quando a missão conclui, para o resumo de conclusão (R130). Sem a
+   * porta, ou se o Git falhar, a missão conclui do mesmo jeito, sem o registro de arquivos e Git.
+   */
+  diff?: Pick<DiffPort, 'diff'>;
   now: () => string;
   newId: () => string;
 };
@@ -93,6 +104,9 @@ type Pulled =
 
 type Workspace = { cwd: string };
 
+/** O que o worktree tinha ao concluir: `uncommitted` quando o diff contra o HEAD traz algum arquivo. */
+type WorkspaceSummary = { changedFiles: number; gitState: 'clean' | 'uncommitted' };
+
 /**
  * Resultado da transação de pausa ou de retomada. `moved`: a mudança foi gravada. `already`: outra
  * chamada já tinha deixado a missão no estado pedido. `stale`: a missão mudou de estado antes da
@@ -106,6 +120,7 @@ function errorMessage(error: unknown): string {
 
 export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const { repo, projects, worktrees, worktreeNames, worktreesRoot, agent, now, newId } = deps;
+  const diffPort = deps.diff;
   /** Uma execução por missão no máximo: a que está em curso ou a que está começando. */
   const active = new Map<string, ActiveRun>();
 
@@ -315,6 +330,26 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   /**
+   * Lê o worktree da missão para o resumo de conclusão (R130). O diff é contra o HEAD e inclui os
+   * arquivos novos, então qualquer arquivo na lista é alteração sem commit. Sem porta, sem worktree
+   * ou com o Git falhando, devolve `undefined`: o resumo não é inventado, e a conclusão segue.
+   */
+  async function readWorkspaceSummary(missionId: string): Promise<WorkspaceSummary | undefined> {
+    const worktreePath = repo.getMission(missionId)?.worktreePath;
+    if (diffPort === undefined || worktreePath === undefined) return undefined;
+    try {
+      const { files } = await diffPort.diff(worktreePath);
+      return {
+        changedFiles: files.length,
+        gitState: files.length > 0 ? 'uncommitted' : 'clean',
+      };
+    } catch (error) {
+      console.error('Não foi possível ler as alterações do worktree ao concluir:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * Aplica um evento do agente. Devolve `wait` quando a sessão espera uma decisão do usuário, e
    * `done` quando a execução terminou. `wait` deixa o iterador parado: nada é consumido até a
    * resposta.
@@ -323,6 +358,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     run: ActiveRun,
     executionId: string,
     event: AgentEvent,
+    summary?: WorkspaceSummary,
   ): 'continue' | 'wait' | 'done' {
     switch (event.type) {
       case 'approval.requested':
@@ -373,7 +409,19 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
           run,
           executionId,
           { status: 'succeeded', exitReason: 'completed', actor: 'agent' },
-          () => recordEvent(executionId, event),
+          () => {
+            recordEvent(executionId, event);
+            if (summary === undefined) return;
+            repo.appendAudit({
+              aggregateType: 'execution',
+              aggregateId: executionId,
+              eventType: 'execution.concluded',
+              severity: 'info',
+              actor: 'system',
+              payload: { ...summary },
+              createdAt: now(),
+            });
+          },
         );
         return 'done';
 
@@ -443,7 +491,16 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         );
         return requireExecution(executionId);
       }
-      const outcome = handle(run, executionId, pulled.event);
+      // O fim da sessão lê o worktree antes de gravar; um cancelamento durante a leitura vence.
+      const summary =
+        pulled.event.type === 'session.completed'
+          ? await readWorkspaceSummary(run.missionId)
+          : undefined;
+      if (run.controller.signal.aborted) {
+        await run.finalized;
+        return requireExecution(executionId);
+      }
+      const outcome = handle(run, executionId, pulled.event, summary);
       if (outcome !== 'continue') return requireExecution(executionId);
     }
   }

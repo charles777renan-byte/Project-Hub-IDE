@@ -48,9 +48,34 @@ function changedFilesIndicator(diff: DiffSummary | undefined): Indicator {
 }
 
 /**
+ * Fecho da missão concluída (R130): a frase final do agente e o estado do Git ao concluir. A verificação
+ * e os arquivos alterados já aparecem nos indicadores do resumo, então não se repetem aqui. A frase vem
+ * do agente e entra como texto, nunca como HTML.
+ */
+function ConclusionSummary({
+  conclusion,
+}: {
+  conclusion: NonNullable<MissionViewDto['conclusion']>;
+}) {
+  return (
+    <section className="conclusion" aria-label="Resumo da conclusão">
+      <p className="conclusion__summary">{conclusion.summary}</p>
+      <ul className="conclusion__facts">
+        <li className="conclusion__item">
+          {conclusion.gitState === 'uncommitted'
+            ? 'Git: alterações sem commit'
+            : 'Git: sem alterações pendentes'}
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+/**
  * Resumo fixo no topo da página da missão (seção 10.7): o título, a situação, branch e worktree em uma
  * linha, a ação principal que a situação permite, as ações secundárias (pausar, cancelar ou excluir) e
- * três indicadores (verificação, arquivos alterados e Git). Este componente só mostra e chama o que a
+ * três indicadores (verificação, arquivos alterados e Git). Com a missão concluída, mostra também o
+ * fecho da conclusão (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o que a
  * página passa: o comportamento das ações fica na página.
  */
 export function MissionSummary({
@@ -58,6 +83,7 @@ export function MissionSummary({
   project,
   events,
   diff,
+  conclusion,
   busy,
   controlBusy,
   onGeneratePlan,
@@ -74,6 +100,8 @@ export function MissionSummary({
   events: MissionViewDto['events'];
   /** Contagem de arquivos do Diff, ou `undefined` enquanto o diff não foi lido. */
   diff: DiffSummary | undefined;
+  /** Resumo de conclusão. Só aparece com a missão concluída; cancelada ou com falha não tem resumo. */
+  conclusion?: MissionViewDto['conclusion'];
   /** Chamadas longas (planejar, aprovar, iniciar e tentar de novo): desabilitam a ação principal. */
   busy: boolean;
   /** Pausar, retomar, cancelar e excluir: cada uma só cobre a própria chamada. */
@@ -163,6 +191,9 @@ export function MissionSummary({
         {project.name} · branch {project.defaultBranch ?? 'sem Git'} · worktree{' '}
         {mission.worktreePath ?? 'ainda não criado'}
       </p>
+      {mission.status === 'succeeded' && conclusion !== undefined ? (
+        <ConclusionSummary conclusion={conclusion} />
+      ) : null}
       <ul className="mission-indicators" aria-label="Indicadores da missão">
         {indicators.map((indicator) => (
           <li

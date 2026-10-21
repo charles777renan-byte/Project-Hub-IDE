@@ -145,6 +145,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const now = () => new Date().toISOString();
   const newId = () => randomUUID();
 
+  const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
   const orchestrator = createOrchestrator({
     repo,
     projects,
@@ -153,12 +154,12 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       buildWorktreeNames({ missionId, title, projectSlug: projectName }),
     worktreesRoot: options.worktreesRoot,
     agent: createDemoAgent(),
+    diff,
     now,
     newId,
   });
   recoverInterruptedExecutions(repo, now);
   const fs = { isDirectory: createIsDirectory() };
-  const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
   return {
     repo: projects,
     git: createGitDetector(),
