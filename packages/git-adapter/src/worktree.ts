@@ -1,7 +1,9 @@
 import { lstat } from 'node:fs/promises';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
+import { isStrictlyInside } from './path-scope';
 import { GitError, runGit, runGitWorktree } from './run-git';
 import { getStatus } from './status';
+import { copyWorktreeIncludes, type WorktreeIncludeResult } from './worktree-include';
 import type { WorktreeNames } from './worktree-naming';
 
 const CREATE_FAILED_MESSAGE = 'Não foi possível criar o worktree.';
@@ -10,18 +12,16 @@ const UNSAVED_CHANGES_MESSAGE =
 /** Trecho da recusa do `git worktree remove` sem `--force` (`LC_ALL=C` fixa o idioma). */
 const GIT_REFUSED_UNSAVED_CHANGES = 'contains modified or untracked files';
 
-/** O worktree criado: o caminho e a branch reais, e o commit inteiro de onde ele parte. */
-export type CreatedWorktree = { path: string; branch: string; baseCommit: string };
-
 /**
- * Diz se `target` está dentro de `root`, e não é o próprio `root`. A conta é feita com `relative`:
- * um teste de prefixo aceitaria `C:\raiz-outra` como filho de `C:\raiz`. Em outra unidade do
- * Windows, `relative` devolve um caminho absoluto.
+ * O worktree criado: o caminho e a branch reais, o commit inteiro de onde ele parte e o resultado da
+ * cópia do `.worktreeinclude` (vazio quando o projeto não tem o arquivo).
  */
-function isStrictlyInside(root: string, target: string): boolean {
-  const path = relative(root, target);
-  return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path);
-}
+export type CreatedWorktree = {
+  path: string;
+  branch: string;
+  baseCommit: string;
+  included: WorktreeIncludeResult;
+};
 
 /** Uma falha do Git na criação vira WORKTREE_CREATE_FAILED. Git ausente e pasta ausente seguem como são. */
 function toCreateFailure(error: unknown): unknown {
@@ -125,7 +125,10 @@ export async function createWorktree(input: {
   } catch (error) {
     throw toCreateFailure(error);
   }
-  return { path, branch: names.branch, baseCommit };
+  // Fora do `try` acima: o worktree já existe, e uma falha da cópia nunca o transforma em
+  // WORKTREE_CREATE_FAILED. `copyWorktreeIncludes` não rejeita; o que não foi copiado volta em `included`.
+  const included = await copyWorktreeIncludes({ repoPath, worktreePath: path });
+  return { path, branch: names.branch, baseCommit, included };
 }
 
 /**
@@ -145,7 +148,9 @@ export async function createWorktree(input: {
  *
  * Arquivo ou pasta que o Git ignora (`node_modules`, `.env`, saídas de build) NÃO é trabalho não
  * salvo (R198): o status comum não os lista, o `git worktree remove` sem `--force` não os trata como
- * sujeira e os apaga junto com a pasta. Quem precisa de um `.env` deve versioná-lo ou copiá-lo antes.
+ * sujeira e os apaga junto com a pasta. Os arquivos que o `createWorktree` copiou por causa do
+ * `.worktreeinclude` são cópias: os originais continuam na pasta do projeto. Qualquer outro arquivo
+ * ignorado que não esteja listado ali precisa ser salvo à mão antes da remoção.
  */
 export async function removeWorktree(input: {
   repoPath: string;

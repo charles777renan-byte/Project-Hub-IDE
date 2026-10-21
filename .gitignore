@@ -15,3 +15,6 @@ out/
 
 # Cérebro do projeto (vault do Obsidian): fica só na máquina, fora do git
 brain/
+
+# Regras do projeto para o agente: ficam só na máquina, fora do git
+CLAUDE.md

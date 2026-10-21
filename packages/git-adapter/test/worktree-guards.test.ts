@@ -162,7 +162,13 @@ describe('createWorktree: o que chega ao Git', () => {
     const worktree = await createWorktree({ repoPath, worktreesRoot, names, baseRef: 'main' });
 
     const path = join(worktreesRoot, 'app', 'abcdef12-x');
-    expect(worktree).toEqual({ path, branch: names.branch, baseCommit: SHA });
+    // A pasta do projeto não tem `.worktreeinclude`: a cópia não roda comando algum do Git (`calls()` abaixo).
+    expect(worktree).toEqual({
+      path,
+      branch: names.branch,
+      baseCommit: SHA,
+      included: { copied: [], skipped: [] },
+    });
     expect(calls()).toEqual([
       ['rev-parse', '--verify', '--quiet', 'main^{commit}'],
       ['rev-parse', '--verify', '--quiet', `refs/heads/${names.branch}`],
