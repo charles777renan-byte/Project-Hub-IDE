@@ -16,7 +16,7 @@ export const WORKTREE_INCLUDE_MAX_ENTRIES = 1000;
  */
 const CHECK_IGNORE_BATCH_CHARS = 8000;
 
-const TOO_LARGE_WARNING = 'O .worktreeinclude passa de 256 KiB e foi ignorado.';
+const TOO_LARGE_WARNING = `O .worktreeinclude passa de ${WORKTREE_INCLUDE_MAX_BYTES / 1024} KiB e foi ignorado.`;
 const UNEXPECTED_WARNING = 'Não foi possível concluir a cópia do .worktreeinclude.';
 
 export type WorktreeIncludeSkipReason =
@@ -40,22 +40,22 @@ export type WorktreeIncludeResult = {
   warning?: string;
 };
 
-/** Diz se o primeiro segmento é a pasta `.git`, também como o Windows a enxerga (caixa, ponto e espaço no fim, nome curto). */
+/** Diz se o segmento é a pasta `.git`, também como o Windows a enxerga (caixa, ponto e espaço no fim, nome curto). */
 function isGitFolder(segment: string): boolean {
   const name = segment.toLowerCase().replace(/[. ]+$/, '');
   return name === '.git' || name === 'git~1';
 }
 
 /**
- * Absoluto, com segmento vazio, `.` ou `..`, ou dentro de `.git`: tudo o que poderia sair do projeto
- * ou mexer no Git. O Windows ignora ponto e espaço no fim de um nome, então `.. ` e `...` valem como
- * `..`: um segmento que fica vazio sem eles também é recusado.
+ * Absoluto, com segmento vazio, `.` ou `..`, ou que passa por `.git` em qualquer nível: tudo o que
+ * poderia sair do projeto ou mexer no Git. O Windows ignora ponto e espaço no fim de um nome, então
+ * `.. ` e `...` valem como `..`: um segmento que fica vazio sem eles também é recusado.
  */
 function isUnsafePath(path: string): boolean {
   if (path.startsWith('/') || /^[a-zA-Z]:/.test(path)) return true;
   const segments = path.split('/');
   if (segments.some((segment) => segment.replace(/[. ]+$/, '') === '')) return true;
-  return isGitFolder(segments[0] ?? '');
+  return segments.some(isGitFolder);
 }
 
 /**

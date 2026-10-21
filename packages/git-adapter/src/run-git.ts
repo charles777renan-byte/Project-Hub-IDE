@@ -314,7 +314,8 @@ export async function runGit(
  *
  * Os dois passam por `withLockAwareness` (git-locks.ts): worktree travado recusa com GIT_LOCKED e o
  * motivo, sem criar processo, e `index.lock` no repositório ganha novas tentativas curtas antes de
- * virar GIT_LOCKED (defensivo: não observado contra o Git para add e remove; ver git-locks.ts e a ADR 0008). Nunca com `--force` nem `worktree unlock`.
+ * virar GIT_LOCKED (defensivo: não observado contra o Git para add e remove; ver git-locks.ts e a
+ * ADR 0008). Nunca com `--force` nem `worktree unlock`.
  */
 export async function runGitWorktree(
   args: readonly string[],

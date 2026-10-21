@@ -86,12 +86,27 @@ describe('parseWorktreeInclude', () => {
   it('reconhece .git também em outra caixa, que o Windows trata como a mesma pasta', () => {
     const parsed = parseWorktreeInclude('.GIT/config\n.git\n.gitignore\nvendor/.git\n');
 
-    // `.gitignore` é um arquivo comum, e `.git` só importa como primeiro segmento.
-    expect(parsed.entries).toEqual(['.gitignore', 'vendor/.git']);
+    // `.gitignore` é um arquivo comum: só o segmento inteiro `.git` conta, em qualquer nível.
+    expect(parsed.entries).toEqual(['.gitignore']);
     expect(parsed.skipped).toEqual([
       { path: '.GIT/config', reason: 'caminho-inseguro' },
       { path: '.git', reason: 'caminho-inseguro' },
+      { path: 'vendor/.git', reason: 'caminho-inseguro' },
     ]);
+  });
+
+  it('recusa .git no meio do caminho com o motivo caminho-inseguro', () => {
+    const parsed = parseWorktreeInclude('vendor/.git\n');
+
+    expect(parsed.entries).toEqual([]);
+    expect(parsed.skipped).toEqual([{ path: 'vendor/.git', reason: 'caminho-inseguro' }]);
+  });
+
+  it('recusa git~1, o nome curto do Windows, em qualquer nível', () => {
+    const parsed = parseWorktreeInclude('a/GIT~1/b\n');
+
+    expect(parsed.entries).toEqual([]);
+    expect(parsed.skipped).toEqual([{ path: 'a/GIT~1/b', reason: 'caminho-inseguro' }]);
   });
 
   it('aceita no máximo 1000 entradas e marca o resto com limite', () => {
