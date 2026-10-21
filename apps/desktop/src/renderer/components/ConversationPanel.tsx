@@ -1,22 +1,20 @@
 import { useState, type FormEvent } from 'react';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { lastInputPrompt } from '../mission-text';
-import { ApprovalCard } from './ApprovalCard';
 import { Timeline } from './Timeline';
 
 /**
- * Aba Conversa do workspace da missão (seção 10.7): cartões de aprovação pendentes, a caixa de
- * resposta quando o agente pede entrada, e a linha do tempo dos eventos.
+ * Painel Conversa do workspace da missão (seção 10.7): a caixa de resposta quando o agente pede
+ * entrada, e a linha do tempo dos eventos. As aprovações pendentes não aparecem aqui: a decisão fica
+ * na coluna "Aguardando você" (DecisionColumn), e a Conversa guarda só o histórico.
  */
 export function ConversationPanel({
   view,
   busy,
-  onDecide,
   onAnswer,
 }: {
   view: MissionViewDto;
   busy: boolean;
-  onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
   /** Devolve `true` quando a resposta foi enviada, para a caixa limpar. */
   onAnswer: (text: string) => Promise<boolean>;
 }) {
@@ -33,15 +31,6 @@ export function ConversationPanel({
 
   return (
     <section aria-label="Conversa da missão" className="workspace-panel">
-      {view.pendingApprovals.map((approval) => (
-        <ApprovalCard
-          key={approval.id}
-          approval={approval}
-          busy={busy}
-          onDecide={(decision) => onDecide(approval.id, decision)}
-        />
-      ))}
-
       {waitingInput ? (
         <form className="form" aria-label="Resposta ao agente" onSubmit={handleAnswer}>
           <div className="field">

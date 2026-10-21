@@ -38,7 +38,7 @@ export function MissionHeader({
   onResume: () => void;
   onRetry: () => void;
   onCancel: () => void;
-  /** Leva o foco ao painel Conversa, onde a decisão é tomada. */
+  /** Leva o foco ao lugar da decisão: a coluna Aguardando você, ou a Conversa quando o agente pede resposta. */
   onOpenDecision: () => void;
 }) {
   return (

@@ -286,13 +286,18 @@ describe('MissionPage: conversa', () => {
     requestedAt: '2026-10-20T09:00:00.000Z',
   };
 
-  it('mostra o cartão de aprovação pendente e envia a decisão da pessoa', async () => {
+  it('a aprovação pendente aparece só na coluna Aguardando você, e a decisão vai para approvals.decide', async () => {
     const hub = installApi(
       viewOf({ status: 'waiting_approval' }, { pendingApprovals: [approval] }),
     );
     renderPage();
 
-    const card = await screen.findByRole('region', { name: 'Gravar arquivo' });
+    const column = await screen.findByRole('region', { name: 'Aguardando você' });
+    const card = within(column).getByRole('region', { name: 'Gravar arquivo' });
+    // A decisão não aparece duas vezes: a Conversa mostra o histórico, a coluna é o lugar da decisão.
+    expect(screen.getAllByRole('region', { name: 'Gravar arquivo' })).toHaveLength(1);
+    const conversation = screen.getByRole('region', { name: 'Conversa' });
+    expect(within(conversation).queryByRole('region', { name: 'Gravar arquivo' })).toBeNull();
     await userEvent.click(within(card).getByRole('button', { name: 'Aprovar' }));
 
     await waitFor(() =>
@@ -452,12 +457,12 @@ describe('MissionPage: foco da decisão (R182)', () => {
     return panel.contains(document.activeElement);
   }
 
-  it('com a missão aguardando sua aprovação, o foco vai para o painel Conversa e o aviso aparece', async () => {
+  it('com a missão aguardando sua aprovação, o foco vai para a coluna Aguardando você e o aviso aparece', async () => {
     installApi(viewOf({ status: 'waiting_approval' }));
     renderPage();
 
-    const conversation = await screen.findByRole('region', { name: 'Conversa' });
-    await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
+    const column = await screen.findByRole('complementary', { name: 'Decisões da missão' });
+    await waitFor(() => expect(focusIsIn(column)).toBe(true));
     expect(screen.getByText('Aguarda sua decisão')).toBeInTheDocument();
   });
 
@@ -478,15 +483,28 @@ describe('MissionPage: foco da decisão (R182)', () => {
     expect(screen.queryByText('Aguarda sua decisão')).not.toBeInTheDocument();
   });
 
-  it('o aviso leva o foco de volta ao painel Conversa', async () => {
+  it('com aprovação pendente, o aviso leva o foco de volta à coluna Aguardando você', async () => {
     installApi(viewOf({ status: 'waiting_approval' }));
+    renderPage();
+    const column = await screen.findByRole('complementary', { name: 'Decisões da missão' });
+    await waitFor(() => expect(focusIsIn(column)).toBe(true));
+    (document.activeElement as HTMLElement).blur();
+    expect(focusIsIn(column)).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ver a decisão' }));
+
+    expect(focusIsIn(column)).toBe(true);
+  });
+
+  it('com o agente aguardando resposta, o aviso leva o foco à Conversa, onde fica a resposta', async () => {
+    installApi(viewOf({ status: 'waiting_input' }));
     renderPage();
     const conversation = await screen.findByRole('region', { name: 'Conversa' });
     await waitFor(() => expect(focusIsIn(conversation)).toBe(true));
     (document.activeElement as HTMLElement).blur();
     expect(focusIsIn(conversation)).toBe(false);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Ver na conversa' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ver a decisão' }));
 
     expect(focusIsIn(conversation)).toBe(true);
   });

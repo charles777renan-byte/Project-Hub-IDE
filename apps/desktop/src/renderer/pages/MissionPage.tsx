@@ -4,6 +4,7 @@ import type { AppResult, MissionViewDto } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
 import { Panel, PanelEmpty } from '../components/Panel';
 import { PlanPanel } from '../components/PlanPanel';
+import { DecisionColumn } from '../components/workspace/DecisionColumn';
 import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionHeader } from '../components/workspace/MissionHeader';
 import { needsDecisionInConversation } from '../mission-text';
@@ -26,10 +27,10 @@ function pendingNote(hasWorktree: boolean, task: number): string {
 
 /**
  * Workspace de uma missão (seção 10.7, R168): o cabeçalho com título, situação e ações, e seis painéis
- * numa grade 2×3 (Conversa, Plano, Diff, Testes, Terminal e Logs do sistema), com uma reserva à direita
- * para a coluna "Aguardando você" (Tarefa 6). A visão vem do processo principal e é buscada de novo a
- * cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma mais nova,
- * não substitui a tela.
+ * numa grade 2×3 (Conversa, Plano, Diff, Testes, Terminal e Logs do sistema), com a coluna "Aguardando
+ * você" à direita (Tarefa 6), onde a decisão acontece. A visão vem do processo principal e é buscada
+ * de novo a cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma
+ * mais nova, não substitui a tela.
  *
  * Os painéis ficam montados o tempo todo, então a resposta digitada na Conversa não se perde quando a
  * pessoa age em outro painel. Quando a missão espera a decisão (R182), o foco vai para a Conversa.
@@ -45,6 +46,7 @@ export function MissionPage() {
   const [controlBusy, setControlBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
+  const decisionRef = useRef<HTMLElement>(null);
   const latestRequest = useRef(0);
 
   const reload = useCallback(async () => {
@@ -83,12 +85,18 @@ export function MissionPage() {
     [missionId, reload],
   );
 
-  const needsDecision =
-    state.status === 'ready' && needsDecisionInConversation(state.view.mission.status);
-  /** Quando a missão passa a esperar a decisão da pessoa, o foco vai para a Conversa (R182). */
+  const decisionStatus = state.status === 'ready' ? state.view.mission.status : undefined;
+  const needsDecision = decisionStatus !== undefined && needsDecisionInConversation(decisionStatus);
+  /**
+   * Quando a missão passa a esperar a decisão da pessoa, o foco vai para o lugar dela (R182): a
+   * aprovação na coluna Aguardando você, e a resposta do agente na Conversa.
+   */
   useEffect(() => {
-    if (needsDecision) conversationRef.current?.focus();
-  }, [needsDecision]);
+    if (!needsDecision) return;
+    const target =
+      decisionStatus === 'waiting_approval' ? decisionRef.current : conversationRef.current;
+    target?.focus();
+  }, [needsDecision, decisionStatus]);
 
   /**
    * Roda uma ação da missão, marcando `pending` enquanto ela não volta. Falha vira mensagem na tela,
@@ -145,7 +153,12 @@ export function MissionPage() {
         onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
         onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
         onCancel={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
-        onOpenDecision={() => conversationRef.current?.focus()}
+        onOpenDecision={() =>
+          (decisionStatus === 'waiting_approval'
+            ? decisionRef.current
+            : conversationRef.current
+          )?.focus()
+        }
       />
 
       {actionError === null ? null : (
@@ -165,9 +178,6 @@ export function MissionPage() {
             <ConversationPanel
               view={state.view}
               busy={busy}
-              onDecide={(approvalId, decision) =>
-                void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
-              }
               onAnswer={(text) =>
                 run(() => window.projectHub.missions.provideInput({ missionId, text }))
               }
@@ -197,7 +207,14 @@ export function MissionPage() {
         <Panel title="Logs do sistema" accent="yellow">
           <LogsPanel events={events} />
         </Panel>
-        <div aria-hidden="true" className="mission-grid__reserve" />
+        <DecisionColumn
+          view={state.view}
+          busy={busy}
+          focusRef={decisionRef}
+          onDecide={(approvalId, decision) =>
+            void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+          }
+        />
       </div>
     </div>
   );

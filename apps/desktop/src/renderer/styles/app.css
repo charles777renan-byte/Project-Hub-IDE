@@ -948,7 +948,8 @@ button:disabled {
  * janela baixa a grade passa a altura da página, que rola na vertical. O corpo de cada painel rola
  * dentro de si, e a página não cresce com o número de eventos. As colunas são minmax(0, 1fr),
  * para que nenhuma largura fixa cause rolagem horizontal da página. Abaixo de 1000px a grade vira uma
- * coluna, cada painel com altura fixa, a reserva some e a página rola na vertical.
+ * coluna, cada painel com altura fixa de 24rem; a coluna "Aguardando você" vem depois deles, na mesma
+ * largura, e a página rola na vertical. A coluna da direita é a reserva `.mission-grid__reserve`.
  */
 .app-main__content:has(> .mission-workspace) {
   height: 100%;
@@ -1023,10 +1024,107 @@ button:disabled {
   .mission-grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
-    grid-auto-rows: 24rem;
+    grid-auto-rows: auto;
+  }
+
+  .mission-grid > .panel {
+    height: 24rem;
   }
 
   .mission-grid__reserve {
-    display: none;
+    grid-column: 1;
+    grid-row: auto;
   }
+}
+
+/*
+ * Coluna "Aguardando você" (components/workspace/DecisionColumn.tsx): é a reserva de 370px da grade
+ * (`.mission-grid__reserve`, que ocupa as três linhas), com três painéis empilhados. Ela é a própria
+ * célula da grade, então estica para a altura da reserva. O primeiro painel (Aguardando você) cresce
+ * e, com pouco espaço, rola dentro de si; os outros dois ocupam a altura do conteúdo e também podem
+ * encolher, rolando no corpo. Abaixo de 1000px a coluna vem depois dos painéis, no fluxo da grade.
+ */
+.decision-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Os painéis de baixo mantêm a altura do conteúdo; quando não cabem, rola a coluna inteira. */
+.decision-column > .panel {
+  flex: 0 0 auto;
+}
+
+.decision-column > .panel:first-child {
+  flex: 1 1 auto;
+  min-height: 8rem;
+}
+
+/* A coluna recebe o foco quando a missão espera a aprovação: o contorno fica por dentro, como no painel Conversa. */
+.decision-column:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Pergunta do agente, na coluna: texto comum, e a dica "Responda na Conversa." em --muted. */
+.decision-question {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Critérios de aceite: uma linha por critério, com a marca "○ não verificado" embaixo. */
+.criteria {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.criteria li {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.criteria__status {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+/* Git: branch e worktree em pares rótulo e valor, e o aviso fixo abaixo. */
+.git-facts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.git-facts > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.git-facts dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.git-facts dd {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.git-notice {
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
 }
