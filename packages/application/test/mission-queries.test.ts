@@ -132,3 +132,137 @@ describe('getMissionView', () => {
     });
   });
 });
+
+describe('getMissionView: conclusão', () => {
+  const T1 = '2026-10-20T10:00:00.000Z';
+  const T2 = '2026-10-20T10:05:00.000Z';
+  const T3 = '2026-10-20T10:10:00.000Z';
+
+  /** Grava na auditoria da tentativa `e1` os eventos de uma execução que terminou. */
+  function audited(
+    repo: FakeMissionRepository,
+    options: { verification?: boolean; concluded?: boolean; summary?: string } = {},
+  ): void {
+    repo.insertExecution({ id: 'e1', missionId: 'm1', attempt: 1, status: 'succeeded' });
+    const add = (eventType: string, payload: Record<string, unknown>, createdAt: string) =>
+      repo.appendAudit({
+        aggregateType: 'execution',
+        aggregateId: 'e1',
+        eventType,
+        severity: 'info',
+        actor: 'agent',
+        payload,
+        createdAt,
+      });
+    if (options.verification !== false) {
+      add(
+        'verification.completed',
+        {
+          type: 'verification.completed',
+          command: 'pnpm test',
+          passed: 3,
+          failed: 1,
+          durationMs: 9,
+        },
+        T1,
+      );
+      add(
+        'verification.completed',
+        {
+          type: 'verification.completed',
+          command: 'pnpm test',
+          passed: 12,
+          failed: 0,
+          durationMs: 9,
+        },
+        T2,
+      );
+    }
+    add(
+      'session.completed',
+      { type: 'session.completed', result: { summary: options.summary ?? 'Login corrigido.' } },
+      T3,
+    );
+    if (options.concluded !== false) {
+      add('execution.concluded', { changedFiles: 4, gitState: 'uncommitted' }, T3);
+    }
+  }
+
+  function conclusionOf(deps: MissionQueryDeps) {
+    const result = getMissionView(deps, 'm1');
+    if (!result.ok) throw new Error('deveria devolver a visão');
+    return result.data.conclusion;
+  }
+
+  it('missão concluída traz o resumo, a última verificação, os arquivos e o estado Git', () => {
+    const { repo, deps } = harness();
+    repo.insertMission(mission('m1', { status: 'succeeded' }));
+    audited(repo);
+
+    expect(conclusionOf(deps)).toEqual({
+      summary: 'Login corrigido.',
+      verification: { passed: 12, failed: 0 },
+      changedFiles: 4,
+      gitState: 'uncommitted',
+    });
+  });
+
+  it('sem verificação, o resumo não traz o campo verification', () => {
+    const { repo, deps } = harness();
+    repo.insertMission(mission('m1', { status: 'succeeded' }));
+    audited(repo, { verification: false });
+
+    const conclusion = conclusionOf(deps);
+
+    expect(conclusion).toEqual({
+      summary: 'Login corrigido.',
+      changedFiles: 4,
+      gitState: 'uncommitted',
+    });
+    expect(conclusion).not.toHaveProperty('verification');
+  });
+
+  it('sem frase do agente, usa uma frase padrão', () => {
+    const { repo, deps } = harness();
+    repo.insertMission(mission('m1', { status: 'succeeded' }));
+    audited(repo, { summary: '   ' });
+
+    expect(conclusionOf(deps)?.summary).toBe('Missão concluída.');
+  });
+
+  it('missão concluída sem o registro de arquivos e Git não ganha resumo inventado', () => {
+    const { repo, deps } = harness();
+    repo.insertMission(mission('m1', { status: 'succeeded' }));
+    audited(repo, { concluded: false });
+
+    expect(conclusionOf(deps)).toBeUndefined();
+  });
+
+  it.each(['failed', 'cancelled', 'running'] as const)(
+    'missão %s não tem resumo, mesmo com eventos de uma tentativa anterior',
+    (status) => {
+      const { repo, deps } = harness();
+      repo.insertMission(mission('m1', { status }));
+      audited(repo);
+
+      expect(conclusionOf(deps)).toBeUndefined();
+    },
+  );
+
+  it('ignora o registro com valores que não fazem sentido', () => {
+    const { repo, deps } = harness();
+    repo.insertMission(mission('m1', { status: 'succeeded' }));
+    audited(repo, { concluded: false });
+    repo.appendAudit({
+      aggregateType: 'execution',
+      aggregateId: 'e1',
+      eventType: 'execution.concluded',
+      severity: 'info',
+      actor: 'system',
+      payload: { changedFiles: -1, gitState: 'talvez' },
+      createdAt: T3,
+    });
+
+    expect(conclusionOf(deps)).toBeUndefined();
+  });
+});

@@ -1,4 +1,4 @@
-import type { AppResult, MissionDiffDto } from '@project-hub/contracts';
+import type { AppResult, MissionConclusionDto, MissionDiffDto } from '@project-hub/contracts';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -42,6 +42,8 @@ export type MissionView = {
   pendingApprovals: ApprovalRequest[];
   /** Auditoria da missão e das tentativas, da mais antiga para a mais nova. */
   events: MissionEvent[];
+  /** Resumo de conclusão (R130). Só existe com a missão `succeeded` e o registro feito ao concluir. */
+  conclusion?: MissionConclusionDto;
 };
 
 const PROJECT_NOT_FOUND = 'O projeto não foi encontrado.';
@@ -83,6 +85,55 @@ export async function getMissionDiff(
   }
 }
 
+const DEFAULT_SUMMARY = 'Missão concluída.';
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Resumo de uma missão concluída (R130), derivado da auditoria. O registro `execution.concluded` diz
+ * quantos arquivos o worktree tinha alterados e o estado do Git na hora da conclusão; sem ele (missão
+ * anterior a este registro, ou Git que falhou ao ler), não há resumo, e nada é inventado. A frase vem
+ * do `session.completed` da mesma tentativa, e a verificação é a última `verification.completed` dela.
+ * Missão que não está `succeeded` nunca tem resumo, mesmo com eventos de uma tentativa anterior.
+ */
+export function deriveConclusion(
+  mission: Pick<Mission, 'status'>,
+  events: readonly MissionEvent[],
+): MissionConclusionDto | undefined {
+  if (mission.status !== 'succeeded') return undefined;
+  const concluded = [...events]
+    .reverse()
+    .find((event) => event.eventType === 'execution.concluded');
+  if (concluded === undefined) return undefined;
+  const { changedFiles, gitState } = concluded.payload;
+  if (!isCount(changedFiles) || (gitState !== 'clean' && gitState !== 'uncommitted')) {
+    return undefined;
+  }
+
+  const sameExecution = events.filter((event) => event.aggregateId === concluded.aggregateId);
+  const completed = [...sameExecution]
+    .reverse()
+    .find((event) => event.eventType === 'session.completed');
+  const result = completed?.payload['result'];
+  const phrase =
+    typeof result === 'object' && result !== null && 'summary' in result
+      ? result.summary
+      : undefined;
+  const summary =
+    typeof phrase === 'string' && phrase.trim() !== '' ? phrase.trim() : DEFAULT_SUMMARY;
+
+  const conclusion: MissionConclusionDto = { summary, changedFiles, gitState };
+  const run = [...sameExecution]
+    .reverse()
+    .find((event) => event.eventType === 'verification.completed');
+  if (run !== undefined && isCount(run.payload['passed']) && isCount(run.payload['failed'])) {
+    conclusion.verification = { passed: run.payload['passed'], failed: run.payload['failed'] };
+  }
+  return conclusion;
+}
+
 /** A visão completa de uma missão. Os eventos vêm da missão e de cada tentativa, em ordem de instante. */
 export function getMissionView(deps: MissionQueryDeps, missionId: string): AppResult<MissionView> {
   const mission = deps.repo.getMission(missionId);
@@ -101,17 +152,17 @@ export function getMissionView(deps: MissionQueryDeps, missionId: string): AppRe
   const projectView: MissionProject = { id: project.id, name: project.name, path: project.path };
   if (project.defaultBranch !== undefined) projectView.defaultBranch = project.defaultBranch;
 
-  return {
-    ok: true,
-    data: {
-      mission,
-      project: projectView,
-      steps: deps.repo.listSteps(missionId),
-      executions,
-      pendingApprovals: executions.flatMap((execution) =>
-        deps.repo.listPendingApprovals(execution.id),
-      ),
-      events,
-    },
+  const view: MissionView = {
+    mission,
+    project: projectView,
+    steps: deps.repo.listSteps(missionId),
+    executions,
+    pendingApprovals: executions.flatMap((execution) =>
+      deps.repo.listPendingApprovals(execution.id),
+    ),
+    events,
   };
+  const conclusion = deriveConclusion(mission, events);
+  if (conclusion !== undefined) view.conclusion = conclusion;
+  return { ok: true, data: view };
 }
