@@ -6,6 +6,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -32,7 +33,7 @@ import {
   restrictFileRequests,
   restrictNavigation,
 } from './security';
-import { buildWebPreferences } from './window';
+import { buildWebPreferences, TITLE_BAR_OVERLAY } from './window';
 
 // Sandbox em todo renderer, mesmo que uma janela futura esqueça a opção. Precisa vir antes do ready.
 app.enableSandbox();
@@ -115,6 +116,8 @@ function createMainWindow(): void {
     width: 1200,
     height: 800,
     show: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: TITLE_BAR_OVERLAY,
     webPreferences: buildWebPreferences(preloadPath),
   });
   mainWindow = win;
@@ -152,6 +155,8 @@ app
     applyContentSecurityPolicy(session.defaultSession);
     restrictFileRequests(session.defaultSession, rendererDirectory);
     denyAllPermissions(session.defaultSession);
+    // Sem o menu padrão do Electron (File, Edit, View, Window): a janela mostra só o quadro do app.
+    Menu.setApplicationMenu(null);
 
     // Empacotado, o ambiente do processo não troca a pasta de dados nem o seletor (R193).
     const env = applicationEnvironment(process.env, app.isPackaged);

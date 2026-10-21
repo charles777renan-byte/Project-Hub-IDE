@@ -30,7 +30,8 @@ describe('forma do painel', () => {
     expect(panel.get('border-radius')).toBe('var(--radius-panel)');
     expect(panel.get('border')).toBe('1px solid var(--line)');
     expect(panel.get('border-top')).toBe('3px solid var(--panel-accent)');
-    expect(panel.get('background')).toBe('var(--panel)');
+    // Translúcido de propósito: o fundo topográfico aparece por trás (ver topographic-styles.test.ts).
+    expect(panel.get('background')).toBe('var(--surface-glass)');
     expect(panel.get('min-height')).toBe('0');
     expect(panel.get('overflow')).toBe('hidden');
   });
