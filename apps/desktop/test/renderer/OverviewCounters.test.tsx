@@ -225,11 +225,24 @@ describe('OverviewCounters', () => {
     );
   });
 
-  it('sem a API do preload, mostra zero e não quebra', () => {
+  it('antes da primeira leitura, mostra traço e não zero, que pareceria um dado', () => {
+    window.projectHub = {
+      ping: vi.fn(),
+      projects: { list: vi.fn(() => new Promise<never>(() => {})) },
+      missions: { list: vi.fn(), subscribe: vi.fn(() => () => {}) },
+    } as unknown as ProjectHubApi;
+
     render(<OverviewCounters />);
 
-    expect(screen.getByText('0 executando')).toBeInTheDocument();
-    expect(screen.getByText('0 aguarda você')).toBeInTheDocument();
+    expect(screen.getByText('— executando')).toBeInTheDocument();
+    expect(screen.getByText('— aguarda você')).toBeInTheDocument();
+  });
+
+  it('sem a API do preload, mostra traço e não quebra', () => {
+    render(<OverviewCounters />);
+
+    expect(screen.getByText('— executando')).toBeInTheDocument();
+    expect(screen.getByText('— aguarda você')).toBeInTheDocument();
   });
 });
 
@@ -244,6 +257,7 @@ describe('useOverview', () => {
     const { result } = renderHook(() => useOverview());
 
     await waitFor(() => expect(result.current.running).toBe(1));
+    expect(result.current.loaded).toBe(true);
     expect(result.current.failedProjects).toEqual(['p2']);
     expect(result.current.items).toEqual([
       { projectId: 'p1', mission: mission('m1', 'p1', 'running') },

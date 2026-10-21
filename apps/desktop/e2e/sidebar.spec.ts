@@ -69,6 +69,14 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   await expect(bar.getByRole('link', { name: missionTitle })).toBeVisible();
   await expect(bar.getByRole('button', { name: '+ Nova missão' })).toBeVisible();
 
+  // A barra só rola quando a lista é maior que ela. Com quatro itens ela não rola, e um contorno que
+  // saísse da borda da rolagem não seria medido. Por isso a altura é limitada aqui, e a guarda abaixo
+  // confirma que a barra de fato rola antes da medição.
+  await bar.evaluate((element) => {
+    (element as HTMLElement).style.maxHeight = '150px';
+  });
+  expect(await bar.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
   // Tab a partir da navegação até a barra, e depois por cada item dela, até o foco sair.
   const visited: string[] = [];
   for (let press = 0; press < 20; press += 1) {

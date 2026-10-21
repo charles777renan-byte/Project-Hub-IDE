@@ -18,6 +18,8 @@ export type Overview = {
   items: OverviewItem[];
   /** Projetos cuja lista de missões falhou nesta leitura. Não zera a contagem dos outros. */
   failedProjects: string[];
+  /** Se alguma leitura já chegou. Antes disso, a contagem é desconhecida, não zero. */
+  loaded: boolean;
 };
 
 const WAITING_STATUSES: ReadonlySet<MissionDto['status']> = new Set([
@@ -26,7 +28,7 @@ const WAITING_STATUSES: ReadonlySet<MissionDto['status']> = new Set([
   'waiting_input',
 ]);
 
-const EMPTY: Overview = { running: 0, waiting: 0, items: [], failedProjects: [] };
+const EMPTY: Overview = { running: 0, waiting: 0, items: [], failedProjects: [], loaded: false };
 
 /** Em qual contador a missão cai, ou `null` se nenhum (rascunho, fila, pausa, falha, sucesso, cancelada). */
 function countedAs(status: MissionDto['status']): 'running' | 'waiting' | null {
@@ -66,7 +68,13 @@ async function loadOverview(): Promise<Overview | null> {
     })),
   );
 
-  const overview: Overview = { running: 0, waiting: 0, items: [], failedProjects: [] };
+  const overview: Overview = {
+    running: 0,
+    waiting: 0,
+    items: [],
+    failedProjects: [],
+    loaded: true,
+  };
   for (const { projectId, missions } of perProject) {
     if (missions === null) {
       overview.failedProjects.push(projectId);

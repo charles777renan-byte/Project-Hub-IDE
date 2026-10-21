@@ -256,8 +256,11 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
   await expect(page.getByRole('main').getByText('Falhou', { exact: true })).toBeVisible();
   // A missão não volta a rodar nem a esperar: sem aviso de decisão, sem cartão, sem pausa.
-  await expect(page.getByText('Aguarda sua aprovação', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Em execução', { exact: true })).toHaveCount(0);
+  // Escopadas a `main`: a barra lateral também mostra o estado das missões.
+  await expect(
+    page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('Em execução', { exact: true })).toHaveCount(0);
   await expect(page.getByText(MISSION_NOTICE)).toHaveCount(0);
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);

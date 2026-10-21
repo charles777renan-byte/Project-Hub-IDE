@@ -129,6 +129,14 @@ describe('contadores do cabeçalho', () => {
     expect(ruleDeclarations(appCss, '.overview-counters').get('display')).toBe('flex');
   });
 
+  it('o texto de cada contador é caixa alta, 11.5px, mono e na cor muted', () => {
+    const counter = ruleDeclarations(appCss, '.overview-counter');
+    expect(counter.get('text-transform')).toBe('uppercase');
+    expect(counter.get('font-size')).toBe('11.5px');
+    expect(counter.get('font-family')).toBe('var(--font-mono)');
+    expect(counter.get('color')).toBe('var(--muted)');
+  });
+
   it('o ponto de cada contador tem 8px', () => {
     const dot = ruleDeclarations(appCss, '.overview-counter::before');
     expect(dot.get('width')).toBe('8px');

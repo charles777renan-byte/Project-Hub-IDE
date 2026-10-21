@@ -9,7 +9,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { Sidebar } from '../../src/renderer/components/Sidebar';
-import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/use-sidebar-data';
+import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
 // Barra lateral (Tarefa 4 do plano da interface): projetos na seção Projetos e, na rota de um projeto,
@@ -113,6 +113,8 @@ describe('Sidebar: seção Projetos', () => {
     const projects = await within(bar).findByRole('region', { name: 'Projetos' });
     expect(within(projects).getByRole('link', { name: 'Project Hub' })).toBeInTheDocument();
     expect(within(projects).getByRole('link', { name: 'Notas' })).toBeInTheDocument();
+    // O nome completo fica num `title`, para quem não vê o texto cortado com reticências.
+    expect(within(projects).getByText('Notas')).toHaveAttribute('title', 'Notas');
   });
 
   it('marca o projeto da rota atual com aria-current, e só ele', async () => {
@@ -190,6 +192,11 @@ describe('Sidebar: seção Missões', () => {
     expect(within(missions).getByRole('link', { name: 'Ajustar login' })).toHaveAttribute(
       'aria-current',
       'page',
+    );
+    // Só a página atual leva aria-current: o projeto dessa missão fica sem ele.
+    const projects = screen.getByRole('region', { name: 'Projetos' });
+    expect(within(projects).getByRole('link', { name: 'Project Hub' })).not.toHaveAttribute(
+      'aria-current',
     );
   });
 
