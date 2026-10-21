@@ -85,16 +85,18 @@ test.describe('renderer isolado', () => {
         projects: names(api['projects']),
         missions: names(api['missions']),
         approvals: names(api['approvals']),
+        worktrees: names(api['worktrees']),
       };
     });
 
     expect(surface).not.toBeNull();
-    expect(surface?.root).toEqual(['approvals', 'missions', 'ping', 'projects']);
+    expect(surface?.root).toEqual(['approvals', 'missions', 'ping', 'projects', 'worktrees']);
     const everyName = [
       ...(surface?.root ?? []),
       ...(surface?.projects ?? []),
       ...(surface?.missions ?? []),
       ...(surface?.approvals ?? []),
+      ...(surface?.worktrees ?? []),
     ];
     for (const generic of ['invoke', 'send', 'sendSync', 'on', 'once', 'ipcRenderer']) {
       expect(everyName).not.toContain(generic);

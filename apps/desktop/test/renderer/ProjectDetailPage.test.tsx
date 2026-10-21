@@ -161,14 +161,39 @@ describe('ProjectDetailPage: outras abas', () => {
     expect(screen.queryByText('Disponível na próxima etapa.')).not.toBeInTheDocument();
   });
 
-  it('Worktrees e Configurações e permissões mantêm o texto de próxima etapa', async () => {
-    installApi([]);
+  it('a aba Worktrees lista os worktrees do projeto', async () => {
+    const api = installApi([]);
+    Object.assign(api, {
+      worktrees: {
+        list: vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            data: [
+              {
+                missionId: 'm1',
+                missionTitle: 'Ajustar login',
+                status: 'failed',
+                path: 'C:\\worktrees\\app\\m1',
+                branch: 'ph/m1-ajustar-login',
+              },
+            ],
+          }),
+        ),
+      },
+    });
     renderAt('/projects/p1');
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Worktrees' }));
-    expect(screen.getByText('Disponível na próxima etapa.')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('tab', { name: 'Configurações e permissões' }));
+    expect(await screen.findByText('ph/m1-ajustar-login')).toBeInTheDocument();
+    expect(screen.queryByText('Disponível na próxima etapa.')).not.toBeInTheDocument();
+  });
+
+  it('Configurações e permissões mantém o texto de próxima etapa', async () => {
+    installApi([]);
+    renderAt('/projects/p1');
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Configurações e permissões' }));
     expect(screen.getByText('Disponível na próxima etapa.')).toBeInTheDocument();
   });
 });
