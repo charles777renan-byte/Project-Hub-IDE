@@ -34,6 +34,7 @@ export function mediaBlock(css: string, query: string): string {
   const start = css.indexOf(`@media ${query}`);
   if (start < 0) return '';
   const open = css.indexOf('{', start);
+  if (open < 0) return '';
   let depth = 0;
   for (let index = open; index < css.length; index += 1) {
     if (css[index] === '{') depth += 1;
@@ -50,6 +51,8 @@ function withoutMedia(css: string): string {
   for (let start = css.indexOf('@media', index); start >= 0; start = css.indexOf('@media', index)) {
     result += css.slice(index, start);
     const open = css.indexOf('{', start);
+    // Um `@media` sem bloco (CSS quebrado) encerra a leitura, em vez de girar para sempre.
+    if (open < 0) return result;
     let depth = 0;
     let end = open;
     for (; end < css.length; end += 1) {
