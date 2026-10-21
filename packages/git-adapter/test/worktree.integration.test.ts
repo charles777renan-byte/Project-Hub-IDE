@@ -589,6 +589,51 @@ describe('createWorktree: .worktreeinclude', () => {
     expect(readFileSync(join(wt.path, '.env'), 'utf8')).toBe('versao do commit antigo');
   });
 
+  // `config/local.json` aparece antes da pasta que o contém. A pasta é copiada primeiro, inteira, e a
+  // entrada de dentro já está coberta: não é copiada de novo, nem listada, nem vira `ja-existe`.
+  it('entradas que se sobrepõem: a pasta vem inteira e a entrada de dentro não é listada', async () => {
+    const repoPath = setUpRepo('config/\n', 'config/local.json\nconfig\n');
+    mkdirSync(join(repoPath, 'config'));
+    writeFileSync(join(repoPath, 'config', 'local.json'), 'local');
+    writeFileSync(join(repoPath, 'config', 'other.json'), 'outro');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual(['config']);
+    expect(wt.included.skipped).toEqual([]);
+    expect(wt.included.warning).toBeUndefined();
+    expect(readFileSync(join(wt.path, 'config', 'local.json'), 'utf8')).toBe('local');
+    expect(readFileSync(join(wt.path, 'config', 'other.json'), 'utf8')).toBe('outro');
+  });
+
+  it('duas entradas na mesma pasta ignorada são copiadas, sem ja-existe da pasta criada pela primeira', async () => {
+    const repoPath = setUpRepo('config/\n', 'config/a.json\nconfig/b.json\n');
+    mkdirSync(join(repoPath, 'config'));
+    writeFileSync(join(repoPath, 'config', 'a.json'), 'a');
+    writeFileSync(join(repoPath, 'config', 'b.json'), 'b');
+
+    const wt = await create(repoPath);
+
+    expect(wt.included.copied).toEqual(['config/a.json', 'config/b.json']);
+    expect(wt.included.skipped).toEqual([]);
+  });
+
+  it.skipIf(!symlinkSupported)(
+    'um .worktreeinclude que é link simbólico não é lista, e não gera aviso',
+    async () => {
+      const outside = newFolder('project-hub-fora-');
+      writeFileSync(join(outside, 'lista.txt'), '.env\n');
+      const repoPath = setUpRepo('.env\n');
+      writeFileSync(join(repoPath, '.env'), 'x');
+      symlinkSync(join(outside, 'lista.txt'), join(repoPath, '.worktreeinclude'), 'file');
+
+      const wt = await create(repoPath);
+
+      expect(wt.included).toEqual({ copied: [], skipped: [] });
+      expect(existsSync(join(wt.path, '.env'))).toBe(false);
+    },
+  );
+
   it('sem .worktreeinclude, included vem vazio e sem aviso', async () => {
     const repoPath = setUpRepo('.env\n');
     writeFileSync(join(repoPath, '.env'), 'x');

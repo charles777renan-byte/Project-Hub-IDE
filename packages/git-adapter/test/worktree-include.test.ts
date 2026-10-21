@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  copyWorktreeIncludes,
   parseWorktreeInclude,
   unquoteGitPath,
   WORKTREE_INCLUDE_FILE,
@@ -56,6 +57,20 @@ describe('parseWorktreeInclude', () => {
     ]);
   });
 
+  // O Windows ignora ponto e espaço no fim de um nome: `.. ` e `...` chegam à pasta de cima como `..`.
+  it('recusa .. e . com ponto ou espaço no fim, como o Windows os lê', () => {
+    const lines = ['.. /fora', 'a/.. /b', '.../fora', 'a/. /b', 'a/..  /b'];
+
+    const parsed = parseWorktreeInclude(lines.join('\n'));
+
+    expect(parsed.entries).toEqual([]);
+    expect(parsed.skipped.map((skip) => skip.reason)).toEqual(lines.map(() => 'caminho-inseguro'));
+  });
+
+  it('aceita um nome que só termina em ponto, sem ser . nem ..', () => {
+    expect(parseWorktreeInclude('a./b\nc.d\n').entries).toEqual(['a./b', 'c.d']);
+  });
+
   it('reconhece .git também em outra caixa, que o Windows trata como a mesma pasta', () => {
     const parsed = parseWorktreeInclude('.GIT/config\n.git\n.gitignore\nvendor/.git\n');
 
@@ -87,6 +102,24 @@ describe('parseWorktreeInclude', () => {
 
   it('texto vazio não tem entradas nem recusas', () => {
     expect(parseWorktreeInclude('')).toEqual({ entries: [], skipped: [] });
+  });
+});
+
+describe('copyWorktreeIncludes: nunca rejeita', () => {
+  it.each([
+    ['sem argumento', undefined],
+    ['com null', null],
+    ['sem repoPath', { worktreePath: 'C:\\x' }],
+    ['sem worktreePath', { repoPath: 'C:\\x' }],
+    ['com caminhos que não são texto', { repoPath: 1, worktreePath: {} }],
+  ])('entrada malformada %s devolve o resultado vazio com aviso', async (_case, input) => {
+    const result = await copyWorktreeIncludes(input as never);
+
+    expect(result).toEqual({
+      copied: [],
+      skipped: [],
+      warning: 'Não foi possível concluir a cópia do .worktreeinclude.',
+    });
   });
 });
 

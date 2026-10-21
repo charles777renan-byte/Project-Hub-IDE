@@ -33,7 +33,7 @@ export type WorktreeIncludeSkipReason =
 export type WorktreeIncludeSkip = { path: string; reason: WorktreeIncludeSkipReason };
 
 export type WorktreeIncludeResult = {
-  /** Os caminhos copiados, na ordem do arquivo. */
+  /** Os caminhos copiados: os mais rasos primeiro e, na mesma profundidade, na ordem do arquivo. */
   copied: string[];
   skipped: WorktreeIncludeSkip[];
   /** Presente quando a cópia parou antes do fim, ou o arquivo inteiro foi descartado. */
@@ -46,12 +46,15 @@ function isGitFolder(segment: string): boolean {
   return name === '.git' || name === 'git~1';
 }
 
-/** Absoluto, com segmento vazio, `.` ou `..`, ou dentro de `.git`: tudo o que poderia sair do projeto ou mexer no Git. */
+/**
+ * Absoluto, com segmento vazio, `.` ou `..`, ou dentro de `.git`: tudo o que poderia sair do projeto
+ * ou mexer no Git. O Windows ignora ponto e espaço no fim de um nome, então `.. ` e `...` valem como
+ * `..`: um segmento que fica vazio sem eles também é recusado.
+ */
 function isUnsafePath(path: string): boolean {
   if (path.startsWith('/') || /^[a-zA-Z]:/.test(path)) return true;
   const segments = path.split('/');
-  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..'))
-    return true;
+  if (segments.some((segment) => segment.replace(/[. ]+$/, '') === '')) return true;
   return isGitFolder(segments[0] ?? '');
 }
 
@@ -213,6 +216,11 @@ async function ignoredEntries(
   return ignored;
 }
 
+/** Quantos segmentos tem um caminho já normalizado (`a/b` tem 2). */
+function depthOf(path: string): number {
+  return path.split('/').length;
+}
+
 /** Link simbólico nunca é seguido nem copiado, em nenhum nível de uma pasta. */
 async function isNotSymlink(source: string): Promise<boolean> {
   return !(await lstat(source)).isSymbolicLink();
@@ -228,21 +236,25 @@ async function isNotSymlink(source: string): Promise<boolean> {
  * - existe no repositório e não é link simbólico, nem tem um link no meio do caminho;
  * - o Git o ignora: um arquivo versionado já está no worktree, e um que o Git não ignora criaria
  *   uma diferença falsa no status;
- * - não existe ainda no destino, e nada é sobrescrito (`force: false`).
+ * - não existia no destino antes desta chamada, e nada é sobrescrito (`force: false`).
  *
- * Nunca rejeita: um erro inesperado devolve o que já foi copiado, com um aviso. A criação do
- * worktree, que já deu certo, nunca vira falha por causa da cópia.
+ * As entradas vão das mais rasas para as mais fundas, na ordem do arquivo dentro de cada nível. Uma
+ * entrada dentro de uma pasta já copiada nesta chamada está coberta por essa cópia: não é copiada de
+ * novo e não aparece em `copied` nem em `skipped`.
+ *
+ * Nunca rejeita: um erro inesperado, inclusive uma entrada malformada, devolve o que já foi
+ * copiado, com um aviso. A criação do worktree, que já deu certo, nunca vira falha por causa da cópia.
  */
 export async function copyWorktreeIncludes(input: {
   repoPath: string;
   worktreePath: string;
 }): Promise<WorktreeIncludeResult> {
-  const { repoPath } = input;
-  const worktreePath = resolve(input.worktreePath);
   const copied: string[] = [];
   const skipped: WorktreeIncludeSkip[] = [];
 
   try {
+    const { repoPath } = input;
+    const worktreePath = resolve(input.worktreePath);
     const listFile = join(repoPath, WORKTREE_INCLUDE_FILE);
     let info;
     try {
@@ -270,7 +282,18 @@ export async function copyWorktreeIncludes(input: {
     const ignored =
       present.length === 0 ? new Set<string>() : await ignoredEntries(repoPath, present);
 
-    for (const { path } of present) {
+    // Ancestrais primeiro (`Array.sort` é estável: a ordem do arquivo vale dentro de cada nível), para
+    // que uma pasta seja copiada inteira antes de suas entradas internas serem olhadas.
+    const byDepth = [...present].sort((a, b) => depthOf(a.path) - depthOf(b.path));
+    // O que já existia no destino ANTES de qualquer cópia: o que uma cópia desta chamada criou não conta.
+    const before = new Map<string, Probe['kind']>();
+    for (const { path } of byDepth) {
+      if (ignored.has(path)) before.set(path, (await probe(worktreePath, path)).kind);
+    }
+
+    const copiedRoots: string[] = [];
+    for (const { path } of byDepth) {
+      if (copiedRoots.some((root) => path.startsWith(`${root}/`))) continue;
       if (!ignored.has(path)) {
         skipped.push({ path, reason: 'nao-ignorado' });
         continue;
@@ -280,7 +303,7 @@ export async function copyWorktreeIncludes(input: {
         skipped.push({ path, reason: 'caminho-inseguro' });
         continue;
       }
-      const existing = await probe(worktreePath, path);
+      const existing = { kind: before.get(path) };
       // Um link no destino (uma pasta versionada como link, por exemplo) levaria a escrita para fora.
       if (existing.kind === 'link') {
         skipped.push({ path, reason: 'caminho-inseguro' });
@@ -298,6 +321,7 @@ export async function copyWorktreeIncludes(input: {
           filter: isNotSymlink,
         });
         copied.push(path);
+        copiedRoots.push(path);
       } catch {
         skipped.push({ path, reason: 'falha-ao-copiar' });
       }
