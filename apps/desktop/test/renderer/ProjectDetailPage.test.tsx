@@ -318,7 +318,7 @@ describe('ProjectDetailPage: arquivar e remover', () => {
       error: {
         code: 'MISSION_INVALID_STATE',
         message:
-          'Há missões em andamento neste projeto. Cancele ou aguarde antes de arquivar ou remover.',
+          'Há missões ativas ou aguardando início neste projeto. Cancele ou aguarde antes de arquivar ou remover.',
         retryable: false,
       },
     });
@@ -327,7 +327,7 @@ describe('ProjectDetailPage: arquivar e remover', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Arquivar projeto' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Há missões em andamento');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Há missões ativas ou aguardando início');
     expect(screen.getByRole('heading', { level: 1, name: 'Project Hub' })).toBeInTheDocument();
     expect(screen.queryByText('Lista de projetos')).not.toBeInTheDocument();
   });

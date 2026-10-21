@@ -11,7 +11,7 @@ export type MissionStatus = MissionDto['status'];
 const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
   draft: { label: 'Rascunho', tone: 'muted' },
   planned: { label: 'Aguarda aprovação do plano', tone: 'violet' },
-  queued: { label: 'Plano aprovado, na fila', tone: 'muted' },
+  queued: { label: 'Plano aprovado, aguardando início', tone: 'muted' },
   running: { label: 'Em execução', tone: 'lime' },
   waiting_approval: { label: 'Aguarda sua aprovação', tone: 'violet' },
   waiting_input: { label: 'Aguarda sua resposta', tone: 'violet' },
