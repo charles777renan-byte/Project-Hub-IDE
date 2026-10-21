@@ -178,6 +178,22 @@ export const missionDiffDtoSchema = z.object({
 });
 export type MissionDiffDto = z.infer<typeof missionDiffDtoSchema>;
 
+/** Estado do Git do worktree ao concluir: `uncommitted` quando há alteração sem commit. */
+export const GIT_STATE_VALUES = ['clean', 'uncommitted'] as const;
+
+/**
+ * Resumo da missão concluída (R130). Só existe quando a missão está `succeeded`. Não é gravado como
+ * está: a aplicação o deriva da auditoria (frase final do agente, última verificação) e do registro
+ * de arquivos e Git feito ao concluir. Missão cancelada ou com falha não tem resumo.
+ */
+export const missionConclusionSchema = z.object({
+  summary: z.string(),
+  verification: z.object({ passed: z.number(), failed: z.number() }).optional(),
+  changedFiles: z.number(),
+  gitState: z.enum(GIT_STATE_VALUES),
+});
+export type MissionConclusionDto = z.infer<typeof missionConclusionSchema>;
+
 export const missionViewSchema = z.object({
   mission: missionDtoSchema,
   project: z.object({
@@ -190,5 +206,6 @@ export const missionViewSchema = z.object({
   executions: z.array(executionDtoSchema),
   pendingApprovals: z.array(approvalDtoSchema),
   events: z.array(missionEventDtoSchema),
+  conclusion: missionConclusionSchema.optional(),
 });
 export type MissionViewDto = z.infer<typeof missionViewSchema>;

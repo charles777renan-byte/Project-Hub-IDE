@@ -12,15 +12,54 @@ import { projectPath } from '../../routes';
 import { ConfirmButton } from '../ConfirmButton';
 import { StatusChip } from '../StatusChip';
 
+/** Quantos arquivos o worktree tinha alterados, em uma frase. */
+function filesText(count: number): string {
+  if (count === 0) return 'Nenhum arquivo alterado';
+  return count === 1 ? '1 arquivo alterado' : `${count} arquivos alterados`;
+}
+
+/**
+ * Resumo da missão concluída: a frase do agente, a verificação (passou/total), os arquivos e o estado
+ * do Git. A frase vem do agente e entra como texto, nunca como HTML.
+ */
+function ConclusionSummary({
+  conclusion,
+}: {
+  conclusion: NonNullable<MissionViewDto['conclusion']>;
+}) {
+  const { verification } = conclusion;
+  const failed = verification !== undefined && verification.failed > 0;
+  return (
+    <section className="conclusion" aria-label="Resumo da conclusão">
+      <p className="conclusion__summary">{conclusion.summary}</p>
+      <ul className="conclusion__facts">
+        {verification === undefined ? null : (
+          <li
+            className={failed ? 'conclusion__item conclusion__item--failed' : 'conclusion__item'}
+          >{`Verificação ${verification.passed}/${verification.passed + verification.failed} passou`}</li>
+        )}
+        <li className="conclusion__item">{filesText(conclusion.changedFiles)}</li>
+        <li className="conclusion__item">
+          {conclusion.gitState === 'uncommitted'
+            ? 'Git: alterações sem commit'
+            : 'Git: sem alterações pendentes'}
+        </li>
+      </ul>
+    </section>
+  );
+}
+
 /**
  * Cabeçalho do workspace da missão (seção 10.7): o projeto, o título, a situação, as ações (pausar,
  * retomar, tentar de novo, cancelar e, com a missão encerrada, excluir), o aviso de decisão pendente e
- * a linha projeto · branch · worktree. Este componente só mostra e chama o que a página passa: o
- * comportamento das ações fica na página.
+ * a linha projeto · branch · worktree. Com a missão concluída, mostra também o resumo de conclusão
+ * (R130). Este componente só mostra e chama o que a página passa: o comportamento das ações fica na
+ * página.
  */
 export function MissionHeader({
   mission,
   project,
+  conclusion,
   busy,
   controlBusy,
   onPause,
@@ -32,6 +71,8 @@ export function MissionHeader({
 }: {
   mission: MissionViewDto['mission'];
   project: MissionViewDto['project'];
+  /** Resumo de conclusão. Só aparece com a missão concluída; cancelada ou com falha não tem resumo. */
+  conclusion?: MissionViewDto['conclusion'];
   /** Chamadas longas (nova tentativa): desabilitam Tentar de novo. */
   busy: boolean;
   /** Pausar, retomar, cancelar e excluir: cada uma só cobre a própria chamada. */
@@ -90,6 +131,9 @@ export function MissionHeader({
               {MISSION_TEXT.decisionLink}
             </button>
           </p>
+        ) : null}
+        {mission.status === 'succeeded' && conclusion !== undefined ? (
+          <ConclusionSummary conclusion={conclusion} />
         ) : null}
         <p className="mission-meta">
           {project.name} · branch {project.defaultBranch ?? 'sem Git'} · worktree{' '}

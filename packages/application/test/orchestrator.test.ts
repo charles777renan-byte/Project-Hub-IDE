@@ -1,4 +1,4 @@
-import type { AppResult } from '@project-hub/contracts';
+import type { AppResult, MissionDiffDto } from '@project-hub/contracts';
 import type { AuditEvent, Execution, Mission } from '@project-hub/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { createOrchestrator, type Orchestrator } from '../src/missions/orchestrator';
@@ -23,6 +23,8 @@ type HarnessOptions = {
   pauseResume?: boolean;
   worktreeFailure?: { code: string; message: string };
   repositoryKind?: 'git' | 'none';
+  /** Lê as alterações do worktree ao concluir. Sem ele, a missão conclui sem o resumo de arquivos. */
+  diff?: (worktreePath: string) => Promise<MissionDiffDto>;
 };
 
 type Harness = {
@@ -67,6 +69,7 @@ function harness(options: HarnessOptions = {}): Harness {
     }),
     worktreesRoot: 'C:\\hub\\worktrees',
     agent,
+    ...(options.diff === undefined ? {} : { diff: { diff: options.diff } }),
     now: () => new Date(Date.UTC(2026, 9, 20, 10, 0, tick++)).toISOString(),
     newId: () => `id-${++ids}`,
   });
@@ -1037,5 +1040,121 @@ describe('missão inexistente', () => {
 
     expect(h.repo.audit()).toHaveLength(0);
     expect(h.agent.starts).toHaveLength(0);
+  });
+});
+
+describe('resumo de conclusão (R130)', () => {
+  const changedFile = (path: string): MissionDiffDto['files'][number] => ({
+    path,
+    status: 'modified',
+    added: 1,
+    removed: 0,
+    binary: false,
+    truncated: false,
+  });
+  const concludedEvents = (h: Harness): AuditEvent[] =>
+    h.repo.audit().filter((e) => e.eventType === 'execution.concluded');
+
+  it('missão concluída grava arquivos alterados e estado Git, lidos do worktree', async () => {
+    const diff = vi.fn(() =>
+      Promise.resolve<MissionDiffDto>({
+        files: [changedFile('a.ts'), changedFile('b.ts')],
+        truncatedFiles: false,
+      }),
+    );
+    const h = harness({ scripts: [[]], diff });
+    h.repo.insertMission(missionFixture());
+
+    const execution = data(await h.orchestrator.startMission(MISSION));
+
+    expect(diff).toHaveBeenCalledWith(WORKTREE_PATH);
+    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(concludedEvents(h)).toEqual([
+      expect.objectContaining({
+        aggregateType: 'execution',
+        aggregateId: execution.id,
+        payload: { changedFiles: 2, gitState: 'uncommitted' },
+      }),
+    ]);
+  });
+
+  it('worktree sem alteração grava zero arquivos e estado clean', async () => {
+    const h = harness({
+      scripts: [[]],
+      diff: () => Promise.resolve({ files: [], truncatedFiles: false }),
+    });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(concludedEvents(h).map((e) => e.payload)).toEqual([
+      { changedFiles: 0, gitState: 'clean' },
+    ]);
+  });
+
+  it('o evento sai na mesma transação do fim: antes de session.completed, a missão ainda não terminou', async () => {
+    const h = harness({
+      scripts: [[]],
+      diff: () => Promise.resolve({ files: [], truncatedFiles: false }),
+    });
+    h.repo.insertMission(missionFixture());
+
+    const execution = data(await h.orchestrator.startMission(MISSION));
+
+    const types = h.repo
+      .audit()
+      .filter((e) => e.aggregateId === execution.id)
+      .map((e) => e.eventType);
+    expect(types).toContain('execution.concluded');
+    expect(types.indexOf('execution.concluded')).toBeGreaterThan(
+      types.indexOf('session.completed'),
+    );
+  });
+
+  it('se o Git falha ao ler as alterações, a missão conclui mesmo assim, sem inventar o resumo', async () => {
+    const h = harness({ scripts: [[]], diff: () => Promise.reject(new Error('git quebrou')) });
+    h.repo.insertMission(missionFixture());
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    data(await h.orchestrator.startMission(MISSION));
+    spy.mockRestore();
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(concludedEvents(h)).toHaveLength(0);
+  });
+
+  it('sem a porta de alterações, a missão conclui sem o resumo', async () => {
+    const h = harness({ scripts: [[]] });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(concludedEvents(h)).toHaveLength(0);
+  });
+
+  it('missão que falha não lê o Git nem grava resumo', async () => {
+    const diff = vi.fn(() => Promise.resolve<MissionDiffDto>({ files: [], truncatedFiles: false }));
+    const h = harness({ scripts: [[{ kind: 'fail', message: 'quebrou' }]], diff });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+    expect(diff).not.toHaveBeenCalled();
+    expect(concludedEvents(h)).toHaveLength(0);
+  });
+
+  it('missão cancelada não lê o Git nem grava resumo', async () => {
+    const diff = vi.fn(() => Promise.resolve<MissionDiffDto>({ files: [], truncatedFiles: false }));
+    const h = harness({ scripts: [[{ kind: 'approval' }]], diff });
+    h.repo.insertMission(missionFixture());
+    data(await h.orchestrator.startMission(MISSION));
+
+    data(await h.orchestrator.cancelMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
+    expect(diff).not.toHaveBeenCalled();
+    expect(concludedEvents(h)).toHaveLength(0);
   });
 });
