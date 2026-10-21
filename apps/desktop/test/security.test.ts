@@ -472,6 +472,7 @@ describe('buildProjectHubApi', () => {
       'approvePlan',
       'cancel',
       'create',
+      'diff',
       'get',
       'list',
       'pause',
@@ -645,6 +646,19 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     expect(calls).toEqual([[CHANNELS.missionsGet, { missionId: 'm1' }]]);
     expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
     vi.restoreAllMocks();
+  });
+
+  it('missions.diff leva o id da missão no canal de alterações e confere a resposta', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } });
+    }, noEvents);
+
+    const result = await api.missions.diff('m1');
+
+    expect(calls).toEqual([[CHANNELS.missionsDiff, { missionId: 'm1' }]]);
+    expect(result).toEqual({ ok: true, data: { files: [], truncatedFiles: false } });
   });
 
   it('ações sem dado (aprovar plano, cancelar, decidir) aceitam sucesso vazio', async () => {

@@ -5,6 +5,7 @@ import { ConversationPanel } from '../components/ConversationPanel';
 import { Panel, PanelEmpty } from '../components/Panel';
 import { PlanPanel } from '../components/PlanPanel';
 import { DecisionColumn } from '../components/workspace/DecisionColumn';
+import { DiffPanel } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionHeader } from '../components/workspace/MissionHeader';
 import { needsDecisionInConversation } from '../mission-text';
@@ -224,7 +225,7 @@ export function MissionPage() {
           />
         </Panel>
         <Panel title="Diff" accent="orange">
-          <PanelEmpty>{pendingNote(hasWorktree, 10)}</PanelEmpty>
+          <DiffPanel missionId={missionId} hasWorktree={hasWorktree} refreshKey={events.length} />
         </Panel>
         <Panel title="Testes" accent="lime">
           <PanelEmpty>{pendingNote(hasWorktree, 12)}</PanelEmpty>

@@ -7,6 +7,8 @@ export const CHANNELS = {
   missionsCreate: 'missions:create:v1',
   missionsList: 'missions:list:v1',
   missionsGet: 'missions:get:v1',
+  /** Alterações do worktree da missão em relação ao HEAD (Tarefa 10 da interface). */
+  missionsDiff: 'missions:diff:v1',
   missionsPlan: 'missions:plan:v1',
   missionsApprovePlan: 'missions:approve-plan:v1',
   missionsStart: 'missions:start:v1',

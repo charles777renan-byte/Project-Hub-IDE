@@ -49,6 +49,7 @@ function installApi(initial: MissionViewDto) {
   const api = {
     missions: {
       get: vi.fn(() => Promise.resolve<AppResult<MissionViewDto>>({ ok: true, data: current })),
+      diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
       approvePlan: vi.fn(() => Promise.resolve(OK)),
       plan: vi.fn(() => Promise.resolve({ ok: true, data: { missionId: 'm1', steps: [] } })),
       start: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e1' } })),
@@ -157,7 +158,7 @@ describe('MissionPage: grade de painéis', () => {
 
     expect(
       within(await screen.findByRole('region', { name: 'Diff' })).getByText(
-        'Chega com a Tarefa 10.',
+        'A missão ainda não alterou arquivos.',
       ),
     ).toBeInTheDocument();
     expect(

@@ -4,6 +4,7 @@ import type {
   CreateMissionInput,
   DecideApprovalInput,
   ExecutionDto,
+  MissionDiffDto,
   MissionDto,
   MissionEventDto,
   MissionPlanDto,
@@ -33,6 +34,8 @@ export type ProjectHubApi = {
     list(projectId: string): Promise<AppResult<MissionDto[]>>;
     /** A visão completa de uma missão: plano, tentativas, aprovações pendentes e eventos. */
     get(missionId: string): Promise<AppResult<MissionViewDto>>;
+    /** Alterações do worktree da missão em relação ao HEAD. Sem worktree, a lista vem vazia. */
+    diff(missionId: string): Promise<AppResult<MissionDiffDto>>;
     /** Gera o plano, ou refaz o plano de uma missão planejada (R161). */
     plan(missionId: string): Promise<AppResult<MissionPlanDto>>;
     /** Aprova o plano gerado: a missão vai para a fila. */

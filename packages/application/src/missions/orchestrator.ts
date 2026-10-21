@@ -4,7 +4,7 @@ import type {
   AgentEvent,
   AgentSession,
 } from '@project-hub/agent-sdk';
-import { ERROR_CODES, type AppResult, type ErrorCode } from '@project-hub/contracts';
+import type { AppResult } from '@project-hub/contracts';
 import {
   canTransition,
   type ApprovalRequest,
@@ -16,7 +16,7 @@ import {
   type ProjectRecord,
 } from '@project-hub/domain';
 import type { MissionRepository, ProjectRepository, WorktreeNames, WorktreePort } from '../ports';
-import { failure } from '../result';
+import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
 import { expirePendingApprovals, moveMission } from './transitions';
 
@@ -99,15 +99,6 @@ type Workspace = { cwd: string };
  * transação, e a mudança não foi gravada.
  */
 type ControlOutcome = 'moved' | 'already' | 'stale';
-
-/** O código do contrato que a falha traz, se ela traz um (o `GitError` traz). */
-function errorCode(error: unknown): ErrorCode | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
-  const code = error.code;
-  return typeof code === 'string' && (ERROR_CODES as readonly string[]).includes(code)
-    ? (code as ErrorCode)
-    : undefined;
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Falha inesperada.';

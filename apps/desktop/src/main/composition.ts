@@ -6,6 +6,7 @@ import {
   recoverInterruptedExecutions,
   type AddProjectDeps,
   type CreateMissionDeps,
+  type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
   type Platform,
@@ -20,17 +21,19 @@ import {
   buildWorktreeNames,
   createGitDetector,
   createWorktree,
+  getWorktreeDiff,
   removeWorktree,
 } from '@project-hub/git-adapter';
 import { createDemoAgent } from './demo-agent';
 import { createIsDirectory } from './filesystem';
 import { withMissionEvents, type MissionEventPublisher } from './mission-events';
 
-/** Serviços de missões: o orquestrador e as duas consultas que o IPC usa. */
+/** Serviços de missões: o orquestrador e as consultas que o IPC usa (visão e alterações). */
 export type MissionServices = {
   orchestrator: Orchestrator;
   createDeps: CreateMissionDeps;
   queryDeps: MissionQueryDeps;
+  diffDeps: MissionDiffDeps;
 };
 
 /** Serviços do processo principal, com `close` para fechar o banco ao sair do aplicativo. */
@@ -152,6 +155,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       orchestrator,
       createDeps: { repo, projects, now, newId },
       queryDeps: { repo, projects },
+      diffDeps: { repo, diff: { diff: (worktreePath) => getWorktreeDiff(worktreePath) } },
     },
     close: () => {
       db.$client.close();

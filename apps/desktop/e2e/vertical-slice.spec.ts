@@ -169,6 +169,9 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
   await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
+  // O painel Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
+  const changes = page.getByRole('list', { name: 'Arquivos alterados' });
+  await expect(changes.getByRole('button', { name: /project-hub-demo\.md/ })).toBeVisible();
   const eventsBeforeRestart = await timelineOf(page);
   expect(eventsBeforeRestart.length).toBeGreaterThan(5);
 

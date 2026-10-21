@@ -14,8 +14,10 @@ export {
   type CreateMissionInput,
 } from './missions/create-mission';
 export {
+  getMissionDiff,
   getMissionView,
   listMissions,
+  type MissionDiffDeps,
   type MissionEvent,
   type MissionProject,
   type MissionQueryDeps,
@@ -24,6 +26,7 @@ export {
 export { recoverInterruptedExecutions } from './missions/startup-recovery';
 export type {
   ApprovalChanges,
+  DiffPort,
   ExecutionChanges,
   FileSystemPort,
   GitDetector,
