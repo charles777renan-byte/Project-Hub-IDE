@@ -89,6 +89,21 @@ describe('TestsPanel', () => {
     expect(screen.getByText('sem problemas')).not.toHaveClass('tests-run__output--failed');
   });
 
+  it('mostra "Nenhum teste rodou" sem a cor de sucesso numa verificação vazia', () => {
+    render(
+      <TestsPanel
+        events={[
+          verification('v1', 1, { command: 'pnpm test', passed: 0, failed: 0, durationMs: 800 }),
+        ]}
+      />,
+    );
+
+    const total = screen.getByText('Nenhum teste rodou');
+    expect(total).not.toHaveClass('tests-run__total--failed');
+    expect(total).toHaveClass('tests-run__total--empty');
+    expect(screen.queryByText('0/0')).toBeNull();
+  });
+
   it('sem verificação, diz que nenhum comando foi executado', () => {
     render(<TestsPanel events={[]} />);
 
@@ -140,6 +155,14 @@ describe('verificações na linha do tempo e nos critérios', () => {
         verification('v1', 1, { command: 'pnpm test', passed: 12, failed: 2, durationMs: 450 }),
       ),
     ).toBe('Verificação falhou: pnpm test, 2 de 14 testes falharam em 450 ms.');
+  });
+
+  it('a linha do tempo diz que nenhum teste rodou numa verificação vazia', () => {
+    expect(
+      describeEvent(
+        verification('v1', 1, { command: 'pnpm test', passed: 0, failed: 0, durationMs: 1200 }),
+      ),
+    ).toBe('Verificação sem testes: pnpm test, nenhum teste rodou em 1,2 s.');
   });
 
   it('describeEvent tem frase mesmo com o payload incompleto', () => {
