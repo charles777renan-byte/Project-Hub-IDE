@@ -1,9 +1,11 @@
 import {
   createMission,
   failure,
+  getMissionDiff,
   getMissionView,
   listMissions,
   type CreateMissionDeps,
+  type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
 } from '@project-hub/application';
@@ -17,11 +19,12 @@ import {
 } from '@project-hub/contracts';
 import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
 
-/** O que os canais de missão precisam: o orquestrador e as duas consultas (criação e leitura). */
+/** O que os canais de missão precisam: o orquestrador e as consultas (criação, leitura e alterações). */
 export type MissionsIpcDeps = {
   orchestrator: Orchestrator;
   createDeps: CreateMissionDeps;
   queryDeps: MissionQueryDeps;
+  diffDeps: MissionDiffDeps;
 };
 
 const INVALID_MISSION = 'Confira os campos da missão: título, objetivo e um critério de aceite.';
@@ -46,6 +49,13 @@ export function handleGetMission(deps: MissionQueryDeps, payload: unknown) {
   const input = missionIdInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION_ID);
   return getMissionView(deps, input.data.missionId);
+}
+
+/** Alterações do worktree da missão. Só lê; a missão sem worktree devolve a lista vazia. */
+export function handleMissionDiff(deps: MissionDiffDeps, payload: unknown) {
+  const input = missionIdInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION_ID);
+  return getMissionDiff(deps, input.data.missionId);
 }
 
 /**
@@ -102,6 +112,7 @@ export function registerMissionHandlers(
   on(CHANNELS.missionsCreate, (payload) => handleCreateMission(deps.createDeps, payload));
   on(CHANNELS.missionsList, (payload) => handleListMissions(deps.queryDeps, payload));
   on(CHANNELS.missionsGet, (payload) => handleGetMission(deps.queryDeps, payload));
+  on(CHANNELS.missionsDiff, (payload) => handleMissionDiff(deps.diffDeps, payload));
   on(CHANNELS.missionsPlan, (payload) => handleMissionAction(orchestrator, 'plan', payload));
   on(CHANNELS.missionsApprovePlan, (payload) =>
     handleMissionAction(orchestrator, 'approvePlan', payload),

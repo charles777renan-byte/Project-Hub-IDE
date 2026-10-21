@@ -157,6 +157,27 @@ export const missionEventDtoSchema = z.object({
 });
 export type MissionEventDto = z.infer<typeof missionEventDtoSchema>;
 
+/** Como um arquivo aparece no diff. `untracked` é arquivo novo que ainda não entrou no Git. */
+export const DIFF_STATUS_VALUES = ['added', 'modified', 'deleted', 'untracked'] as const;
+
+export const missionDiffFileSchema = z.object({
+  path: z.string(),
+  status: z.enum(DIFF_STATUS_VALUES),
+  added: z.number(),
+  removed: z.number(),
+  binary: z.boolean(),
+  truncated: z.boolean(),
+  patch: z.string().optional(),
+});
+export type MissionDiffFileDto = z.infer<typeof missionDiffFileSchema>;
+
+/** Alterações do worktree da missão. `truncatedFiles` indica que a lista traz só os primeiros arquivos. */
+export const missionDiffDtoSchema = z.object({
+  files: z.array(missionDiffFileSchema),
+  truncatedFiles: z.boolean(),
+});
+export type MissionDiffDto = z.infer<typeof missionDiffDtoSchema>;
+
 export const missionViewSchema = z.object({
   mission: missionDtoSchema,
   project: z.object({

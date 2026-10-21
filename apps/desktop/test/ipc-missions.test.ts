@@ -2,12 +2,18 @@ import { join } from 'node:path';
 import { CHANNELS } from '@project-hub/contracts';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import type { CreateMissionDeps, MissionQueryDeps, Orchestrator } from '@project-hub/application';
+import type {
+  CreateMissionDeps,
+  MissionDiffDeps,
+  MissionQueryDeps,
+  Orchestrator,
+} from '@project-hub/application';
 import { resolveWorktreesRoot } from '../src/main/composition';
 import { handleDecideApproval, registerApprovalHandlers } from '../src/main/ipc/approvals';
 import {
   handleCreateMission,
   handleMissionAction,
+  handleMissionDiff,
   handleProvideInput,
   registerMissionHandlers,
 } from '../src/main/ipc/missions';
@@ -180,6 +186,7 @@ describe('pausa, retomada e nova tentativa (R180, R181)', () => {
       orchestrator,
       createDeps: {} as CreateMissionDeps,
       queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
+      diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
@@ -198,6 +205,29 @@ describe('pausa, retomada e nova tentativa (R180, R181)', () => {
     } finally {
       error.mockRestore();
     }
+  });
+});
+
+describe('alterações da missão (missions:diff:v1)', () => {
+  it('recusa o id ausente sem consultar a aplicação', async () => {
+    const diff = vi.fn();
+    const deps = { repo: { getMission: vi.fn() }, diff: { diff } } as unknown as MissionDiffDeps;
+
+    const result = await handleMissionDiff(deps, {});
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(diff).not.toHaveBeenCalled();
+  });
+
+  it('entrega o caminho do worktree da missão à leitura e devolve o diff', async () => {
+    const getMission = vi.fn(() => ({ id: 'm1', worktreePath: 'C:\\worktrees\\app\\m1' }));
+    const diff = vi.fn(() => Promise.resolve({ files: [], truncatedFiles: false }));
+    const deps = { repo: { getMission }, diff: { diff } } as unknown as MissionDiffDeps;
+
+    const result = await handleMissionDiff(deps, { missionId: 'm1' });
+
+    expect(diff).toHaveBeenCalledWith('C:\\worktrees\\app\\m1');
+    expect(result).toEqual({ ok: true, data: { files: [], truncatedFiles: false } });
   });
 });
 
@@ -251,6 +281,7 @@ describe('canais de missão e aprovação recusam remetente de outra origem (R65
       orchestrator,
       createDeps: {} as CreateMissionDeps,
       queryDeps,
+      diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
     });
     registerApprovalHandlers(fake.registry, isTrusted, orchestrator);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);

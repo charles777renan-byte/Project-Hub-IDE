@@ -1059,6 +1059,113 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Painel Diff: a lista de arquivos e o diff do escolhido. As cores vêm dos tokens. */
+.diff {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.diff__note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.diff__files {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diff__file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.diff__file[aria-pressed='true'] {
+  border-color: var(--orange);
+}
+
+.diff__status {
+  color: var(--orange);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.diff__status--deleted {
+  color: var(--red);
+}
+
+.diff__status--added,
+.diff__status--untracked {
+  color: var(--lime);
+}
+
+.diff__path {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.diff__counts {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.diff__added {
+  color: var(--lime);
+}
+
+.diff__removed {
+  color: var(--red);
+}
+
+.diff__file-view {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.diff__patch {
+  margin: 0;
+  padding: var(--space-2);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  white-space: pre;
+}
+
+.diff__line {
+  display: block;
+}
+
+.diff__line--added {
+  color: var(--lime);
+}
+
+.diff__line--removed {
+  color: var(--red);
+}
+
+.diff__line--hunk {
+  color: var(--cyan);
+}
+
 @media (max-width: 1000px) {
   .app-main__content:has(> .mission-workspace) {
     height: auto;

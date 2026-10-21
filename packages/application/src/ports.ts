@@ -1,3 +1,4 @@
+import type { MissionDiffDto } from '@project-hub/contracts';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -42,6 +43,15 @@ export interface GitDetector {
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
 export interface FileSystemPort {
   isDirectory(path: string): Promise<boolean>;
+}
+
+/**
+ * Alterações de um worktree em relação ao HEAD, no formato que a tela mostra. A implementação real é
+ * `getWorktreeDiff`, em `@project-hub/git-adapter`, ligada pela composição. Falha do Git rejeita com
+ * um erro que traz `code`, como o `GitError`.
+ */
+export interface DiffPort {
+  diff(worktreePath: string): Promise<MissionDiffDto>;
 }
 
 /** Campos de uma missão que a aplicação altera depois de criada. */

@@ -1,4 +1,4 @@
-import type { AppResult } from '@project-hub/contracts';
+import type { AppResult, MissionDiffDto } from '@project-hub/contracts';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -6,8 +6,8 @@ import type {
   Mission,
   MissionStep,
 } from '@project-hub/domain';
-import type { MissionRepository, ProjectRepository } from '../ports';
-import { failure } from '../result';
+import type { DiffPort, MissionRepository, ProjectRepository } from '../ports';
+import { errorCode, failure } from '../result';
 
 export type MissionQueryDeps = {
   repo: Pick<
@@ -53,6 +53,34 @@ export function listMissions(deps: MissionQueryDeps, projectId: string): AppResu
     return failure('PROJECT_NOT_FOUND', PROJECT_NOT_FOUND);
   }
   return { ok: true, data: deps.repo.listMissions(projectId) };
+}
+
+export type MissionDiffDeps = {
+  repo: Pick<MissionRepository, 'getMission'>;
+  diff: DiffPort;
+};
+
+/**
+ * Alterações do worktree da missão (aba Alterações). Missão sem worktree ainda não tem o que
+ * comparar: a resposta é a lista vazia, não um erro. Falha do Git sai com o código dele; erro sem
+ * código do contrato segue para cima, como nos casos de uso do orquestrador.
+ */
+export async function getMissionDiff(
+  deps: MissionDiffDeps,
+  missionId: string,
+): Promise<AppResult<MissionDiffDto>> {
+  const mission = deps.repo.getMission(missionId);
+  if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+  if (mission.worktreePath === undefined) {
+    return { ok: true, data: { files: [], truncatedFiles: false } };
+  }
+  try {
+    return { ok: true, data: await deps.diff.diff(mission.worktreePath) };
+  } catch (error) {
+    const code = errorCode(error);
+    if (code === undefined) throw error;
+    return failure(code, error instanceof Error ? error.message : 'Falha ao ler as alterações.');
+  }
 }
 
 /** A visão completa de uma missão. Os eventos vêm da missão e de cada tentativa, em ordem de instante. */

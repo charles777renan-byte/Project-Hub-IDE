@@ -3,6 +3,7 @@ import { CHANNELS } from './channels';
 import { projectSummarySchema } from './project';
 import {
   executionDtoSchema,
+  missionDiffDtoSchema,
   missionDtoSchema,
   missionPlanDtoSchema,
   missionViewSchema,
@@ -22,6 +23,7 @@ export const responseSchemas = {
   [CHANNELS.missionsCreate]: appResultSchema(missionDtoSchema),
   [CHANNELS.missionsList]: appResultSchema(z.array(missionDtoSchema)),
   [CHANNELS.missionsGet]: appResultSchema(missionViewSchema),
+  [CHANNELS.missionsDiff]: appResultSchema(missionDiffDtoSchema),
   [CHANNELS.missionsPlan]: appResultSchema(missionPlanDtoSchema),
   [CHANNELS.missionsApprovePlan]: appResultSchema(z.undefined()),
   [CHANNELS.missionsStart]: appResultSchema(executionDtoSchema),

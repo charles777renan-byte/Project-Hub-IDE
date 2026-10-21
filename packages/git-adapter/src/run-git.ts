@@ -31,6 +31,22 @@ const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
 /** Opções que `symbolic-ref` aceita só para ler. Qualquer outra, como `-d` e `-m`, escreve ou apaga. */
 const SYMBOLIC_REF_READ_OPTIONS = new Set(['--short', '-q', '--quiet']);
 
+/**
+ * Opções que `diff` aceita. `--no-ext-diff` e `--no-textconv` desligam programas que o repositório
+ * configura (seção 17.1): sem eles, um diff externo ou um filtro de texto rodaria comando alheio.
+ * `--no-renames` mantém a lista sem heurística de renomeação.
+ */
+const DIFF_READ_OPTIONS = new Set([
+  '--no-ext-diff',
+  '--no-textconv',
+  '--no-color',
+  '--no-renames',
+  '--numstat',
+  '--name-status',
+  '--patch',
+  '-z',
+]);
+
 export type RunGitOptions = {
   /** Pasta onde o Git roda. */
   cwd: string;
@@ -66,8 +82,8 @@ export class GitError extends Error {
 
 /**
  * Lista de permissão (RF-GIT-007, seção 11 de docs/regras-subagentes.md): só leitura. `branch` só
- * vale como `branch --show-current`, e `symbolic-ref` só na forma de leitura, com um nome e sem
- * as opções que escrevem. Tudo o que não está aqui é recusado antes de criar um processo. Opções
+ * vale como `branch --show-current`, `symbolic-ref` só na forma de leitura, com um nome e sem as
+ * opções que escrevem, e `diff` só contra `HEAD`, com as opções de `DIFF_READ_OPTIONS`. Tudo o que não está aqui é recusado antes de criar um processo. Opções
  * antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando precisa ser o primeiro
  * argumento.
  */
@@ -84,9 +100,27 @@ function isReadOnly(args: readonly string[]): boolean {
       const names = rest.filter((arg) => !arg.startsWith('-'));
       return names.length === 1 && options.every((option) => SYMBOLIC_REF_READ_OPTIONS.has(option));
     }
+    case 'diff':
+      return isDiffRead(rest);
     default:
       return false;
   }
+}
+
+/**
+ * `diff` só compara com `HEAD`, com as opções de `DIFF_READ_OPTIONS`. Depois de `--` vêm só caminhos,
+ * que o Git lê como arquivos e nunca como opção.
+ */
+function isDiffRead(rest: readonly string[]): boolean {
+  const separator = rest.indexOf('--');
+  const revisions = separator === -1 ? rest : rest.slice(0, separator);
+  const operands = revisions.filter((arg) => !arg.startsWith('-'));
+  const options = revisions.filter((arg) => arg.startsWith('-'));
+  return (
+    operands.length === 1 &&
+    operands[0] === 'HEAD' &&
+    options.every((option) => DIFF_READ_OPTIONS.has(option))
+  );
 }
 
 /** Um argumento que o Git lê como valor: não vazio e sem `-` na frente, que o faria virar opção. */
