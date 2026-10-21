@@ -499,6 +499,20 @@ describe('removeWorktree', () => {
     expect(branchExists(repoPath, names.branch)).toBe(true);
   });
 
+  it('removeWorktree recusa com GIT_LOCKED e o motivo quando o worktree foi travado', async () => {
+    const { repoPath, wt } = await setUp();
+    git(repoPath, 'worktree', 'lock', '--reason', 'em uso', wt.path);
+
+    await expect(removeWorktree({ repoPath, worktreePath: wt.path })).rejects.toMatchObject({
+      name: 'GitError',
+      code: 'GIT_LOCKED',
+      message: expect.stringContaining('em uso'),
+    });
+
+    expect(existsSync(wt.path)).toBe(true);
+    expect(registeredWorktrees(repoPath)).toHaveLength(2);
+  });
+
   it('o checkout principal não é removido', async () => {
     const { path: repoPath } = repo();
 
