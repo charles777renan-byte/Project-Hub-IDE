@@ -4,6 +4,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   CreateMissionDeps,
+  DeleteMissionDeps,
   MissionDiffDeps,
   MissionQueryDeps,
   Orchestrator,
@@ -12,6 +13,7 @@ import { resolveWorktreesRoot } from '../src/main/composition';
 import { handleDecideApproval, registerApprovalHandlers } from '../src/main/ipc/approvals';
 import {
   handleCreateMission,
+  handleDeleteMission,
   handleMissionAction,
   handleMissionDiff,
   handleProvideInput,
@@ -187,6 +189,7 @@ describe('pausa, retomada e nova tentativa (R180, R181)', () => {
       createDeps: {} as CreateMissionDeps,
       queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
       diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
+      deleteDeps: { repo: {}, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps,
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
@@ -228,6 +231,36 @@ describe('alterações da missão (missions:diff:v1)', () => {
 
     expect(diff).toHaveBeenCalledWith('C:\\worktrees\\app\\m1');
     expect(result).toEqual({ ok: true, data: { files: [], truncatedFiles: false } });
+  });
+});
+
+describe('excluir missão (missions:delete:v1)', () => {
+  it('o canal existe com a versão no nome', () => {
+    expect(CHANNELS.missionsDelete).toBe('missions:delete:v1');
+  });
+
+  it('recusa o id ausente sem consultar a aplicação', async () => {
+    const repo = { getMission: vi.fn(), deleteMission: vi.fn() };
+    const deps = { repo, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps;
+
+    expect(await handleDeleteMission(deps, {})).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    expect(repo.getMission).not.toHaveBeenCalled();
+    expect(repo.deleteMission).not.toHaveBeenCalled();
+  });
+
+  it('entrega o id à aplicação, que recusa missão inexistente sem apagar nada', async () => {
+    const repo = { getMission: vi.fn(() => undefined), deleteMission: vi.fn() };
+    const deps = { repo, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps;
+
+    expect(await handleDeleteMission(deps, { missionId: 'm1' })).toMatchObject({
+      ok: false,
+      error: { code: 'MISSION_NOT_FOUND' },
+    });
+    expect(repo.getMission).toHaveBeenCalledWith('m1');
+    expect(repo.deleteMission).not.toHaveBeenCalled();
   });
 });
 
@@ -282,6 +315,7 @@ describe('canais de missão e aprovação recusam remetente de outra origem (R65
       createDeps: {} as CreateMissionDeps,
       queryDeps,
       diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
+      deleteDeps: { repo: {}, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps,
     });
     registerApprovalHandlers(fake.registry, isTrusted, orchestrator);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);

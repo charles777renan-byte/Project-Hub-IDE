@@ -467,11 +467,20 @@ describe('buildProjectHubApi', () => {
   it('a API exposta tem só os métodos de ping, projetos, missões e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual(['approvals', 'missions', 'ping', 'projects']);
-    expect(Object.keys(api.projects).sort()).toEqual(['add', 'chooseDirectory', 'list']);
+    expect(Object.keys(api.projects).sort()).toEqual([
+      'add',
+      'archive',
+      'chooseDirectory',
+      'list',
+      'listArchived',
+      'remove',
+      'unarchive',
+    ]);
     expect(Object.keys(api.missions).sort()).toEqual([
       'approvePlan',
       'cancel',
       'create',
+      'delete',
       'diff',
       'get',
       'list',
@@ -498,6 +507,35 @@ describe('buildProjectHubApi', () => {
       [CHANNELS.projectsList, undefined],
       [CHANNELS.projectsAdd, { path: 'C:\\Projetos\\app' }],
     ]);
+  });
+
+  it('projects.archive, unarchive e remove levam o id do projeto pelos próprios canais', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = hubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: undefined });
+    });
+
+    await expect(api.projects.archive('p1')).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.projects.unarchive('p1')).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.projects.remove('p1')).resolves.toEqual({ ok: true, data: undefined });
+
+    expect(calls).toEqual([
+      [CHANNELS.projectsArchive, { projectId: 'p1' }],
+      [CHANNELS.projectsUnarchive, { projectId: 'p1' }],
+      [CHANNELS.projectsRemove, { projectId: 'p1' }],
+    ]);
+  });
+
+  it('projects.listArchived usa o canal de arquivados e confere a lista', async () => {
+    const calls: string[] = [];
+    const api = hubApi((channel) => {
+      calls.push(channel);
+      return Promise.resolve({ ok: true, data: [] });
+    });
+
+    await expect(api.projects.listArchived()).resolves.toEqual({ ok: true, data: [] });
+    expect(calls).toEqual([CHANNELS.projectsListArchived]);
   });
 
   it('a resposta válida vai ao renderer só com os campos do contrato', async () => {
@@ -694,6 +732,18 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
       [CHANNELS.missionsRetry, { missionId: 'm1' }],
     ]);
     expect(retried).toMatchObject({ ok: true, data: { attempt: 2, status: 'running' } });
+  });
+
+  it('missions.delete leva o id da missão pelo canal de exclusão', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: undefined });
+    }, noEvents);
+
+    await expect(api.missions.delete('m1')).resolves.toEqual({ ok: true, data: undefined });
+
+    expect(calls).toEqual([[CHANNELS.missionsDelete, { missionId: 'm1' }]]);
   });
 
   it('approvals.decide envia a decisão pelo canal de aprovações', async () => {

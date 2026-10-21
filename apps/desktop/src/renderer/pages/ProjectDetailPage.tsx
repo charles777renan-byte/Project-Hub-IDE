@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import type { MissionDto, ProjectSummary } from '@project-hub/contracts';
+import type { AppResult, MissionDto, ProjectSummary } from '@project-hub/contracts';
+import { ConfirmButton } from '../components/ConfirmButton';
 import { MissionCard } from '../components/MissionCard';
 import { MissionForm, type MissionFormValues } from '../components/MissionForm';
 import { PathText } from '../components/PathText';
 import { Tabs, type TabItem } from '../components/Tabs';
 import { needsAttention } from '../mission-text';
-import { missionPath } from '../routes';
+import { PROJECTS_CHANGED_EVENT } from '../projects-events';
+import { missionPath, ROUTE_PATHS } from '../routes';
 
 type ProjectTab = 'overview' | 'missions' | 'repository' | 'worktrees' | 'settings';
 
@@ -39,6 +41,8 @@ export function ProjectDetailPage() {
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -105,6 +109,29 @@ export function ProjectDetailPage() {
     }
   }
 
+  /**
+   * Arquiva ou remove o projeto e volta para a lista. Só sai da página quando a ação dá certo: falha
+   * fica na tela, e o projeto segue como estava.
+   */
+  async function leaveList(action: () => Promise<AppResult<unknown>>) {
+    setLeaving(true);
+    setLifecycleError(null);
+    let ok = false;
+    try {
+      const result = await action();
+      if (result.ok) ok = true;
+      else setLifecycleError(result.error.message);
+    } catch {
+      setLifecycleError(GENERIC_ERROR);
+    }
+    if (!ok) {
+      setLeaving(false);
+      return;
+    }
+    window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+    navigate(ROUTE_PATHS.projects);
+  }
+
   if (state.status === 'loading') {
     return <p role="status">Carregando projeto…</p>;
   }
@@ -125,6 +152,27 @@ export function ProjectDetailPage() {
         <PathText path={project.path} />
       </p>
       <p className="mission-meta">Branch: {project.defaultBranch ?? 'sem Git'}</p>
+      <div className="inline-actions">
+        <button
+          type="button"
+          disabled={leaving}
+          onClick={() => void leaveList(() => window.projectHub.projects.archive(projectId))}
+        >
+          Arquivar projeto
+        </button>
+        <ConfirmButton
+          label="Remover da lista"
+          question="Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão, e cadastrar a pasta de novo traz tudo de volta."
+          confirmLabel="Remover"
+          disabled={leaving}
+          onConfirm={() => void leaveList(() => window.projectHub.projects.remove(projectId))}
+        />
+      </div>
+      {lifecycleError === null ? null : (
+        <p role="alert" className="page-alert">
+          {lifecycleError}
+        </p>
+      )}
 
       <div className="workspace-panel">
         <Tabs label="Seções do projeto" tabs={TABS} active={tab} onChange={setTab} />

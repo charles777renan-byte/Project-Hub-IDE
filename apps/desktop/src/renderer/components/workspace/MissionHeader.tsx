@@ -9,13 +9,14 @@ import {
   statusTone,
 } from '../../mission-text';
 import { projectPath } from '../../routes';
+import { ConfirmButton } from '../ConfirmButton';
 import { StatusChip } from '../StatusChip';
 
 /**
  * Cabeçalho do workspace da missão (seção 10.7): o projeto, o título, a situação, as ações (pausar,
- * retomar, tentar de novo e cancelar), o aviso de decisão pendente e a linha projeto · branch ·
- * worktree. Este componente só mostra e chama o que a página passa: o comportamento das ações fica na
- * página.
+ * retomar, tentar de novo, cancelar e, com a missão encerrada, excluir), o aviso de decisão pendente e
+ * a linha projeto · branch · worktree. Este componente só mostra e chama o que a página passa: o
+ * comportamento das ações fica na página.
  */
 export function MissionHeader({
   mission,
@@ -26,18 +27,21 @@ export function MissionHeader({
   onResume,
   onRetry,
   onCancel,
+  onDelete,
   onOpenDecision,
 }: {
   mission: MissionViewDto['mission'];
   project: MissionViewDto['project'];
   /** Chamadas longas (nova tentativa): desabilitam Tentar de novo. */
   busy: boolean;
-  /** Pausar, retomar e cancelar: cada uma só cobre a própria chamada. */
+  /** Pausar, retomar, cancelar e excluir: cada uma só cobre a própria chamada. */
   controlBusy: boolean;
   onPause: () => void;
   onResume: () => void;
   onRetry: () => void;
   onCancel: () => void;
+  /** Exclui a missão encerrada. Só aparece depois que a pessoa confirma. */
+  onDelete: () => void;
   /** Leva o foco ao lugar da decisão: a coluna Aguardando você, ou a Conversa quando o agente pede resposta. */
   onOpenDecision: () => void;
 }) {
@@ -65,7 +69,15 @@ export function MissionHeader({
               {MISSION_TEXT.retry}
             </button>
           ) : null}
-          {isEnded(mission.status) ? null : (
+          {isEnded(mission.status) ? (
+            <ConfirmButton
+              label="Excluir missão"
+              question="Excluir esta missão? O plano, as tentativas e o histórico saem do app. Não dá para desfazer."
+              confirmLabel="Excluir"
+              disabled={controlBusy}
+              onConfirm={onDelete}
+            />
+          ) : (
             <button type="button" className="btn-danger" disabled={controlBusy} onClick={onCancel}>
               Cancelar missão
             </button>

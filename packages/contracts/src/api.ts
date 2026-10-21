@@ -26,6 +26,14 @@ export type ProjectHubApi = {
     chooseDirectory(): Promise<AppResult<{ path: string } | null>>;
     /** Cadastra a pasta. O processo principal revalida o caminho (R66). */
     add(input: AddProjectInput): Promise<AppResult<ProjectSummary>>;
+    /** Projetos arquivados, com a disponibilidade da pasta. */
+    listArchived(): Promise<AppResult<ProjectSummary[]>>;
+    /** Arquiva o projeto: sai da lista, e a pasta, o Git e as missões ficam como estão. */
+    archive(projectId: string): Promise<AppResult<void>>;
+    /** Devolve um projeto arquivado para a lista principal. */
+    unarchive(projectId: string): Promise<AppResult<void>>;
+    /** Tira o projeto da lista. Não apaga a pasta, o Git nem as missões. */
+    remove(projectId: string): Promise<AppResult<void>>;
   };
   missions: {
     /** Cria a missão em rascunho (RF-MIS-002). */
@@ -50,6 +58,8 @@ export type ProjectHubApi = {
     resume(missionId: string): Promise<AppResult<void>>;
     /** Nova tentativa de uma missão que falhou ou foi cancelada. Devolve a tentativa (R180). */
     retry(missionId: string): Promise<AppResult<ExecutionDto>>;
+    /** Exclui a missão encerrada. Missão em andamento recusa: cancele antes. */
+    delete(missionId: string): Promise<AppResult<void>>;
     /** Resposta do usuário ao pedido de entrada do agente. */
     provideInput(input: ProvideInput): Promise<AppResult<void>>;
     /**

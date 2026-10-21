@@ -20,6 +20,10 @@ export const responseSchemas = {
   [CHANNELS.projectsList]: appResultSchema(z.array(projectSummarySchema)),
   [CHANNELS.projectsAdd]: appResultSchema(projectSummarySchema),
   [CHANNELS.projectsChooseDirectory]: appResultSchema(z.object({ path: z.string() }).nullable()),
+  [CHANNELS.projectsListArchived]: appResultSchema(z.array(projectSummarySchema)),
+  [CHANNELS.projectsArchive]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsUnarchive]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsRemove]: appResultSchema(z.undefined()),
   [CHANNELS.missionsCreate]: appResultSchema(missionDtoSchema),
   [CHANNELS.missionsList]: appResultSchema(z.array(missionDtoSchema)),
   [CHANNELS.missionsGet]: appResultSchema(missionViewSchema),
@@ -31,6 +35,7 @@ export const responseSchemas = {
   [CHANNELS.missionsPause]: appResultSchema(z.undefined()),
   [CHANNELS.missionsResume]: appResultSchema(z.undefined()),
   [CHANNELS.missionsRetry]: appResultSchema(executionDtoSchema),
+  [CHANNELS.missionsDelete]: appResultSchema(z.undefined()),
   [CHANNELS.missionsProvideInput]: appResultSchema(z.undefined()),
   [CHANNELS.approvalsDecide]: appResultSchema(z.undefined()),
 } as const;
