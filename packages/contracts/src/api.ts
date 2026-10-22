@@ -2,6 +2,7 @@ import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
 import type { TerminalEvent, TerminalSummary } from './terminal';
+import type { LayoutNode, ProviderInfo, WorkspaceDto } from './workspace';
 import type {
   CreateMissionInput,
   DecideApprovalInput,
@@ -93,6 +94,24 @@ export type ProjectHubApi = {
      * salva, recusa com WORKTREE_HAS_UNSAVED_CHANGES e traz os arquivos em `details.files`.
      */
     remove(missionId: string): Promise<AppResult<void>>;
+  };
+  workspaces: {
+    /** Os workspaces abertos, por posição. */
+    list(): Promise<AppResult<WorkspaceDto[]>>;
+    /** Abre o workspace do projeto, criando-o com o layout padrão se for o primeiro. */
+    open(projectId: string): Promise<AppResult<WorkspaceDto>>;
+    /** Fecha a aba do workspace. As sessões dos painéis seguem vivas. */
+    close(workspaceId: string): Promise<AppResult<void>>;
+    /** Grava o layout. O processo principal recusa terminal que não seja do projeto. */
+    saveLayout(workspaceId: string, layout: LayoutNode): Promise<AppResult<void>>;
+    /** Abre a sessão do provedor do painel. Devolve o workspace com o layout atualizado. */
+    startSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
+    /** Encerra a sessão do painel. Terminal de missão não encerra por aqui. */
+    endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
+  };
+  providers: {
+    /** Os programas que um painel abre, e os que faltam no computador com o motivo. */
+    list(): Promise<AppResult<ProviderInfo[]>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

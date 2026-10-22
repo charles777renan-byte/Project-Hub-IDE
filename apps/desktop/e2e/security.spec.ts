@@ -87,6 +87,8 @@ test.describe('renderer isolado', () => {
         approvals: names(api['approvals']),
         worktrees: names(api['worktrees']),
         terminals: names(api['terminals']),
+        workspaces: names(api['workspaces']),
+        providers: names(api['providers']),
       };
     });
 
@@ -96,7 +98,9 @@ test.describe('renderer isolado', () => {
       'missions',
       'ping',
       'projects',
+      'providers',
       'terminals',
+      'workspaces',
       'worktrees',
     ]);
     const everyName = [
@@ -106,6 +110,8 @@ test.describe('renderer isolado', () => {
       ...(surface?.approvals ?? []),
       ...(surface?.worktrees ?? []),
       ...(surface?.terminals ?? []),
+      ...(surface?.workspaces ?? []),
+      ...(surface?.providers ?? []),
     ];
     for (const generic of ['invoke', 'send', 'sendSync', 'on', 'once', 'ipcRenderer']) {
       expect(everyName).not.toContain(generic);

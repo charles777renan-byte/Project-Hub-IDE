@@ -21,9 +21,11 @@ import {
   createMissionRepository,
   createProjectRepository,
   createTerminalSessionRepository,
+  createWorkspaceRepository,
   migrateDatabase,
   openDatabase,
   type TerminalSessionRepository,
+  type WorkspaceRepository,
 } from '@project-hub/database';
 import {
   buildWorktreeNames,
@@ -60,6 +62,8 @@ export type AppServices = AddProjectDeps & {
     projects: ProjectRepository;
     sessions: TerminalSessionRepository;
   };
+  /** Repositórios do serviço de workspaces: os workspaces e os projetos. */
+  workspaceDeps: { repo: WorkspaceRepository; projects: ProjectRepository };
   close(): void;
 };
 
@@ -195,6 +199,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     newId,
     lifecycle: { repo: projects, missions: repo, fs, now },
     terminalDeps: { repo, projects, sessions: createTerminalSessionRepository(db) },
+    workspaceDeps: { repo: createWorkspaceRepository(db), projects },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },

@@ -8,6 +8,7 @@ import {
   type CreateMissionInput,
   type DecideApprovalInput,
   type ExecutionDto,
+  type LayoutNode,
   type MissionDiffDto,
   type MissionDto,
   type MissionEventDto,
@@ -15,9 +16,11 @@ import {
   type MissionViewDto,
   type ProjectHubApi,
   type ProjectSummary,
+  type ProviderInfo,
   type ProvideInput,
   type TerminalEvent,
   type TerminalSummary,
+  type WorkspaceDto,
   type WorktreeDto,
 } from '@project-hub/contracts';
 
@@ -132,6 +135,20 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           }
           listener(parsed.data);
         }),
+    },
+    workspaces: {
+      list: () => call<WorkspaceDto[]>(CHANNELS.workspacesList),
+      open: (projectId: string) => call<WorkspaceDto>(CHANNELS.workspacesOpen, { projectId }),
+      close: (workspaceId: string) => call<void>(CHANNELS.workspacesClose, { workspaceId }),
+      saveLayout: (workspaceId: string, layout: LayoutNode) =>
+        call<void>(CHANNELS.workspacesSaveLayout, { workspaceId, layout }),
+      startSession: (workspaceId: string, leafId: string) =>
+        call<WorkspaceDto>(CHANNELS.workspacesStartSession, { workspaceId, leafId }),
+      endSession: (workspaceId: string, leafId: string) =>
+        call<WorkspaceDto>(CHANNELS.workspacesEndSession, { workspaceId, leafId }),
+    },
+    providers: {
+      list: () => call<ProviderInfo[]>(CHANNELS.providersList),
     },
     worktrees: {
       list: (projectId: string) => call<WorktreeDto[]>(CHANNELS.worktreesList, { projectId }),
