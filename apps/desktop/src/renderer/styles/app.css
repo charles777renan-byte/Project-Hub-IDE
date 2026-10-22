@@ -53,19 +53,6 @@ p {
 }
 
 /*
- * Estrutura: cabeçalho de 50px (marca, navegação e contadores à direita) e a área da página, que
- * ocupa o resto da altura da janela e rola sozinha. O conteúdo fica limitado a 72rem dentro dela.
- */
-.app-shell {
-  position: relative;
-  /* Contexto próprio: o fundo topográfico (z-index -1) fica acima da cor da página e abaixo do conteúdo. */
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-/*
  * Fundo topográfico (TopographicBackground): um canvas que cobre a janela, atrás de tudo. Superfícies
  * sólidas escondem as linhas; as translúcidas (--surface-glass e a barra lateral) deixam elas aparecerem.
  * Não recebe cliques.
@@ -90,143 +77,11 @@ p {
 }
 
 /*
- * Cabeçalho, que é também a barra de título da janela (TITLE_BAR_OVERLAY em window.ts): arrastar pelo
- * fundo move a janela. À direita, 140px ficam livres para os três botões do Windows, que o sistema
- * desenha por cima do cabeçalho.
- */
-.app-header {
-  display: flex;
-  flex: none;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: var(--space-4);
-  height: 50px;
-  padding: 0 140px 0 var(--space-3);
-  /* Linha inferior por sombra interna: a borda pararia antes dos botões do Windows. */
-  box-shadow: inset 0 -1px 0 var(--line);
-  background: var(--bg);
-  -webkit-app-region: drag;
-}
-
-/* Marca: o símbolo em duas metades, violeta e vermelho, e o nome em caixa alta. */
-.app-brand {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.625rem;
-  color: var(--text);
-  font-size: 0.8125rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.app-brand__mark {
-  display: flex;
-  width: 18px;
-  height: 18px;
-  overflow: hidden;
-  border-radius: 5px;
-}
-
-.app-brand__mark::before,
-.app-brand__mark::after {
-  content: '';
-  flex: 1;
-}
-
-.app-brand__mark::before {
-  background: var(--violet);
-}
-
-.app-brand__mark::after {
-  background: var(--red);
-}
-
-/* A navegação rola de lado se a janela ficar estreita, sem empurrar o cabeçalho. */
-nav[aria-label='Principal'] {
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.app-nav {
-  display: flex;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* O item da página atual é magenta cheio, com o texto na cor do fundo. */
-.app-nav a {
-  display: block;
-  padding: 0.375rem 0.75rem;
-  border-radius: 7px;
-  color: var(--muted);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.app-nav a:hover {
-  color: var(--text);
-}
-
-/* A navegação tem overflow (rola de lado), que cortaria um anel de foco por fora do link: aqui o anel
-   fica por dentro (largura 2px, recuo -2px). */
-.app-nav a:focus-visible {
-  outline-offset: -2px;
-}
-
-.app-nav a[aria-current='page'] {
-  background: var(--magenta);
-  color: var(--bg);
-  font-weight: 700;
-}
-
-/* Contadores da visão geral (Tarefa 7), no canto direito. */
-.app-header__status {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-3);
-  margin-left: auto;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.71875rem;
-}
-
-/* Navegação e contadores precisam receber o clique, então ficam fora da área de arrastar do cabeçalho. */
-.app-nav,
-.app-nav a,
-.app-header__status {
-  -webkit-app-region: no-drag;
-}
-
-.app-main {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: var(--space-4) var(--space-5);
-}
-
-.app-main__content {
-  max-width: 72rem;
-}
-
-/*
- * Corpo da janela: a barra lateral de projetos e missões e a área da página, lado a lado, abaixo do
- * cabeçalho. A barra tem 230px e rola sozinha. Quando a rolagem leva um item até a borda da barra, um
+ * Barra lateral de projetos e missões, abaixo da navegação principal (coluna .app-side, em
+ * workspace.css). Tem 230px e rola sozinha. Quando a rolagem leva um item até a borda da barra, um
  * contorno de foco de 2px por fora seria cortado por ela; por isso o contorno fica por dentro (recuo
- * -2px). Abaixo de 1000px a barra some, e a navegação continua no cabeçalho.
+ * -2px). Abaixo de 1000px a barra some.
  */
-.app-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
 .sidebar {
   display: flex;
   flex: none;

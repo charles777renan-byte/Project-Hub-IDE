@@ -3,7 +3,7 @@ import { readCss, ruleDeclarations } from './css-rules';
 
 /**
  * Fundo topográfico (TopographicBackground). O que fica sólido e o que fica translúcido é decisão de
- * leitura e de janela: a faixa dos botões do Windows é opaca, então o cabeçalho não pode ser translúcido.
+ * leitura e de janela: a faixa dos botões do Windows é opaca, então a barra superior não pode ser translúcida.
  */
 describe('fundo topográfico: estilos', () => {
   const appCss = readCss('app.css');
@@ -16,11 +16,15 @@ describe('fundo topográfico: estilos', () => {
   });
 
   it('a janela cria um contexto de empilhamento próprio', () => {
-    expect(ruleDeclarations(appCss, '.app-shell').get('isolation')).toBe('isolate');
+    expect(ruleDeclarations(readCss('workspace.css'), '.app-shell').get('isolation')).toBe(
+      'isolate',
+    );
   });
 
-  it('o cabeçalho continua sólido, porque a faixa dos botões do Windows é opaca', () => {
-    expect(ruleDeclarations(appCss, '.app-header').get('background')).toBe('var(--bg)');
+  it('a barra superior continua sólida, porque a faixa dos botões do Windows é opaca', () => {
+    expect(ruleDeclarations(readCss('workspace.css'), '.topbar').get('background')).toBe(
+      'var(--bg)',
+    );
   });
 
   it('painéis e cartões são translúcidos, com a mesma cor-base', () => {

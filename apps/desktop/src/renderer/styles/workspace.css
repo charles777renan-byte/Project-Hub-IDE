@@ -1,0 +1,348 @@
+/*
+ * Casca do app e chrome do workspace: a barra superior de 36px (marca, abas dos workspaces, botão de
+ * abrir e contadores), a coluna lateral com a navegação principal e a área da página. Ligado depois de
+ * app.css no index.html. As cores são só as neutras do tema (--bg, --line, --field-line, --muted e
+ * --text) e misturas delas por color-mix; as cores de destaque ficam para os dados. As variáveis
+ * derivadas moram aqui, escopadas num seletor: o tokens.css só guarda #rrggbb
+ * (test/renderer/contrast.test.ts confere as duas coisas).
+ */
+
+/*
+ * Estrutura: barra superior de 36px e, abaixo, o corpo da janela, que ocupa o resto da altura. A página
+ * rola dentro do corpo; o documento não rola.
+ */
+.app-shell {
+  position: relative;
+  /* Contexto próprio: o fundo topográfico (z-index -1) fica acima da cor da página e abaixo do conteúdo. */
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/*
+ * Barra superior, que é também a barra de título da janela (TITLE_BAR_OVERLAY em window.ts): arrastar
+ * pelo fundo move a janela. À direita, 140px ficam livres para os três botões do Windows, que o sistema
+ * desenha por cima da barra. Sólida, porque a faixa dos botões é opaca.
+ */
+.topbar {
+  --topbar-hover: color-mix(in srgb, var(--text) 10%, transparent);
+  position: relative;
+  /* Acima do corpo da janela, para o menu de abrir workspace cobrir a página. */
+  z-index: 30;
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 140px 0 var(--space-3);
+  /* Linha inferior por sombra interna: a borda pararia antes dos botões do Windows. */
+  box-shadow: inset 0 -1px 0 var(--line);
+  background: var(--bg);
+  -webkit-app-region: drag;
+}
+
+/* Marca: o símbolo em duas metades e o nome em caixa alta. */
+.topbar__brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.625rem;
+  margin-right: var(--space-2);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.topbar__mark {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 5px;
+}
+
+.topbar__mark::before,
+.topbar__mark::after {
+  content: '';
+  flex: 1;
+}
+
+.topbar__mark::before {
+  background: var(--text);
+}
+
+.topbar__mark::after {
+  background: var(--muted);
+}
+
+/* As abas rolam de lado se não couberem, sem empurrar o resto da barra. */
+.topbar__tabs {
+  min-width: 0;
+  overflow-x: auto;
+  /* A barra fina de rolagem do Chromium ocuparia altura e criaria rolagem vertical. */
+  overflow-y: hidden;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__tab-list {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A aba é o link do projeto e o botão de fechar, num fundo só. */
+.topbar__tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 28px;
+  border-radius: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__tab:hover {
+  background: var(--topbar-hover);
+}
+
+.topbar__tab:has(> a[aria-current='page']) {
+  background: var(--field-line);
+}
+
+.topbar__tab-link {
+  display: block;
+  max-width: 14rem;
+  overflow: hidden;
+  padding: 0 var(--space-1) 0 var(--space-2);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 28px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__tab-link:hover,
+.topbar__tab-link[aria-current='page'] {
+  color: var(--text);
+}
+
+.topbar__tab-link[aria-current='page'] {
+  font-weight: 700;
+}
+
+.topbar__close,
+.topbar__add {
+  display: grid;
+  flex: none;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__close {
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.topbar__add {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 1.125rem;
+}
+
+.topbar__close:hover,
+.topbar__add:hover,
+.topbar__add[aria-expanded='true'] {
+  background: var(--topbar-hover);
+  color: var(--text);
+}
+
+/* O menu de abrir workspace: a lista cai logo abaixo do botão e cobre a página. */
+.topbar__menu {
+  position: relative;
+  flex: none;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 14rem;
+  max-width: 22rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--field-line);
+  border-radius: 6px;
+  background: var(--bg);
+  list-style: none;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__menu-item {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 0.375rem 0.625rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.topbar__menu-item:hover,
+.topbar__menu-item:focus-visible {
+  background: var(--topbar-hover);
+  color: var(--text);
+}
+
+.topbar__error {
+  flex: none;
+  max-width: 18rem;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+/* A barra tem rolagem nas abas e no menu, que cortariam um anel de foco por fora: ele fica por dentro. */
+.topbar a:focus-visible,
+.topbar button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Contadores da visão geral, no canto direito, antes dos 140px dos botões do Windows. */
+.topbar__status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  -webkit-app-region: no-drag;
+}
+
+/*
+ * Corpo da janela: a coluna lateral e a área da página, lado a lado, abaixo da barra superior. A
+ * coluna lateral junta a navegação principal e a barra de projetos e missões (esta rola sozinha).
+ * Abaixo de 1000px a barra de projetos some (app.css) e a coluna vira uma faixa acima da página.
+ */
+.app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-side {
+  --side-bg: color-mix(in srgb, var(--bg) 80%, transparent);
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-side > .sidebar {
+  flex: 1;
+}
+
+/* Navegação principal, na largura da barra de projetos, com o mesmo fundo translúcido dela. */
+.main-nav {
+  flex: none;
+  width: 230px;
+  padding: var(--space-3) var(--space-3) 0;
+  border-right: 1px solid var(--line);
+  background: var(--side-bg);
+}
+
+.main-nav__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.main-nav a {
+  display: block;
+  padding: 0.375rem var(--space-3);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.main-nav a:hover {
+  color: var(--text);
+}
+
+/* O anel de foco fica por dentro do link, sempre dentro da coluna. */
+.main-nav a:focus-visible {
+  outline-offset: -2px;
+}
+
+.main-nav a[aria-current='page'] {
+  background: var(--field-line);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+.app-main__content {
+  max-width: 72rem;
+}
+
+@media (max-width: 1000px) {
+  .app-body {
+    flex-direction: column;
+  }
+
+  .main-nav {
+    width: auto;
+    padding: var(--space-2) var(--space-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .main-nav__list {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+}
