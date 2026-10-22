@@ -547,6 +547,22 @@ describe('endSession', () => {
     expect(leavesOf(stored(rows, 'w1'))[0]?.terminalId).toBe('missao');
   });
 
+  it('TERMINAL_NOT_FOUND de closeSession conta como sucesso e zera o terminalId', async () => {
+    const { service, rows } = setup({
+      records: [record({ layout: JSON.stringify(pair('sumido', 'outro')) })],
+      closeResult: () => ({
+        ok: false,
+        error: { code: 'TERMINAL_NOT_FOUND', message: 'x', retryable: false },
+      }),
+    });
+
+    const result = await service.endSession('w1', 'l1');
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(result.data.layout).map((l) => l.terminalId)).toEqual([null, 'outro']);
+    expect(stored(rows, 'w1')).toEqual(result.data.layout);
+  });
+
   it('folha ou workspace inexistentes devolvem VALIDATION_FAILED', async () => {
     const { service } = setup({
       records: [record({ layout: JSON.stringify(pair('meu', null)) })],
