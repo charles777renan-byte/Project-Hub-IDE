@@ -198,6 +198,35 @@ export const auditEvents = sqliteTable(
   ],
 );
 
+/** Um workspace por projeto. O layout é um JSON opaco para o banco: quem valida é a camada acima. */
+export const workspaces = sqliteTable('workspaces', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id')
+    .notNull()
+    .unique()
+    .references(() => projects.id),
+  layout: text('layout').notNull(),
+  isOpen: integer('is_open', { mode: 'boolean' })
+    .notNull()
+    .default(sql`0`),
+  position: integer('position').notNull().default(0),
+  lastActiveAt: text('last_active_at').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/** Sessões de terminal abertas por painel, para reconhecer os processos vivos ao reabrir o app. */
+export const terminalSessions = sqliteTable('terminal_sessions', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  provider: text('provider').notNull(),
+  title: text('title').notNull(),
+  createdAt: text('created_at').notNull(),
+  closedAt: text('closed_at'),
+});
+
 export const schema = {
   projects,
   missions,
@@ -206,4 +235,6 @@ export const schema = {
   executions,
   approvalRequests,
   auditEvents,
+  workspaces,
+  terminalSessions,
 };
