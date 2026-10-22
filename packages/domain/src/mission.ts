@@ -122,6 +122,8 @@ export type Execution = {
   attempt: number;
   status: ExecutionStatus;
   agentSessionId?: string;
+  /** Última saída do agente que a aplicação aplicou. Opaca: só o adaptador a interpreta. */
+  agentCursor?: string;
   exitReason?: ExitReason;
   usage?: UsageSummary;
   startedAt?: string;

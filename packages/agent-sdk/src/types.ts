@@ -73,6 +73,7 @@ export type AgentEvent =
   | { type: 'tool.completed'; callId: string; result: ToolResult; at: string }
   | { type: 'approval.requested'; request: ApprovalRequestDraft; at: string }
   | { type: 'input.requested'; request: InputRequest; at: string }
+  | { type: 'input.received'; at: string }
   | { type: 'usage.updated'; usage: UsageSummary; at: string }
   | ({ type: 'verification.completed'; at: string } & VerificationResult)
   | { type: 'session.completed'; result: AgentResult; at: string }
@@ -92,6 +93,13 @@ export type AgentEventDraft = WithoutTimestamp<
 export interface AgentSession {
   readonly id: string;
   events(): AsyncIterable<AgentEvent>;
+  /**
+   * Posição do último evento entregue por `events()`, opaca para quem chama. A aplicação grava essa posição
+   * junto com o evento, e `attach` a usa para retomar sem repetir. Sem ela, a sessão não pode ser retomada.
+   */
+  cursor?(): string | undefined;
+  /** Verdadeiro quando o usuário responde fora do app (no terminal). A leitura segue e o adaptador avisa com `input.received`. */
+  readonly externalInput?: boolean;
   send(input: AgentUserInput): Promise<void>;
   approve(input: AgentApprovalDecision): Promise<void>;
   pause(): Promise<void>;
@@ -105,4 +113,9 @@ export interface AgentAdapter {
   probe(config: AgentConfig): Promise<AgentProbeResult>;
   getCapabilities(config: AgentConfig): Promise<AgentCapabilities>;
   start(input: AgentStartInput, signal: AbortSignal): Promise<AgentSession>;
+  /**
+   * Reanexa a uma sessão que continua viva depois de um reinício do app, a partir da posição gravada. Devolve
+   * undefined se a sessão não existe mais. Adaptador sem reanexação não define o método.
+   */
+  attach?(sessionId: string, cursor: string): Promise<AgentSession | undefined>;
 }

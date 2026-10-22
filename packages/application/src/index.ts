@@ -41,9 +41,16 @@ export type {
   MissionChanges,
   MissionRepository,
   ProjectRepository,
+  TerminalErrorCode,
+  TerminalExit,
+  TerminalOpenInput,
+  TerminalPort,
+  TerminalSnapshot,
+  TerminalSubscriber,
   WorktreeNames,
   WorktreePort,
 } from './ports';
+export { TerminalPortError } from './ports';
 export { failure } from './result';
 export {
   listWorktrees,

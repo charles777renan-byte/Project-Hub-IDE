@@ -17,8 +17,10 @@ import {
   platformOf,
   resolveDatabaseFile,
   resolveDirectoryChooser,
+  resolveMaxRunning,
   resolveWorktreesRoot,
 } from './composition';
+import { createClaudeAgent } from './claude-agent';
 import { chooseProjectDirectory } from './dialogs';
 import { registerApprovalHandlers } from './ipc/approvals';
 import { registerMissionHandlers } from './ipc/missions';
@@ -166,6 +168,17 @@ app
       platform: platformOf(process.platform),
       worktreesRoot: resolveWorktreesRoot(env, homedir()),
       publishMissionEvent,
+      maxRunningMissions: resolveMaxRunning(env),
+      ...(process.env['APP_AGENT_ADAPTER'] === 'claude-code'
+        ? {
+            agent: createClaudeAgent({
+              dataDir: app.getPath('userData'),
+              hostEntry: join(import.meta.dirname, 'terminal-host.js'),
+              execPath: process.execPath,
+              env: process.env,
+            }),
+          }
+        : {}),
     });
     app.once('will-quit', () => {
       services.close();

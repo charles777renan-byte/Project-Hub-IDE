@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   createOrchestrator,
-  recoverInterruptedExecutions,
+  type OrchestratorDeps,
   type AddProjectDeps,
   type CreateMissionDeps,
   type DeleteMissionDeps,
@@ -59,7 +59,22 @@ export type AppServicesOptions = {
   /** Pasta absoluta onde os worktrees das missões ficam (seção 16.2). */
   worktreesRoot: string;
   publishMissionEvent: MissionEventPublisher;
+  /** Missões com agente vivo ao mesmo tempo. Sem valor, o orquestrador usa o padrão (seção 15.6). */
+  maxRunningMissions?: number | undefined;
+  /** Agente das missões. Sem ele, vale o agente simulado. */
+  agent?: OrchestratorDeps['agent'] | undefined;
 };
+
+/**
+ * Limite de missões com agente vivo, lido de `APP_MAX_RUNNING_MISSIONS`. Valor que não é inteiro positivo
+ * é ignorado, e vale o padrão.
+ */
+export function resolveMaxRunning(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = env['APP_MAX_RUNNING_MISSIONS'];
+  if (raw === undefined || raw === '') return undefined;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
 
 /** Plataforma do Node para o tipo que os casos de uso usam. Plataforma fora da lista conta como Linux. */
 export function platformOf(value: NodeJS.Platform): Platform {
@@ -153,12 +168,13 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     worktreeNames: ({ missionId, title, projectName }) =>
       buildWorktreeNames({ missionId, title, projectSlug: projectName }),
     worktreesRoot: options.worktreesRoot,
-    agent: createDemoAgent(),
+    agent: options.agent ?? createDemoAgent(),
+    ...(options.maxRunningMissions === undefined ? {} : { maxRunning: options.maxRunningMissions }),
     diff,
     now,
     newId,
   });
-  recoverInterruptedExecutions(repo, now);
+  // A recuperação das execuções abertas roda dentro do orquestrador (reanexa ou fecha, e anda com a fila).
   const fs = { isDirectory: createIsDirectory() };
   return {
     repo: projects,

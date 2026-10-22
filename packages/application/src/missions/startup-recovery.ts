@@ -1,4 +1,4 @@
-import type { MissionStatus } from '@project-hub/domain';
+import type { Execution, MissionStatus } from '@project-hub/domain';
 import type { MissionRepository } from '../ports';
 import { expirePendingApprovals, moveMission } from './transitions';
 
@@ -18,41 +18,53 @@ const ENDED: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
  * encerrada.
  */
 export function recoverInterruptedExecutions(repo: MissionRepository, now: () => string): number {
-  const interrupted = [
-    ...repo.findExecutionsByStatus('running'),
-    ...repo.findExecutionsByStatus('paused'),
-  ];
-  for (const execution of interrupted) {
-    repo.transaction(() => {
-      const at = now();
-      repo.updateExecution(execution.id, {
-        status: 'failed',
-        exitReason: 'interrupted_by_restart',
-        finishedAt: at,
-      });
-      repo.appendAudit({
-        aggregateType: 'execution',
-        aggregateId: execution.id,
-        eventType: 'execution.interrupted',
-        severity: 'warning',
-        actor: 'system',
-        payload: { attempt: execution.attempt },
-        createdAt: at,
-      });
-      expirePendingApprovals(repo, execution.id, at);
-
-      const mission = repo.getMission(execution.missionId);
-      if (mission === undefined) throw new Error(`Missão ausente: ${execution.missionId}.`);
-      if (ENDED.includes(mission.status)) return;
-      if (PAUSED_OR_WAITING.includes(mission.status)) {
-        moveMission(repo, mission.id, 'running', { actor: 'system', at });
-      }
-      moveMission(repo, mission.id, 'failed', {
-        actor: 'system',
-        at,
-        changes: { finishedAt: at },
-      });
-    });
-  }
+  const interrupted = openExecutionsAtStart(repo);
+  for (const execution of interrupted) failInterruptedExecution(repo, execution, now);
   return interrupted.length;
+}
+
+/** Execuções que estavam abertas quando o app fechou: `running` ou `paused`. */
+export function openExecutionsAtStart(repo: MissionRepository): Execution[] {
+  return [...repo.findExecutionsByStatus('running'), ...repo.findExecutionsByStatus('paused')];
+}
+
+/**
+ * Fecha uma execução aberta que o agente não retoma, como `interrupted_by_restart`. Usada quando a
+ * sessão não existe mais, e também quando o adaptador não consegue reanexar.
+ */
+export function failInterruptedExecution(
+  repo: MissionRepository,
+  execution: Execution,
+  now: () => string,
+): void {
+  repo.transaction(() => {
+    const at = now();
+    repo.updateExecution(execution.id, {
+      status: 'failed',
+      exitReason: 'interrupted_by_restart',
+      finishedAt: at,
+    });
+    repo.appendAudit({
+      aggregateType: 'execution',
+      aggregateId: execution.id,
+      eventType: 'execution.interrupted',
+      severity: 'warning',
+      actor: 'system',
+      payload: { attempt: execution.attempt },
+      createdAt: at,
+    });
+    expirePendingApprovals(repo, execution.id, at);
+
+    const mission = repo.getMission(execution.missionId);
+    if (mission === undefined) throw new Error(`Missão ausente: ${execution.missionId}.`);
+    if (ENDED.includes(mission.status)) return;
+    if (PAUSED_OR_WAITING.includes(mission.status)) {
+      moveMission(repo, mission.id, 'running', { actor: 'system', at });
+    }
+    moveMission(repo, mission.id, 'failed', {
+      actor: 'system',
+      at,
+      changes: { finishedAt: at },
+    });
+  });
 }
