@@ -68,7 +68,7 @@ describe('App', () => {
       </MemoryRouter>,
     );
     const navigation = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(navigation).getAllByRole('link')).toHaveLength(2);
+    expect(within(navigation).getAllByRole('link')).toHaveLength(3);
     expect(within(screen.getByRole('main')).getByRole('heading', { name: 'Início' })).toBeVisible();
   });
 

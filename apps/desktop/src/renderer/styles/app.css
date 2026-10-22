@@ -1562,3 +1562,293 @@ button:disabled {
 .conclusion__item--failed {
   color: var(--red);
 }
+
+/* Página Terminais: lista lateral de agentes e shells, e a área dividida (opção A do desenho). */
+.terminals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+  min-height: 0;
+}
+.terminals__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.terminals__layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 18rem) 1fr;
+  gap: var(--space-3);
+  flex: 1;
+  min-height: 0;
+}
+.terminals__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--surface-glass);
+}
+.terminals__new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.terminals__new-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.terminals__group {
+  margin: 0 0 var(--space-2);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.terminals__list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.terminals__item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 var(--space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.terminals__item[aria-pressed='true'] {
+  border-color: var(--cyan);
+}
+.terminals__item-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.terminals__item-state {
+  grid-column: 2;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.terminals__mark--running {
+  color: var(--lime);
+}
+.terminals__mark--waiting {
+  color: var(--violet);
+}
+.terminals__mark--exited {
+  color: var(--muted);
+}
+.terminals__empty {
+  margin: 0;
+  color: var(--muted);
+}
+.terminals__error {
+  margin: 0;
+  color: var(--red);
+}
+.terminals__area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+.terminals__toolbar {
+  display: flex;
+  gap: var(--space-2);
+}
+.terminals__panes {
+  display: grid;
+  gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+}
+.terminals__panes--columns {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+.terminals__panes--rows {
+  grid-auto-flow: row;
+  grid-auto-rows: minmax(0, 1fr);
+}
+.terminals__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.terminals__pane[data-active='true'] {
+  border-color: var(--cyan);
+}
+.terminals__pane-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.terminals__pane-head > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-view {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * Aparência do xterm sob a CSP estrita (style-src 'self'): o xterm monta estas regras num <style> que a CSP
+ * bloqueia, então elas vivem aqui. Cores de 256 e RGB vão por estilo CSSOM e já passam.
+ */
+.terminal-view .xterm {
+  padding: 4px;
+  height: 100%;
+}
+.terminal-view .xterm-rows {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.terminal-view .xterm-rows span {
+  display: inline-block;
+  height: 100%;
+  vertical-align: top;
+}
+.terminal-view .xterm-fg-257 {
+  color: #f5f2ff;
+}
+.terminal-view .xterm-bg-256 {
+  background-color: #080614;
+}
+.terminal-view .xterm-cursor-block {
+  background-color: #c8ff2e;
+  color: #080614;
+}
+.terminal-view .xterm-cursor-outline {
+  outline: 1px solid #c8ff2e;
+}
+.terminal-view .xterm-cursor-bar {
+  box-shadow: 1px 0 0 #c8ff2e inset;
+}
+.terminal-view .xterm-cursor-underline {
+  border-bottom: 1px solid #c8ff2e;
+}
+.terminal-view .xterm-selection div {
+  background-color: rgb(181 131 255 / 40%);
+}
+.terminal-view .xterm-fg-0 {
+  color: #1b1740;
+}
+.terminal-view .xterm-bg-0 {
+  background-color: #1b1740;
+}
+.terminal-view .xterm-fg-1 {
+  color: #ff2d6f;
+}
+.terminal-view .xterm-bg-1 {
+  background-color: #ff2d6f;
+}
+.terminal-view .xterm-fg-2 {
+  color: #c8ff2e;
+}
+.terminal-view .xterm-bg-2 {
+  background-color: #c8ff2e;
+}
+.terminal-view .xterm-fg-3 {
+  color: #ffd23f;
+}
+.terminal-view .xterm-bg-3 {
+  background-color: #ffd23f;
+}
+.terminal-view .xterm-fg-4 {
+  color: #3d8bff;
+}
+.terminal-view .xterm-bg-4 {
+  background-color: #3d8bff;
+}
+.terminal-view .xterm-fg-5 {
+  color: #ff3fd0;
+}
+.terminal-view .xterm-bg-5 {
+  background-color: #ff3fd0;
+}
+.terminal-view .xterm-fg-6 {
+  color: #19e6ff;
+}
+.terminal-view .xterm-bg-6 {
+  background-color: #19e6ff;
+}
+.terminal-view .xterm-fg-7 {
+  color: #d8d2ee;
+}
+.terminal-view .xterm-bg-7 {
+  background-color: #d8d2ee;
+}
+.terminal-view .xterm-fg-8 {
+  color: #4a447c;
+}
+.terminal-view .xterm-bg-8 {
+  background-color: #4a447c;
+}
+.terminal-view .xterm-fg-9 {
+  color: #ff6b97;
+}
+.terminal-view .xterm-bg-9 {
+  background-color: #ff6b97;
+}
+.terminal-view .xterm-fg-10 {
+  color: #dcff6e;
+}
+.terminal-view .xterm-bg-10 {
+  background-color: #dcff6e;
+}
+.terminal-view .xterm-fg-11 {
+  color: #ffe27d;
+}
+.terminal-view .xterm-bg-11 {
+  background-color: #ffe27d;
+}
+.terminal-view .xterm-fg-12 {
+  color: #7db0ff;
+}
+.terminal-view .xterm-bg-12 {
+  background-color: #7db0ff;
+}
+.terminal-view .xterm-fg-13 {
+  color: #ff7ee0;
+}
+.terminal-view .xterm-bg-13 {
+  background-color: #ff7ee0;
+}
+.terminal-view .xterm-fg-14 {
+  color: #74efff;
+}
+.terminal-view .xterm-bg-14 {
+  background-color: #74efff;
+}
+.terminal-view .xterm-fg-15 {
+  color: #ffffff;
+}
+.terminal-view .xterm-bg-15 {
+  background-color: #ffffff;
+}

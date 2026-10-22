@@ -164,7 +164,9 @@ describe('tipos públicos', () => {
 describe('responseSchemas', () => {
   it('tem um schema de resposta para cada canal de pedido, e só para eles', () => {
     // O canal de eventos vai do processo principal ao renderer e não tem resposta (R165).
-    const requestChannels = Object.values(CHANNELS).filter((c) => c !== CHANNELS.missionsEvent);
+    const requestChannels = Object.values(CHANNELS).filter(
+      (c) => c !== CHANNELS.missionsEvent && c !== CHANNELS.terminalsEvent,
+    );
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());
   });
 

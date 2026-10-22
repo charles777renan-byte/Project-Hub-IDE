@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CHANNELS, type MissionEventDto } from '@project-hub/contracts';
+import { CHANNELS, type MissionEventDto, type TerminalEvent } from '@project-hub/contracts';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   app,
   BrowserWindow,
@@ -20,7 +21,9 @@ import {
   resolveMaxRunning,
   resolveWorktreesRoot,
 } from './composition';
-import { createClaudeAgent } from './claude-agent';
+import { createClaudeAgent, createTerminalBackend } from './claude-agent';
+import { registerTerminalHandlers } from './ipc/terminals';
+import { createTerminalService } from './terminals';
 import { chooseProjectDirectory } from './dialogs';
 import { registerApprovalHandlers } from './ipc/approvals';
 import { registerMissionHandlers } from './ipc/missions';
@@ -114,6 +117,13 @@ function publishMissionEvent(event: MissionEventDto): void {
   target.webContents.send(CHANNELS.missionsEvent, event);
 }
 
+/** Entrega um evento de terminal ao quadro principal. */
+function publishTerminalEvent(event: TerminalEvent): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.terminalsEvent, event);
+}
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -163,6 +173,21 @@ app
 
     // Empacotado, o ambiente do processo não troca a pasta de dados nem o seletor (R193).
     const env = applicationEnvironment(process.env, app.isPackaged);
+    const testDataDir = env['PROJECT_HUB_ENV'] === 'test' ? env['PROJECT_HUB_DATA_DIR'] : undefined;
+    const terminalOptions = {
+      dataDir: testDataDir ?? app.getPath('userData'),
+      // Em teste, cada pasta de dados tem o seu pipe e o processo de terminais encerra logo ao ficar ocioso.
+      ...(testDataDir === undefined
+        ? {}
+        : {
+            pipeName: 'teste-' + createHash('sha1').update(testDataDir).digest('hex').slice(0, 12),
+            idleTimeoutMs: 3_000,
+          }),
+      hostEntry: join(import.meta.dirname, 'terminal-host.js'),
+      execPath: process.execPath,
+      env: process.env,
+    };
+    const terminalBackend = createTerminalBackend(terminalOptions);
     const services = createAppServices({
       dbFile: resolveDatabaseFile(env, app.getPath('userData')),
       platform: platformOf(process.platform),
@@ -170,14 +195,7 @@ app
       publishMissionEvent,
       maxRunningMissions: resolveMaxRunning(env),
       ...(process.env['APP_AGENT_ADAPTER'] === 'claude-code'
-        ? {
-            agent: createClaudeAgent({
-              dataDir: app.getPath('userData'),
-              hostEntry: join(import.meta.dirname, 'terminal-host.js'),
-              execPath: process.execPath,
-              env: process.env,
-            }),
-          }
+        ? { agent: createClaudeAgent(terminalOptions, terminalBackend) }
         : {}),
     });
     app.once('will-quit', () => {
@@ -195,6 +213,19 @@ app
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
+    registerTerminalHandlers(
+      ipcMain,
+      isTrustedSender,
+      createTerminalService({
+        port: terminalBackend.port,
+        repo: services.terminalDeps.repo,
+        projects: services.terminalDeps.projects,
+        publish: publishTerminalEvent,
+        env: process.env,
+        platform: process.platform,
+        newId: randomUUID,
+      }),
+    );
     createMainWindow();
 
     // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.

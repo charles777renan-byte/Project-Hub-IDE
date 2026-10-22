@@ -13,7 +13,12 @@ function fire(event, extra = {}) {
     for (const hook of group.hooks) {
       spawnSync(hook.command, {
         shell: true,
-        input: JSON.stringify({ hook_event_name: event, session_id: 'sessao-teste', cwd: process.cwd(), ...extra }),
+        input: JSON.stringify({
+          hook_event_name: event,
+          session_id: 'sessao-teste',
+          cwd: process.cwd(),
+          ...extra,
+        }),
         env: process.env,
         stdio: ['pipe', 'ignore', 'ignore'],
       });
@@ -23,7 +28,11 @@ function fire(event, extra = {}) {
 
 fire('SessionStart');
 fire('Notification', { message: 'Precisa da sua permissão' });
-fire('PreToolUse', { tool_use_id: 'tool-1', tool_name: 'Bash', tool_input: { command: 'echo oi' } });
+fire('PreToolUse', {
+  tool_use_id: 'tool-1',
+  tool_name: 'Bash',
+  tool_input: { command: 'echo oi' },
+});
 fire('PostToolUse', { tool_use_id: 'tool-1', tool_name: 'Bash' });
 
 let pending = '';

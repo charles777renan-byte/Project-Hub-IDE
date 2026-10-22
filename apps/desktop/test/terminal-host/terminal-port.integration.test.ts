@@ -162,7 +162,11 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
   });
 
   it('um programa que não existe lança PROCESS_START_FAILED', async () => {
-    const input = { ...shellInput(randomUUID()), command: 'programa-que-nao-existe-xyz.exe', args: [] };
+    const input = {
+      ...shellInput(randomUUID()),
+      command: 'programa-que-nao-existe-xyz.exe',
+      args: [],
+    };
 
     await expect(port.open(input)).rejects.toMatchObject({ code: 'PROCESS_START_FAILED' });
   });
@@ -189,7 +193,11 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
     const offline = createTerminalHostPort({
       connect: () =>
         connectTerminalHost({
-          pipePath: terminalHostPipePath(`ninguem-${randomUUID().slice(0, 8)}`, process.platform, tmpdir()),
+          pipePath: terminalHostPipePath(
+            `ninguem-${randomUUID().slice(0, 8)}`,
+            process.platform,
+            tmpdir(),
+          ),
           token: TOKEN,
         }),
     });

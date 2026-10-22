@@ -1,6 +1,7 @@
 import {
   CHANNELS,
   missionEventDtoSchema,
+  terminalEventSchema,
   responseSchemas,
   type AddProjectInput,
   type AppResult,
@@ -15,6 +16,8 @@ import {
   type ProjectHubApi,
   type ProjectSummary,
   type ProvideInput,
+  type TerminalEvent,
+  type TerminalSummary,
   type WorktreeDto,
 } from '@project-hub/contracts';
 
@@ -98,6 +101,31 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           if (!parsed.success) {
             console.warn(
               `Evento fora do contrato no canal ${CHANNELS.missionsEvent}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
+    },
+    terminals: {
+      list: () => call<TerminalSummary[]>(CHANNELS.terminalsList),
+      openShell: (projectId: string) =>
+        call<{ terminalId: string }>(CHANNELS.terminalsOpenShell, { projectId }),
+      write: (terminalId: string, data: string) =>
+        call<void>(CHANNELS.terminalsWrite, { terminalId, data }),
+      resize: (terminalId: string, cols: number, rows: number) =>
+        call<void>(CHANNELS.terminalsResize, { terminalId, cols, rows }),
+      subscribe: (terminalId: string) => call<void>(CHANNELS.terminalsSubscribe, { terminalId }),
+      unsubscribe: (terminalId: string) =>
+        call<void>(CHANNELS.terminalsUnsubscribe, { terminalId }),
+      close: (terminalId: string) => call<void>(CHANNELS.terminalsClose, { terminalId }),
+      onEvent: (listener: (event: TerminalEvent) => void) =>
+        subscribe(CHANNELS.terminalsEvent, (payload) => {
+          const parsed = terminalEventSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              'Evento fora do contrato no canal ' + CHANNELS.terminalsEvent + ':',
               parsed.error.issues,
             );
             return;

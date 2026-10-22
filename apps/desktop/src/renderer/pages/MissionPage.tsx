@@ -8,7 +8,7 @@ import { DecisionColumn } from '../components/workspace/DecisionColumn';
 import { DiffPanel } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionHeader } from '../components/workspace/MissionHeader';
-import { TerminalPanel } from '../components/workspace/TerminalPanel';
+import { MissionTerminal } from '../components/workspace/MissionTerminal';
 import { TestsPanel } from '../components/workspace/TestsPanel';
 import { needsDecisionInConversation } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
@@ -251,7 +251,7 @@ export function MissionPage() {
           <TestsPanel events={events} />
         </Panel>
         <Panel title="Terminal" accent="cyan">
-          <TerminalPanel events={events} />
+          <MissionTerminal missionId={missionId} events={events} />
         </Panel>
         <Panel title="Logs do sistema" accent="yellow">
           <LogsPanel events={events} />

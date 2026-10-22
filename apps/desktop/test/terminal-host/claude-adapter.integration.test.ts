@@ -36,7 +36,11 @@ let adapter: ReturnType<typeof createClaudeCodeAdapter>;
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'ph-claude-'));
   recordFile = join(dir, 'argv.json');
-  const pipePath = terminalHostPipePath(`teste-${randomUUID().slice(0, 8)}`, process.platform, tmpdir());
+  const pipePath = terminalHostPipePath(
+    `teste-${randomUUID().slice(0, 8)}`,
+    process.platform,
+    tmpdir(),
+  );
   manager = new PtyManager();
   const commands = new TerminalCommands(manager);
   receiver = await startHookReceiver({ logDir: join(dir, 'hooks') });
@@ -98,7 +102,10 @@ function reading(session: AgentSession): { events: AgentEvent[]; done: Promise<v
 
 describe.skipIf(!onWindows)('adaptador do Claude Code com terminal real', () => {
   it('roda o CLI num terminal, recebe os eventos pelos hooks e termina com o fim da sessão', async () => {
-    const session = await adapter.start({ cwd: tmpdir(), prompt: 'corrija o teste' }, new AbortController().signal);
+    const session = await adapter.start(
+      { cwd: tmpdir(), prompt: 'corrija o teste' },
+      new AbortController().signal,
+    );
     const { events, done } = reading(session);
 
     await waitFor(() => events.some((event) => event.type === 'input.requested'));
@@ -121,7 +128,10 @@ describe.skipIf(!onWindows)('adaptador do Claude Code com terminal real', () => 
   });
 
   it('parar a sessão encerra o terminal, e a leitura termina com falha', async () => {
-    const session = await adapter.start({ cwd: tmpdir(), prompt: 'x' }, new AbortController().signal);
+    const session = await adapter.start(
+      { cwd: tmpdir(), prompt: 'x' },
+      new AbortController().signal,
+    );
     const { events, done } = reading(session);
     await waitFor(() => events.some((event) => event.type === 'session.started'));
 

@@ -471,6 +471,7 @@ describe('buildProjectHubApi', () => {
       'missions',
       'ping',
       'projects',
+      'terminals',
       'worktrees',
     ]);
     expect(Object.keys(api.projects).sort()).toEqual([

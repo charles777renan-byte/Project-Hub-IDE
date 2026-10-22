@@ -58,6 +58,7 @@ function installApi(missions: MissionDto[]) {
       ),
       subscribe: vi.fn(() => () => undefined),
     },
+    terminals: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
   };
   window.projectHub = api as unknown as ProjectHubApi;
   return api;
@@ -327,7 +328,9 @@ describe('ProjectDetailPage: arquivar e remover', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Arquivar projeto' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Há missões ativas ou aguardando início');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Há missões ativas ou aguardando início',
+    );
     expect(screen.getByRole('heading', { level: 1, name: 'Project Hub' })).toBeInTheDocument();
     expect(screen.queryByText('Lista de projetos')).not.toBeInTheDocument();
   });
