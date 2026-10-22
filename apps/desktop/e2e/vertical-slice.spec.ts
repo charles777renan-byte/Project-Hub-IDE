@@ -90,15 +90,19 @@ async function approvePlanAndStart(page: Page): Promise<void> {
 }
 
 /**
- * Caminho do worktree que o cabeçalho da missão mostra. O texto do cabeçalho é único na página:
- * projeto, branch e worktree, nessa ordem (a linha do tempo diz "Worktree criado em", sem a branch).
+ * Caminho do worktree que o resumo da missão guarda. A linha do resumo mostra a branch e só o nome
+ * curto do worktree (a última pasta); o caminho inteiro fica no título desse nome, o mesmo que o botão
+ * "Copiar caminho" copia.
  */
-async function worktreePathOf(page: Page, projectName: string): Promise<string> {
-  const prefix = `${projectName} · branch main · worktree `;
-  const header = await page.getByText(prefix).textContent();
-  const path = header?.startsWith(prefix) ? header.slice(prefix.length).trim() : undefined;
-  if (path === undefined || path === '' || path === 'ainda não criado') {
-    throw new Error(`O cabeçalho da missão não mostra um worktree: ${String(header)}`);
+async function worktreePathOf(page: Page): Promise<string> {
+  const summary = page.getByRole('region', { name: 'Resumo da missão' });
+  await expect(summary.getByText('branch main', { exact: true })).toBeVisible();
+  await expect(summary.getByRole('button', { name: 'Copiar caminho' })).toBeVisible();
+  const name = summary.locator('.mission-meta__path');
+  const path = await name.getAttribute('title');
+  const shown = await name.textContent();
+  if (path === null || path === '' || shown === null || !path.endsWith(shown)) {
+    throw new Error(`O resumo da missão não mostra um worktree: ${String(path)}`);
   }
   return path;
 }
@@ -142,7 +146,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await approvePlanAndStart(page);
 
   // 3. O worktree foi criado em PROJECT_HUB_DATA_DIR/worktrees, e o agente gravou o arquivo nele.
-  const worktreePath = await worktreePathOf(page, projectName);
+  const worktreePath = await worktreePathOf(page);
   const fromRoot = relative(worktreesDir, worktreePath);
   expect(fromRoot.startsWith('..') || isAbsolute(fromRoot)).toBe(false);
   expect(existsSync(worktreePath)).toBe(true);
@@ -205,7 +209,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   ).toBeVisible();
   expect(await timelineOf(page)).toEqual(eventsBeforeRestart);
   // A missão concluída não foi mexida pela recuperação do início: continua com o mesmo worktree.
-  expect(await worktreePathOf(page, projectName)).toBe(worktreePath);
+  expect(await worktreePathOf(page)).toBe(worktreePath);
 
   // O banco guarda o fim da tentativa: ela terminou `succeeded`, a missão também, e a recuperação
   // do segundo início não fechou nem falhou nenhuma execução.
