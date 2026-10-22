@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ProjectHubApi, ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
 import { Link, MemoryRouter, useLocation } from 'react-router';
@@ -385,5 +385,90 @@ describe('RestoreWorkspace', () => {
     // Dá tempo de um efeito (errado) navegar de novo.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(where()).toBe('/');
+  });
+});
+
+describe('falha ao carregar os workspaces', () => {
+  const failure = () =>
+    Promise.resolve({ ok: false, error: { code: 'INTERNAL', message: 'x' } }) as never;
+
+  function installFailingFirstLoad() {
+    const api = installApi({
+      projects: [project('p1', 'Alfa'), project('p2', 'Beta')],
+      workspaces: [
+        workspace('w1', 'p1', { lastActiveAt: '2026-10-22T09:00:00.000Z' }),
+        workspace('w2', 'p2', { position: 1, lastActiveAt: '2026-10-22T11:30:00.000Z' }),
+      ],
+    });
+    api.workspaces.list.mockImplementationOnce(failure);
+    return api;
+  }
+
+  const reload = () => act(() => void window.dispatchEvent(new Event(WORKSPACES_CHANGED_EVENT)));
+
+  it('mostra a mensagem num alerta e nenhuma aba', async () => {
+    installFailingFirstLoad();
+    renderBar('/projects');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar os workspaces',
+    );
+    expect(screen.queryByRole('navigation', { name: 'Workspaces abertos' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Abrir workspace' })).toBeInTheDocument();
+  });
+
+  it('o alerta some e as abas aparecem na próxima carga que dá certo', async () => {
+    installFailingFirstLoad();
+    renderBar('/projects');
+    await screen.findByRole('alert');
+    reload();
+    expect(await screen.findByRole('link', { name: 'Beta' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('mantém as abas já carregadas quando uma recarga falha', async () => {
+    const { workspaces } = installApi({
+      projects: [project('p1', 'Alfa')],
+      workspaces: [workspace('w1', 'p1')],
+    });
+    renderBar('/projects');
+    await screen.findByRole('link', { name: 'Alfa' });
+    workspaces.list.mockImplementationOnce(failure);
+    reload();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar os workspaces',
+    );
+    expect(screen.getByRole('link', { name: 'Alfa' })).toBeInTheDocument();
+  });
+
+  it('a restauração continua pendente: a próxima carga boa, com a rota ainda em /, restaura uma vez só', async () => {
+    installFailingFirstLoad();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <RestoreWorkspace />
+        <TopBar />
+        <Link to="/">Ir ao Início</Link>
+        <Where />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('alert');
+    expect(where()).toBe('/');
+    reload();
+    await waitFor(() => expect(where()).toBe(workspacePath('p2')));
+
+    // Uma terceira carga, de volta ao Início, não leva de novo.
+    await userEvent.click(screen.getByRole('link', { name: 'Ir ao Início' }));
+    reload();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(where()).toBe('/');
+  });
+
+  it('a carga boa depois da falha não navega se a pessoa já estava em outra página', async () => {
+    const { workspaces } = installFailingFirstLoad();
+    renderBar('/projects');
+    await screen.findByRole('alert');
+    reload();
+    await screen.findByRole('link', { name: 'Beta' });
+    expect(workspaces.list).toHaveBeenCalledTimes(2);
+    expect(where()).toBe('/projects');
   });
 });
