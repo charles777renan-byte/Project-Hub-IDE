@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CHANNELS, type MissionEventDto, type TerminalEvent } from '@project-hub/contracts';
@@ -23,6 +24,7 @@ import {
 } from './composition';
 import { createClaudeAgent, createTerminalBackend } from './claude-agent';
 import { registerTerminalHandlers } from './ipc/terminals';
+import { createProviderRegistry } from './providers';
 import { createTerminalService } from './terminals';
 import { chooseProjectDirectory } from './dialogs';
 import { registerApprovalHandlers } from './ipc/approvals';
@@ -220,10 +222,16 @@ app
         port: terminalBackend.port,
         repo: services.terminalDeps.repo,
         projects: services.terminalDeps.projects,
+        sessions: services.terminalDeps.sessions,
+        providers: createProviderRegistry({
+          env: process.env,
+          platform: process.platform,
+          exists: existsSync,
+        }),
         publish: publishTerminalEvent,
         env: process.env,
-        platform: process.platform,
         newId: randomUUID,
+        now: () => new Date().toISOString(),
       }),
     );
     createMainWindow();

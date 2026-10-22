@@ -20,8 +20,10 @@ import {
 import {
   createMissionRepository,
   createProjectRepository,
+  createTerminalSessionRepository,
   migrateDatabase,
   openDatabase,
+  type TerminalSessionRepository,
 } from '@project-hub/database';
 import {
   buildWorktreeNames,
@@ -52,8 +54,12 @@ export type MissionServices = {
 export type AppServices = AddProjectDeps & {
   missions: MissionServices;
   lifecycle: ProjectLifecycleDeps;
-  /** Repositórios que o serviço de terminais lê: as execuções em andamento e os projetos. */
-  terminalDeps: { repo: MissionRepository; projects: ProjectRepository };
+  /** Repositórios que o serviço de terminais lê: as execuções em andamento, os projetos e as sessões de terminal. */
+  terminalDeps: {
+    repo: MissionRepository;
+    projects: ProjectRepository;
+    sessions: TerminalSessionRepository;
+  };
   close(): void;
 };
 
@@ -188,7 +194,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     now,
     newId,
     lifecycle: { repo: projects, missions: repo, fs, now },
-    terminalDeps: { repo, projects },
+    terminalDeps: { repo, projects, sessions: createTerminalSessionRepository(db) },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },
