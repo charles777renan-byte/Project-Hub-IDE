@@ -24,8 +24,10 @@ import {
 } from './composition';
 import { createClaudeAgent, createTerminalBackend } from './claude-agent';
 import { registerTerminalHandlers } from './ipc/terminals';
+import { registerWorkspaceHandlers } from './ipc/workspaces';
 import { createProviderRegistry } from './providers';
 import { createTerminalService } from './terminals';
+import { createWorkspaceService } from './workspaces';
 import { chooseProjectDirectory } from './dialogs';
 import { registerApprovalHandlers } from './ipc/approvals';
 import { registerMissionHandlers } from './ipc/missions';
@@ -215,24 +217,34 @@ app
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
-    registerTerminalHandlers(
+    const providers = createProviderRegistry({
+      env: process.env,
+      platform: process.platform,
+      exists: existsSync,
+    });
+    const terminalService = createTerminalService({
+      port: terminalBackend.port,
+      repo: services.terminalDeps.repo,
+      projects: services.terminalDeps.projects,
+      sessions: services.terminalDeps.sessions,
+      providers,
+      publish: publishTerminalEvent,
+      env: process.env,
+      newId: randomUUID,
+      now: () => new Date().toISOString(),
+    });
+    registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
+    registerWorkspaceHandlers(
       ipcMain,
       isTrustedSender,
-      createTerminalService({
-        port: terminalBackend.port,
-        repo: services.terminalDeps.repo,
-        projects: services.terminalDeps.projects,
-        sessions: services.terminalDeps.sessions,
-        providers: createProviderRegistry({
-          env: process.env,
-          platform: process.platform,
-          exists: existsSync,
-        }),
-        publish: publishTerminalEvent,
-        env: process.env,
-        newId: randomUUID,
+      createWorkspaceService({
+        repo: services.workspaceDeps.repo,
+        projects: services.workspaceDeps.projects,
+        terminals: terminalService,
         now: () => new Date().toISOString(),
+        newId: randomUUID,
       }),
+      providers,
     );
     createMainWindow();
 

@@ -464,14 +464,16 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só os métodos de ping, projetos, missões, worktrees e aprovações, sem envio genérico', () => {
+  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
       'approvals',
       'missions',
       'ping',
       'projects',
+      'providers',
       'terminals',
+      'workspaces',
       'worktrees',
     ]);
     expect(Object.keys(api.projects).sort()).toEqual([
@@ -501,6 +503,99 @@ describe('buildProjectHubApi', () => {
     ]);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
     expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);
+    expect(Object.keys(api.workspaces).sort()).toEqual([
+      'close',
+      'endSession',
+      'list',
+      'open',
+      'saveLayout',
+      'startSession',
+    ]);
+    expect(Object.keys(api.providers)).toEqual(['list']);
+    const everyName = [
+      ...Object.keys(api),
+      ...Object.keys(api.workspaces),
+      ...Object.keys(api.providers),
+    ];
+    for (const generic of ['invoke', 'send', 'sendSync', 'on', 'once', 'ipcRenderer']) {
+      expect(everyName).not.toContain(generic);
+    }
+  });
+
+  it('workspaces e providers chamam só os próprios canais, levando ids e o layout', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = hubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({
+        ok: true,
+        data: channel === CHANNELS.providersList ? [] : undefined,
+      });
+    });
+    const layout = {
+      type: 'leaf' as const,
+      id: 'l1',
+      provider: 'shell' as const,
+      terminalId: null,
+    };
+
+    await api.providers.list();
+    await api.workspaces.close('w1');
+    await api.workspaces.saveLayout('w1', layout);
+
+    expect(calls).toEqual([
+      [CHANNELS.providersList, undefined],
+      [CHANNELS.workspacesClose, { workspaceId: 'w1' }],
+      [CHANNELS.workspacesSaveLayout, { workspaceId: 'w1', layout }],
+    ]);
+  });
+
+  it('workspaces.open, startSession e endSession levam só ids e conferem o workspace devolvido', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const workspace = {
+      id: 'w1',
+      projectId: 'p1',
+      layout: { type: 'leaf', id: 'l1', provider: 'claude', terminalId: 't1' },
+      position: 0,
+      lastActiveAt: '2026-10-22T10:00:00.000Z',
+      interno: 'não passa',
+    };
+    const api = hubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: workspace });
+    });
+
+    const opened = await api.workspaces.open('p1');
+    await api.workspaces.startSession('w1', 'l1');
+    await api.workspaces.endSession('w1', 'l1');
+
+    expect(calls).toEqual([
+      [CHANNELS.workspacesOpen, { projectId: 'p1' }],
+      [CHANNELS.workspacesStartSession, { workspaceId: 'w1', leafId: 'l1' }],
+      [CHANNELS.workspacesEndSession, { workspaceId: 'w1', leafId: 'l1' }],
+    ]);
+    expect(opened).toStrictEqual({
+      ok: true,
+      data: {
+        id: 'w1',
+        projectId: 'p1',
+        layout: { type: 'leaf', id: 'l1', provider: 'claude', terminalId: 't1' },
+        position: 0,
+        lastActiveAt: '2026-10-22T10:00:00.000Z',
+      },
+    });
+  });
+
+  it('workspaces.list recusa uma lista fora do contrato', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const api = hubApi(() => Promise.resolve({ ok: true, data: [{ id: 'w1', layout: 'texto' }] }));
+    try {
+      expect(await api.workspaces.list()).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('projects.list e projects.add usam os canais de contracts, e add leva o caminho', async () => {
