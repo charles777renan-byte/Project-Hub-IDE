@@ -17,6 +17,10 @@ export type ClaudeAgentOptions = {
   /** Executável que roda o processo de terminais: o do Electron, em modo Node. */
   execPath: string;
   env: NodeJS.ProcessEnv;
+  /** Nome do pipe no lugar do usuário do sistema. Os testes usam um por pasta de dados, para não se cruzarem. */
+  pipeName?: string;
+  /** Tempo ocioso até o processo de terminais encerrar. Os testes o encurtam. Padrão: 30 minutos. */
+  idleTimeoutMs?: number;
 };
 
 /**
@@ -24,17 +28,30 @@ export type ClaudeAgentOptions = {
  * demanda, na primeira operação, e continua vivo quando o app fecha. Uma só conexão é aberta por vez, para
  * dois pedidos simultâneos não subirem dois processos.
  */
-export function createClaudeAgent(
-  options: ClaudeAgentOptions,
-): ReturnType<typeof createClaudeCodeAdapter> {
+export type TerminalBackend = {
+  port: ReturnType<typeof createTerminalHostPort>;
+  hooks: ReturnType<typeof createRemoteHooks>;
+};
+
+/**
+ * Ligação do app com o processo de terminais: a porta de terminais e os hooks, sobre uma só conexão. O
+ * processo sobe sob demanda, na primeira operação, e continua vivo quando o app fecha. Dois pedidos
+ * simultâneos não sobem dois processos.
+ */
+export function createTerminalBackend(options: ClaudeAgentOptions): TerminalBackend {
   const base = join(options.dataDir, 'terminal-host');
   const hostOptions = {
-    pipePath: terminalHostPipePath(userInfo().username, process.platform, tmpdir()),
+    pipePath: terminalHostPipePath(
+      options.pipeName ?? userInfo().username,
+      process.platform,
+      tmpdir(),
+    ),
     tokenFile: join(base, 'host.token'),
     logFile: join(base, 'host.log'),
     hookLogDir: join(base, 'hooks'),
     execPath: options.execPath,
     entryPath: options.hostEntry,
+    ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
   };
   let pending: Promise<TerminalHostClient> | undefined;
   const connect = (): Promise<TerminalHostClient> => {
@@ -43,11 +60,19 @@ export function createClaudeAgent(
     });
     return pending;
   };
+  return { port: createTerminalHostPort({ connect }), hooks: createRemoteHooks(connect) };
+}
+
+/** Agente real: o Claude Code interativo, num terminal do processo de terminais. */
+export function createClaudeAgent(
+  options: ClaudeAgentOptions,
+  backend: TerminalBackend = createTerminalBackend(options),
+): ReturnType<typeof createClaudeCodeAdapter> {
   return createClaudeCodeAdapter({
-    terminal: createTerminalHostPort({ connect }),
-    hooks: createRemoteHooks(connect),
+    terminal: backend.port,
+    hooks: backend.hooks,
     command: resolveExecutable('claude', options.env),
-    settingsDir: join(base, 'settings'),
+    settingsDir: join(options.dataDir, 'terminal-host', 'settings'),
     env: buildTerminalEnv(options.env),
   });
 }

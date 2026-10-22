@@ -10,6 +10,7 @@ import {
   missionViewSchema,
 } from './mission';
 import { appResultSchema } from './result';
+import { terminalSummarySchema } from './terminal';
 
 /** Entrada de `worktrees:list:v1`. */
 export const listWorktreesInputSchema = z.object({ projectId: z.string().min(1) });
@@ -34,6 +35,13 @@ export type WorktreeDto = z.infer<typeof worktreeDtoSchema>;
  */
 export const responseSchemas = {
   [CHANNELS.appPing]: appResultSchema(z.string()),
+  [CHANNELS.terminalsList]: appResultSchema(z.array(terminalSummarySchema)),
+  [CHANNELS.terminalsOpenShell]: appResultSchema(z.object({ terminalId: z.string() })),
+  [CHANNELS.terminalsWrite]: appResultSchema(z.undefined()),
+  [CHANNELS.terminalsResize]: appResultSchema(z.undefined()),
+  [CHANNELS.terminalsSubscribe]: appResultSchema(z.undefined()),
+  [CHANNELS.terminalsUnsubscribe]: appResultSchema(z.undefined()),
+  [CHANNELS.terminalsClose]: appResultSchema(z.undefined()),
   [CHANNELS.projectsList]: appResultSchema(z.array(projectSummarySchema)),
   [CHANNELS.projectsAdd]: appResultSchema(projectSummarySchema),
   [CHANNELS.projectsChooseDirectory]: appResultSchema(z.object({ path: z.string() }).nullable()),

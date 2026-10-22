@@ -2,10 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { connect as connectSocket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  connectTerminalHost,
-  type TerminalHostClient,
-} from '../../src/terminal-host/client';
+import { connectTerminalHost, type TerminalHostClient } from '../../src/terminal-host/client';
 import { startTerminalHost, type TerminalHost } from '../../src/terminal-host/host';
 import {
   TERMINAL_HOST_PROTOCOL_VERSION,
@@ -56,7 +53,10 @@ function start(options: StartOptions = {}) {
   });
 }
 
-async function connect(token = TOKEN, protocolVersion = TERMINAL_HOST_PROTOCOL_VERSION): Promise<TerminalHostClient> {
+async function connect(
+  token = TOKEN,
+  protocolVersion = TERMINAL_HOST_PROTOCOL_VERSION,
+): Promise<TerminalHostClient> {
   const client = await connectTerminalHost({ pipePath, token, protocolVersion });
   clients.push(client);
   return client;

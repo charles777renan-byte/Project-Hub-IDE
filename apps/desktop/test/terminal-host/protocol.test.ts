@@ -42,9 +42,12 @@ describe('LineDecoder', () => {
 
 describe('parseRequest', () => {
   it('aceita hello com token e versão', () => {
-    expect(
-      parseRequest({ id: '1', type: 'hello', protocolVersion: 1, token: 'abc' }),
-    ).toEqual({ id: '1', type: 'hello', protocolVersion: 1, token: 'abc' });
+    expect(parseRequest({ id: '1', type: 'hello', protocolVersion: 1, token: 'abc' })).toEqual({
+      id: '1',
+      type: 'hello',
+      protocolVersion: 1,
+      token: 'abc',
+    });
   });
 
   it('aceita ping e shutdown', () => {
@@ -92,7 +95,9 @@ describe('parseRequest: pedidos de terminal', () => {
   });
 
   it('aceita escrever, redimensionar, assinar e listar', () => {
-    expect(parseRequest({ id: '2', type: 'terminal.write', terminalId: 't1', data: 'ls\r' })).toEqual({
+    expect(
+      parseRequest({ id: '2', type: 'terminal.write', terminalId: 't1', data: 'ls\r' }),
+    ).toEqual({
       id: '2',
       type: 'terminal.write',
       terminalId: 't1',
@@ -104,11 +109,21 @@ describe('parseRequest: pedidos de terminal', () => {
     expect(parseRequest({ id: '4', type: 'terminal.subscribe', terminalId: 't1' })).toMatchObject({
       type: 'terminal.subscribe',
     });
-    expect(parseRequest({ id: '5', type: 'terminal.list' })).toEqual({ id: '5', type: 'terminal.list' });
+    expect(parseRequest({ id: '5', type: 'terminal.list' })).toEqual({
+      id: '5',
+      type: 'terminal.list',
+    });
   });
 
   it('recusa abrir sem cwd, com argumentos que não são texto ou com tamanho inválido', () => {
-    const base = { id: '1', type: 'terminal.open', terminalId: 't1', command: 'x', args: [], env: {} };
+    const base = {
+      id: '1',
+      type: 'terminal.open',
+      terminalId: 't1',
+      command: 'x',
+      args: [],
+      env: {},
+    };
     expect(parseRequest(base)).toBeNull();
     expect(parseRequest({ ...base, cwd: 'C:\\', args: [1] })).toBeNull();
     expect(parseRequest({ ...base, cwd: 'C:\\', cols: 0 })).toBeNull();

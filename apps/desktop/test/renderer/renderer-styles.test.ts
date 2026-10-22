@@ -50,7 +50,12 @@ describe('index.html do renderer', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
-    expect(hrefs).toEqual(['./styles/fonts.css', './styles/tokens.css', './styles/app.css']);
+    expect(hrefs).toEqual([
+      './styles/fonts.css',
+      './styles/tokens.css',
+      './styles/xterm.css',
+      './styles/app.css',
+    ]);
   });
 
   it('não liga nenhum recurso de fora do aplicativo', () => {

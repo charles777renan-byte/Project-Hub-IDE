@@ -5,3 +5,4 @@ export * from './mission';
 export * from './project';
 export * from './responses';
 export * from './result';
+export * from './terminal';

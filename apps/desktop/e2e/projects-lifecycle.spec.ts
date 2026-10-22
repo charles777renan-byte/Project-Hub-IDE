@@ -73,7 +73,9 @@ test('remover da lista pede confirmação, tira o projeto da lista e mantém a p
   await page.getByRole('button', { name: 'Remover', exact: true }).click();
 
   await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
-  await expect(page.getByText('Nenhum projeto ainda. Adicione uma pasta para começar.')).toBeVisible();
+  await expect(
+    page.getByText('Nenhum projeto ainda. Adicione uma pasta para começar.'),
+  ).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(existsSync(gitRepo.path)).toBe(true);
 });

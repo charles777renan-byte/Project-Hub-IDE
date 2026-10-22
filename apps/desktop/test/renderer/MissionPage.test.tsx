@@ -68,6 +68,7 @@ function installApi(initial: MissionViewDto) {
       }),
     },
     approvals: { decide: vi.fn(() => Promise.resolve(OK)) },
+    terminals: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
   };
   window.projectHub = api as unknown as ProjectHubApi;
   return {

@@ -1,6 +1,7 @@
 import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
+import type { TerminalEvent, TerminalSummary } from './terminal';
 import type {
   CreateMissionInput,
   DecideApprovalInput,
@@ -68,6 +69,21 @@ export type ProjectHubApi = {
      * assinatura.
      */
     subscribe(listener: (event: MissionEventDto) => void): () => void;
+  };
+  terminals: {
+    /** Agentes em andamento e shells abertos, com o estado de cada um. */
+    list(): Promise<AppResult<TerminalSummary[]>>;
+    /** Abre um shell na pasta do projeto. Devolve o id do terminal. */
+    openShell(projectId: string): Promise<AppResult<{ terminalId: string }>>;
+    write(terminalId: string, data: string): Promise<AppResult<void>>;
+    resize(terminalId: string, cols: number, rows: number): Promise<AppResult<void>>;
+    /** Passa a receber a saída do terminal: primeiro a guardada, depois a ao vivo. */
+    subscribe(terminalId: string): Promise<AppResult<void>>;
+    unsubscribe(terminalId: string): Promise<AppResult<void>>;
+    /** Fecha um shell. Terminal de agente não fecha por aqui: cancele a missão. */
+    close(terminalId: string): Promise<AppResult<void>>;
+    /** Recebe os eventos dos terminais assinados, já conferidos. Devolve a função que cancela. */
+    onEvent(listener: (event: TerminalEvent) => void): () => void;
   };
   worktrees: {
     /** Worktrees do projeto que ainda existem em disco, derivados das missões. */

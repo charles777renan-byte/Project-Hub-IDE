@@ -3,7 +3,9 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   createOrchestrator,
+  type MissionRepository,
   type OrchestratorDeps,
+  type ProjectRepository,
   type AddProjectDeps,
   type CreateMissionDeps,
   type DeleteMissionDeps,
@@ -50,6 +52,8 @@ export type MissionServices = {
 export type AppServices = AddProjectDeps & {
   missions: MissionServices;
   lifecycle: ProjectLifecycleDeps;
+  /** Repositórios que o serviço de terminais lê: as execuções em andamento e os projetos. */
+  terminalDeps: { repo: MissionRepository; projects: ProjectRepository };
   close(): void;
 };
 
@@ -184,6 +188,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     now,
     newId,
     lifecycle: { repo: projects, missions: repo, fs, now },
+    terminalDeps: { repo, projects },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },
