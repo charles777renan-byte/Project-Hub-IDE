@@ -365,7 +365,7 @@ nav[aria-label='Principal'] {
   margin: 0 0 var(--space-3);
 }
 
-/* Botões: primário e aprovar em lima, pausa em laranja, contornos violeta e vermelho. Texto sobre um acento cheio usa o fundo. */
+/* Botões: primário e aprovar em lima, contornos violeta e vermelho. Texto sobre um acento cheio usa o fundo. */
 button {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--field-line);
@@ -403,12 +403,6 @@ button:disabled {
 .btn-outline {
   border-color: var(--violet);
   color: var(--violet);
-}
-
-/* Pausar a execução: laranja. */
-.btn-pause {
-  border-color: var(--orange);
-  color: var(--orange);
 }
 
 /* Recusar, cancelar e parar: vermelho. */
@@ -598,7 +592,7 @@ button:disabled {
 /*
  * Abas: sublinhado na cor da aba na seção; no workspace da missão, a aba ativa é um botão cheio
  * nessa cor. A cor vem de --tab-accent: ciano por padrão (projetos), e cada aba da missão tem a sua
- * (Plano azul, Conversa magenta, Terminal e Diff ciano, Testes lima, Logs amarelo, Artefatos laranja).
+ * (Conversa magenta, Plano azul, Diff e Artefatos laranja, Testes lima, Terminal ciano, Logs amarelo).
  */
 .tabs {
   display: flex;
@@ -625,8 +619,7 @@ button:disabled {
   --tab-accent: var(--magenta);
 }
 
-.tab--terminal,
-.tab--diff {
+.tab--terminal {
   --tab-accent: var(--cyan);
 }
 
@@ -638,6 +631,7 @@ button:disabled {
   --tab-accent: var(--yellow);
 }
 
+.tab--diff,
 .tab--artifacts {
   --tab-accent: var(--orange);
 }
@@ -645,6 +639,14 @@ button:disabled {
 .tab[aria-selected='true'] {
   border-bottom-color: var(--tab-accent);
   color: var(--text);
+}
+
+/* Contagem ao lado do nome da aba (etapas, arquivos, testes): número pequeno, em mono e discreto. */
+.tab__count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
 }
 
 .tabs--filled {
@@ -775,15 +777,16 @@ button:disabled {
 /*
  * Resumo da missão (components/workspace/MissionSummary.tsx): é o bloco de maior peso da página. Uma
  * faixa de 3px no topo na cor da situação (--summary-accent: lima roda, violeta espera a pessoa, laranja
- * pausa, vermelho falhou, neutro no resto), o título, o chip, a ação principal em lima e, abaixo, a linha
- * projeto · branch · worktree e os três indicadores. Quebra de linha sem rolar de lado: título, chip e
- * ações passam para a linha de baixo em janela estreita.
+ * pausa, vermelho falhou, neutro no resto). À esquerda, o projeto (link ciano), o título e a linha com o
+ * chip, a branch e o nome curto do worktree; à direita, a ação principal em lima e as secundárias,
+ * discretas. Abaixo, os três indicadores e, com a missão concluída, a caixa do fecho. Quebra de linha
+ * sem rolar de lado: as ações passam para a linha de baixo em janela estreita.
  */
 .mission-summary {
   --summary-accent: var(--muted);
   display: grid;
   flex: none;
-  gap: var(--space-2);
+  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line);
   border-top: 3px solid var(--summary-accent);
@@ -813,20 +816,33 @@ button:disabled {
   margin: 0;
 }
 
+/* Título à esquerda e ações à direita; as ações quebram para a linha de baixo quando falta espaço. */
 .mission-summary__head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.mission-summary__title {
+  display: grid;
+  flex: 1 1 24rem;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* O projeto, acima do título: link ciano (a cor dos projetos), em mono. */
+.mission-summary__project a {
+  color: var(--cyan);
 }
 
 .mission-summary h1 {
   min-width: 0;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
-/* As ações vão para a direita da linha do título, e quebram para a linha de baixo quando faltar espaço. */
 .mission-summary__actions {
   display: flex;
   flex-wrap: wrap;
@@ -839,7 +855,7 @@ button:disabled {
   padding: var(--space-2) var(--space-4);
 }
 
-/* Pausar, cancelar e excluir: botões menores, para a ação principal ser a única em destaque. */
+/* Pausar, cancelar e excluir: botões menores e neutros (excluir em vermelho), para a ação principal ser a única em destaque. */
 .mission-summary__secondary {
   display: flex;
   flex-wrap: wrap;
@@ -852,20 +868,57 @@ button:disabled {
   font-size: 0.8125rem;
 }
 
-/* Indicadores: verificação, arquivos alterados e Git, lado a lado, sem largura fixa. */
+/* Linha do resumo: o chip da situação, a branch e o worktree (nome curto e o botão de copiar o caminho). */
+.mission-summary .mission-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.mission-meta__item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.mission-meta__path {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.mission-meta__copy {
+  padding: 0.125rem var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+}
+
+.mission-meta__feedback {
+  color: var(--lime);
+}
+
+.mission-meta__feedback--failed {
+  color: var(--red);
+}
+
+/* Indicadores: verificação, arquivos alterados e Git, em três colunas (empilham abaixo de 900px). */
 .mission-indicators {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2) var(--space-3);
   margin: 0;
-  padding: var(--space-2) 0 0;
+  padding: var(--space-3) 0 0;
   border-top: 1px solid var(--line);
   list-style: none;
 }
 
 .mission-indicator {
   display: grid;
-  gap: 0.125rem;
+  align-content: start;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -873,14 +926,13 @@ button:disabled {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .mission-indicator__value {
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -895,7 +947,7 @@ button:disabled {
 
 .mission-indicator__note {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .mission-meta {
@@ -1285,9 +1337,9 @@ button:disabled {
 }
 
 /*
- * Abas da missão: a barra de abas (sublinhado na cor da aba, com um ponto pequeno do acento antes do
- * nome) e os painéis, sem moldura: o conteúdo é mais calmo que o resumo. Painel escondido some de
- * verdade (`hidden`), mesmo com `display` definido na classe.
+ * Abas da missão: a barra de abas (cada aba com o ponto da sua cor antes do nome, a contagem depois
+ * dele, e a ativa sublinhada na própria cor) e os painéis, sem moldura: o conteúdo é mais calmo que o
+ * resumo. Painel escondido some de verdade (`hidden`), mesmo com `display` definido na classe.
  */
 .mission-tabs {
   display: flex;
@@ -1310,15 +1362,10 @@ button:disabled {
 .mission-tabs > .tabs .tab::before {
   content: '';
   flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   background: var(--tab-accent);
-  opacity: 0.55;
-}
-
-.mission-tabs > .tabs .tab[aria-selected='true']::before {
-  opacity: 1;
 }
 
 /* O respiro dos lados deixa o contorno de foco (2px, afastado 2px) inteiro nos controles rente à borda. */
@@ -1361,11 +1408,6 @@ button:disabled {
   font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-/* Conversa: quando a missão pede a decisão, o foco vem para cá; o contorno fica por dentro do painel. */
-.mission-focus:focus-visible {
-  outline-offset: -2px;
 }
 
 /* Logs do sistema: uma linha por evento, em fonte mono, com a hora e a fonte antes da frase. */
@@ -1519,6 +1561,13 @@ button:disabled {
     flex: none;
     height: 70vh;
     min-height: 20rem;
+  }
+}
+
+/* Abaixo de 900px os três indicadores do resumo empilham, um por linha. */
+@media (max-width: 900px) {
+  .mission-indicators {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1687,17 +1736,24 @@ button:disabled {
   color: var(--red);
 }
 
-/* Fecho da missão concluída, dentro do resumo da missão (R130): a frase final e o estado do Git. */
+/*
+ * Fecho da missão concluída, dentro do resumo da missão (R130), abaixo dos indicadores: uma caixa
+ * discreta, no fundo da página, com a frase final em destaque e o estado do Git em muted. O seletor
+ * composto da frase vence a margem que `.app-main p` dá aos parágrafos.
+ */
 .conclusion {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-1);
   padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
+  background: var(--bg);
 }
 
-.conclusion__summary {
+.mission-summary .conclusion__summary {
+  max-width: none;
   margin: 0;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -1709,5 +1765,5 @@ button:disabled {
   padding: 0;
   list-style: none;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }

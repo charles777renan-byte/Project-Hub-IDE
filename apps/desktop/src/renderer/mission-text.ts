@@ -238,6 +238,56 @@ export function verificationSummary(events: readonly MissionEventDto[]): Verific
 }
 
 /**
+ * Nome curto do worktree, para a linha do resumo: a última pasta do caminho, com barras de Windows ou
+ * de Unix. O caminho inteiro continua disponível no botão "Copiar caminho".
+ */
+export function worktreeName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter((part) => part !== '');
+  return parts.at(-1) ?? path;
+}
+
+/** Contagem de uma aba: o número curto que aparece ao lado do nome e a frase lida pelo leitor de tela. */
+export type TabCountText = { value: string; label: string };
+
+/**
+ * Contagens das abas da missão, só onde dizem algo: Plano (número de etapas, quando há plano), Diff
+ * (arquivos alterados, quando há algum) e Testes (passaram/total, quando houve verificação com testes).
+ */
+export function missionTabCounts({
+  steps,
+  diff,
+  events,
+}: {
+  steps: readonly MissionStepDto[];
+  diff: { count: number; truncated: boolean } | undefined;
+  events: readonly MissionEventDto[];
+}): { plan?: TabCountText; diff?: TabCountText; tests?: TabCountText } {
+  const counts: { plan?: TabCountText; diff?: TabCountText; tests?: TabCountText } = {};
+  if (steps.length > 0) {
+    counts.plan = {
+      value: String(steps.length),
+      label: steps.length === 1 ? '1 etapa' : `${steps.length} etapas`,
+    };
+  }
+  if (diff !== undefined && diff.count > 0) {
+    const value = `${diff.count}${diff.truncated ? '+' : ''}`;
+    const single = diff.count === 1 && !diff.truncated;
+    counts.diff = {
+      value,
+      label: single ? '1 arquivo alterado' : `${value} arquivos alterados`,
+    };
+  }
+  const verification = verificationSummary(events);
+  if (verification.kind === 'ran') {
+    counts.tests = {
+      value: `${verification.passed}/${verification.total}`,
+      label: `${verification.passed} de ${verification.total} testes passaram`,
+    };
+  }
+  return counts;
+}
+
+/**
  * Tipos de evento que contam a história da missão para a pessoa: a criação, o plano, as mudanças de
  * situação, o que o agente disse, os pedidos e as respostas, e como a execução terminou. O detalhe
  * técnico (worktree, tentativas, ferramentas e verificações) fica só nos Logs e nos Testes.

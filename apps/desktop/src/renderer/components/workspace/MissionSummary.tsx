@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { MissionViewDto } from '@project-hub/contracts';
 import {
@@ -7,6 +8,7 @@ import {
   statusLabel,
   statusTone,
   verificationSummary,
+  worktreeName,
   type PrimaryAction,
 } from '../../mission-text';
 import { projectPath } from '../../routes';
@@ -37,20 +39,33 @@ function verificationIndicator(events: MissionViewDto['events']): Indicator {
   };
 }
 
-/** Texto do indicador de arquivos alterados: "—" até o diff ser lido. */
-function changedFilesIndicator(diff: DiffSummary | undefined): Indicator {
-  if (diff === undefined) return { label: 'Arquivos alterados', value: '—' };
+/**
+ * Texto do indicador de arquivos alterados: "Nenhum ainda" sem worktree ou sem alteração, "—" enquanto
+ * o diff do worktree não foi lido, e a contagem depois.
+ */
+function changedFilesIndicator(hasWorktree: boolean, diff: DiffSummary | undefined): Indicator {
+  const label = 'Arquivos alterados';
+  if (!hasWorktree) return { label, value: 'Nenhum ainda' };
+  if (diff === undefined) return { label, value: '—' };
+  if (diff.count === 0 && !diff.truncated) return { label, value: 'Nenhum ainda' };
   const count = `${diff.count}${diff.truncated ? '+' : ''}`;
   return {
-    label: 'Arquivos alterados',
+    label,
     value: `${count} ${diff.count === 1 && !diff.truncated ? 'arquivo' : 'arquivos'}`,
   };
 }
 
+/** Texto do indicador do Git: o worktree nasce ao iniciar a missão, e push e merge pedem aprovação. */
+function gitIndicator(hasWorktree: boolean): Indicator {
+  return hasWorktree
+    ? { label: 'Git', value: 'Worktree criado', note: 'Push e merge exigem a sua aprovação.' }
+    : { label: 'Git', value: 'Não criado', note: 'O worktree nasce ao iniciar a missão.' };
+}
+
 /**
- * Fecho da missão concluída (R130): a frase final do agente e o estado do Git ao concluir. A verificação
- * e os arquivos alterados já aparecem nos indicadores do resumo, então não se repetem aqui. A frase vem
- * do agente e entra como texto, nunca como HTML.
+ * Fecho da missão concluída (R130): a frase final do agente e o estado do Git ao concluir, numa caixa
+ * discreta abaixo dos indicadores. A verificação e os arquivos alterados já aparecem nos indicadores,
+ * então não se repetem aqui. A frase vem do agente e entra como texto, nunca como HTML.
  */
 function ConclusionSummary({
   conclusion,
@@ -71,12 +86,73 @@ function ConclusionSummary({
   );
 }
 
+/** Tempo em que o aviso "Copiado" (ou a falha) fica na tela. */
+const COPY_FEEDBACK_MS = 2500;
+
+type CopyState = 'idle' | 'copied' | 'failed';
+
 /**
- * Resumo fixo no topo da página da missão (seção 10.7): o título, a situação, branch e worktree em uma
- * linha, a ação principal que a situação permite, as ações secundárias (pausar, cancelar ou excluir) e
- * três indicadores (verificação, arquivos alterados e Git). Com a missão concluída, mostra também o
- * fecho da conclusão (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o que a
- * página passa: o comportamento das ações fica na página.
+ * O worktree na linha do resumo: o nome curto (a última pasta) e o botão que copia o caminho inteiro
+ * para a área de transferência. O resultado aparece ao lado, numa região `aria-live` que fica montada
+ * para o leitor de tela anunciar a mudança.
+ */
+function WorktreeMeta({ path }: { path: string | undefined }) {
+  const [copy, setCopy] = useState<CopyState>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  if (path === undefined) {
+    return <span className="mission-meta__item">worktree ainda não criado</span>;
+  }
+
+  async function copyPath(fullPath: string) {
+    let next: CopyState;
+    try {
+      await navigator.clipboard.writeText(fullPath);
+      next = 'copied';
+    } catch {
+      next = 'failed';
+    }
+    setCopy(next);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopy('idle'), COPY_FEEDBACK_MS);
+  }
+
+  return (
+    <span className="mission-meta__item">
+      worktree{' '}
+      <span className="mission-meta__path" title={path}>
+        {worktreeName(path)}
+      </span>
+      <button type="button" className="mission-meta__copy" onClick={() => void copyPath(path)}>
+        Copiar caminho
+      </button>
+      <span
+        aria-live="polite"
+        className={
+          copy === 'failed'
+            ? 'mission-meta__feedback mission-meta__feedback--failed'
+            : 'mission-meta__feedback'
+        }
+      >
+        {copy === 'copied'
+          ? 'Copiado'
+          : copy === 'failed'
+            ? 'Não foi possível copiar o caminho.'
+            : ''}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Resumo fixo no topo da página da missão (seção 10.7): o projeto (link), o título, a linha com a
+ * situação (chip com texto e cor), a branch e o nome curto do worktree, a ação principal que a situação
+ * permite, as ações secundárias (pausar, cancelar ou excluir) em botões discretos e três indicadores
+ * (verificação, arquivos alterados e Git). Com a missão concluída, mostra também o fecho da conclusão
+ * (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o
+ * que a página passa: o comportamento das ações fica na página.
  */
 export function MissionSummary({
   mission,
@@ -121,12 +197,8 @@ export function MissionSummary({
   const hasWorktree = mission.worktreePath !== undefined;
   const indicators: Indicator[] = [
     verificationIndicator(events),
-    changedFilesIndicator(diff),
-    {
-      label: 'Git',
-      value: hasWorktree ? 'worktree criado' : 'sem worktree',
-      ...(hasWorktree ? { note: 'Push e merge exigem a sua aprovação.' } : {}),
-    },
+    changedFilesIndicator(hasWorktree, diff),
+    gitIndicator(hasWorktree),
   ];
 
   const primaryAction: Record<PrimaryAction, { run: () => void; disabled: boolean }> = {
@@ -139,12 +211,18 @@ export function MissionSummary({
 
   return (
     <section aria-label="Resumo da missão" className={`mission-summary mission-summary--${tone}`}>
-      <p className="eyebrow">
-        <Link to={projectPath(project.id)}>{project.name}</Link>
-      </p>
       <div className="mission-summary__head">
-        <h1>{mission.title}</h1>
-        <StatusChip label={statusLabel(mission.status)} tone={tone} />
+        <div className="mission-summary__title">
+          <p className="eyebrow mission-summary__project">
+            <Link to={projectPath(project.id)}>{project.name}</Link>
+          </p>
+          <h1>{mission.title}</h1>
+          <div className="mission-meta">
+            <StatusChip label={statusLabel(mission.status)} tone={tone} />
+            <span className="mission-meta__item">branch {project.defaultBranch ?? 'sem Git'}</span>
+            <WorktreeMeta path={mission.worktreePath} />
+          </div>
+        </div>
         <div className="mission-summary__actions">
           {primary === undefined ? null : (
             <button
@@ -162,7 +240,7 @@ export function MissionSummary({
           )}
           <div className="mission-summary__secondary">
             {mission.status === 'running' ? (
-              <button type="button" className="btn-pause" disabled={controlBusy} onClick={onPause}>
+              <button type="button" disabled={controlBusy} onClick={onPause}>
                 {MISSION_TEXT.pause}
               </button>
             ) : null}
@@ -175,25 +253,13 @@ export function MissionSummary({
                 onConfirm={onDelete}
               />
             ) : (
-              <button
-                type="button"
-                className="btn-danger"
-                disabled={controlBusy}
-                onClick={onCancel}
-              >
+              <button type="button" disabled={controlBusy} onClick={onCancel}>
                 Cancelar missão
               </button>
             )}
           </div>
         </div>
       </div>
-      <p className="mission-meta">
-        {project.name} · branch {project.defaultBranch ?? 'sem Git'} · worktree{' '}
-        {mission.worktreePath ?? 'ainda não criado'}
-      </p>
-      {mission.status === 'succeeded' && conclusion !== undefined ? (
-        <ConclusionSummary conclusion={conclusion} />
-      ) : null}
       <ul className="mission-indicators" aria-label="Indicadores da missão">
         {indicators.map((indicator) => (
           <li
@@ -212,6 +278,9 @@ export function MissionSummary({
           </li>
         ))}
       </ul>
+      {mission.status === 'succeeded' && conclusion !== undefined ? (
+        <ConclusionSummary conclusion={conclusion} />
+      ) : null}
     </section>
   );
 }

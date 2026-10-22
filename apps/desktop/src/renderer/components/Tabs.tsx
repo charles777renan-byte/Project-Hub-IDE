@@ -1,14 +1,21 @@
 import type { KeyboardEvent } from 'react';
 
+/**
+ * Contagem opcional de uma aba: `value` é o número curto ao lado do nome (escondido do leitor de tela)
+ * e `label` é a frase que o leitor de tela lê como descrição da aba. O nome da aba não muda.
+ */
+export type TabCount = { value: string; label: string };
+
 /** Uma aba: o `id` é o que a página guarda, o `label` é o que a pessoa lê. */
-export type TabItem<T extends string> = { id: T; label: string };
+export type TabItem<T extends string> = { id: T; label: string; count?: TabCount };
 
 /**
  * Abas de seção ou de missão. Cada aba é um botão com `aria-selected`, então o Tab e o Enter do
  * teclado funcionam sem código extra; as setas (e Home e End) também trocam de aba. `filled` deixa a
  * aba ativa como botão cheio (sub-abas do workspace da missão, seção 10.7). Cada aba ganha a classe
  * `tab--<id>`, e é o CSS que dá a cor dela. `panelId` diz qual painel cada aba controla; sem ele, o
- * painel é o `tab-panel` (uma página com um painel só).
+ * painel é o `tab-panel` (uma página com um painel só). Uma aba com `count` mostra o número depois do
+ * nome e ganha a frase da contagem como descrição (`aria-describedby`).
  */
 export function Tabs<T extends string>({
   label,
@@ -49,6 +56,7 @@ export function Tabs<T extends string>({
     >
       {tabs.map((tab) => {
         const selected = tab.id === active;
+        const countId = `tab-${tab.id}-count`;
         return (
           <button
             key={tab.id}
@@ -57,10 +65,21 @@ export function Tabs<T extends string>({
             id={`tab-${tab.id}`}
             aria-selected={selected}
             aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
+            aria-describedby={tab.count === undefined ? undefined : countId}
             className={`tab tab--${tab.id}`}
             onClick={() => onChange(tab.id)}
           >
             {tab.label}
+            {tab.count === undefined ? null : (
+              <>
+                <span className="tab__count" aria-hidden="true">
+                  {tab.count.value}
+                </span>
+                <span id={countId} hidden>
+                  {tab.count.label}
+                </span>
+              </>
+            )}
           </button>
         );
       })}

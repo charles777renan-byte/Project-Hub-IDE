@@ -259,15 +259,57 @@ describe('layout do workspace da missão', () => {
     );
   });
 
-  it('os indicadores quebram de linha sem largura fixa', () => {
+  it('os três indicadores ficam lado a lado, e empilham abaixo de 900px', () => {
     expect(ruleDeclarations(appCss, '.mission-indicators').get('grid-template-columns')).toBe(
-      'repeat(auto-fit, minmax(11rem, 1fr))',
+      'repeat(3, minmax(0, 1fr))',
+    );
+    const narrowFacts = mediaBlock(appCss, '(max-width: 900px)');
+    expect(ruleDeclarations(narrowFacts, '.mission-indicators').get('grid-template-columns')).toBe(
+      'minmax(0, 1fr)',
     );
   });
 
-  it('as abas ganham um ponto na cor do acento antes do nome', () => {
+  it('a linha do resumo quebra sem rolar de lado, e o projeto é um link ciano', () => {
+    const meta = ruleDeclarations(appCss, '.mission-summary .mission-meta');
+    expect(meta.get('display')).toBe('flex');
+    expect(meta.get('flex-wrap')).toBe('wrap');
+    expect(ruleDeclarations(appCss, '.mission-meta__path').get('overflow-wrap')).toBe('anywhere');
+    expect(ruleDeclarations(appCss, '.mission-summary__project a').get('color')).toBe(
+      'var(--cyan)',
+    );
+  });
+
+  it('o aviso da cópia do caminho usa lima quando copia e vermelho quando falha', () => {
+    expect(ruleDeclarations(appCss, '.mission-meta__feedback').get('color')).toBe('var(--lime)');
+    expect(ruleDeclarations(appCss, '.mission-meta__feedback--failed').get('color')).toBe(
+      'var(--red)',
+    );
+  });
+
+  it('as abas ganham um ponto redondo na cor do acento antes do nome', () => {
     const dot = ruleDeclarations(appCss, '.mission-tabs > .tabs .tab::before');
     expect(dot.get('background')).toBe('var(--tab-accent)');
+    expect(dot.get('border-radius')).toBe('50%');
+  });
+
+  it.each([
+    ['conversation', 'magenta'],
+    ['plan', 'blue'],
+    ['diff', 'orange'],
+    ['tests', 'lime'],
+    ['terminal', 'cyan'],
+    ['logs', 'yellow'],
+  ] as const)('a aba %s usa o acento %s, e a ativa é sublinhada nele', (id, accent) => {
+    expect(ruleDeclarations(appCss, `.tab--${id}`).get('--tab-accent')).toBe(`var(--${accent})`);
+    expect(ruleDeclarations(appCss, ".tab[aria-selected='true']").get('border-bottom-color')).toBe(
+      'var(--tab-accent)',
+    );
+  });
+
+  it('a contagem da aba é pequena, em mono e muted', () => {
+    const count = ruleDeclarations(appCss, '.tab__count');
+    expect(count.get('color')).toBe('var(--muted)');
+    expect(count.get('font-family')).toBe('var(--font-mono)');
   });
 
   it('abaixo de 1000px a página passa a rolar na vertical e a área das abas ganha altura própria', () => {

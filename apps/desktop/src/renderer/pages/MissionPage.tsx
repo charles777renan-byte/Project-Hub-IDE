@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import type { AppError, AppResult, ErrorCode, MissionViewDto } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
 import { PlanPanel } from '../components/PlanPanel';
-import { Tabs, type TabItem } from '../components/Tabs';
+import { Tabs, type TabCount, type TabItem } from '../components/Tabs';
 import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
 import { DecisionBanner } from '../components/workspace/DecisionBanner';
 import { DiffPanel, type DiffSummary } from '../components/workspace/DiffPanel';
@@ -11,7 +11,7 @@ import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionSummary } from '../components/workspace/MissionSummary';
 import { TerminalPanel } from '../components/workspace/TerminalPanel';
 import { TestsPanel } from '../components/workspace/TestsPanel';
-import { needsDecisionInConversation, verifiedCriteria } from '../mission-text';
+import { missionTabCounts, needsDecisionInConversation, verifiedCriteria } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
 
@@ -40,14 +40,22 @@ const WORKTREE_START_MESSAGES: ReadonlyMap<ErrorCode, string> = new Map<ErrorCod
 /** As abas da missão, na ordem em que aparecem. A Conversa é a aba de abertura. */
 type MissionTab = 'conversation' | 'plan' | 'diff' | 'tests' | 'terminal' | 'logs';
 
-const MISSION_TABS: readonly TabItem<MissionTab>[] = [
-  { id: 'conversation', label: 'Conversa' },
-  { id: 'plan', label: 'Plano' },
-  { id: 'diff', label: 'Diff' },
-  { id: 'tests', label: 'Testes' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'logs', label: 'Logs' },
-];
+/**
+ * As abas com a contagem de cada uma, quando ela diz algo: etapas no Plano, arquivos alterados no Diff
+ * e testes que passaram em Testes (`missionTabCounts`). A cor de cada aba vem do CSS (`tab--<id>`).
+ */
+function missionTabs(counts: ReturnType<typeof missionTabCounts>): TabItem<MissionTab>[] {
+  const withCount = (item: TabItem<MissionTab>, count: TabCount | undefined) =>
+    count === undefined ? item : { ...item, count };
+  return [
+    { id: 'conversation', label: 'Conversa' },
+    withCount({ id: 'plan', label: 'Plano' }, counts.plan),
+    withCount({ id: 'diff', label: 'Diff' }, counts.diff),
+    withCount({ id: 'tests', label: 'Testes' }, counts.tests),
+    { id: 'terminal', label: 'Terminal' },
+    { id: 'logs', label: 'Logs' },
+  ];
+}
 
 const tabPanelId = (id: MissionTab) => `mission-panel-${id}`;
 
@@ -283,7 +291,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
       <div className="mission-tabs">
         <Tabs
           label="Abas da missão"
-          tabs={MISSION_TABS}
+          tabs={missionTabs(missionTabCounts({ steps, diff: diffSummary, events }))}
           active={tab}
           onChange={setTab}
           panelId={tabPanelId}
