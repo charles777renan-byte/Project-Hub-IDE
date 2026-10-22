@@ -86,6 +86,31 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: 'Primeira' })).toHaveFocus();
   });
 
+  it('a contagem aparece depois do nome, escondida do leitor de tela, que lê a frase como descrição', () => {
+    render(
+      <Tabs
+        label="Exemplo"
+        tabs={[
+          { id: 'a', label: 'Primeira', count: { value: '3', label: '3 etapas' } },
+          { id: 'b', label: 'Segunda' },
+        ]}
+        active="a"
+        onChange={() => undefined}
+      />,
+    );
+
+    const first = screen.getByRole('tab', { name: 'Primeira' });
+    const count = first.querySelector('.tab__count');
+    expect(count).toHaveTextContent('3');
+    expect(count).toHaveAttribute('aria-hidden', 'true');
+    expect(first).toHaveAccessibleDescription('3 etapas');
+    expect(first).toHaveAttribute('aria-describedby', 'tab-a-count');
+
+    const second = screen.getByRole('tab', { name: 'Segunda' });
+    expect(second.querySelector('.tab__count')).toBeNull();
+    expect(second).not.toHaveAttribute('aria-describedby');
+  });
+
   it('outras teclas não trocam de aba', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();

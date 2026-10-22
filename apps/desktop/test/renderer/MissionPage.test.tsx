@@ -116,8 +116,60 @@ describe('MissionPage: cabeçalho', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Aguarda aprovação do plano')).toBeInTheDocument();
-    expect(screen.getByText(/branch main · worktree ainda não criado/)).toBeInTheDocument();
+    const summary = screen.getByRole('region', { name: 'Resumo da missão' });
+    expect(within(summary).getByRole('link', { name: 'app' })).toHaveAttribute(
+      'href',
+      '/projects/p1',
+    );
+    expect(within(summary).getByText('Aguarda aprovação do plano')).toHaveClass(
+      'chip',
+      'chip--violet',
+    );
+    expect(within(summary).getByText('branch main')).toBeInTheDocument();
+    expect(within(summary).getByText('worktree ainda não criado')).toBeInTheDocument();
+    // Sem worktree, não há caminho para copiar.
+    expect(within(summary).queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
+  });
+
+  it('com worktree, mostra só o nome curto da pasta, e o caminho inteiro fica no título', async () => {
+    installApi(
+      viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1-ajustar-login' }),
+    );
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
+    const name = within(summary).getByText('m1-ajustar-login');
+    expect(name).toHaveAttribute('title', 'C:\\app\\.worktrees\\m1-ajustar-login');
+    expect(within(summary).queryByText(/C:\\app\\.worktrees/)).toBeNull();
+  });
+
+  it('"Copiar caminho" copia o caminho inteiro do worktree e diz "Copiado"', async () => {
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Copiar caminho' }));
+
+    expect(writeText).toHaveBeenCalledWith('C:\\app\\.worktrees\\m1');
+    expect(await screen.findByText('Copiado')).toBeInTheDocument();
+    writeText.mockRestore();
+  });
+
+  it('se a cópia falha, o resumo diz que não foi possível copiar', async () => {
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    const user = userEvent.setup();
+    const writeText = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockRejectedValue(new Error('negado'));
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Copiar caminho' }));
+
+    const feedback = await screen.findByText('Não foi possível copiar o caminho.');
+    expect(feedback).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByText('Copiado')).toBeNull();
+    writeText.mockRestore();
   });
 
   it('não oferece pausar; cancelar sai de missão encerrada', async () => {
@@ -236,7 +288,9 @@ describe('MissionPage: abas', () => {
 
     const tablist = await screen.findByRole('tablist', { name: 'Abas da missão' });
     const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent)).toEqual(TAB_NAMES);
+    // O nome é o primeiro texto da aba; a contagem (quando há) vem depois e não entra no nome.
+    expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(TAB_NAMES);
+    expect(tabs[1]).toHaveAccessibleName('Plano');
     expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
     for (const tab of tabs.slice(1)) expect(tab).toHaveAttribute('aria-selected', 'false');
     // Os painéis de fora seguem montados, mas escondidos: só um é acessível.
@@ -244,6 +298,82 @@ describe('MissionPage: abas', () => {
     expect(panels).toHaveLength(1);
     expect(panels[0]).toHaveAccessibleName('Conversa');
     expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(6);
+  });
+
+  it('cada aba leva a classe da sua cor (tab--<id>)', async () => {
+    installApi(viewOf());
+    renderPage();
+
+    const ids = ['conversation', 'plan', 'diff', 'tests', 'terminal', 'logs'];
+    const tabs = within(
+      await screen.findByRole('tablist', { name: 'Abas da missão' }),
+    ).getAllByRole('tab');
+    expect(tabs.map((tab) => tab.className)).toEqual(ids.map((id) => `tab tab--${id}`));
+  });
+
+  it('sem plano, diff ou verificação, nenhuma aba mostra contagem', async () => {
+    installApi(viewOf({ status: 'draft' }, { steps: [] }));
+    renderPage();
+
+    const tablist = await screen.findByRole('tablist', { name: 'Abas da missão' });
+    expect(tablist.querySelectorAll('.tab__count')).toHaveLength(0);
+    for (const tab of within(tablist).getAllByRole('tab')) {
+      expect(tab).not.toHaveAttribute('aria-describedby');
+    }
+  });
+
+  it('Plano conta as etapas, Diff os arquivos alterados e Testes os que passaram, sem mudar o nome da aba', async () => {
+    const hub = installApi(
+      viewOf(
+        { status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' },
+        {
+          steps: [
+            { id: 's1', position: 1, title: 'Primeira', status: 'succeeded' },
+            { id: 's2', position: 2, title: 'Segunda', status: 'running' },
+          ],
+          events: [verificationEvent('v1', 1, { command: 'pnpm test', passed: 12, failed: 2 })],
+        },
+      ),
+    );
+    hub.api.missions.diff.mockResolvedValue({
+      ok: true,
+      data: {
+        files: [
+          { path: 'a.ts', status: 'modified', added: 1, removed: 0, binary: false },
+          { path: 'b.ts', status: 'added', added: 2, removed: 0, binary: false },
+          { path: 'c.ts', status: 'deleted', added: 0, removed: 4, binary: false },
+        ],
+        truncatedFiles: false,
+      },
+    } as never);
+    renderPage();
+
+    const plan = await screen.findByRole('tab', { name: 'Plano' });
+    expect(plan.querySelector('.tab__count')).toHaveTextContent('2');
+    expect(plan).toHaveAccessibleDescription('2 etapas');
+
+    const diff = screen.getByRole('tab', { name: 'Diff' });
+    await waitFor(() => expect(diff.querySelector('.tab__count')).toHaveTextContent('3'));
+    expect(diff).toHaveAccessibleDescription('3 arquivos alterados');
+
+    const tests = screen.getByRole('tab', { name: 'Testes' });
+    expect(tests.querySelector('.tab__count')).toHaveTextContent('12/14');
+    expect(tests).toHaveAccessibleDescription('12 de 14 testes passaram');
+    // O número fica escondido do leitor de tela: ele lê a descrição.
+    expect(tests.querySelector('.tab__count')).toHaveAttribute('aria-hidden', 'true');
+
+    for (const name of ['Conversa', 'Terminal', 'Logs']) {
+      expect(screen.getByRole('tab', { name }).querySelector('.tab__count')).toBeNull();
+    }
+  });
+
+  it('com o worktree sem alterações, o Diff não mostra contagem', async () => {
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    renderPage();
+
+    const diffPanel = await openTab('Diff');
+    await within(diffPanel).findByText('A missão ainda não alterou arquivos.');
+    expect(screen.getByRole('tab', { name: 'Diff' }).querySelector('.tab__count')).toBeNull();
   });
 
   it('trocar de aba mostra o painel certo e esconde o anterior', async () => {
@@ -454,6 +584,9 @@ describe('MissionPage: resumo', () => {
 
       const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
       const primary = summary.querySelectorAll('.mission-summary__primary');
+      // Só a ação principal tem o estilo cheio: as secundárias (pausar, cancelar, excluir) não.
+      const filled = summary.querySelectorAll('.btn-primary, .btn-decision');
+      expect(filled).toHaveLength(primary.length);
       if (label === undefined) {
         expect(primary).toHaveLength(0);
       } else {
@@ -550,12 +683,25 @@ describe('MissionPage: resumo', () => {
     expect(within(indicators).getByText('Sem verificação')).toBeInTheDocument();
   });
 
-  it('arquivos alterados: "—" sem worktree, e a contagem do Diff quando ele é lido', async () => {
+  it('arquivos alterados: "Nenhum ainda" sem worktree ou sem alteração, e a contagem do Diff quando ele é lido', async () => {
     installApi(viewOf({ status: 'draft' }));
     const first = renderPage();
     const indicators = await screen.findByRole('list', { name: 'Indicadores da missão' });
-    expect(within(indicators).getByText('Arquivos alterados').nextSibling).toHaveTextContent('—');
+    expect(within(indicators).getByText('Arquivos alterados').nextSibling).toHaveTextContent(
+      'Nenhum ainda',
+    );
     first.unmount();
+
+    // Com worktree e o diff lido sem arquivos (o diff padrão do teste), também "Nenhum ainda".
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    const second = renderPage();
+    const empty = await screen.findByRole('list', { name: 'Indicadores da missão' });
+    await waitFor(() =>
+      expect(within(empty).getByText('Arquivos alterados').nextSibling).toHaveTextContent(
+        'Nenhum ainda',
+      ),
+    );
+    second.unmount();
 
     const hub = installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     hub.api.missions.diff.mockResolvedValue({
@@ -573,16 +719,19 @@ describe('MissionPage: resumo', () => {
     expect(await screen.findByText('2 arquivos')).toBeInTheDocument();
   });
 
-  it('Git: "sem worktree" ou "worktree criado", sem repetir a branch num cartão à parte', async () => {
+  it('Git: "Não criado" ou "Worktree criado", sem repetir a branch num cartão à parte', async () => {
     installApi(viewOf({ status: 'draft' }));
     const first = renderPage();
     const indicators = await screen.findByRole('list', { name: 'Indicadores da missão' });
-    expect(within(indicators).getByText('sem worktree')).toBeInTheDocument();
+    expect(within(indicators).getByText('Não criado')).toBeInTheDocument();
+    expect(
+      within(indicators).getByText('O worktree nasce ao iniciar a missão.'),
+    ).toBeInTheDocument();
     first.unmount();
 
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     renderPage();
-    expect(await screen.findByText('worktree criado')).toBeInTheDocument();
+    expect(await screen.findByText('Worktree criado')).toBeInTheDocument();
     expect(screen.getByText('Push e merge exigem a sua aprovação.')).toBeInTheDocument();
     // A branch e o worktree aparecem uma vez só, na linha do resumo.
     expect(screen.getAllByText(/branch main/)).toHaveLength(1);

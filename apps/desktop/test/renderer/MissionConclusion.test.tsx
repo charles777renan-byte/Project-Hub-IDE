@@ -110,7 +110,25 @@ describe('MissionSummary: resumo de conclusão', () => {
     expect(screen.queryByRole('region', BLOCK)).not.toBeInTheDocument();
   });
 
-  it('o bloco tem estilo no CSS', () => {
-    expect(ruleDeclarations(readCss('app.css'), '.conclusion').size).toBeGreaterThan(0);
+  it('o bloco fica dentro do resumo, depois dos indicadores', () => {
+    renderSummary('succeeded', CONCLUSION);
+
+    const summary = screen.getByRole('region', { name: 'Resumo da missão' });
+    const block = within(summary).getByRole('region', BLOCK);
+    const indicators = within(summary).getByRole('list', { name: 'Indicadores da missão' });
+    expect(
+      indicators.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('o bloco é uma caixa discreta: borda da linha, raio do painel e o fundo da página', () => {
+    const css = readCss('app.css');
+    const block = ruleDeclarations(css, '.conclusion');
+    expect(block.get('border')).toBe('1px solid var(--line)');
+    expect(block.get('border-radius')).toBe('var(--radius-panel)');
+    expect(block.get('background')).toBe('var(--bg)');
+    // A frase não herda a margem dos parágrafos da página.
+    expect(ruleDeclarations(css, '.mission-summary .conclusion__summary').get('margin')).toBe('0');
+    expect(ruleDeclarations(css, '.conclusion__facts').get('color')).toBe('var(--muted)');
   });
 });
