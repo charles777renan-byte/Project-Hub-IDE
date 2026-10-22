@@ -44,4 +44,14 @@ export const CHANNELS = {
   terminalsClose: 'terminals:close:v1',
   /** Saída e fim de um terminal assinado, do processo principal para o renderer. Não tem resposta. */
   terminalsEvent: 'terminals:event:v1',
+  /** Workspaces de painéis (plano da fase 1). Só entram ids; o provedor de cada painel é resolvido no processo principal. */
+  workspacesList: 'workspaces:list:v1',
+  workspacesOpen: 'workspaces:open:v1',
+  workspacesClose: 'workspaces:close:v1',
+  workspacesSaveLayout: 'workspaces:save-layout:v1',
+  /** Abre a sessão do provedor de um painel. */
+  workspacesStartSession: 'workspaces:start-session:v1',
+  workspacesEndSession: 'workspaces:end-session:v1',
+  /** Programas que os painéis sabem abrir, com a disponibilidade de cada um. */
+  providersList: 'providers:list:v1',
 } as const;

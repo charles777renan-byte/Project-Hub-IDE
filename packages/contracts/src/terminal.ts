@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { providerIdSchema } from './workspace';
 
 /** Tipos de terminal da página Terminais: o de um agente (uma missão) ou um shell comum de um projeto. */
 export const TERMINAL_KIND_VALUES = ['agent', 'shell'] as const;
@@ -15,6 +16,11 @@ export const terminalSummarySchema = z.object({
   projectName: z.string(),
   missionId: z.string().optional(),
   state: z.enum(TERMINAL_STATE_VALUES),
+  provider: providerIdSchema,
+  /** `recovered`: a sessão já estava viva quando o app abriu, e o terminal só se reconectou a ela. */
+  origin: z.enum(['new', 'recovered']),
+  /** Último trecho do caminho do worktree, quando o terminal roda num. O caminho inteiro não sai do processo principal. */
+  worktreeName: z.string().optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 

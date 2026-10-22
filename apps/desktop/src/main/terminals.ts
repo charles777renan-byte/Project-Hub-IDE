@@ -33,6 +33,14 @@ export type TerminalService = {
 const OK: AppResult<undefined> = { ok: true, data: undefined };
 const UNKNOWN_TERMINAL = 'O terminal não foi encontrado.';
 
+/** Último trecho do caminho do worktree, aceitando `\` e `/`. Só o nome sai do processo principal. */
+function lastSegment(path: string | undefined): string | undefined {
+  return path
+    ?.split(/[\\/]+/)
+    .filter((part) => part !== '')
+    .pop();
+}
+
 export function createTerminalService(deps: TerminalServiceDeps): TerminalService {
   const { port, repo, projects, publish } = deps;
   /** Shells abertos por esta janela, com o projeto de cada um. */
@@ -83,6 +91,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           const project = mission === undefined ? undefined : projects.get(mission.projectId);
           if (mission === undefined || project === undefined) continue;
           if (execution.agentSessionId === undefined) continue;
+          const worktreeName = lastSegment(mission.worktreePath);
           out.push({
             id: execution.agentSessionId,
             kind: 'agent',
@@ -94,6 +103,10 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
               mission.status === 'waiting_input' || mission.status === 'waiting_approval'
                 ? 'waiting'
                 : 'running',
+            // Valores fixos por enquanto; a Tarefa 4 passa a ler o provedor e a origem reais.
+            provider: 'claude',
+            origin: 'new',
+            ...(worktreeName === undefined ? {} : { worktreeName }),
           });
         }
         for (const [id, shell] of shells) {
@@ -106,6 +119,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             projectId: shell.projectId,
             projectName: project?.name ?? '',
             state: snapshot?.alive === true ? 'running' : 'exited',
+            provider: 'shell',
+            origin: 'new',
           });
         }
         return { ok: true, data: out };

@@ -11,6 +11,7 @@ import {
 } from './mission';
 import { appResultSchema } from './result';
 import { terminalSummarySchema } from './terminal';
+import { providerInfoSchema, workspaceDtoSchema } from './workspace';
 
 /** Entrada de `worktrees:list:v1`. */
 export const listWorktreesInputSchema = z.object({ projectId: z.string().min(1) });
@@ -42,6 +43,13 @@ export const responseSchemas = {
   [CHANNELS.terminalsSubscribe]: appResultSchema(z.undefined()),
   [CHANNELS.terminalsUnsubscribe]: appResultSchema(z.undefined()),
   [CHANNELS.terminalsClose]: appResultSchema(z.undefined()),
+  [CHANNELS.workspacesList]: appResultSchema(z.array(workspaceDtoSchema)),
+  [CHANNELS.workspacesOpen]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.workspacesClose]: appResultSchema(z.undefined()),
+  [CHANNELS.workspacesSaveLayout]: appResultSchema(z.undefined()),
+  [CHANNELS.workspacesStartSession]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.workspacesEndSession]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.providersList]: appResultSchema(z.array(providerInfoSchema)),
   [CHANNELS.projectsList]: appResultSchema(z.array(projectSummarySchema)),
   [CHANNELS.projectsAdd]: appResultSchema(projectSummarySchema),
   [CHANNELS.projectsChooseDirectory]: appResultSchema(z.object({ path: z.string() }).nullable()),

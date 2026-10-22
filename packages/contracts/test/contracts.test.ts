@@ -43,6 +43,20 @@ describe('CHANNELS', () => {
     );
   });
 
+  it('inclui os canais de workspace e de provedores', () => {
+    expect(Object.values(CHANNELS)).toEqual(
+      expect.arrayContaining([
+        'workspaces:list:v1',
+        'workspaces:open:v1',
+        'workspaces:close:v1',
+        'workspaces:save-layout:v1',
+        'workspaces:start-session:v1',
+        'workspaces:end-session:v1',
+        'providers:list:v1',
+      ]),
+    );
+  });
+
   it('todo canal tem versão no nome e nenhum se repete', () => {
     const channels = Object.values(CHANNELS);
     for (const channel of channels) {
