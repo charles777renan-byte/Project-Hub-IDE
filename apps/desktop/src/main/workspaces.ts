@@ -234,7 +234,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     }
 
     const closed = await terminals.closeSession(leaf.terminalId);
-    if (!closed.ok) return closed;
+    // Encerrar é idempotente: uma sessão que já não existe só deixa o painel vazio.
+    if (!closed.ok && closed.error.code !== 'TERMINAL_NOT_FOUND') return closed;
     return { ok: true, data: persist(record, setTerminal(layout, leafId, null)) };
   }
 
