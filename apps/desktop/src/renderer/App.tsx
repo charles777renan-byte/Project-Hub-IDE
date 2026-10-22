@@ -1,40 +1,30 @@
 import type { ReactNode } from 'react';
-import { NavLink } from 'react-router';
+import { useMatch } from 'react-router';
+import { MainNav } from './components/MainNav';
 import { Sidebar } from './components/Sidebar';
+import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { TopographicBackground } from './components/TopographicBackground';
-import { AppRoutes, NAV_ITEMS } from './routes';
+import { AppRoutes, ROUTE_PATHS } from './routes';
 
 /**
- * Estrutura da janela: cabeçalho de 50px com a marca, a navegação e, à direita, o que vier em
- * `headerStatus` (os contadores da visão geral); abaixo, a barra lateral de projetos e missões e a
- * área da página, que ocupa o resto da altura e rola sozinha. O roteador fica fora (HashRouter em
- * main.tsx, MemoryRouter nos testes), então o App funciona com qualquer um dos dois.
+ * Estrutura da janela: barra superior de 36px com a marca, as abas dos workspaces e, à direita, o que
+ * vier em `headerStatus` (os contadores da visão geral); abaixo, a coluna lateral (navegação principal
+ * e barra de projetos e missões) e a área da página, que ocupa o resto da altura e rola sozinha. O
+ * fundo topográfico fica de fora da rota do workspace, onde há terminais. O roteador fica fora
+ * (HashRouter em main.tsx, MemoryRouter nos testes), então o App funciona com qualquer um dos dois.
  */
 export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
+  const inWorkspace = useMatch(ROUTE_PATHS.workspace) !== null;
   return (
     <div className="app-shell">
-      <TopographicBackground />
-      <header className="app-header">
-        <p className="app-brand">
-          <span aria-hidden="true" className="app-brand__mark" />
-          Project Hub
-        </p>
-        <nav aria-label="Principal">
-          <ul className="app-nav">
-            {NAV_ITEMS.map(({ to, label }) => (
-              <li key={to}>
-                {/* O NavLink marca a página atual com aria-current="page". */}
-                <NavLink to={to}>{label}</NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        {headerStatus === undefined || headerStatus === null ? null : (
-          <div className="app-header__status">{headerStatus}</div>
-        )}
-      </header>
+      {inWorkspace ? null : <TopographicBackground />}
+      <RestoreWorkspace />
+      <TopBar status={headerStatus} />
       <div className="app-body">
-        <Sidebar />
+        <div className="app-side">
+          <MainNav />
+          <Sidebar />
+        </div>
         <main className="app-main">
           <div className="app-main__content">
             <AppRoutes />

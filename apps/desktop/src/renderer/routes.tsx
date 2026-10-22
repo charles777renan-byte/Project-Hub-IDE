@@ -7,7 +7,7 @@ import { TerminalsPage } from './pages/TerminalsPage';
 
 /**
  * Caminhos das rotas. No aplicativo (HashRouter) eles aparecem no endereço depois do `#`. Os
- * parâmetros são `:projectId` e `:missionId`; `projectPath` e `missionPath` montam os endereços.
+ * parâmetros são `:projectId` e `:missionId`; `projectPath`, `missionPath` e `workspacePath` montam os endereços.
  */
 export const ROUTE_PATHS = {
   home: '/',
@@ -15,11 +15,18 @@ export const ROUTE_PATHS = {
   terminals: '/terminals',
   projectDetail: '/projects/:projectId',
   missionDetail: '/projects/:projectId/missions/:missionId',
+  // Sem página até a Tarefa 9: só o caminho, que a barra superior e o App já usam.
+  workspace: '/workspaces/:projectId',
 } as const;
 
 /** Endereço do detalhe de um projeto (seção 10.5). */
 export function projectPath(projectId: string): string {
   return `/projects/${encodeURIComponent(projectId)}`;
+}
+
+/** Endereço do workspace de um projeto (as abas da barra superior). */
+export function workspacePath(projectId: string): string {
+  return `/workspaces/${encodeURIComponent(projectId)}`;
 }
 
 /** Endereço do workspace de uma missão (seção 10.7). */

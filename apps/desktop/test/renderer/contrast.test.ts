@@ -46,6 +46,12 @@ const TEXTS = ['--text', '--muted', ...ACCENTS] as const;
 const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ...TEXTS.flatMap((text) => SURFACES.map((surface): [ColorToken, ColorToken] => [text, surface])),
   ...ACCENTS.map((accent): [ColorToken, ColorToken] => ['--bg', accent]),
+  // Barra superior e navegação do workspace: a aba ativa e o item ativo ficam sobre --field-line, e o
+  // botão de fechar e o passar do mouse usam --line e --field-line por trás do texto secundário.
+  ['--muted', '--field-line'],
+  ['--muted', '--line'],
+  ['--text', '--field-line'],
+  ['--text', '--line'],
 ];
 
 function channelToLinear(channel: number): number {
@@ -152,4 +158,56 @@ describe('tema escuro', () => {
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     },
   );
+});
+
+/**
+ * O chrome novo (barra superior, navegação e casca, em workspace.css) usa só as cores neutras do
+ * tema: --bg, --line, --field-line, --muted e --text, e misturas delas por color-mix. As cores de
+ * destaque ficam para os dados (estados, contadores), nunca para o chrome. As variáveis derivadas
+ * ficam em workspace.css, escopadas num seletor: o tokens.css só guarda #rrggbb.
+ */
+describe('cores do chrome do workspace', () => {
+  const workspaceCss = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles/workspace.css'),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const NEUTRAL = new Set(['--bg', '--line', '--field-line', '--muted', '--text']);
+  // Variáveis do chrome que não são cor: espaçamento, fonte e raio.
+  const NOT_COLOR = /^--(?:space|font|radius)(?:-|$)/;
+
+  /** Variáveis derivadas, definidas em workspace.css: `--nome: color-mix(...)`. */
+  const derived = new Map(
+    [...workspaceCss.matchAll(/(--[\w-]+)\s*:\s*([^;{}]+);/g)].map(
+      ([, name = '', value = '']) => [name, value.trim()] as const,
+    ),
+  );
+
+  it('só usa var() das cores neutras, de espaçamento, de fonte ou de uma derivada local', () => {
+    const used = [...workspaceCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
+    expect(used.length).toBeGreaterThan(0);
+    const foreign = used.filter(
+      (name) => !NEUTRAL.has(name) && !NOT_COLOR.test(name) && !derived.has(name),
+    );
+    expect(foreign).toEqual([]);
+  });
+
+  it('não escreve cor literal nem usa cor de destaque', () => {
+    expect(workspaceCss).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(workspaceCss).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
+    for (const accent of ACCENTS) {
+      expect(workspaceCss, accent).not.toContain(`var(${accent})`);
+    }
+  });
+
+  it('cada variável derivada é um color-mix só das cores neutras', () => {
+    expect(derived.size).toBeGreaterThan(0);
+    for (const [name, value] of derived) {
+      expect(value, name).toMatch(/^color-mix\(/);
+      const inputs = [...value.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
+      expect(inputs.length, name).toBeGreaterThan(0);
+      for (const input of inputs) {
+        expect(NEUTRAL.has(input), `${name} usa ${input}`).toBe(true);
+      }
+    }
+  });
 });

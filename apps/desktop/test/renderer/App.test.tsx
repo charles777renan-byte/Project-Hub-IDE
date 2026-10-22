@@ -72,7 +72,7 @@ describe('App', () => {
     expect(within(screen.getByRole('main')).getByRole('heading', { name: 'Início' })).toBeVisible();
   });
 
-  it('chega aos links com Tab, na ordem da tela, e abre a página com Enter', async () => {
+  it('chega aos controles com Tab, na ordem da tela, e abre a página com Enter', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
@@ -80,6 +80,9 @@ describe('App', () => {
       </MemoryRouter>,
     );
 
+    // A barra superior vem antes da navegação.
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('link', { name: 'Início' })).toHaveFocus();
     await user.tab();
@@ -92,11 +95,12 @@ describe('App', () => {
   });
 });
 
-// Cabeçalho do workspace (Tarefa 3): marca, navegação e o espaço à direita para os contadores.
-describe('cabeçalho', () => {
-  // Os painéis (<header> do Panel) também contam como banner no testing-library; o cabeçalho do app é achado pela classe.
-  function appHeader(): HTMLElement {
-    const header = document.querySelector<HTMLElement>('.app-header');
+// Barra superior (Tarefa 6 do plano do workspace multiagente): marca, abas dos workspaces, botão de
+// abrir e o espaço à direita para os contadores. A navegação principal fica na coluna lateral.
+describe('barra superior', () => {
+  // Os painéis (<header> do Panel) também contam como banner no testing-library; a barra do app é achada pela classe.
+  function topBar(): HTMLElement {
+    const header = document.querySelector<HTMLElement>('header.topbar');
     expect(header).not.toBeNull();
     return header as HTMLElement;
   }
@@ -111,6 +115,9 @@ describe('cabeçalho', () => {
         list: () => Promise.resolve({ ok: true, data: [] }),
         subscribe: () => () => undefined,
       },
+      workspaces: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+      },
     } as unknown as ProjectHubApi;
   });
 
@@ -119,18 +126,38 @@ describe('cabeçalho', () => {
   });
 
   it.each(['/', '/projects', '/projects/p1'])(
-    'aparece com a marca e a navegação na rota %s',
-    (route) => {
+    'aparece com a marca e o botão de abrir workspace na rota %s',
+    async (route) => {
       render(
         <MemoryRouter initialEntries={[route]}>
           <App />
         </MemoryRouter>,
       );
-      const banner = appHeader();
+      const banner = topBar();
       expect(within(banner).getByText('Project Hub')).toBeInTheDocument();
-      expect(within(banner).getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
+      expect(
+        await within(banner).findByRole('button', { name: 'Abrir workspace' }),
+      ).toBeInTheDocument();
     },
   );
+
+  it('não leva a navegação principal, que fica na coluna lateral, acima da barra de projetos', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    const navigation = screen.getByRole('navigation', { name: 'Principal' });
+    expect(topBar().contains(navigation)).toBe(false);
+    const side = navigation.closest('.app-side');
+    expect(side).not.toBeNull();
+    expect(side?.querySelector('.sidebar')).not.toBeNull();
+    // A navegação vem antes da barra de projetos.
+    expect(
+      navigation.compareDocumentPosition(side?.querySelector('.sidebar') as Element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 
   it('a marca tem o símbolo escondido dos leitores de tela', () => {
     render(
@@ -138,7 +165,7 @@ describe('cabeçalho', () => {
         <App />
       </MemoryRouter>,
     );
-    const mark = appHeader().querySelector('.app-brand__mark');
+    const mark = topBar().querySelector('.topbar__mark');
     expect(mark).not.toBeNull();
     expect(mark).toHaveAttribute('aria-hidden', 'true');
   });
@@ -149,20 +176,39 @@ describe('cabeçalho', () => {
         <App headerStatus={<span>2 executando</span>} />
       </MemoryRouter>,
     );
-    const status = appHeader().querySelector('.app-header__status');
+    const status = topBar().querySelector('.topbar__status');
     expect(status).toHaveTextContent('2 executando');
   });
 
   it.each([
     ['sem headerStatus', undefined],
     ['com headerStatus nulo', null],
-  ])('%s, não deixa um espaço vazio no cabeçalho', (_caso, headerStatus) => {
+  ])('%s, não deixa um espaço vazio na barra', (_caso, headerStatus) => {
     render(
       <MemoryRouter>
         <App headerStatus={headerStatus} />
       </MemoryRouter>,
     );
-    expect(appHeader().querySelector('.app-header__status')).toBeNull();
+    expect(topBar().querySelector('.topbar__status')).toBeNull();
+  });
+
+  it('o fundo topográfico aparece fora da rota do workspace e some nela', () => {
+    const first = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(document.querySelector('.topo-background')).not.toBeNull();
+    first.unmount();
+    render(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(document.querySelector('.topo-background')).toBeNull();
+    // Sem página até a Tarefa 9, mas a casca continua de pé.
+    expect(document.querySelector('header.topbar')).not.toBeNull();
+    expect(screen.getByRole('main')).toBeInTheDocument();
   });
 });
 

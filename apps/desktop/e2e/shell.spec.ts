@@ -2,8 +2,8 @@ import { expect, test } from './fixtures';
 
 /**
  * Casca do app na janela real (Tarefa 3 do plano da interface): a página não rola (quem rola é a área
- * abaixo do cabeçalho), e o anel de foco do link da navegação cabe inteiro dentro da navegação, que
- * tem rolagem lateral e cortaria o que passasse da borda.
+ * abaixo da barra superior), e o anel de foco do link da navegação cabe inteiro dentro da navegação, que
+ * pode ter rolagem e cortaria o que passasse da borda.
  */
 test('o documento não rola e o anel de foco da navegação não é cortado', async ({ launchApp }) => {
   const { page } = await launchApp();
@@ -14,6 +14,9 @@ test('o documento não rola e o anel de foco da navegação não é cortado', as
   }));
   expect(scroll.scrollHeight).toBeLessThanOrEqual(scroll.innerHeight);
 
+  // A barra superior vem antes da navegação: o primeiro Tab cai no botão de abrir workspace.
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Abrir workspace' })).toBeFocused();
   await page.keyboard.press('Tab');
   const link = page.getByRole('navigation', { name: 'Principal' }).getByRole('link', {
     name: 'Início',

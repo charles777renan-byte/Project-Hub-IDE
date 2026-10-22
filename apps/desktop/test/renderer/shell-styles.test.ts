@@ -2,71 +2,118 @@ import { describe, expect, it } from 'vitest';
 import { mediaBlock, readCss, ruleDeclarations } from './css-rules';
 
 /**
- * Casca do app (Tarefa 3 do plano da interface do workspace): cabeçalho de 50px, item ativo da
- * navegação em magenta cheio com texto no fundo (par medido em contrast.test.ts), e a área da página
- * ocupando o resto da altura, com a rolagem dentro dela.
+ * Casca do app (Tarefa 6 do plano do workspace multiagente): barra superior de 36px com a marca, as
+ * abas dos workspaces e os contadores, a navegação principal numa coluna lateral e a área da página
+ * ocupando o resto da altura, com a rolagem dentro dela. As regras da casca ficam em workspace.css, que
+ * o index.html liga depois de app.css.
  */
 
 describe('casca do app', () => {
-  const appCss = readCss('app.css');
+  const workspaceCss = readCss('workspace.css');
 
   it('a janela é uma coluna da altura da tela', () => {
-    const shell = ruleDeclarations(appCss, '.app-shell');
+    const shell = ruleDeclarations(workspaceCss, '.app-shell');
     expect(shell.get('display')).toBe('flex');
     expect(shell.get('flex-direction')).toBe('column');
     expect(shell.get('height')).toBe('100vh');
   });
 
-  it('o cabeçalho tem 50px, não encolhe e não quebra linha', () => {
-    const header = ruleDeclarations(appCss, '.app-header');
-    expect(header.get('height')).toBe('50px');
-    expect(header.get('flex')).toBe('none');
-    expect(header.get('flex-wrap')).toBe('nowrap');
-    expect(header.get('box-shadow')).toBe('inset 0 -1px 0 var(--line)');
+  it('a barra superior tem 36px, não encolhe e não quebra linha', () => {
+    const topbar = ruleDeclarations(workspaceCss, '.topbar');
+    expect(topbar.get('height')).toBe('36px');
+    expect(topbar.get('flex')).toBe('none');
+    expect(topbar.get('flex-wrap')).toBe('nowrap');
+    expect(topbar.get('box-shadow')).toBe('inset 0 -1px 0 var(--line)');
   });
 
-  it('o cabeçalho arrasta a janela e deixa 140px à direita para os botões do Windows', () => {
-    const header = ruleDeclarations(appCss, '.app-header');
-    expect(header.get('-webkit-app-region')).toBe('drag');
-    expect(header.get('padding')).toBe('0 140px 0 var(--space-3)');
+  it('a barra superior arrasta a janela e deixa 140px à direita para os botões do Windows', () => {
+    const topbar = ruleDeclarations(workspaceCss, '.topbar');
+    expect(topbar.get('-webkit-app-region')).toBe('drag');
+    expect(topbar.get('padding')).toBe('0 140px 0 var(--space-3)');
   });
 
-  it('navegação e contadores ficam fora da área de arrastar, para continuar clicáveis', () => {
-    expect(ruleDeclarations(appCss, '.app-nav').get('-webkit-app-region')).toBe('no-drag');
-    expect(ruleDeclarations(appCss, '.app-nav a').get('-webkit-app-region')).toBe('no-drag');
-    const status = ruleDeclarations(appCss, '.app-header__status');
-    expect(status.get('-webkit-app-region')).toBe('no-drag');
+  it.each([
+    '.topbar__tabs',
+    '.topbar__tab',
+    '.topbar__tab-link',
+    '.topbar__close',
+    '.topbar__add',
+    '.topbar__menu',
+    '.topbar__status',
+  ])('%s fica fora da área de arrastar, para continuar clicável', (selector) => {
+    expect(ruleDeclarations(workspaceCss, selector).get('-webkit-app-region')).toBe('no-drag');
   });
 
-  it('o item ativo da navegação é magenta cheio com o texto na cor do fundo', () => {
-    const active = ruleDeclarations(appCss, ".app-nav a[aria-current='page']");
-    expect(active.get('background')).toBe('var(--magenta)');
-    expect(active.get('color')).toBe('var(--bg)');
+  it('as abas rolam de lado se não couberem, sem empurrar a barra', () => {
+    const tabs = ruleDeclarations(workspaceCss, '.topbar__tabs');
+    expect(tabs.get('overflow-x')).toBe('auto');
+    expect(tabs.get('min-width')).toBe('0');
   });
 
-  it('a marca leva o violeta e o vermelho no símbolo', () => {
-    expect(ruleDeclarations(appCss, '.app-brand__mark::before').get('background')).toBe(
-      'var(--violet)',
+  it('a aba ativa tem o fundo da cor de borda de campo', () => {
+    expect(
+      ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])").get(
+        'background',
+      ),
+    ).toBe('var(--field-line)');
+  });
+
+  it('a barra é sólida, porque a faixa dos botões do Windows é opaca', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar').get('background')).toBe('var(--bg)');
+  });
+
+  it('a marca leva o símbolo em duas metades, nas cores do texto', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar__mark::before').get('background')).toBe(
+      'var(--text)',
     );
-    expect(ruleDeclarations(appCss, '.app-brand__mark::after').get('background')).toBe(
-      'var(--red)',
+    expect(ruleDeclarations(workspaceCss, '.topbar__mark::after').get('background')).toBe(
+      'var(--muted)',
     );
   });
 
-  it('o anel de foco da navegação fica dentro do link, que a navegação com rolagem cortaria', () => {
-    expect(ruleDeclarations(appCss, '.app-nav a:focus-visible').get('outline-offset')).toBe('-2px');
-    expect(ruleDeclarations(appCss, ':focus-visible').get('outline')).toBe('2px solid var(--text)');
+  it('o anel de foco da barra e da navegação fica por dentro, que a rolagem cortaria', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar a:focus-visible').get('outline-offset')).toBe(
+      '-2px',
+    );
+    expect(
+      ruleDeclarations(workspaceCss, '.topbar button:focus-visible').get('outline-offset'),
+    ).toBe('-2px');
+    expect(ruleDeclarations(workspaceCss, '.main-nav a:focus-visible').get('outline-offset')).toBe(
+      '-2px',
+    );
+    expect(ruleDeclarations(readCss('app.css'), ':focus-visible').get('outline')).toBe(
+      '2px solid var(--text)',
+    );
   });
 
   it('os contadores ficam no canto direito', () => {
-    expect(ruleDeclarations(appCss, '.app-header__status').get('margin-left')).toBe('auto');
+    expect(ruleDeclarations(workspaceCss, '.topbar__status').get('margin-left')).toBe('auto');
+  });
+
+  it('o item ativo da navegação principal tem o fundo da cor de borda de campo', () => {
+    const active = ruleDeclarations(workspaceCss, ".main-nav a[aria-current='page']");
+    expect(active.get('background')).toBe('var(--field-line)');
+    expect(active.get('color')).toBe('var(--text)');
+  });
+
+  it('a coluna lateral não encolhe e a barra de projetos enche o que sobra dela', () => {
+    const side = ruleDeclarations(workspaceCss, '.app-side');
+    expect(side.get('display')).toBe('flex');
+    expect(side.get('flex-direction')).toBe('column');
+    expect(side.get('flex')).toBe('none');
+    expect(side.get('min-height')).toBe('0');
+    expect(ruleDeclarations(workspaceCss, '.app-side > .sidebar').get('flex')).toBe('1');
   });
 
   it('a área da página ocupa o resto da altura e rola sozinha', () => {
-    const main = ruleDeclarations(appCss, '.app-main');
+    const main = ruleDeclarations(workspaceCss, '.app-main');
     expect(main.get('flex')).toBe('1');
     expect(main.get('min-height')).toBe('0');
     expect(main.get('overflow')).toBe('auto');
+  });
+
+  it('as regras do cabeçalho antigo saíram do app.css', () => {
+    expect(readCss('app.css')).not.toMatch(/\.app-header|\.app-brand|\.app-nav/);
   });
 });
 
@@ -94,7 +141,7 @@ describe('leitor de regras dos testes', () => {
 /**
  * Barra lateral de projetos e missões (Tarefa 4 do plano da interface): 230px à esquerda da página,
  * com rolagem própria; o corpo da janela é uma linha flex; e abaixo de 1000px a barra some, e a
- * navegação continua no cabeçalho.
+ * navegação principal continua na coluna lateral, que passa a ser uma faixa acima da página.
  */
 describe('barra lateral', () => {
   const appCss = readCss('app.css');
@@ -108,19 +155,22 @@ describe('barra lateral', () => {
   });
 
   it('o corpo da janela é uma linha flex que ocupa o resto da altura', () => {
-    const body = ruleDeclarations(appCss, '.app-body');
+    const body = ruleDeclarations(readCss('workspace.css'), '.app-body');
     expect(body.get('display')).toBe('flex');
     expect(body.get('flex')).toBe('1');
     expect(body.get('min-height')).toBe('0');
   });
 
   it('a página continua ocupando o espaço que a barra deixa', () => {
-    expect(ruleDeclarations(appCss, '.app-main').get('flex')).toBe('1');
+    expect(ruleDeclarations(readCss('workspace.css'), '.app-main').get('flex')).toBe('1');
   });
 
-  it('abaixo de 1000px a barra some (display: none)', () => {
+  it('abaixo de 1000px a barra some (display: none) e a coluna lateral vira uma faixa acima da página', () => {
     const narrow = mediaBlock(appCss, '(max-width: 1000px)');
     expect(ruleDeclarations(narrow, '.sidebar').get('display')).toBe('none');
+    const workspaceNarrow = mediaBlock(readCss('workspace.css'), '(max-width: 1000px)');
+    expect(ruleDeclarations(workspaceNarrow, '.app-body').get('flex-direction')).toBe('column');
+    expect(ruleDeclarations(workspaceNarrow, '.main-nav__list').get('flex-direction')).toBe('row');
   });
 
   it('o contorno de foco de links e botões da barra fica por dentro dela', () => {
