@@ -5,28 +5,49 @@ import {
   type ProjectRepository,
   type TerminalPort,
 } from '@project-hub/application';
-import type { AppResult, TerminalEvent, TerminalSummary } from '@project-hub/contracts';
+import {
+  providerIdSchema,
+  type AppResult,
+  type ProviderId,
+  type TerminalEvent,
+  type TerminalSummary,
+} from '@project-hub/contracts';
+import type { TerminalSessionRepository } from '@project-hub/database';
 import { buildTerminalEnv } from '../terminal-host/env';
+import type { ProviderRegistry } from './providers';
 
 export type TerminalServiceDeps = {
   port: TerminalPort;
   repo: Pick<MissionRepository, 'findExecutionsByStatus' | 'getMission'>;
   projects: Pick<ProjectRepository, 'get'>;
+  /** Sessões de terminal gravadas no banco: é a fonte do que está aberto. */
+  sessions: TerminalSessionRepository;
+  providers: ProviderRegistry;
   /** Entrega um evento de terminal ao renderer. */
   publish: (event: TerminalEvent) => void;
   env: NodeJS.ProcessEnv;
-  platform: NodeJS.Platform;
   newId: () => string;
+  now: () => string;
 };
 
-/** O que a página Terminais pede ao app. Só entram ids: o caminho e o comando saem do banco e daqui. */
+/** O que a interface pede ao app. Só entram ids: o caminho e o comando saem do banco e do registro de provedores. */
 export type TerminalService = {
   list(): Promise<AppResult<TerminalSummary[]>>;
-  openShell(projectId: string): Promise<AppResult<{ terminalId: string }>>;
+  /** Abre um terminal do provedor na pasta do projeto e grava a sessão. Provedor ausente: PROCESS_START_FAILED com o motivo. */
+  openSession(projectId: string, provider: ProviderId): Promise<AppResult<{ terminalId: string }>>;
+  /** Mata o processo (se ainda existir) e marca a sessão como fechada. Terminal de missão: VALIDATION_FAILED. */
+  closeSession(terminalId: string): Promise<AppResult<undefined>>;
+  /** Ids de terminal do projeto: sessões abertas dele e terminais de missões em andamento dele. */
+  knownIds(projectId: string): Promise<Set<string>>;
+  /** 'running' (processo vivo), 'exited' (o processo de terminais conhece e acabou, ou a sessão está aberta no banco mas o processo sumiu) ou 'unknown' (nenhum dos dois). */
+  stateOf(terminalId: string): Promise<'running' | 'exited' | 'unknown'>;
   write(terminalId: string, data: string): Promise<AppResult<undefined>>;
   resize(terminalId: string, cols: number, rows: number): Promise<AppResult<undefined>>;
   subscribe(terminalId: string): Promise<AppResult<undefined>>;
   unsubscribe(terminalId: string): Promise<AppResult<undefined>>;
+  /** Provisório: a página Terminais ainda chama este atalho. Sai com ela. */
+  openShell(projectId: string): Promise<AppResult<{ terminalId: string }>>;
+  /** Provisório: atalho de `closeSession` para a página Terminais. */
   close(terminalId: string): Promise<AppResult<undefined>>;
 };
 
@@ -42,9 +63,9 @@ function lastSegment(path: string | undefined): string | undefined {
 }
 
 export function createTerminalService(deps: TerminalServiceDeps): TerminalService {
-  const { port, repo, projects, publish } = deps;
-  /** Shells abertos por esta janela, com o projeto de cada um. */
-  const shells = new Map<string, { projectId: string }>();
+  const { port, repo, projects, sessions, providers, publish } = deps;
+  /** Sessões abertas por esta execução do app; as outras do banco foram herdadas e voltam como recuperadas. */
+  const openedHere = new Set<string>();
   const unsubscribers = new Map<string, () => void>();
 
   /** Execuções de agente em andamento que têm sessão: cada uma é um terminal. */
@@ -55,8 +76,18 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     ].filter((execution) => execution.agentSessionId !== undefined);
   }
 
+  function isAgentTerminal(terminalId: string): boolean {
+    return agentExecutions().some((e) => e.agentSessionId === terminalId);
+  }
+
+  /** A sessão do banco, só se ainda estiver aberta. */
+  function openSessionRecord(terminalId: string) {
+    const record = sessions.get(terminalId);
+    return record !== undefined && record.closedAt === undefined ? record : undefined;
+  }
+
   function isKnown(terminalId: string): boolean {
-    return shells.has(terminalId) || agentExecutions().some((e) => e.agentSessionId === terminalId);
+    return openSessionRecord(terminalId) !== undefined || isAgentTerminal(terminalId);
   }
 
   /** Roda a operação e converte o erro da porta em falha com código do contrato. */
@@ -82,6 +113,69 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     unsubscribers.delete(terminalId);
   }
 
+  /** O processo de terminais não responder (ou não conhecer o id) é o mesmo que não ter o que mostrar. */
+  function snapshotOf(terminalId: string) {
+    return port.snapshot(terminalId).catch(() => undefined);
+  }
+
+  async function openSession(
+    projectId: string,
+    provider: ProviderId,
+  ): Promise<AppResult<{ terminalId: string }>> {
+    const target = projects.get(projectId);
+    if (target === undefined) {
+      return failure('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
+    }
+    const resolution = providers.resolve(provider);
+    if (!resolution.ok) return failure('PROCESS_START_FAILED', resolution.reason);
+
+    const terminalId = deps.newId();
+    await port.open({
+      id: terminalId,
+      cwd: target.path,
+      command: resolution.launch.command,
+      args: resolution.launch.args,
+      env: buildTerminalEnv(deps.env),
+    });
+    const label = providers.list().find((info) => info.id === provider)?.label ?? provider;
+    try {
+      sessions.insert({
+        id: terminalId,
+        projectId,
+        provider,
+        title: `${label} · ${target.name}`,
+        createdAt: deps.now(),
+      });
+    } catch (error) {
+      // Sem a linha, o processo ficaria órfão: nenhuma tela o listaria nem o fecharia.
+      await port.kill(terminalId).catch(() => undefined);
+      throw error;
+    }
+    openedHere.add(terminalId);
+    return { ok: true, data: { terminalId } };
+  }
+
+  async function closeSession(terminalId: string): Promise<AppResult<undefined>> {
+    if (openSessionRecord(terminalId) === undefined) {
+      return isAgentTerminal(terminalId)
+        ? failure(
+            'VALIDATION_FAILED',
+            'Só uma sessão avulsa fecha por aqui. Para um agente, cancele a missão.',
+          )
+        : failure('TERMINAL_NOT_FOUND', UNKNOWN_TERMINAL);
+    }
+    stopSubscription(terminalId);
+    try {
+      await port.kill(terminalId);
+    } catch (error) {
+      // Processo que já não existe não impede de fechar a sessão; qualquer outra falha a mantém aberta.
+      if (!(error instanceof TerminalPortError && error.code === 'TERMINAL_NOT_FOUND')) throw error;
+    }
+    sessions.close(terminalId, deps.now());
+    openedHere.delete(terminalId);
+    return OK;
+  }
+
   return {
     list() {
       return guarded(async () => {
@@ -103,48 +197,53 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
               mission.status === 'waiting_input' || mission.status === 'waiting_approval'
                 ? 'waiting'
                 : 'running',
-            // Valores fixos por enquanto; a Tarefa 4 passa a ler o provedor e a origem reais.
             provider: 'claude',
             origin: 'new',
             ...(worktreeName === undefined ? {} : { worktreeName }),
           });
         }
-        for (const [id, shell] of shells) {
-          const project = projects.get(shell.projectId);
-          const snapshot = await port.snapshot(id).catch(() => undefined);
+        for (const record of sessions.listOpen()) {
+          const provider = providerIdSchema.safeParse(record.provider);
+          // Um provedor que esta versão não conhece não tem como ser aberto nem mostrado.
+          if (!provider.success) continue;
+          const snapshot = await snapshotOf(record.id);
           out.push({
-            id,
+            id: record.id,
             kind: 'shell',
-            title: `Shell · ${project?.name ?? 'projeto'}`,
-            projectId: shell.projectId,
-            projectName: project?.name ?? '',
+            title: record.title,
+            projectId: record.projectId,
+            projectName: projects.get(record.projectId)?.name ?? '',
             state: snapshot?.alive === true ? 'running' : 'exited',
-            provider: 'shell',
-            origin: 'new',
+            provider: provider.data,
+            origin: openedHere.has(record.id) ? 'new' : 'recovered',
           });
         }
         return { ok: true, data: out };
       });
     },
 
-    openShell(projectId) {
-      return guarded(async () => {
-        const project = projects.get(projectId);
-        if (project === undefined) {
-          return failure('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
+    openSession: (projectId, provider) => guarded(() => openSession(projectId, provider)),
+
+    closeSession: (terminalId) => guarded(() => closeSession(terminalId)),
+
+    knownIds(projectId) {
+      const ids = new Set<string>();
+      for (const record of sessions.listOpen()) {
+        if (record.projectId === projectId) ids.add(record.id);
+      }
+      for (const execution of agentExecutions()) {
+        if (execution.agentSessionId === undefined) continue;
+        if (repo.getMission(execution.missionId)?.projectId === projectId) {
+          ids.add(execution.agentSessionId);
         }
-        const terminalId = deps.newId();
-        const windows = deps.platform === 'win32';
-        await port.open({
-          id: terminalId,
-          cwd: project.path,
-          command: windows ? 'powershell.exe' : (deps.env['SHELL'] ?? '/bin/bash'),
-          args: windows ? ['-NoLogo'] : [],
-          env: buildTerminalEnv(deps.env),
-        });
-        shells.set(terminalId, { projectId });
-        return { ok: true, data: { terminalId } };
-      });
+      }
+      return Promise.resolve(ids);
+    },
+
+    async stateOf(terminalId) {
+      const snapshot = await snapshotOf(terminalId);
+      if (snapshot !== undefined) return snapshot.alive ? 'running' : 'exited';
+      return openSessionRecord(terminalId) === undefined ? 'unknown' : 'exited';
     },
 
     write: (terminalId, data) =>
@@ -177,21 +276,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         return Promise.resolve(OK);
       }),
 
-    close: (terminalId) => {
-      if (!shells.has(terminalId)) {
-        return Promise.resolve(
-          failure(
-            'VALIDATION_FAILED',
-            'Só um shell fecha por aqui. Para um agente, cancele a missão.',
-          ),
-        );
-      }
-      return guarded(async () => {
-        stopSubscription(terminalId);
-        await port.kill(terminalId);
-        shells.delete(terminalId);
-        return OK;
-      });
-    },
+    openShell: (projectId) => guarded(() => openSession(projectId, 'shell')),
+
+    close: (terminalId) => guarded(() => closeSession(terminalId)),
   };
 }
