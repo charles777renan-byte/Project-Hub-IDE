@@ -124,10 +124,32 @@ describe('serviço de terminais do app', () => {
           title: 'Corrigir login',
           state: 'waiting',
           missionId: 'm1',
+          provider: 'claude',
+          origin: 'new',
         },
-        { id: 'shell-1', kind: 'shell', projectName: 'app', state: 'running' },
+        {
+          id: 'shell-1',
+          kind: 'shell',
+          projectName: 'app',
+          state: 'running',
+          provider: 'shell',
+          origin: 'new',
+        },
       ],
     });
+  });
+
+  it('o terminal do agente leva só o nome do worktree, não o caminho', async () => {
+    const withWorktree = {
+      ...mission,
+      worktreePath: 'C:\\hub\\worktrees\\app\\missao-1',
+    } as Mission;
+    const h = setup({ executions: [agentExecution], missions: [withWorktree] });
+
+    const result = await h.service.list();
+
+    expect(result).toMatchObject({ ok: true, data: [{ worktreeName: 'missao-1' }] });
+    expect(JSON.stringify(result)).not.toContain('hub');
   });
 
   it('recusa escrever num terminal que o app não conhece', async () => {

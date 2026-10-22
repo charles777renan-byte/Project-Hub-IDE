@@ -19,6 +19,8 @@ const agent: TerminalSummary = {
   projectName: 'app',
   missionId: 'm1',
   state: 'waiting',
+  provider: 'claude',
+  origin: 'new',
 };
 const shell: TerminalSummary = {
   id: 'shell-1',
@@ -27,6 +29,8 @@ const shell: TerminalSummary = {
   projectId: 'p1',
   projectName: 'app',
   state: 'running',
+  provider: 'shell',
+  origin: 'new',
 };
 
 function installApi(list: TerminalSummary[] = [agent, shell]) {

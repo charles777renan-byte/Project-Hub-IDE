@@ -40,8 +40,28 @@ describe('contratos de terminal', () => {
       projectId: 'p1',
       projectName: 'app',
       state: 'running',
+      provider: 'shell',
+      origin: 'new',
       cwd: 'C:/segredo',
     });
     expect(Object.keys(summary)).not.toContain('cwd');
+  });
+
+  it('o resumo exige provedor e origem conhecidos, e o nome do worktree é opcional', () => {
+    const base = {
+      id: 't',
+      kind: 'agent',
+      title: 'Agente',
+      projectId: 'p1',
+      projectName: 'app',
+      state: 'running',
+    };
+    const ok = { ...base, provider: 'claude', origin: 'recovered', worktreeName: 'mission-1' };
+    expect(terminalSummarySchema.safeParse(ok).success).toBe(true);
+    expect(terminalSummarySchema.safeParse({ ...ok, worktreeName: undefined }).success).toBe(true);
+    expect(terminalSummarySchema.safeParse({ ...base, origin: 'new' }).success).toBe(false);
+    expect(terminalSummarySchema.safeParse({ ...base, provider: 'claude' }).success).toBe(false);
+    expect(terminalSummarySchema.safeParse({ ...ok, provider: 'bash' }).success).toBe(false);
+    expect(terminalSummarySchema.safeParse({ ...ok, origin: 'resumed' }).success).toBe(false);
   });
 });
