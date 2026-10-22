@@ -76,6 +76,7 @@ describe('migrateDatabase', () => {
         '0001_missoes',
         '0002_arquivamento_projetos',
         '0003_cursor_do_agente',
+        '0004_workspaces_e_sessoes',
       ],
       alreadyUpToDate: false,
     });
@@ -108,6 +109,7 @@ describe('migrateDatabase', () => {
       '0001_missoes',
       '0002_arquivamento_projetos',
       '0003_cursor_do_agente',
+      '0004_workspaces_e_sessoes',
     ]);
     expect(existsSync(backupPath)).toBe(true);
     // O backup tem o estado de antes da migração: a tabela antiga e nenhuma projects.
