@@ -20,7 +20,7 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
   const navigate = useNavigate();
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
   const { projects } = useSidebarData();
-  const { workspaces } = useOpenWorkspaces();
+  const { workspaces, status: loadStatus, message } = useOpenWorkspaces();
   const [problem, setProblem] = useState<string | null>(null);
 
   const names = new Map(projects.map((project) => [project.id, project.name]));
@@ -57,6 +57,8 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
     void navigate(workspacePath(projectId));
   }
 
+  // Um erro de abrir ou fechar vale mais que o da carga; o da carga some na próxima carga que der certo.
+  const notice = problem ?? (loadStatus === 'error' ? (message ?? null) : null);
   const openIds = new Set(workspaces.map((workspace) => workspace.projectId));
 
   return (
@@ -99,9 +101,9 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
         onOpen={(projectId) => void openProject(projectId)}
         onAddProject={() => void navigate(ROUTE_PATHS.projects)}
       />
-      {problem === null ? null : (
-        <p role="alert" className="topbar__error">
-          {problem}
+      {notice === null ? null : (
+        <p role="alert" className="topbar__error" title={notice}>
+          {notice}
         </p>
       )}
       {status === undefined || status === null ? null : (
@@ -235,7 +237,7 @@ export function resetRestoreForTests() {
 /**
  * Sem saída. Quando a janela abre no Início e há workspace aberto, leva para o de atividade mais
  * recente (`replace`, para o Início não ficar atrás no histórico). A decisão sai uma vez só, assim que
- * a lista chega: quem foi para outra página enquanto ela carregava, ou voltar ao Início depois, não é
+ * a lista chega (uma falha de carga não decide): quem foi para outra página enquanto ela carregava, ou voltar ao Início depois, não é
  * levado de novo.
  */
 export function RestoreWorkspace() {
@@ -244,7 +246,8 @@ export function RestoreWorkspace() {
   const { status, workspaces } = useOpenWorkspaces();
 
   useEffect(() => {
-    if (restoreDecided || status === 'loading') return;
+    // Só uma lista carregada decide: depois de uma falha, a próxima carga boa ainda pode restaurar.
+    if (restoreDecided || status !== 'ready') return;
     restoreDecided = true;
     if (pathname !== ROUTE_PATHS.home) return;
     let latest: WorkspaceDto | undefined;
