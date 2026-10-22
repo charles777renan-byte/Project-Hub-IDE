@@ -34,6 +34,11 @@ export const ERROR_CODES = [
   'APPROVAL_NOT_FOUND',
   // Acrescentado pela Tarefa 10b: nenhum código da seção 13.7 serve para um agente que não pausa.
   'AGENT_CAPABILITY_UNSUPPORTED',
+  // Acrescentados pela Tarefa 4 do plano de agente real: o terminal de um agente ou de um shell.
+  'TERMINAL_NOT_FOUND',
+  'TERMINAL_ALREADY_EXISTS',
+  'TERMINAL_EXITED',
+  'TERMINAL_HOST_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

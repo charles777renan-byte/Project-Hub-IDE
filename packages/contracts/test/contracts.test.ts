@@ -98,6 +98,17 @@ describe('ERROR_CODES', () => {
     expect(ERROR_CODES).toEqual(expect.arrayContaining(['AGENT_CAPABILITY_UNSUPPORTED']));
   });
 
+  it('acrescenta os códigos de terminal da Tarefa 4', () => {
+    expect(ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'TERMINAL_NOT_FOUND',
+        'TERMINAL_ALREADY_EXISTS',
+        'TERMINAL_EXITED',
+        'TERMINAL_HOST_UNAVAILABLE',
+      ]),
+    );
+  });
+
   it('não repete códigos', () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
   });

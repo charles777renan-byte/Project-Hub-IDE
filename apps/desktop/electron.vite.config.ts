@@ -34,6 +34,16 @@ const REACT_ROUTER_PROD_ENTRY = /[\\/]react-router[\\/]dist[\\/]production[\\/]i
 export default defineConfig({
   main: {
     plugins: [copyMigrations()],
+    build: {
+      rolldownOptions: {
+        input: {
+          index: join(import.meta.dirname, 'src/main/index.ts'),
+          // Processo de terminais: roda separado do app e continua vivo quando o app fecha. Sai como
+          // out/main/terminal-host.js, e o app o sobe com o executável do Electron em modo Node.
+          'terminal-host': join(import.meta.dirname, 'src/terminal-host/main.ts'),
+        },
+      },
+    },
   },
   preload: {
     build: {

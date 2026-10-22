@@ -1,4 +1,4 @@
-import type { MissionDiffDto } from '@project-hub/contracts';
+import type { ErrorCode, MissionDiffDto } from '@project-hub/contracts';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -64,7 +64,16 @@ export type MissionChanges = Partial<
 >;
 
 export type ExecutionChanges = Partial<
-  Pick<Execution, 'status' | 'agentSessionId' | 'exitReason' | 'usage' | 'finishedAt'>
+  Pick<
+    Execution,
+    | 'status'
+    | 'agentSessionId'
+    | 'agentCursor'
+    | 'startedAt'
+    | 'exitReason'
+    | 'usage'
+    | 'finishedAt'
+  >
 >;
 
 export type ApprovalChanges = Partial<
@@ -128,4 +137,69 @@ export interface WorktreePort {
     baseRef: string;
   }): Promise<{ path: string; branch: string; baseCommit: string }>;
   remove(input: { repoPath: string; worktreePath: string }): Promise<void>;
+}
+
+/** Códigos que a porta de terminais pode devolver. Todos são códigos do contrato. */
+export type TerminalErrorCode = Extract<
+  ErrorCode,
+  | 'TERMINAL_NOT_FOUND'
+  | 'TERMINAL_ALREADY_EXISTS'
+  | 'TERMINAL_EXITED'
+  | 'TERMINAL_HOST_UNAVAILABLE'
+  | 'PROCESS_START_FAILED'
+  | 'UNKNOWN'
+>;
+
+/** Erro da porta de terminais. `code` é o código do contrato; `message` é segura para exibir. */
+export class TerminalPortError extends Error {
+  readonly code: TerminalErrorCode;
+
+  constructor(code: TerminalErrorCode, message: string) {
+    super(message);
+    this.name = 'TerminalPortError';
+    this.code = code;
+  }
+}
+
+export type TerminalOpenInput = {
+  id: string;
+  cwd: string;
+  command: string;
+  args: readonly string[];
+  /** Já filtrado pela lista de variáveis permitidas do app. */
+  env: Readonly<Record<string, string>>;
+  cols?: number;
+  rows?: number;
+};
+
+export type TerminalExit = { exitCode: number; signal?: number };
+
+export type TerminalSnapshot = { alive: boolean; exit?: TerminalExit };
+
+/**
+ * Quem assina um terminal recebe a saída e o aviso de fim. `onRestart` chega antes de uma nova leitura
+ * da saída guardada, nas reconexões e nas assinaturas repetidas: o que já foi mostrado deve ser descartado.
+ */
+export type TerminalSubscriber = {
+  onData(data: string): void;
+  onExit(exit: TerminalExit): void;
+  onRestart(): void;
+};
+
+/**
+ * Porta dos terminais dos agentes e dos shells. A aplicação não conhece `node-pty` nem o pipe: quem
+ * implementa é o cliente do processo de terminais, no app. `snapshot` devolve undefined quando o terminal
+ * não existe. As outras operações rejeitam com `TerminalPortError`.
+ */
+export interface TerminalPort {
+  open(input: TerminalOpenInput): Promise<void>;
+  write(id: string, data: string): Promise<void>;
+  resize(id: string, cols: number, rows: number): Promise<void>;
+  kill(id: string): Promise<void>;
+  snapshot(id: string): Promise<TerminalSnapshot | undefined>;
+  /**
+   * Entrega a saída guardada e depois a saída ao vivo. Uma assinatura nova no mesmo id substitui a
+   * anterior. Devolve a função que cancela a assinatura.
+   */
+  subscribe(id: string, subscriber: TerminalSubscriber): Promise<() => void>;
 }

@@ -24,7 +24,16 @@ type MissionChanges = Partial<
   Pick<Mission, 'status' | 'startedAt' | 'finishedAt' | 'worktreeId' | 'worktreePath' | 'updatedAt'>
 >;
 type ExecutionChanges = Partial<
-  Pick<Execution, 'status' | 'agentSessionId' | 'exitReason' | 'usage' | 'finishedAt'>
+  Pick<
+    Execution,
+    | 'status'
+    | 'agentSessionId'
+    | 'agentCursor'
+    | 'startedAt'
+    | 'exitReason'
+    | 'usage'
+    | 'finishedAt'
+  >
 >;
 type ApprovalChanges = Partial<Pick<ApprovalRequest, 'status' | 'decidedAt' | 'decisionNote'>>;
 
@@ -128,6 +137,7 @@ function toExecution(row: ExecutionRow): Execution {
     status: row.status,
   };
   if (row.agentSessionId !== null) execution.agentSessionId = row.agentSessionId;
+  if (row.agentCursor !== null) execution.agentCursor = row.agentCursor;
   if (row.exitReason !== null) execution.exitReason = row.exitReason;
   if (row.usage !== null) execution.usage = row.usage;
   if (row.startedAt !== null) execution.startedAt = row.startedAt;
@@ -274,6 +284,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
           attempt: execution.attempt,
           status: execution.status,
           agentSessionId: execution.agentSessionId ?? null,
+          agentCursor: execution.agentCursor ?? null,
           exitReason: execution.exitReason ?? null,
           usage: execution.usage ?? null,
           startedAt: execution.startedAt ?? null,
@@ -287,6 +298,8 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
         .set({
           status: changes.status,
           agentSessionId: changes.agentSessionId,
+          agentCursor: changes.agentCursor,
+          startedAt: changes.startedAt,
           exitReason: changes.exitReason,
           usage: changes.usage,
           finishedAt: changes.finishedAt,

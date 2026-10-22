@@ -71,7 +71,12 @@ describe('migrateDatabase', () => {
     const report = migrateDatabase(db, { filePath: dbFile });
 
     expect(report).toEqual({
-      applied: ['0000_projetos', '0001_missoes', '0002_arquivamento_projetos'],
+      applied: [
+        '0000_projetos',
+        '0001_missoes',
+        '0002_arquivamento_projetos',
+        '0003_cursor_do_agente',
+      ],
       alreadyUpToDate: false,
     });
     expect(tables(db)).toEqual(
@@ -98,7 +103,12 @@ describe('migrateDatabase', () => {
 
     const report = migrateDatabase(db, { filePath: dbFile, backupPath });
 
-    expect(report.applied).toEqual(['0000_projetos', '0001_missoes', '0002_arquivamento_projetos']);
+    expect(report.applied).toEqual([
+      '0000_projetos',
+      '0001_missoes',
+      '0002_arquivamento_projetos',
+      '0003_cursor_do_agente',
+    ]);
     expect(existsSync(backupPath)).toBe(true);
     // O backup tem o estado de antes da migração: a tabela antiga e nenhuma projects.
     expect(userTables(backupPath)).toEqual(['legado']);

@@ -10,6 +10,9 @@ allowBuilds:
   # Dependência do drizzle-kit. O script de pós-instalação só troca o executável por um atalho; o
   # esbuild funciona sem ele.
   esbuild: false
+  # Terminal do agente. O pacote traz binários prontos para Windows (prebuilds/win32-x64), então o
+  # script de compilação não é necessário e não roda. A recusa fica registrada aqui.
+  node-pty: false
 
 # Falha quando um --filter não encontra nenhum pacote. Sem isso, um nome digitado
 # errado (pnpm --filter @project-hub/dominio test) terminaria com código 0 sem rodar nada.

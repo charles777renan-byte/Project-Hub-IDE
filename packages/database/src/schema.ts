@@ -125,6 +125,8 @@ export const executions = sqliteTable(
     attempt: integer('attempt').notNull(),
     status: text('status', { enum: EXECUTION_STATUSES }).notNull(),
     agentSessionId: text('agent_session_id'),
+    /** Última saída do agente aplicada. Opaca: o adaptador a interpreta, para retomar de onde parou. */
+    agentCursor: text('agent_cursor'),
     exitReason: text('exit_reason', { enum: EXIT_REASONS }),
     usage: text('usage', { mode: 'json' }).$type<UsageSummary>(),
     startedAt: text('started_at'),

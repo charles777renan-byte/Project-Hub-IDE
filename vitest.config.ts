@@ -54,6 +54,9 @@ export default defineConfig({
           exclude: [...configDefaults.exclude, ...buildOutputs],
           // Registra os matchers do jest-dom (toBeInTheDocument e outros) e limpa o DOM entre testes.
           setupFiles: ['apps/desktop/test/renderer/setup.ts'],
+          // Dois testes de tela com muitos elementos passavam de 5 s, o padrão, quando a pasta do projeto
+          // (que fica no OneDrive) estava ocupada. 15 s dá folga sem esconder um travamento de verdade.
+          testTimeout: 15_000,
         },
       },
       {

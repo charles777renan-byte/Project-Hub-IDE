@@ -12,6 +12,7 @@ import {
   type Execution,
   type ExitReason,
   type Mission,
+  type MissionStatus,
   type MissionStep,
   type ProjectRecord,
 } from '@project-hub/domain';
@@ -24,6 +25,7 @@ import type {
 } from '../ports';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
+import { failInterruptedExecution, openExecutionsAtStart } from './startup-recovery';
 import { expirePendingApprovals, moveMission } from './transitions';
 
 export type MissionPlan = { missionId: string; steps: MissionStep[] };
@@ -46,6 +48,11 @@ export type OrchestratorDeps = {
    * porta, ou se o Git falhar, a missão conclui do mesmo jeito, sem o registro de arquivos e Git.
    */
   diff?: Pick<DiffPort, 'diff'>;
+  /**
+   * Quantas missões podem ter agente vivo ao mesmo tempo (seção 15.6). Padrão: 2. A tentativa além disso
+   * entra na fila e começa quando uma vaga abre.
+   */
+  maxRunning?: number;
   now: () => string;
   newId: () => string;
 };
@@ -77,6 +84,12 @@ export interface Orchestrator {
 }
 
 const MISSION_NOT_FOUND = 'A missão não foi encontrada.';
+/** Limite padrão de missões com agente vivo ao mesmo tempo (seção 15.6). */
+const DEFAULT_MAX_RUNNING = 2;
+/** Execução que ainda não acabou: na fila, rodando ou pausada. Cancelar a fecha. */
+const OPEN_EXECUTION_STATUSES: readonly Execution['status'][] = ['queued', 'running', 'paused'];
+/** Missão que já acabou: uma execução aberta nela não é reanexada. */
+const ENDED_MISSION: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
 const CANCEL_REASON = 'Cancelado pelo usuário.';
 const REJECTED_REASON = 'Ação protegida recusada pelo usuário.';
 
@@ -123,6 +136,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const diffPort = deps.diff;
   /** Uma execução por missão no máximo: a que está em curso ou a que está começando. */
   const active = new Map<string, ActiveRun>();
+  const maxRunning = deps.maxRunning ?? DEFAULT_MAX_RUNNING;
+  /** Tentativas da fila que já tiveram o início tentado: uma falha não é repetida enquanto o resultado é gravado. */
+  const attemptedQueued = new Set<string>();
 
   function startRun(missionId: string): ActiveRun {
     const controller = new AbortController();
@@ -139,7 +155,154 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   function forget(run: ActiveRun): void {
-    if (active.get(run.missionId) === run) active.delete(run.missionId);
+    if (active.get(run.missionId) !== run) return;
+    active.delete(run.missionId);
+    schedulePump();
+  }
+
+  /** Uma vaga abriu: a fila anda. Agendado, para rodar depois da transação que liberou a vaga. */
+  function schedulePump(): void {
+    queueMicrotask(pump);
+  }
+
+  /** Começa as tentativas da fila enquanto houver vaga. Cada início reserva a vaga na hora. */
+  function pump(): void {
+    while (active.size < maxRunning) {
+      const next = nextQueued();
+      if (next === undefined) return;
+      startQueued(next);
+    }
+  }
+
+  /** A tentativa que espera há mais tempo, de uma missão ainda na fila e sem execução ativa. */
+  function nextQueued(): Execution | undefined {
+    let best: { execution: Execution; since: string } | undefined;
+    for (const execution of repo.findExecutionsByStatus('queued')) {
+      const mission = repo.getMission(execution.missionId);
+      if (attemptedQueued.has(execution.id)) continue;
+      if (mission === undefined || mission.status !== 'queued' || active.has(mission.id)) continue;
+      const since = queuedSince(execution.id);
+      if (best === undefined || since < best.since) best = { execution, since };
+    }
+    return best?.execution;
+  }
+
+  function queuedSince(executionId: string): string {
+    const entry = repo
+      .listAudit(executionId)
+      .find((event) => event.eventType === 'execution.queued');
+    return entry?.createdAt ?? '';
+  }
+
+  /** Reserva a vaga e começa a tentativa que estava na fila. Falha antes de rodar a deixa `failed`. */
+  function startQueued(execution: Execution): void {
+    const mission = repo.getMission(execution.missionId);
+    const project = mission === undefined ? undefined : projects.get(mission.projectId);
+    if (mission === undefined || project === undefined) {
+      failQueued(execution);
+      return;
+    }
+    attemptedQueued.add(execution.id);
+    const run = startRun(mission.id);
+    launch(run, mission, project, execution).then(
+      (result) => {
+        if (!result.ok) failQueued(execution);
+      },
+      (error: unknown) => {
+        console.error('Não foi possível iniciar a missão da fila:', error);
+        failQueued(execution);
+      },
+    );
+  }
+
+  /** Tentativa da fila que não chegou a rodar: fica `failed`, e a missão segue na fila. */
+  function failQueued(execution: Execution): void {
+    if (repo.getExecution(execution.id)?.status !== 'queued') return;
+    repo.transaction(() => {
+      repo.updateExecution(execution.id, {
+        status: 'failed',
+        exitReason: 'agent_failed',
+        finishedAt: now(),
+      });
+      failedAudit(execution.id, 'agent_failed', 'system')();
+    });
+  }
+
+  /**
+   * Entra na fila: a tentativa fica `queued`, sem vaga e sem agente. Se já há uma tentativa na fila da
+   * missão, ela volta no lugar de outra.
+   */
+  function queueMission(mission: Mission): AppResult<Execution> {
+    const waiting = repo.listExecutions(mission.id).find((e) => e.status === 'queued');
+    if (waiting !== undefined) return { ok: true, data: waiting };
+    const queued = repo.transaction(() => {
+      const at = now();
+      const attempt = Math.max(0, ...repo.listExecutions(mission.id).map((e) => e.attempt)) + 1;
+      const execution: Execution = {
+        id: newId(),
+        missionId: mission.id,
+        attempt,
+        status: 'queued',
+      };
+      repo.insertExecution(execution);
+      repo.appendAudit({
+        aggregateType: 'execution',
+        aggregateId: execution.id,
+        eventType: 'execution.queued',
+        severity: 'info',
+        actor: 'user',
+        payload: { attempt },
+        createdAt: at,
+      });
+      return execution;
+    });
+    return { ok: true, data: queued };
+  }
+
+  /**
+   * Reanexa a uma execução que continua viva no agente, a partir da posição gravada. Devolve false quando
+   * não há como: adaptador sem reanexação, sem posição, sessão encerrada ou missão já encerrada.
+   */
+  async function reattach(execution: Execution): Promise<boolean> {
+    const sessionId = execution.agentSessionId;
+    const cursor = execution.agentCursor;
+    if (agent.attach === undefined || sessionId === undefined || cursor === undefined) return false;
+    const mission = repo.getMission(execution.missionId);
+    if (mission === undefined || ENDED_MISSION.includes(mission.status)) return false;
+    if (active.has(mission.id)) return false;
+    let session: AgentSession | undefined;
+    try {
+      session = await agent.attach(sessionId, cursor);
+    } catch (error) {
+      console.error('Não foi possível reanexar ao agente:', error);
+      return false;
+    }
+    if (session === undefined) return false;
+    const run = startRun(mission.id);
+    run.session = session;
+    run.iterator = session.events()[Symbol.asyncIterator]();
+    run.executionId = execution.id;
+    void drive(run).catch((error: unknown) => {
+      console.error('Falha ao acompanhar a execução reanexada:', error);
+    });
+    return true;
+  }
+
+  /**
+   * Ao abrir o app: reanexa o que continua vivo no agente, fecha como interrompido o que não continua, e
+   * deixa a fila andar. Ninguém chama isto de fora: a primeira chamada pública espera o fim (`ready`).
+   */
+  async function recoverAll(): Promise<void> {
+    for (const execution of openExecutionsAtStart(repo)) {
+      if (!(await reattach(execution))) failInterruptedExecution(repo, execution, now);
+    }
+    pump();
+  }
+
+  /** Grava a posição do agente logo depois de aplicar um evento, na mesma transação. */
+  function persistCursor(run: ActiveRun, executionId: string): void {
+    const cursor = run.session?.cursor?.();
+    if (cursor !== undefined) repo.updateExecution(executionId, { agentCursor: cursor });
   }
 
   function requireExecution(executionId: string): Execution {
@@ -165,18 +328,25 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * Abre a tentativa: a execução `running` e a missão `running`, numa só transação.
    * A nova tentativa é o número seguinte ao maior que já existe.
    */
-  function openExecution(mission: Mission): Execution {
+  function openExecution(mission: Mission, queued?: Execution): Execution {
     return repo.transaction(() => {
       const at = now();
-      const attempt = Math.max(0, ...repo.listExecutions(mission.id).map((e) => e.attempt)) + 1;
-      const execution: Execution = {
-        id: newId(),
-        missionId: mission.id,
-        attempt,
-        status: 'running',
-        startedAt: at,
-      };
-      repo.insertExecution(execution);
+      let execution: Execution;
+      if (queued === undefined) {
+        const attempt = Math.max(0, ...repo.listExecutions(mission.id).map((e) => e.attempt)) + 1;
+        execution = {
+          id: newId(),
+          missionId: mission.id,
+          attempt,
+          status: 'running',
+          startedAt: at,
+        };
+        repo.insertExecution(execution);
+      } else {
+        // A tentativa que estava na fila começa agora: a mesma linha, com a hora de início.
+        execution = { ...queued, status: 'running', startedAt: at };
+        repo.updateExecution(queued.id, { status: 'running', startedAt: at });
+      }
       moveMission(repo, mission.id, 'running', {
         actor: 'user',
         at,
@@ -188,7 +358,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         eventType: 'execution.started',
         severity: 'info',
         actor: 'user',
-        payload: { attempt },
+        payload: { attempt: execution.attempt },
         createdAt: at,
       });
       return execution;
@@ -301,7 +471,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    */
   function cancelRunningExecutions(missionId: string, at: string): void {
     for (const execution of repo.listExecutions(missionId)) {
-      if (execution.status !== 'running' && execution.status !== 'paused') continue;
+      if (!OPEN_EXECUTION_STATUSES.includes(execution.status)) continue;
       repo.updateExecution(execution.id, {
         status: 'cancelled',
         exitReason: 'cancelled_by_user',
@@ -383,6 +553,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         });
         return 'wait';
 
+      case 'input.received':
+        if (repo.getMission(run.missionId)?.status === 'waiting_input') {
+          repo.transaction(() => {
+            recordEvent(executionId, event);
+            moveMission(repo, run.missionId, 'running', { actor: 'agent', at: event.at });
+          });
+        }
+        return 'continue';
+
       case 'input.requested':
         repo.transaction(() => {
           recordEvent(executionId, event);
@@ -399,7 +578,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
       case 'session.started':
         repo.transaction(() => {
-          repo.updateExecution(executionId, { agentSessionId: event.sessionId });
+          // O id da sessão do adaptador é o que a reanexação recebe. O do evento é só informativo.
+          repo.updateExecution(executionId, { agentSessionId: run.session?.id ?? event.sessionId });
           recordEvent(executionId, event);
         });
         return 'continue';
@@ -500,8 +680,18 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         await run.finalized;
         return requireExecution(executionId);
       }
-      const outcome = handle(run, executionId, pulled.event, summary);
-      if (outcome !== 'continue') return requireExecution(executionId);
+      // A posição do agente entra na mesma transação do evento: um reinício nunca aplica o mesmo evento duas vezes.
+      const outcome = repo.transaction(() => {
+        const result = handle(run, executionId, pulled.event, summary);
+        persistCursor(run, executionId);
+        return result;
+      });
+      // Resposta no terminal: o app não espera por ela, e a leitura segue até o aviso de que chegou.
+      const answeredOutside =
+        outcome === 'wait' &&
+        pulled.event.type === 'input.requested' &&
+        run.session?.externalInput === true;
+      if (outcome !== 'continue' && !answeredOutside) return requireExecution(executionId);
     }
   }
 
@@ -553,6 +743,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     run: ActiveRun,
     mission: Mission,
     project: ProjectRecord,
+    queued?: Execution,
   ): Promise<AppResult<Execution>> {
     let workspace: Workspace;
     try {
@@ -590,7 +781,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
     let execution: Execution;
     try {
-      execution = openExecution(mission);
+      execution = openExecution(mission, queued);
     } catch (error) {
       forget(run);
       await session.stop('Não foi possível abrir a tentativa.');
@@ -619,7 +810,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         'A missão roda num worktree do Git, e a pasta do projeto não é um repositório Git. Inicialize o Git na pasta e tente de novo.',
       );
     }
-    return launch(startRun(missionId), mission, project);
+    // Sem vaga livre, a tentativa entra na fila e começa quando uma vaga abrir.
+    if (active.size >= maxRunning) return queueMission(mission);
+    // A tentativa que já está na fila da missão é a que começa, e não se cria outra ao lado dela.
+    const waiting = repo.listExecutions(mission.id).find((e) => e.status === 'queued');
+    const result = await launch(startRun(missionId), mission, project, waiting);
+    if (!result.ok && waiting !== undefined) failQueued(waiting);
+    return result;
   }
 
   async function cancelMission(missionId: string): Promise<AppResult<void>> {
@@ -1019,15 +1216,27 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return { ok: true, data: undefined };
   }
 
+  // A recuperação das execuções abertas roda ao criar o orquestrador. Cada chamada pública espera por ela,
+  // para não mexer numa execução que ainda está sendo reanexada ou fechada.
+  const ready: Promise<void> = recoverAll().catch((error: unknown) => {
+    console.error('Falha ao recuperar as execuções abertas:', error);
+  });
+  const gated =
+    <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      await ready;
+      return work(...args);
+    };
+
   return {
-    planMission,
-    approvePlan,
-    startMission,
-    cancelMission,
-    pauseMission,
-    resumeMission,
-    decideApproval,
-    provideInput,
-    retryMission,
+    planMission: gated(planMission),
+    approvePlan: gated(approvePlan),
+    startMission: gated(startMission),
+    cancelMission: gated(cancelMission),
+    pauseMission: gated(pauseMission),
+    resumeMission: gated(resumeMission),
+    decideApproval: gated(decideApproval),
+    provideInput: gated(provideInput),
+    retryMission: gated(retryMission),
   };
 }
