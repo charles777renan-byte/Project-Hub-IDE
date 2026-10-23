@@ -579,6 +579,21 @@ describe('Sidebar: seção Em andamento', () => {
     );
   });
 
+  it('na rota de uma missão, o projeto dela não leva aria-current e a missão leva', async () => {
+    installApi({ missions });
+    renderSidebar('/projects/p1/missions/m1');
+
+    const workspaces = await screen.findByRole('region', { name: 'Workspaces' });
+    expect(within(workspaces).getByRole('link', { name: 'Project Hub' })).not.toHaveAttribute(
+      'aria-current',
+    );
+    const running = await screen.findByRole('region', { name: 'Em andamento' });
+    expect(await within(running).findByRole('link', { name: 'Ajustar login' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
   it('sem missões em andamento, diz que não há nenhuma', async () => {
     installApi({ missions: { p1: [missionOf({ status: 'succeeded' })] } });
     renderSidebar('/');

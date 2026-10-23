@@ -157,6 +157,9 @@ describe('barra lateral', () => {
     expect(sidebar.get('display')).toBe('flex');
     expect(sidebar.get('flex-direction')).toBe('column');
     expect(sidebar.get('min-height')).toBe('0');
+    // A barra rola como último recurso, numa janela baixa demais para as duas seções.
+    expect(sidebar.get('overflow-y')).toBe('auto');
+    expect(sidebar.get('overflow-x')).toBe('hidden');
     expect(ruleDeclarations(workspaceCss, '.main-nav').get('flex')).toBe('none');
   });
 

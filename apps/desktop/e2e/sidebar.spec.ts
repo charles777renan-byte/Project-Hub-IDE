@@ -26,16 +26,24 @@ async function focusedItemInBar(page: Page): Promise<FocusedItem | null> {
     const frames = [bar.getBoundingClientRect()];
     const scroller = element.closest('.sidebar__scroll');
     if (scroller !== null) frames.push(scroller.getBoundingClientRect());
-    // O contorno vai de `offset` até `offset + width` para fora da borda do item (negativo é para dentro).
-    const outside = Math.max(0, offset + width);
-    // Folga de 1px: a rolagem da barra tem posição fracionária e a medição arredonda.
-    const slack = 1;
+    // O contorno pinta de `offset` até `offset + width` para fora da borda do item. Com `offset: -2px` e
+    // 2px de largura, a borda de fora do anel coincide com a borda do item: o anel pinta por dentro dele.
+    // Por isso o retângulo do anel é o do item expandido por `offset + width` (zero aqui), e é ele que
+    // tem de caber na barra e na janela de rolagem. A tolerância de 0,5px cobre só a rolagem fracionária.
+    const reach = offset + width;
+    const ring = {
+      top: box.top - reach,
+      bottom: box.bottom + reach,
+      left: box.left - reach,
+      right: box.right + reach,
+    };
+    const tolerance = 0.5;
     const inside = frames.every(
       (frame) =>
-        box.top - outside >= frame.top - slack &&
-        box.bottom + outside <= frame.bottom + slack &&
-        box.left - outside >= frame.left - slack &&
-        box.right + outside <= frame.right + slack,
+        ring.top >= frame.top - tolerance &&
+        ring.bottom <= frame.bottom + tolerance &&
+        ring.left >= frame.left - tolerance &&
+        ring.right <= frame.right + tolerance,
     );
     const label = element.getAttribute('aria-label') ?? (element.textContent ?? '').trim();
     return { label, style: style.outlineStyle, width, inside };
