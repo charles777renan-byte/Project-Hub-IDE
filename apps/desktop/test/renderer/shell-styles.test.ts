@@ -385,3 +385,13 @@ describe('grade do workspace da missão', () => {
     ).toBe('auto');
   });
 });
+
+describe('tela do terminal', () => {
+  it('as células do xterm preservam espaços: cada célula é um span inline-block e um span só de espaço não pode colapsar', () => {
+    const appCss = readCss('app.css');
+    expect(ruleDeclarations(appCss, '.terminal-view .xterm-rows').get('white-space')).toBe('pre');
+    expect(ruleDeclarations(appCss, '.terminal-view .xterm-rows span').get('display')).toBe(
+      'inline-block',
+    );
+  });
+});

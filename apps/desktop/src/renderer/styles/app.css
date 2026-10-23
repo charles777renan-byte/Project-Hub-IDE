@@ -1301,6 +1301,8 @@ button:disabled {
 .terminal-view .xterm-rows {
   font-family: var(--font-mono);
   font-size: 13px;
+  /* Cada célula do xterm vira um <span> inline-block: sem isto, um span só de espaço colapsa a largura 0. */
+  white-space: pre;
 }
 .terminal-view .xterm-rows span {
   display: inline-block;
