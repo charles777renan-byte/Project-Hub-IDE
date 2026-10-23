@@ -205,9 +205,7 @@ describe('barra lateral', () => {
   });
 
   it('a largura da barra não depende de ponto de corte da janela', () => {
-    const narrow = mediaBlock(workspaceCss, '(max-width: 1000px)');
-    expect(ruleDeclarations(narrow, '.sidebar__section').has('display')).toBe(false);
-    expect(ruleDeclarations(narrow, '.app-body').has('flex-direction')).toBe(false);
+    expect(workspaceCss).not.toMatch(/max-width:\s*1000px/);
   });
 
   it('o contorno de foco de links e botões da barra fica por dentro dela', () => {

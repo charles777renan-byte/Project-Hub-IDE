@@ -157,6 +157,17 @@ describe('barra superior', () => {
     expect(screen.getAllByRole('navigation', { name: 'Principal' })).toHaveLength(1);
   });
 
+  it('a divisória da barra lateral tem nome', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole('separator', { name: 'Redimensionar barra lateral' }),
+    ).toBeInTheDocument();
+  });
+
   it('a marca tem o símbolo escondido dos leitores de tela', () => {
     render(
       <MemoryRouter>

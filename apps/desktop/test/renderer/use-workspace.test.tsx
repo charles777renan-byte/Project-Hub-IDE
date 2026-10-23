@@ -210,4 +210,66 @@ describe('useWorkspace', () => {
     const state = result.current.state;
     expect(state.status === 'ready' && state.workspace.projectId).toBe('p2');
   });
+
+  it('resposta de startSession em voo depois de trocar de projeto não contamina o novo', async () => {
+    let resolve: (value: unknown) => void = () => {};
+    api.startSession.mockImplementation(() => new Promise((r) => (resolve = r)));
+    const { result, rerender } = await mount('p1');
+    let outcome: string | null = 'x';
+    let pending: Promise<string | null> = Promise.resolve(null);
+    act(() => {
+      pending = result.current.startSession('a');
+    });
+    await act(async () => {});
+    rerender({ id: 'p2' });
+    await act(async () => {});
+    await act(async () => {
+      resolve({ ok: true, data: dto(layoutOf('t1'), 'p1') });
+      outcome = await pending;
+    });
+    expect(outcome).toBeNull();
+    const state = result.current.state;
+    expect(state.status === 'ready' && state.workspace.projectId).toBe('p2');
+    expect(state.status === 'ready' && JSON.stringify(state.workspace.layout)).not.toContain('t1');
+  });
+
+  it('setRatio durante o startSession é preservado e é o que grava', async () => {
+    let resolve: (value: unknown) => void = () => {};
+    api.startSession.mockImplementation(() => new Promise((r) => (resolve = r)));
+    const { result } = await mount();
+    let pending: Promise<string | null> = Promise.resolve(null);
+    act(() => {
+      pending = result.current.startSession('a');
+    });
+    await act(async () => {});
+    act(() => result.current.setRatio('raiz', 0.3));
+    await act(async () => {
+      resolve({ ok: true, data: dto(layoutOf('t1')) });
+      await pending;
+    });
+    expect(ratioOf(result.current.state)).toBe(0.3);
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    const saved = api.saveLayout.mock.calls.at(-1)![1] as {
+      ratio: number;
+      first: { terminalId: string | null };
+    };
+    expect(saved.ratio).toBe(0.3);
+    expect(saved.first.terminalId).toBe('t1');
+  });
+
+  it('gravação que falha volta a ficar pendente e é tentada de novo', async () => {
+    api.saveLayout.mockRejectedValueOnce(new Error('falhou'));
+    const { result } = await mount();
+    act(() => result.current.setRatio('raiz', 0.3));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    expect(api.saveLayout).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    expect(api.saveLayout).toHaveBeenCalledTimes(2);
+  });
 });

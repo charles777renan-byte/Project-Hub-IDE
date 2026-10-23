@@ -1,6 +1,6 @@
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import type {
   LayoutNode,
   ProviderInfo,
@@ -189,17 +189,62 @@ describe('WorkspacePage', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     });
-    const saves = api.workspaces.saveLayout.mock.calls.length;
-    expect(saves).toBe(1);
-    view.rerender(
-      <MemoryRouter initialEntries={[{ pathname: '/workspaces/p1', state: null }]}>
+    // Depois de consumido, tirar o terminal do painel não o devolve em um novo render da mesma rota.
+    await userEvent.click(screen.getByRole('button', { name: 'Tirar do painel' }));
+    view.rerender(<MemoryRouter initialEntries={['/ignorado']}>{tree()}</MemoryRouter>);
+    await act(async () => {});
+    expect(screen.queryByTestId('terminal-view')).not.toBeInTheDocument();
+  });
+
+  it('ao navegar de um projeto para outro com showTerminal, o terminal vai para o painel ativo do novo', async () => {
+    const outro = { ...dto(padrao()), id: 'w2', projectId: 'p2' };
+    api.workspaces.open.mockImplementation(async (id: string) => ({
+      ok: true,
+      data: id === 'p2' ? outro : dto(padrao()),
+    }));
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [
+        { id: 'p1', name: 'app', path: 'x', repositoryKind: 'git', available: true },
+        { id: 'p2', name: 'api', path: 'y', repositoryKind: 'git', available: true },
+      ],
+    });
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...shellTerminal, id: 't2', projectId: 'p2' }],
+    });
+    function Go() {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate('/workspaces/p2', { state: { showTerminal: 't2' } })}
+        >
+          ir
+        </button>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <Go />
         {tree()}
       </MemoryRouter>,
     );
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
-    expect(api.workspaces.saveLayout).toHaveBeenCalledTimes(saves);
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await userEvent.click(screen.getByRole('button', { name: 'ir' }));
+    expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t2');
+    expect(api.workspaces.open).toHaveBeenLastCalledWith('p2');
+  });
+
+  it('enquanto a sessão abre, o painel espera em vez de dizer que ela terminou', async () => {
+    api.workspaces.startSession.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    renderAt();
+    const start = await screen.findByRole('button', { name: 'Iniciar PowerShell' });
+    // A leitura que vem depois de iniciar demora: a sessão nova ainda não está na lista.
+    api.terminals.list.mockImplementation(() => new Promise(() => {}));
+    await userEvent.click(start);
+    expect(await screen.findByText('Abrindo a sessão…')).toBeInTheDocument();
+    expect(screen.queryByText('A sessão terminou.')).not.toBeInTheDocument();
   });
 
   it('projeto inexistente mostra a mensagem com link para a lista', async () => {
