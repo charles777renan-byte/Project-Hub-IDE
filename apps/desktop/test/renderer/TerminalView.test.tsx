@@ -9,13 +9,29 @@ const fake = vi.hoisted(() => ({
   resets: 0,
   disposed: 0,
   typed: undefined as ((data: string) => void) | undefined,
+  focuses: 0,
+  options: undefined as Record<string, unknown> | undefined,
+  selection: '',
+  keyHandler: undefined as ((event: KeyboardEvent) => boolean) | undefined,
 }));
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    constructor(options: Record<string, unknown>) {
+      fake.options = options;
+    }
     open() {}
+    focus() {
+      fake.focuses += 1;
+    }
+    getSelection() {
+      return fake.selection;
+    }
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      fake.keyHandler = handler;
+    }
     write(data: string) {
       fake.writes.push(data);
     }
@@ -45,6 +61,10 @@ beforeEach(() => {
   fake.resets = 0;
   fake.disposed = 0;
   fake.typed = undefined;
+  fake.focuses = 0;
+  fake.options = undefined;
+  fake.selection = '';
+  fake.keyHandler = undefined;
   emit = undefined;
   vi.stubGlobal(
     'ResizeObserver',
@@ -113,6 +133,107 @@ describe('TerminalView', () => {
   });
 });
 
+describe('TerminalView interativo', () => {
+  it('foca o terminal quando active vira true e ao montar já ativo, não enquanto segue falso', () => {
+    const view = render(<TerminalView terminalId="t1" active={false} />);
+    expect(fake.focuses).toBe(0);
+
+    view.rerender(<TerminalView terminalId="t1" active />);
+    expect(fake.focuses).toBe(1);
+
+    view.unmount();
+    render(<TerminalView terminalId="t1" active />);
+    expect(fake.focuses).toBe(2);
+  });
+
+  it('guarda 5000 linhas de histórico e mantém a fonte de 13px', () => {
+    render(<TerminalView terminalId="t1" />);
+
+    expect(fake.options?.['scrollback']).toBe(5000);
+    expect(fake.options?.['fontSize']).toBe(13);
+    expect(String(fake.options?.['fontFamily'])).toContain('JetBrains Mono');
+  });
+
+  describe('teclado e cópia', () => {
+    let writeText: ReturnType<typeof vi.fn>;
+    const key = (init: KeyboardEventInit, type = 'keydown') => new KeyboardEvent(type, init);
+
+    beforeEach(() => {
+      writeText = vi.fn(() => Promise.resolve());
+      vi.stubGlobal('navigator', { clipboard: { writeText } });
+    });
+
+    it('Ctrl+C com seleção copia e não deixa a tecla ir ao programa', () => {
+      render(<TerminalView terminalId="t1" />);
+      fake.selection = 'texto';
+
+      expect(fake.keyHandler?.(key({ key: 'c', ctrlKey: true }))).toBe(false);
+      expect(writeText).toHaveBeenCalledWith('texto');
+    });
+
+    it('Ctrl+C sem seleção segue ao programa e não copia', () => {
+      render(<TerminalView terminalId="t1" />);
+
+      expect(fake.keyHandler?.(key({ key: 'c', ctrlKey: true }))).toBe(true);
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Shift+C copia a seleção e consome a tecla; sem seleção não copia nada', () => {
+      render(<TerminalView terminalId="t1" />);
+      fake.selection = 'abc';
+      expect(fake.keyHandler?.(key({ key: 'C', ctrlKey: true, shiftKey: true }))).toBe(false);
+      expect(writeText).toHaveBeenCalledWith('abc');
+
+      writeText.mockClear();
+      fake.selection = '';
+      expect(fake.keyHandler?.(key({ key: 'C', ctrlKey: true, shiftKey: true }))).toBe(false);
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('só age no keydown e deixa Ctrl+V para o evento de colar do navegador', () => {
+      render(<TerminalView terminalId="t1" />);
+      fake.selection = 'texto';
+
+      expect(fake.keyHandler?.(key({ key: 'c', ctrlKey: true }, 'keyup'))).toBe(true);
+      expect(fake.keyHandler?.(key({ key: 'v', ctrlKey: true }))).toBe(true);
+      expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('se a área de transferência rejeita, copia por execCommand com um textarea que some depois', async () => {
+      writeText.mockImplementation(() => Promise.reject(new Error('negado')));
+      const execCommand = vi.fn(() => {
+        // O textarea precisa estar no documento e com o texto, ou o execCommand não copia nada.
+        const area = document.querySelector('textarea');
+        expect(area?.value).toBe('texto');
+        return true;
+      });
+      Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+      render(<TerminalView terminalId="t1" />);
+      fake.selection = 'texto';
+
+      expect(fake.keyHandler?.(key({ key: 'c', ctrlKey: true }))).toBe(false);
+      await vi.waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
+      await vi.waitFor(() => expect(document.querySelector('textarea')).toBeNull());
+      Reflect.deleteProperty(document, 'execCommand');
+    });
+
+    it('sem navigator.clipboard usa o execCommand e nunca lança', () => {
+      vi.stubGlobal('navigator', {});
+      const execCommand = vi.fn(() => {
+        throw new Error('falhou');
+      });
+      Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+      render(<TerminalView terminalId="t1" />);
+      fake.selection = 'texto';
+
+      expect(() => fake.keyHandler?.(key({ key: 'c', ctrlKey: true }))).not.toThrow();
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(document.querySelector('textarea')).toBeNull();
+      Reflect.deleteProperty(document, 'execCommand');
+    });
+  });
+});
+
 describe('fitTerminal', () => {
   function host(screenWidth: number, screenHeight: number, width: number, height: number) {
     const element = document.createElement('div');
@@ -139,5 +260,15 @@ describe('fitTerminal', () => {
     expect(fitTerminal(same, host(640, 384, 640, 384))).toBeUndefined();
     expect(same.resize).not.toHaveBeenCalled();
     expect(fitTerminal(same, host(0, 0, 640, 384))).toBeUndefined();
+  });
+
+  it('não redimensiona enquanto a área mede menos de 48px de largura ou 24px de altura', () => {
+    const term = { cols: 80, rows: 24, resize: vi.fn() };
+
+    expect(fitTerminal(term, host(640, 384, 40, 320))).toBeUndefined();
+    expect(fitTerminal(term, host(640, 384, 800, 20))).toBeUndefined();
+    expect(fitTerminal(term, host(640, 384, 0, 0))).toBeUndefined();
+    expect(term.resize).not.toHaveBeenCalled();
+    expect(fitTerminal(term, host(640, 384, 48, 24))).toEqual({ cols: 6, rows: 1 });
   });
 });
