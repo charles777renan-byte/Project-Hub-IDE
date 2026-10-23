@@ -29,12 +29,12 @@ export function WorkspacePage() {
       </div>
     );
   }
-  return <WorkspaceBody projectId={projectId} projectName={project?.name ?? ''} />;
+  return <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />;
 }
 
 function WorkspaceBody({ projectId, projectName }: { projectId: string; projectName: string }) {
   const workspace = useWorkspace(projectId);
-  const { terminals, reload } = useTerminals();
+  const { terminals, loaded, reload } = useTerminals();
   const location = useLocation();
   const navigate = useNavigate();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -88,20 +88,39 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
       const { [leafId]: _dropped, ...rest } = previous;
       return rest;
     });
-    const message = await action(leafId);
-    if (message !== null) setErrors((previous) => ({ ...previous, [leafId]: message }));
-    await reload();
-    setBusy((previous) => {
-      const next = new Set(previous);
-      next.delete(leafId);
-      return next;
-    });
+    try {
+      const message = await action(leafId);
+      if (message !== null) setErrors((previous) => ({ ...previous, [leafId]: message }));
+      await reload();
+    } finally {
+      setBusy((previous) => {
+        const next = new Set(previous);
+        next.delete(leafId);
+        return next;
+      });
+    }
   };
 
   const renderLeaf = (leaf: LayoutLeaf) => {
     const terminal =
       leaf.terminalId === null ? undefined : terminals.find((item) => item.id === leaf.terminalId);
     const providerId = terminal?.provider ?? leaf.provider;
+    // Sem a sessão na lista ainda (primeira leitura ou leitura depois de iniciar), não dá para dizer que
+    // ela terminou.
+    if (leaf.terminalId !== null && terminal === undefined && (busy.has(leaf.id) || !loaded)) {
+      return (
+        <section
+          className="pane"
+          aria-label={`Painel ${providers.find((item) => item.id === providerId)?.label ?? providerId}`}
+          data-active={workspace.activeLeafId === leaf.id ? 'true' : 'false'}
+          onPointerDown={() => workspace.activate(leaf.id)}
+        >
+          <p className="pane__launcher" role="status">
+            Abrindo a sessão…
+          </p>
+        </section>
+      );
+    }
     return (
       <PaneView
         leaf={leaf}

@@ -70,7 +70,7 @@ export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
             <Sidebar />
           </div>
         </Panel>
-        <Separator className="pane-tree__separator" />
+        <Separator className="pane-tree__separator" aria-label="Redimensionar barra lateral" />
         <Panel id={MAIN_ID} className="app-body__panel" minSize="30">
           <main className="app-main">
             <div className="app-main__content">

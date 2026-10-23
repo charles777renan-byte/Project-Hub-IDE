@@ -12,11 +12,16 @@ import type { ProjectHubApi, TerminalSummary } from '@project-hub/contracts';
 /** De quanto em quanto tempo a lista é lida. Terminais novos e encerrados aparecem sem recarregar. */
 export const TERMINALS_POLL_MS = 2_000;
 
-export type TerminalsState = { terminals: TerminalSummary[]; error: string | null };
+/** `loaded`: a primeira leitura já respondeu (com dados ou com erro); antes dela, a lista vazia não diz nada. */
+export type TerminalsState = {
+  terminals: TerminalSummary[];
+  error: string | null;
+  loaded: boolean;
+};
 
 const LOAD_ERROR = 'Não foi possível ler os terminais. Tente de novo.';
 
-const INITIAL: TerminalsState = { terminals: [], error: null };
+const INITIAL: TerminalsState = { terminals: [], error: null, loaded: false };
 
 let state: TerminalsState = INITIAL;
 const listeners = new Set<() => void>();
@@ -30,6 +35,7 @@ function publish(next: TerminalsState) {
   // A lista chega nova a cada leitura; sem mudança, ninguém precisa redesenhar.
   if (
     next.error === state.error &&
+    next.loaded === state.loaded &&
     JSON.stringify(next.terminals) === JSON.stringify(state.terminals)
   ) {
     return;
@@ -60,6 +66,7 @@ async function load(): Promise<void> {
   const failed = (message: string) => (previous: TerminalsState) => ({
     terminals: previous.terminals,
     error: message,
+    loaded: true,
   });
   const api = terminalsApi();
   if (api === undefined) return;
@@ -67,7 +74,7 @@ async function load(): Promise<void> {
     const result = await api.list();
     apply((previous) =>
       result.ok
-        ? { terminals: result.data, error: null }
+        ? { terminals: result.data, error: null, loaded: true }
         : failed(result.error.message || LOAD_ERROR)(previous),
     );
   } catch {
@@ -115,5 +122,5 @@ function subscribe(listener: () => void): () => void {
 export function useTerminals(): TerminalsState & { reload(): Promise<void> } {
   const current = useSyncExternalStore(subscribe, () => state);
   const reload = useCallback(() => load(), []);
-  return { terminals: current.terminals, error: current.error, reload };
+  return { terminals: current.terminals, error: current.error, loaded: current.loaded, reload };
 }

@@ -55,6 +55,8 @@ export function useWorkspace(projectId: string): UseWorkspace {
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const activeRef = useRef<string | null>(null);
+  // Muda a cada abertura ou troca de projeto: respostas de pedidos antigos são ignoradas.
+  const generation = useRef(0);
 
   const setActive = useCallback((leafId: string | null) => {
     activeRef.current = leafId;
@@ -66,7 +68,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
     setState({ status: 'ready', workspace });
   }, []);
 
-  const saveNow = useCallback(async (): Promise<void> => {
+  const saveNow = useCallback(async function saveNow(): Promise<void> {
     if (timer.current !== undefined) {
       clearTimeout(timer.current);
       timer.current = undefined;
@@ -74,10 +76,22 @@ export function useWorkspace(projectId: string): UseWorkspace {
     const workspace = current.current;
     if (!dirty.current || workspace === null) return;
     dirty.current = false;
+    let saved: boolean;
     try {
-      await window.projectHub.workspaces.saveLayout(workspace.id, workspace.layout);
+      const result = await window.projectHub.workspaces.saveLayout(workspace.id, workspace.layout);
+      saved = result.ok;
     } catch {
-      // A próxima edição grava de novo; o layout na tela segue como o usuário o deixou.
+      saved = false;
+    }
+    // Falhou: volta a ficar pendente e é tentado de novo, se o workspace na tela ainda é o mesmo.
+    if (!saved && current.current?.id === workspace.id) {
+      dirty.current = true;
+      if (timer.current === undefined) {
+        timer.current = setTimeout(() => {
+          timer.current = undefined;
+          void saveNow();
+        }, SAVE_DELAY_MS);
+      }
     }
   }, []);
 
@@ -100,6 +114,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
 
   useEffect(() => {
     let cancelled = false;
+    generation.current += 1;
     current.current = null;
     dirty.current = false;
     setState({ status: 'loading' });
@@ -170,11 +185,20 @@ export function useWorkspace(projectId: string): UseWorkspace {
     ): Promise<string | null> => {
       const workspace = current.current;
       if (workspace === null) return ACTION_ERROR;
+      const mine = generation.current;
       await saveNow();
       try {
         const result = await call(workspace.id, leafId);
         if (!result.ok) return result.error.message || ACTION_ERROR;
-        adopt(result.data);
+        // Outro projeto abriu enquanto o pedido estava em voo: a resposta não é dele.
+        if (generation.current !== mine) return null;
+        // Só o terminal da folha entra: um ajuste de divisória feito durante o pedido não se perde.
+        const terminalId = findLeaf(result.data.layout, leafId)?.terminalId;
+        const latest = current.current;
+        if (terminalId !== undefined && latest !== null) {
+          const layout = withTerminal(latest.layout, leafId, terminalId);
+          if (layout !== latest.layout) adopt({ ...latest, layout });
+        }
         return null;
       } catch {
         return ACTION_ERROR;
