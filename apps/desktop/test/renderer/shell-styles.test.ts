@@ -139,45 +139,115 @@ describe('leitor de regras dos testes', () => {
 });
 
 /**
- * Barra lateral de projetos e missões (Tarefa 4 do plano da interface): 230px à esquerda da página,
- * com rolagem própria; o corpo da janela é uma linha flex; e abaixo de 1000px a barra some, e a
- * navegação principal continua na coluna lateral, que passa a ser uma faixa acima da página.
+ * Barra lateral (Tarefas 4 do plano da interface e 7 do plano do workspace): ocupa toda a coluna que a
+ * recebe, com a navegação no topo e uma rolagem por seção; o corpo da janela é uma linha flex; e abaixo
+ * de 1000px as seções somem e a navegação vira uma faixa acima da página. As regras ficam em
+ * workspace.css.
  */
 describe('barra lateral', () => {
-  const appCss = readCss('app.css');
+  const workspaceCss = readCss('workspace.css');
 
-  it('tem 230px, não encolhe e rola sozinha', () => {
-    const sidebar = ruleDeclarations(appCss, '.sidebar');
-    expect(sidebar.get('width')).toBe('230px');
-    expect(sidebar.get('flex')).toBe('none');
+  it('o app.css não guarda mais as regras da barra', () => {
+    expect(readCss('app.css')).not.toMatch(/\.sidebar/);
+  });
+
+  it('a coluna lateral tem 230px e a barra enche a coluna, sem encolher a navegação', () => {
+    expect(ruleDeclarations(workspaceCss, '.app-side').get('width')).toBe('230px');
+    const sidebar = ruleDeclarations(workspaceCss, '.sidebar');
+    expect(sidebar.get('display')).toBe('flex');
+    expect(sidebar.get('flex-direction')).toBe('column');
     expect(sidebar.get('min-height')).toBe('0');
-    expect(sidebar.get('overflow')).toBe('auto');
+    expect(ruleDeclarations(workspaceCss, '.main-nav').get('flex')).toBe('none');
+  });
+
+  it('cada seção rola sozinha, com o título e a ação parados', () => {
+    const section = ruleDeclarations(workspaceCss, '.sidebar__section');
+    expect(section.get('display')).toBe('flex');
+    expect(section.get('flex-direction')).toBe('column');
+    expect(section.get('min-height')).toBe('0');
+    const scroll = ruleDeclarations(workspaceCss, '.sidebar__scroll');
+    expect(scroll.get('overflow-y')).toBe('auto');
+    expect(scroll.get('min-height')).toBeDefined();
+    expect(ruleDeclarations(workspaceCss, '.sidebar__title').get('flex')).toBe('none');
+    expect(ruleDeclarations(workspaceCss, '.sidebar__action').get('flex')).toBe('none');
+  });
+
+  it('nomes longos são cortados com reticências, sem quebrar linha', () => {
+    for (const selector of ['.sidebar__name', '.sidebar__project']) {
+      const name = ruleDeclarations(workspaceCss, selector);
+      expect(name.get('min-width'), selector).toBe('0');
+      expect(name.get('overflow'), selector).toBe('hidden');
+      expect(name.get('text-overflow'), selector).toBe('ellipsis');
+      expect(name.get('white-space'), selector).toBe('nowrap');
+    }
+  });
+
+  it('a barra é translúcida e o item da página atual usa o fundo do item ativo da navegação', () => {
+    expect(ruleDeclarations(workspaceCss, '.sidebar').get('background')).toBe(
+      'color-mix(in srgb, var(--bg) 80%, transparent)',
+    );
+    expect(
+      ruleDeclarations(workspaceCss, ".sidebar__link[aria-current='page']").get('background'),
+    ).toBe('var(--field-line)');
   });
 
   it('o corpo da janela é uma linha flex que ocupa o resto da altura', () => {
-    const body = ruleDeclarations(readCss('workspace.css'), '.app-body');
+    const body = ruleDeclarations(workspaceCss, '.app-body');
     expect(body.get('display')).toBe('flex');
     expect(body.get('flex')).toBe('1');
     expect(body.get('min-height')).toBe('0');
   });
 
   it('a página continua ocupando o espaço que a barra deixa', () => {
-    expect(ruleDeclarations(readCss('workspace.css'), '.app-main').get('flex')).toBe('1');
+    expect(ruleDeclarations(workspaceCss, '.app-main').get('flex')).toBe('1');
   });
 
-  it('abaixo de 1000px a barra some (display: none) e a coluna lateral vira uma faixa acima da página', () => {
-    const narrow = mediaBlock(appCss, '(max-width: 1000px)');
-    expect(ruleDeclarations(narrow, '.sidebar').get('display')).toBe('none');
-    const workspaceNarrow = mediaBlock(readCss('workspace.css'), '(max-width: 1000px)');
-    expect(ruleDeclarations(workspaceNarrow, '.app-body').get('flex-direction')).toBe('column');
-    expect(ruleDeclarations(workspaceNarrow, '.main-nav__list').get('flex-direction')).toBe('row');
+  it('abaixo de 1000px as seções somem e a navegação vira uma faixa acima da página', () => {
+    const narrow = mediaBlock(workspaceCss, '(max-width: 1000px)');
+    expect(ruleDeclarations(narrow, '.sidebar__section').get('display')).toBe('none');
+    expect(ruleDeclarations(narrow, '.sidebar').get('border-right')).toBe('0');
+    expect(ruleDeclarations(narrow, '.app-body').get('flex-direction')).toBe('column');
+    expect(ruleDeclarations(narrow, '.main-nav__list').get('flex-direction')).toBe('row');
   });
 
   it('o contorno de foco de links e botões da barra fica por dentro dela', () => {
-    expect(ruleDeclarations(appCss, '.sidebar a:focus-visible').get('outline-offset')).toBe('-2px');
-    expect(ruleDeclarations(appCss, '.sidebar button:focus-visible').get('outline-offset')).toBe(
+    expect(ruleDeclarations(workspaceCss, '.sidebar a:focus-visible').get('outline-offset')).toBe(
       '-2px',
     );
+    expect(
+      ruleDeclarations(workspaceCss, '.sidebar button:focus-visible').get('outline-offset'),
+    ).toBe('-2px');
+  });
+});
+
+/**
+ * Marca de estado: o estado ativo pulsa, e a animação para para quem pede menos movimento. O texto só
+ * para leitor de tela fica fora da vista.
+ */
+describe('marca de estado', () => {
+  const workspaceCss = readCss('workspace.css');
+
+  it('só a forma da marca ativa anima', () => {
+    expect(
+      ruleDeclarations(workspaceCss, '.state-mark--active .state-mark__glyph').get('animation'),
+    ).toMatch(/^state-mark-pulse /);
+    expect(workspaceCss).toContain('@keyframes state-mark-pulse');
+    expect(ruleDeclarations(workspaceCss, '.state-mark__glyph').has('animation')).toBe(false);
+  });
+
+  it('com prefers-reduced-motion: reduce a animação para', () => {
+    const reduced = mediaBlock(workspaceCss, '(prefers-reduced-motion: reduce)');
+    expect(
+      ruleDeclarations(reduced, '.state-mark--active .state-mark__glyph').get('animation'),
+    ).toBe('none');
+  });
+
+  it('o texto só para leitor de tela é cortado para 1px, sem sair do fluxo de leitura', () => {
+    const hidden = ruleDeclarations(workspaceCss, '.state-mark__sr');
+    expect(hidden.get('position')).toBe('absolute');
+    expect(hidden.get('width')).toBe('1px');
+    expect(hidden.get('height')).toBe('1px');
+    expect(hidden.get('overflow')).toBe('hidden');
   });
 });
 

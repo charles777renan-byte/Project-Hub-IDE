@@ -141,7 +141,7 @@ describe('barra superior', () => {
     },
   );
 
-  it('não leva a navegação principal, que fica na coluna lateral, acima da barra de projetos', () => {
+  it('não leva a navegação principal, que fica no topo da barra lateral, acima dos workspaces', () => {
     render(
       <MemoryRouter>
         <App />
@@ -149,14 +149,12 @@ describe('barra superior', () => {
     );
     const navigation = screen.getByRole('navigation', { name: 'Principal' });
     expect(topBar().contains(navigation)).toBe(false);
-    const side = navigation.closest('.app-side');
-    expect(side).not.toBeNull();
-    expect(side?.querySelector('.sidebar')).not.toBeNull();
-    // A navegação vem antes da barra de projetos.
-    expect(
-      navigation.compareDocumentPosition(side?.querySelector('.sidebar') as Element) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const sidebar = navigation.closest('.sidebar');
+    expect(sidebar).not.toBeNull();
+    expect(sidebar?.closest('.app-side')).not.toBeNull();
+    // A navegação é o primeiro item da barra, antes das seções.
+    expect(sidebar?.firstElementChild).toBe(navigation);
+    expect(screen.getAllByRole('navigation', { name: 'Principal' })).toHaveLength(1);
   });
 
   it('a marca tem o símbolo escondido dos leitores de tela', () => {

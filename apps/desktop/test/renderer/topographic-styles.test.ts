@@ -39,7 +39,7 @@ describe('fundo topográfico: estilos', () => {
   });
 
   it('a barra lateral é translúcida', () => {
-    expect(ruleDeclarations(appCss, '.sidebar').get('background')).toBe(
+    expect(ruleDeclarations(readCss('workspace.css'), '.sidebar').get('background')).toBe(
       'color-mix(in srgb, var(--bg) 80%, transparent)',
     );
   });

@@ -1,6 +1,7 @@
 /*
  * Casca do app e chrome do workspace: a barra superior de 36px (marca, abas dos workspaces, botão de
- * abrir e contadores), a coluna lateral com a navegação principal e a área da página. Ligado depois de
+ * abrir e contadores), a barra lateral (navegação principal, workspaces e missões em andamento) e a área
+ * da página. Ligado depois de
  * app.css no index.html. As cores são só as neutras do tema (--bg, --line, --field-line, --muted e
  * --text) e misturas delas por color-mix; as cores de destaque ficam para os dados. As variáveis
  * derivadas moram aqui, escopadas num seletor: o tokens.css só guarda #rrggbb
@@ -253,8 +254,9 @@
 
 /*
  * Corpo da janela: a coluna lateral e a área da página, lado a lado, abaixo da barra superior. A
- * coluna lateral junta a navegação principal e a barra de projetos e missões (esta rola sozinha).
- * Abaixo de 1000px a barra de projetos some (app.css) e a coluna vira uma faixa acima da página.
+ * coluna lateral recebe a barra lateral, que ocupa toda a largura e a altura dela; os 230px são
+ * provisórios, até a casca do workspace (Tarefa 9) trocar a coluna por um painel redimensionável.
+ * Abaixo de 1000px a barra lateral fica só com a navegação, numa faixa acima da página.
  */
 .app-body {
   display: flex;
@@ -263,10 +265,10 @@
 }
 
 .app-side {
-  --side-bg: color-mix(in srgb, var(--bg) 80%, transparent);
   display: flex;
   flex: none;
   flex-direction: column;
+  width: 230px;
   min-height: 0;
 }
 
@@ -274,13 +276,28 @@
   flex: 1;
 }
 
-/* Navegação principal, na largura da barra de projetos, com o mesmo fundo translúcido dela. */
+/*
+ * Barra lateral: a navegação principal no topo e, abaixo, as seções Workspaces e Em andamento. Cada
+ * seção rola sozinha (o título e o botão de ação ficam parados), e a barra só rola como último recurso,
+ * numa janela baixa demais para as duas. O fundo é translúcido, para o fundo topográfico aparecer.
+ * Os anéis de foco ficam por dentro dos itens, que a rolagem cortaria por fora.
+ */
+.sidebar {
+  --sidebar-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
+/* Navegação principal, no topo da barra. */
 .main-nav {
   flex: none;
-  width: 230px;
-  padding: var(--space-3) var(--space-3) 0;
-  border-right: 1px solid var(--line);
-  background: var(--side-bg);
 }
 
 .main-nav__list {
@@ -293,7 +310,7 @@
 
 .main-nav a {
   display: block;
-  padding: 0.375rem var(--space-3);
+  padding: 0.375rem var(--space-2);
   border-radius: 6px;
   color: var(--muted);
   font-size: 0.8125rem;
@@ -317,6 +334,220 @@
   font-weight: 700;
 }
 
+/* Seção: título e ação paradas, lista rolando entre os dois. Encolhe com a janela, sem passar do conteúdo. */
+.sidebar__section {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+}
+
+.sidebar__title {
+  flex: none;
+  padding: 0 var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar__scroll {
+  min-height: 3rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.sidebar__list,
+.sidebar__sessions {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__item {
+  display: grid;
+  gap: 0;
+}
+
+/* Linha do projeto: expandir, nome e marca (e o chip "sem Git"). */
+.sidebar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.sidebar__link,
+.sidebar__toggle,
+.sidebar__action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0.3125rem var(--space-2);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebar__link {
+  flex: 1;
+}
+
+.sidebar__action {
+  flex: none;
+  width: 100%;
+}
+
+.sidebar__toggle {
+  flex: none;
+  gap: 0.25rem;
+  padding: 0.3125rem var(--space-1);
+}
+
+.sidebar__link:hover,
+.sidebar__toggle:hover,
+.sidebar__action:hover {
+  background: var(--sidebar-hover);
+  color: var(--text);
+}
+
+/* O projeto ou a missão da página atual: o mesmo fundo do item ativo da navegação. */
+.sidebar__link[aria-current='page'] {
+  background: var(--field-line);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.sidebar__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__chevron {
+  width: 0.75rem;
+  text-align: center;
+}
+
+.sidebar__count {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+/* Sessões de um projeto: recuadas, com um traço à esquerda. */
+.sidebar__sessions {
+  margin-left: var(--space-3);
+  padding-left: var(--space-1);
+  border-left: 1px solid var(--line);
+}
+
+.sidebar__session {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.sidebar__empty {
+  padding: 0.25rem var(--space-2);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* Linha de estado da missão: a marca com texto e o nome do projeto. */
+.sidebar__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.sidebar__project {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar a:focus-visible,
+.sidebar button:focus-visible {
+  outline-offset: -2px;
+}
+
+/*
+ * Marca de estado: a forma e o rótulo em texto, nunca só a cor. O texto só para leitor de tela fica
+ * fora da vista sem sair do fluxo de leitura. A marca ativa pulsa; quem pede menos movimento não vê.
+ */
+.state-mark {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.state-mark--active,
+.state-mark--waiting {
+  color: var(--text);
+}
+
+.state-mark__glyph {
+  font-size: 0.75rem;
+}
+
+.state-mark__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.state-mark--active .state-mark__glyph {
+  animation: state-mark-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes state-mark-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-mark--active .state-mark__glyph {
+    animation: none;
+  }
+}
+
 .app-main {
   flex: 1;
   min-height: 0;
@@ -333,11 +564,19 @@
     flex-direction: column;
   }
 
-  .main-nav {
+  .app-side {
     width: auto;
+  }
+
+  /* Só a navegação fica, numa faixa acima da página: as seções precisam de altura que não há. */
+  .sidebar {
     padding: var(--space-2) var(--space-3);
     border-right: 0;
     border-bottom: 1px solid var(--line);
+  }
+
+  .sidebar__section {
+    display: none;
   }
 
   .main-nav__list {
