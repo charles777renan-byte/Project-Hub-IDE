@@ -20,6 +20,7 @@ export const SAVE_DELAY_MS = 400;
 
 const OPEN_ERROR = 'Não foi possível abrir o workspace. Tente de novo.';
 const ACTION_ERROR = 'Não foi possível concluir o pedido. Tente de novo.';
+const SAVE_REFUSED = 'O layout não pôde ser gravado e não será tentado de novo.';
 
 export type UseWorkspace = {
   state: WorkspaceState;
@@ -32,7 +33,14 @@ export type UseWorkspace = {
   startSession(leafId: string): Promise<string | null>;
   endSession(leafId: string): Promise<string | null>;
   activeLeafId: string | null;
+  /** Folha cujo terminal deve receber o foco: só muda por gesto do usuário, nunca pela ativação inicial. */
+  focusLeafId: string | null;
+  /** Marca a folha como ativa, sem levar o foco ao terminal (foco do teclado, abertura). */
   activate(leafId: string): void;
+  /** Ativa a folha e pede o foco do terminal (clique no painel). */
+  activateWithFocus(leafId: string): void;
+  /** Mensagem quando o servidor recusou o layout (recusa permanente, não é repetida); `null` se não há. */
+  saveError: string | null;
   /** Grava já o que estiver pendente. */
   flush(): Promise<void>;
 };
@@ -49,6 +57,8 @@ function firstLeafId(layout: LayoutNode): string | null {
 export function useWorkspace(projectId: string): UseWorkspace {
   const [state, setState] = useState<WorkspaceState>({ status: 'loading' });
   const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
+  const [focusLeafId, setFocusLeafId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // O layout mais recente, para os callbacks não dependerem do estado renderizado.
   const current = useRef<WorkspaceDto | null>(null);
@@ -58,9 +68,10 @@ export function useWorkspace(projectId: string): UseWorkspace {
   // Muda a cada abertura ou troca de projeto: respostas de pedidos antigos são ignoradas.
   const generation = useRef(0);
 
-  const setActive = useCallback((leafId: string | null) => {
+  const setActive = useCallback((leafId: string | null, withFocus = false) => {
     activeRef.current = leafId;
     setActiveLeafId(leafId);
+    setFocusLeafId(withFocus ? leafId : null);
   }, []);
 
   const adopt = useCallback((workspace: WorkspaceDto) => {
@@ -77,11 +88,18 @@ export function useWorkspace(projectId: string): UseWorkspace {
     if (!dirty.current || workspace === null) return;
     dirty.current = false;
     let saved: boolean;
+    let refused = false;
     try {
       const result = await window.projectHub.workspaces.saveLayout(workspace.id, workspace.layout);
       saved = result.ok;
+      // VALIDATION_FAILED é permanente: repetir o mesmo layout só repetiria a recusa.
+      refused = !result.ok && result.error.code === 'VALIDATION_FAILED';
     } catch {
       saved = false;
+    }
+    if (refused) {
+      if (current.current?.id === workspace.id) setSaveError(SAVE_REFUSED);
+      return;
     }
     // Falhou: volta a ficar pendente e é tentado de novo, se o workspace na tela ainda é o mesmo.
     if (!saved && current.current?.id === workspace.id) {
@@ -95,6 +113,17 @@ export function useWorkspace(projectId: string): UseWorkspace {
     }
   }, []);
 
+  /** Marca o layout como pendente e agenda a gravação. */
+  const scheduleSave = useCallback(() => {
+    dirty.current = true;
+    setSaveError(null);
+    if (timer.current !== undefined) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = undefined;
+      void saveNow();
+    }, SAVE_DELAY_MS);
+  }, [saveNow]);
+
   const edit = useCallback(
     (change: (layout: LayoutNode) => LayoutNode) => {
       const workspace = current.current;
@@ -102,14 +131,9 @@ export function useWorkspace(projectId: string): UseWorkspace {
       const layout = change(workspace.layout);
       if (layout === workspace.layout) return;
       adopt({ ...workspace, layout });
-      dirty.current = true;
-      if (timer.current !== undefined) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        timer.current = undefined;
-        void saveNow();
-      }, SAVE_DELAY_MS);
+      scheduleSave();
     },
-    [adopt, saveNow],
+    [adopt, scheduleSave],
   );
 
   useEffect(() => {
@@ -117,6 +141,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
     generation.current += 1;
     current.current = null;
     dirty.current = false;
+    setSaveError(null);
     setState({ status: 'loading' });
     setActive(null);
 
@@ -159,7 +184,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
       if (workspace === null) return null;
       const holder = leafHolding(workspace.layout, terminalId);
       if (holder !== undefined) {
-        setActive(holder.id);
+        setActive(holder.id, true);
         return holder.id;
       }
       const active = activeRef.current;
@@ -169,7 +194,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
         leavesOf(workspace.layout)[0];
       if (target === undefined) return null;
       edit((layout) => withTerminal(layout, target.id, terminalId));
-      setActive(target.id);
+      setActive(target.id, true);
       return target.id;
     },
     [edit, setActive],
@@ -198,13 +223,16 @@ export function useWorkspace(projectId: string): UseWorkspace {
         if (terminalId !== undefined && latest !== null) {
           const layout = withTerminal(latest.layout, leafId, terminalId);
           if (layout !== latest.layout) adopt({ ...latest, layout });
+          // O layout local pode diferir do devolvido (divisória movida durante o pedido): o servidor
+          // ainda tem o antigo, então a diferença precisa ser gravada.
+          if (JSON.stringify(layout) !== JSON.stringify(result.data.layout)) scheduleSave();
         }
         return null;
       } catch {
         return ACTION_ERROR;
       }
     },
-    [adopt, saveNow],
+    [adopt, saveNow, scheduleSave],
   );
 
   const startSession = useCallback(
@@ -219,6 +247,9 @@ export function useWorkspace(projectId: string): UseWorkspace {
     [act],
   );
 
+  const activate = useCallback((leafId: string) => setActive(leafId), [setActive]);
+  const activateWithFocus = useCallback((leafId: string) => setActive(leafId, true), [setActive]);
+
   return {
     state,
     setRatio,
@@ -227,7 +258,10 @@ export function useWorkspace(projectId: string): UseWorkspace {
     startSession,
     endSession,
     activeLeafId,
-    activate: setActive,
+    focusLeafId,
+    activate,
+    activateWithFocus,
+    saveError,
     flush: saveNow,
   };
 }

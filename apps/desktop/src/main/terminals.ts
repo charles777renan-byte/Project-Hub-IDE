@@ -39,7 +39,7 @@ export type TerminalService = {
   closeSession(terminalId: string): Promise<AppResult<undefined>>;
   /** Ids de terminal do projeto: sessões abertas dele e terminais de missões em andamento dele. */
   knownIds(projectId: string): Promise<Set<string>>;
-  /** 'running' (processo vivo), 'exited' (o processo de terminais conhece e acabou, ou a sessão está aberta no banco mas o processo sumiu) ou 'unknown' (nenhum dos dois). */
+  /** 'running' (processo vivo), 'exited' (o processo de terminais conhece e acabou, ou ele não respondeu e a sessão está aberta no banco) ou 'unknown' (ele não conhece o id: a linha aberta do banco é fechada aqui). */
   stateOf(terminalId: string): Promise<'running' | 'exited' | 'unknown'>;
   write(terminalId: string, data: string): Promise<AppResult<undefined>>;
   resize(terminalId: string, cols: number, rows: number): Promise<AppResult<undefined>>;
@@ -63,6 +63,9 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   /** Sessões abertas por esta execução do app; as outras do banco foram herdadas e voltam como recuperadas. */
   const openedHere = new Set<string>();
   const unsubscribers = new Map<string, () => void>();
+  /** A assinatura mais recente pedida por terminal: quem volta do `port.subscribe` com outra marca foi cancelado ou trocado. */
+  const latestSubscription = new Map<string, number>();
+  let subscriptionSeq = 0;
 
   /** Execuções de agente em andamento que têm sessão: cada uma é um terminal. */
   function agentExecutions() {
@@ -105,13 +108,37 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   }
 
   function stopSubscription(terminalId: string): void {
+    latestSubscription.delete(terminalId);
     unsubscribers.get(terminalId)?.();
     unsubscribers.delete(terminalId);
   }
 
-  /** O processo de terminais não responder (ou não conhecer o id) é o mesmo que não ter o que mostrar. */
-  function snapshotOf(terminalId: string) {
-    return port.snapshot(terminalId).catch(() => undefined);
+  /**
+   * Consulta o processo de terminais. `'unavailable'`: ele não respondeu (não prova nada sobre a sessão).
+   * `undefined`: ele respondeu e não conhece o id.
+   */
+  async function snapshotOf(terminalId: string) {
+    try {
+      return await port.snapshot(terminalId);
+    } catch {
+      return 'unavailable' as const;
+    }
+  }
+
+  /**
+   * Estado de uma sessão avulsa aberta no banco. Se o processo de terminais responde e não conhece o id
+   * (reinício, reboot), a sessão não existe mais: a linha é fechada e o estado vira 'unknown'.
+   */
+  async function reconcile(terminalId: string): Promise<'running' | 'exited' | 'unknown'> {
+    const snapshot = await snapshotOf(terminalId);
+    if (snapshot === 'unavailable')
+      return openSessionRecord(terminalId) === undefined ? 'unknown' : 'exited';
+    if (snapshot !== undefined) return snapshot.alive ? 'running' : 'exited';
+    if (openSessionRecord(terminalId) === undefined) return 'unknown';
+    stopSubscription(terminalId);
+    sessions.close(terminalId, deps.now());
+    openedHere.delete(terminalId);
+    return 'unknown';
   }
 
   async function openSession(
@@ -202,14 +229,16 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           const provider = providerIdSchema.safeParse(record.provider);
           // Um provedor que esta versão não conhece não tem como ser aberto nem mostrado.
           if (!provider.success) continue;
-          const snapshot = await snapshotOf(record.id);
+          const state = await reconcile(record.id);
+          // A sessão que o processo de terminais não conhece foi fechada agora: não é mais listada.
+          if (state === 'unknown') continue;
           out.push({
             id: record.id,
             kind: 'shell',
             title: record.title,
             projectId: record.projectId,
             projectName: projects.get(record.projectId)?.name ?? '',
-            state: snapshot?.alive === true ? 'running' : 'exited',
+            state,
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
           });
@@ -236,11 +265,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       return Promise.resolve(ids);
     },
 
-    async stateOf(terminalId) {
-      const snapshot = await snapshotOf(terminalId);
-      if (snapshot !== undefined) return snapshot.alive ? 'running' : 'exited';
-      return openSessionRecord(terminalId) === undefined ? 'unknown' : 'exited';
-    },
+    stateOf: (terminalId) => reconcile(terminalId),
 
     write: (terminalId, data) =>
       known(terminalId, async () => {
@@ -257,11 +282,18 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     subscribe: (terminalId) =>
       known(terminalId, async () => {
         stopSubscription(terminalId);
+        const mark = ++subscriptionSeq;
+        latestSubscription.set(terminalId, mark);
         const stop = await port.subscribe(terminalId, {
           onData: (data) => publish({ type: 'data', terminalId, data }),
           onExit: (exit) => publish({ type: 'exit', terminalId, exitCode: exit.exitCode }),
           onRestart: () => publish({ type: 'restart', terminalId }),
         });
+        if (latestSubscription.get(terminalId) !== mark) {
+          // Cancelada (ou trocada) enquanto o processo de terminais respondia: soltar já, senão vaza.
+          stop();
+          return OK;
+        }
         unsubscribers.set(terminalId, stop);
         return OK;
       }),

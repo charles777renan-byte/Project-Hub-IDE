@@ -39,6 +39,7 @@ function setup(over: Partial<PaneViewProps> = {}) {
     onStart: vi.fn(),
     onEnd: vi.fn(),
     onDetach: vi.fn(),
+    onClear: vi.fn(),
     ...over,
   };
   const view = render(<PaneView {...props} />);
@@ -71,7 +72,7 @@ describe('PaneView', () => {
   });
 
   it('sessão em andamento mostra título, estado, etiqueta, terminal e ações', () => {
-    setup({ terminal: { ...session, origin: 'recovered' }, active: true });
+    setup({ terminal: { ...session, origin: 'recovered' }, active: true, focusTerminal: true });
     expect(screen.getByText('Corrigir login')).toBeInTheDocument();
     expect(screen.getByText('Ativo')).toBeInTheDocument();
     expect(screen.getByText('recuperada')).toBeInTheDocument();
@@ -117,7 +118,8 @@ describe('PaneView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar de novo' }));
     expect(props.onStart).toHaveBeenCalledTimes(1);
     await userEvent.click(screen.getByRole('button', { name: 'Limpar painel' }));
-    expect(props.onDetach).toHaveBeenCalledTimes(1);
+    expect(props.onClear).toHaveBeenCalledTimes(1);
+    expect(props.onDetach).not.toHaveBeenCalled();
   });
 
   it('sessão encerrada de missão não oferece Iniciar de novo', () => {
@@ -139,6 +141,19 @@ describe('PaneView', () => {
     const { props } = setup();
     await userEvent.click(screen.getByRole('region', { name: 'Painel Claude Code' }));
     expect(props.onActivate).toHaveBeenCalled();
+  });
+
+  it('painel ativo sem gesto do usuário não pede o foco do terminal e mostra a dica de saída', () => {
+    setup({ active: true });
+    expect(screen.getByTestId('terminal-view')).toHaveAttribute('data-active', 'false');
+    expect(screen.getByText(/Ctrl\+Shift\+Tab sai do terminal/)).toBeInTheDocument();
+  });
+
+  it('clique usa onPointerActivate quando existe', async () => {
+    const onPointerActivate = vi.fn();
+    setup({ onPointerActivate });
+    await userEvent.click(screen.getByRole('region', { name: 'Painel Claude Code' }));
+    expect(onPointerActivate).toHaveBeenCalled();
   });
 
   it('marca o painel ativo com data-active', () => {

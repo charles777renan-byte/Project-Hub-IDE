@@ -87,7 +87,7 @@ function SplitNode({
       >
         <Node key={split.first.id} node={split.first} onRatio={onRatio} renderLeaf={renderLeaf} />
       </Panel>
-      <Separator className="pane-tree__separator" />
+      <Separator className="pane-tree__separator" aria-label="Redimensionar painéis" />
       <Panel
         id={secondId}
         className="pane-tree__panel"

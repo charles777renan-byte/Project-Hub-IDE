@@ -58,6 +58,7 @@ function setup(
     sessions?: TerminalSessionRecord[];
     snapshot?: Awaited<ReturnType<TerminalPort['snapshot']>> | 'fail';
     killError?: Error;
+    slowSubscribe?: boolean;
   } = {},
 ) {
   const opened: {
@@ -72,6 +73,7 @@ function setup(
   const killedIds: string[] = [];
   let subscriber: Parameters<TerminalPort['subscribe']>[1] | undefined;
   let unsubscribed = 0;
+  let finishSubscribe: () => void = () => undefined;
   const sessions = memorySessions(options.sessions);
   const ids = ['shell-1', 'shell-2', 'shell-3'];
   const port: TerminalPort = {
@@ -105,8 +107,12 @@ function setup(
         : Promise.resolve('snapshot' in options ? options.snapshot : { alive: true }),
     subscribe: (_id, next) => {
       subscriber = next;
-      return Promise.resolve(() => {
+      const stop = () => {
         unsubscribed += 1;
+      };
+      if (options.slowSubscribe !== true) return Promise.resolve(stop);
+      return new Promise((resolve) => {
+        finishSubscribe = () => resolve(stop);
       });
     },
   };
@@ -137,6 +143,7 @@ function setup(
     killedIds,
     unsubscribed: () => unsubscribed,
     subscriber: () => subscriber,
+    finishSubscribe: () => finishSubscribe(),
   };
 }
 
@@ -263,17 +270,24 @@ describe('serviço de terminais do app', () => {
     });
   });
 
-  it('sessão do banco cujo processo não responde sai como encerrada', async () => {
+  it('sessão do banco cujo processo não responde ou acabou sai como encerrada e continua aberta', async () => {
     const failing = setup({ sessions: [storedSession], snapshot: 'fail' });
-    const gone = setup({ sessions: [storedSession], snapshot: undefined });
     const dead = setup({ sessions: [storedSession], snapshot: { alive: false } });
 
-    for (const h of [failing, gone, dead]) {
+    for (const h of [failing, dead]) {
       expect(await h.service.list()).toMatchObject({
         ok: true,
         data: [{ id: 'antiga', origin: 'recovered', state: 'exited' }],
       });
+      expect(h.sessions.rows.get('antiga')?.closedAt).toBeUndefined();
     }
+  });
+
+  it('sessão do banco que o processo de terminais não conhece é fechada e some da lista', async () => {
+    const h = setup({ sessions: [storedSession], snapshot: undefined });
+
+    expect(await h.service.list()).toEqual({ ok: true, data: [] });
+    expect(h.sessions.rows.get('antiga')?.closedAt).toBe('2026-10-22T12:00:00.000Z');
   });
 
   it('o terminal do agente leva só o nome do worktree, não o caminho', async () => {
@@ -422,8 +436,21 @@ describe('serviço de terminais do app', () => {
 
     expect(await alive.service.stateOf('antiga')).toBe('running');
     expect(await exitedInHost.service.stateOf('qualquer')).toBe('exited');
-    expect(await goneButOpen.service.stateOf('antiga')).toBe('exited');
+    expect(await goneButOpen.service.stateOf('antiga')).toBe('unknown');
+    expect(goneButOpen.sessions.rows.get('antiga')?.closedAt).toBe('2026-10-22T12:00:00.000Z');
     expect(await failing.service.stateOf('antiga')).toBe('exited');
+    expect(failing.sessions.rows.get('antiga')?.closedAt).toBeUndefined();
     expect(await unknown.service.stateOf('qualquer')).toBe('unknown');
+  });
+
+  it('cancelar a assinatura antes de o processo responder solta a assinatura que chega depois', async () => {
+    const h = setup({ sessions: [storedSession], slowSubscribe: true });
+
+    const pending = h.service.subscribe('antiga');
+    await h.service.unsubscribe('antiga');
+    h.finishSubscribe();
+    await pending;
+
+    expect(h.unsubscribed()).toBe(1);
   });
 });

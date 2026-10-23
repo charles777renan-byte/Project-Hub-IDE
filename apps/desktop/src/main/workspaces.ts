@@ -155,11 +155,13 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     let layout = storedLayout(record);
     // Sessão que o app não conhece mais (morreu com ele fechado) não pode aparecer como ativa.
     const gone = new Set<string>();
-    for (const leaf of leavesOf(layout)) {
-      if (leaf.terminalId !== null && (await terminals.stateOf(leaf.terminalId)) === 'unknown') {
-        gone.add(leaf.terminalId);
-      }
-    }
+    const held = leavesOf(layout).flatMap((leaf) =>
+      leaf.terminalId === null ? [] : [leaf.terminalId],
+    );
+    const states = await Promise.all(held.map((id) => terminals.stateOf(id)));
+    held.forEach((id, index) => {
+      if (states[index] === 'unknown') gone.add(id);
+    });
     if (gone.size > 0) {
       layout = mapLeaves(layout, (leaf) =>
         leaf.terminalId !== null && gone.has(leaf.terminalId)

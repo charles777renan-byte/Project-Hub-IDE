@@ -1,6 +1,7 @@
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { StateMark } from '../components/StateMark';
+import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
 import { markOfTerminal } from '../state-mark';
 
@@ -11,21 +12,29 @@ export type PaneViewProps = {
   provider: ProviderInfo | undefined;
   projectName: string;
   active: boolean;
+  /** Pede o foco do terminal: só depois de um gesto do usuário neste painel ou na barra lateral. */
+  focusTerminal?: boolean;
   /** Pedido de iniciar ou encerrar em curso. */
   busy: boolean;
   error?: string;
+  /** O painel recebeu o foco do teclado: marca como ativo, sem levar o foco ao terminal. */
   onActivate(): void;
+  /** Clique no painel: ativa e leva o foco ao terminal. Sem ele, vale `onActivate`. */
+  onPointerActivate?(): void;
   /** Iniciar, ou iniciar de novo quando a sessão terminou. */
   onStart(): void;
   /** Encerrar a sessão; não se aplica a sessão de missão. */
   onEnd(): void;
   /** Tirar o terminal do painel sem encerrar o processo. */
   onDetach(): void;
+  /** Limpar um painel cuja sessão terminou: encerra a sessão (idempotente) e deixa o painel vazio. */
+  onClear(): void;
 };
 
 /** Um painel do workspace: lançador, sessão em andamento ou sessão que terminou. */
 export function PaneView(props: PaneViewProps) {
   const { leaf, terminal, provider, projectName, active, busy, error } = props;
+  const focusTerminal = props.focusTerminal === true;
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
 
   let content;
@@ -62,7 +71,7 @@ export function PaneView(props: PaneViewProps) {
                   Iniciar de novo
                 </button>
               )}
-              <button type="button" onClick={props.onDetach}>
+              <button type="button" onClick={props.onClear}>
                 Limpar painel
               </button>
             </span>
@@ -71,7 +80,7 @@ export function PaneView(props: PaneViewProps) {
         {error !== undefined && <p role="alert">{error}</p>}
         {terminal !== undefined && (
           <div className="pane__body">
-            <TerminalView terminalId={terminal.id} active={active} />
+            <TerminalView terminalId={terminal.id} active={focusTerminal} />
           </div>
         )}
       </>
@@ -104,11 +113,12 @@ export function PaneView(props: PaneViewProps) {
         </div>
         {error !== undefined && <p role="alert">{error}</p>}
         <div className="pane__body">
-          <TerminalView terminalId={terminal.id} active={active} />
+          <TerminalView terminalId={terminal.id} active={focusTerminal} />
         </div>
         <div className="pane__foot">
           {`${label} · ${projectName}`}
           {terminal.worktreeName !== undefined && <span> · {terminal.worktreeName}</span>}
+          <span className="pane__hint"> · {EXIT_HINT}</span>
         </div>
       </>
     );
@@ -119,7 +129,8 @@ export function PaneView(props: PaneViewProps) {
       className="pane"
       aria-label={`Painel ${label}`}
       data-active={active ? 'true' : 'false'}
-      onPointerDown={props.onActivate}
+      tabIndex={-1}
+      onPointerDown={props.onPointerActivate ?? props.onActivate}
       onFocus={props.onActivate}
     >
       {content}
