@@ -1,4 +1,4 @@
-import { LAYOUT_LIMITS } from '@project-hub/contracts';
+import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import type { LayoutLeaf, LayoutNode } from '@project-hub/contracts';
 
 /**

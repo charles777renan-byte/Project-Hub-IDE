@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { LAYOUT_LIMITS } from './layout-limits';
+
+export { LAYOUT_LIMITS };
 
 /** Programas que um painel do workspace sabe abrir. O comando de cada um fica no processo principal. */
 export const PROVIDER_IDS = ['claude', 'codex', 'gemini', 'shell'] as const;
@@ -34,13 +37,6 @@ export type LayoutSplit = {
 };
 
 export type LayoutNode = LayoutLeaf | LayoutSplit;
-
-export const LAYOUT_LIMITS = {
-  maxLeaves: 12,
-  maxDepth: 6,
-  minRatio: 0.1,
-  maxRatio: 0.9,
-} as const;
 
 /**
  * A primeira regra que o layout viola, em texto, ou `null` se ele vale. A raiz é o nível 1.
