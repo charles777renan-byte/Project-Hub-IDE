@@ -174,4 +174,20 @@ describe('PaneView', () => {
     setup({ terminal: { ...session, worktreeName: 'feat-x' } });
     expect(screen.getByText(/Claude Code · app/)).toHaveTextContent('feat-x');
   });
+
+  it('o aviso de sessão encerrada anuncia só o texto, não os botões', () => {
+    setup({ terminal: { ...session, state: 'exited' } });
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(/^A sessão terminou\.$/);
+    expect(within(status).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('com terminal, o rótulo do painel usa o provedor da sessão', () => {
+    setup({
+      leaf: { ...leaf, provider: 'claude' },
+      terminal: { ...session, provider: 'codex' },
+      provider: undefined,
+    });
+    expect(screen.getByRole('region', { name: 'Painel codex' })).toBeInTheDocument();
+  });
 });

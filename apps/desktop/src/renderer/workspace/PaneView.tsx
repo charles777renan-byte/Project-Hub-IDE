@@ -26,7 +26,7 @@ export type PaneViewProps = {
 /** Um painel do workspace: lançador, sessão em andamento ou sessão que terminou. */
 export function PaneView(props: PaneViewProps) {
   const { leaf, terminal, provider, projectName, active, busy, error } = props;
-  const label = provider?.label ?? leaf.provider;
+  const label = provider?.label ?? terminal?.provider ?? leaf.provider;
 
   let content;
   if (leaf.terminalId === null) {
@@ -54,8 +54,8 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head">
-          <div className="pane__notice" role="status">
-            <span>A sessão terminou.</span>
+          <div className="pane__notice">
+            <span role="status">A sessão terminou.</span>
             <span className="pane__actions">
               {canRestart && (
                 <button type="button" disabled={busy} onClick={props.onStart}>

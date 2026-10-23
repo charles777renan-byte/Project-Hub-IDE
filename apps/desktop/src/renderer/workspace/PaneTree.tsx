@@ -85,7 +85,7 @@ function SplitNode({
         defaultSize={String(split.ratio * 100)}
         minSize="15"
       >
-        <Node node={split.first} onRatio={onRatio} renderLeaf={renderLeaf} />
+        <Node key={split.first.id} node={split.first} onRatio={onRatio} renderLeaf={renderLeaf} />
       </Panel>
       <Separator className="pane-tree__separator" />
       <Panel
@@ -94,7 +94,7 @@ function SplitNode({
         defaultSize={String((1 - split.ratio) * 100)}
         minSize="15"
       >
-        <Node node={split.second} onRatio={onRatio} renderLeaf={renderLeaf} />
+        <Node key={split.second.id} node={split.second} onRatio={onRatio} renderLeaf={renderLeaf} />
       </Panel>
     </Group>
   );

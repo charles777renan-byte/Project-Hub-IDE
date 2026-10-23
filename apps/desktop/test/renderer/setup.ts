@@ -15,3 +15,13 @@ Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
   writable: true,
   value: () => null,
 });
+
+// O jsdom não tem ResizeObserver, e a casca (react-resizable-panels) o exige ao montar. Este é mudo:
+// sem tamanho medido, nada é calculado. Os testes que precisam de medidas põem o próprio.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

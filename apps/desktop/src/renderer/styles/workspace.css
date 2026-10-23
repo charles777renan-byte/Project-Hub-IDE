@@ -253,10 +253,10 @@
 }
 
 /*
- * Corpo da janela: a coluna lateral e a área da página, lado a lado, abaixo da barra superior. A
- * coluna lateral recebe a barra lateral, que ocupa toda a largura e a altura dela; os 230px são
- * provisórios, até a casca do workspace (Tarefa 9) trocar a coluna por um painel redimensionável.
- * Abaixo de 1000px a barra lateral fica só com a navegação, numa faixa acima da página.
+ * Corpo da janela: a coluna lateral e a área da página, lado a lado, abaixo da barra superior, num
+ * grupo de painéis redimensionáveis (a largura da coluna é da biblioteca). A coluna lateral recebe a
+ * barra lateral, que ocupa toda a largura e a altura dela. A largura se ajusta pela divisória, não por
+ * pontos de corte da janela.
  */
 .app-body {
   display: flex;
@@ -264,11 +264,17 @@
   min-height: 0;
 }
 
+.app-body__panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .app-side {
   display: flex;
-  flex: none;
   flex-direction: column;
-  width: 230px;
+  width: 100%;
+  height: 100%;
   min-height: 0;
 }
 
@@ -559,33 +565,6 @@
   max-width: 72rem;
 }
 
-@media (max-width: 1000px) {
-  .app-body {
-    flex-direction: column;
-  }
-
-  .app-side {
-    width: auto;
-  }
-
-  /* Só a navegação fica, numa faixa acima da página: as seções precisam de altura que não há. */
-  .sidebar {
-    padding: var(--space-2) var(--space-3);
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .sidebar__section {
-    display: none;
-  }
-
-  .main-nav__list {
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-}
-
 /*
  * Árvore de painéis e painel do workspace. Sem cartões, raio nem sombra: as divisórias de 1px desenham
  * as bordas e o terminal usa quase toda a superfície. A página do workspace não tem respiro nas bordas.
@@ -788,10 +767,18 @@
 }
 
 .pane__notice {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--muted);
+}
+
+/* O texto cede espaço e é cortado; as ações (flex: none) nunca encolhem. */
+.pane__notice > span:first-child {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

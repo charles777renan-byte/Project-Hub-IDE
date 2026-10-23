@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { LayoutLeaf, LayoutNode } from '@project-hub/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaneTree } from '../../src/renderer/workspace/PaneTree';
@@ -140,5 +140,26 @@ describe('PaneTree', () => {
     expect(montagens).toHaveBeenCalledTimes(3);
     rerender(<PaneTree layout={padrao(0.3, 0.7)} onRatio={vi.fn()} renderLeaf={renderLeaf} />);
     expect(montagens).toHaveBeenCalledTimes(3);
+  });
+
+  it('identifica cada nó filho pelo id: trocar a ordem das folhas não carrega o estado de uma para a outra', () => {
+    function Folha({ id }: { id: string }) {
+      const [inicial] = useState(id);
+      return <i data-testid="folha">{inicial}</i>;
+    }
+    const renderLeaf = (l: LayoutLeaf) => <Folha id={l.id} />;
+    const dupla = (primeira: string, segunda: string): LayoutNode => ({
+      type: 'split',
+      id: 'raiz',
+      direction: 'row',
+      ratio: 0.5,
+      first: leaf(primeira, 'claude'),
+      second: leaf(segunda, 'shell'),
+    });
+    const { rerender } = render(
+      <PaneTree layout={dupla('a', 'b')} onRatio={vi.fn()} renderLeaf={renderLeaf} />,
+    );
+    rerender(<PaneTree layout={dupla('b', 'a')} onRatio={vi.fn()} renderLeaf={renderLeaf} />);
+    expect(screen.getAllByTestId('folha').map((item) => item.textContent)).toEqual(['b', 'a']);
   });
 });
