@@ -150,7 +150,7 @@ describe('Sidebar: estrutura', () => {
       within(navigation)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Início', 'Projetos', 'Terminais']);
+    ).toEqual(['Início', 'Projetos']);
 
     // A navegação vem antes das seções de dados.
     const workspaces = await within(bar).findByRole('region', { name: 'Workspaces' });

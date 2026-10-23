@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { providerIdSchema } from './workspace';
 
-/** Tipos de terminal da página Terminais: o de um agente (uma missão) ou um shell comum de um projeto. */
+/** Tipos de terminal dos terminais: o de um agente (uma missão) ou um shell comum de um projeto. */
 export const TERMINAL_KIND_VALUES = ['agent', 'shell'] as const;
 
 /** Estado mostrado na lista: rodando, aguardando o usuário, ou já encerrado. */
@@ -26,9 +26,6 @@ export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 
 /** Entrada dos canais que agem num terminal só. */
 export const terminalIdInputSchema = z.object({ terminalId: z.string().min(1).max(128) });
-
-/** Entrada de `terminals:open-shell:v1`: o projeto, nunca um caminho (R29). */
-export const openShellInputSchema = z.object({ projectId: z.string().min(1) });
 
 /** Digitação: texto limitado, para caber numa linha do pipe do processo de terminais. */
 export const terminalWriteInputSchema = z.object({

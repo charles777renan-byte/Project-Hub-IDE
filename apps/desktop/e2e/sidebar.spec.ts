@@ -68,16 +68,6 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   await expect(card).toBeVisible();
 
   const bar = page.getByRole('complementary', { name: BAR_NAME });
-  const hasShell = process.platform === 'win32';
-  if (hasShell) {
-    // Abre um shell do projeto: a barra passa a listar a sessão dele (a leitura é a cada 2 s).
-    await navigation.getByRole('link', { name: 'Terminais' }).click();
-    await page.getByRole('button', { name: 'Novo shell' }).click();
-    const toggle = bar.getByRole('button', { name: `Sessões de ${projectName}` });
-    await toggle.click();
-    await expect(bar.locator('.sidebar__session')).toHaveCount(1, { timeout: 15_000 });
-  }
-
   // Do catálogo para o detalhe do projeto.
   await navigation.getByRole('link', { name: 'Projetos' }).click();
   await card.getByRole('link', { name: projectName }).click();
@@ -132,23 +122,10 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   expect(visited).toEqual([
     'Início',
     'Projetos',
-    'Terminais',
     `Sessões de ${projectName}`,
     projectName,
-    ...(hasShell ? [expect.stringContaining(projectName)] : []),
     '+ Novo projeto',
     missionTitle,
     '+ Nova missão',
   ]);
-
-  if (hasShell) {
-    // Encerra o shell: com a sessão viva, o fechamento do app passa do prazo e a pasta do projeto fica presa.
-    await navigation.getByRole('link', { name: 'Terminais' }).click();
-    await page
-      .getByRole('complementary', { name: 'Lista de terminais' })
-      .getByRole('button', { name: /^PowerShell · / })
-      .click();
-    await page.getByRole('button', { name: 'Encerrar shell' }).click();
-    await expect(page.getByText('Nenhum agente nem shell aberto.')).toBeVisible();
-  }
 });

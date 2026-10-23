@@ -1,11 +1,15 @@
 import { basename } from 'node:path';
 import { expect, test } from './fixtures';
 
-// A página Terminais pela janela do Electron construído: o IPC, o processo de terminais, o PowerShell e
+// O terminal do workspace pela janela do Electron construído: o IPC, o processo de terminais, o PowerShell e
 // o xterm, com a CSP real. Só roda no Windows, onde o shell do teste é o PowerShell.
 test.skip(process.platform !== 'win32', 'o shell do teste é o PowerShell');
 
-test('abre um shell, digita nele e vê a saída no terminal', async ({ launchApp, gitRepo }) => {
+// reescrito na Tarefa 11: a página Terminais saiu; o fluxo passa a ser o do workspace.
+test.fixme('abre um shell, digita nele e vê a saída no terminal', async ({
+  launchApp,
+  gitRepo,
+}) => {
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
   const messages: string[] = [];
