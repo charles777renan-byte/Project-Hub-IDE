@@ -556,6 +556,7 @@
 
 .app-main {
   flex: 1;
+  height: 100%;
   min-height: 0;
   overflow: auto;
   padding: var(--space-4) var(--space-5);
