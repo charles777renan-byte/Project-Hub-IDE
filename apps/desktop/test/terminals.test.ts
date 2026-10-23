@@ -426,13 +426,4 @@ describe('serviço de terminais do app', () => {
     expect(await failing.service.stateOf('antiga')).toBe('exited');
     expect(await unknown.service.stateOf('qualquer')).toBe('unknown');
   });
-
-  it('openShell e close continuam disponíveis como atalhos provisórios', async () => {
-    const h = setup();
-
-    expect(await h.service.openShell('p1')).toEqual({ ok: true, data: { terminalId: 'shell-1' } });
-    expect(h.sessions.rows.get('shell-1')?.provider).toBe('shell');
-    expect((await h.service.close('shell-1')).ok).toBe(true);
-    expect(h.killed()).toBe(1);
-  });
 });

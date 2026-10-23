@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  openShellInputSchema,
   terminalEventSchema,
   terminalResizeInputSchema,
   terminalSummarySchema,
@@ -31,8 +30,7 @@ describe('contratos de terminal', () => {
     ).toBe(true);
   });
 
-  it('abrir shell recebe só o projeto, e o resumo não carrega caminho nem comando', () => {
-    expect(openShellInputSchema.safeParse({ projectId: 'p1' }).success).toBe(true);
+  it('o resumo não carrega caminho nem comando', () => {
     const summary = terminalSummarySchema.parse({
       id: 't',
       kind: 'shell',

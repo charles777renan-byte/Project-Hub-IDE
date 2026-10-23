@@ -512,6 +512,14 @@ describe('buildProjectHubApi', () => {
       'startSession',
     ]);
     expect(Object.keys(api.providers)).toEqual(['list']);
+    expect(Object.keys(api.terminals).sort()).toEqual([
+      'list',
+      'onEvent',
+      'resize',
+      'subscribe',
+      'unsubscribe',
+      'write',
+    ]);
     const everyName = [
       ...Object.keys(api),
       ...Object.keys(api.workspaces),

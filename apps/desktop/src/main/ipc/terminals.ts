@@ -2,7 +2,6 @@ import { failure } from '@project-hub/application';
 import {
   CHANNELS,
   type AppResult,
-  openShellInputSchema,
   terminalIdInputSchema,
   terminalResizeInputSchema,
   terminalWriteInputSchema,
@@ -21,13 +20,6 @@ export function registerTerminalHandlers(
 
   reg(CHANNELS.terminalsList, () => service.list());
 
-  reg(CHANNELS.terminalsOpenShell, (payload) => {
-    const input = openShellInputSchema.safeParse(payload);
-    return input.success
-      ? service.openShell(input.data.projectId)
-      : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o projeto.'));
-  });
-
   reg(CHANNELS.terminalsWrite, (payload) => {
     const input = terminalWriteInputSchema.safeParse(payload);
     return input.success
@@ -45,7 +37,6 @@ export function registerTerminalHandlers(
   const byId: [string, (id: string) => Promise<AppResult<unknown>>][] = [
     [CHANNELS.terminalsSubscribe, (id) => service.subscribe(id)],
     [CHANNELS.terminalsUnsubscribe, (id) => service.unsubscribe(id)],
-    [CHANNELS.terminalsClose, (id) => service.close(id)],
   ];
   for (const [channel, action] of byId) {
     reg(channel, (payload) => {

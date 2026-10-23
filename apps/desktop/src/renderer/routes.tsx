@@ -3,7 +3,6 @@ import { HomePage } from './pages/HomePage';
 import { MissionPage } from './pages/MissionPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
-import { TerminalsPage } from './pages/TerminalsPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 
 /**
@@ -13,7 +12,6 @@ import { WorkspacePage } from './pages/WorkspacePage';
 export const ROUTE_PATHS = {
   home: '/',
   projects: '/projects',
-  terminals: '/terminals',
   projectDetail: '/projects/:projectId',
   missionDetail: '/projects/:projectId/missions/:missionId',
   workspace: '/workspaces/:projectId',
@@ -38,7 +36,6 @@ export function missionPath(projectId: string, missionId: string): string {
 export const NAV_ITEMS = [
   { to: ROUTE_PATHS.home, label: 'Início' },
   { to: ROUTE_PATHS.projects, label: 'Projetos' },
-  { to: ROUTE_PATHS.terminals, label: 'Terminais' },
 ] as const;
 
 export function AppRoutes() {
@@ -46,7 +43,6 @@ export function AppRoutes() {
     <Routes>
       <Route path={ROUTE_PATHS.home} element={<HomePage />} />
       <Route path={ROUTE_PATHS.projects} element={<ProjectsPage />} />
-      <Route path={ROUTE_PATHS.terminals} element={<TerminalsPage />} />
       <Route path={ROUTE_PATHS.projectDetail} element={<ProjectDetailPage />} />
       <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
       <Route path={ROUTE_PATHS.workspace} element={<WorkspacePage />} />

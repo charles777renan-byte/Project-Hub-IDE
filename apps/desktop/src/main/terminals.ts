@@ -45,10 +45,6 @@ export type TerminalService = {
   resize(terminalId: string, cols: number, rows: number): Promise<AppResult<undefined>>;
   subscribe(terminalId: string): Promise<AppResult<undefined>>;
   unsubscribe(terminalId: string): Promise<AppResult<undefined>>;
-  /** Provisório: a página Terminais ainda chama este atalho. Sai com ela. */
-  openShell(projectId: string): Promise<AppResult<{ terminalId: string }>>;
-  /** Provisório: atalho de `closeSession` para a página Terminais. */
-  close(terminalId: string): Promise<AppResult<undefined>>;
 };
 
 const OK: AppResult<undefined> = { ok: true, data: undefined };
@@ -275,9 +271,5 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         stopSubscription(terminalId);
         return Promise.resolve(OK);
       }),
-
-    openShell: (projectId) => guarded(() => openSession(projectId, 'shell')),
-
-    close: (terminalId) => guarded(() => closeSession(terminalId)),
   };
 }

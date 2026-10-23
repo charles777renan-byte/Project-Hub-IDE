@@ -103,6 +103,14 @@ test.describe('renderer isolado', () => {
       'workspaces',
       'worktrees',
     ]);
+    expect(surface?.terminals).toEqual([
+      'list',
+      'onEvent',
+      'resize',
+      'subscribe',
+      'unsubscribe',
+      'write',
+    ]);
     const everyName = [
       ...(surface?.root ?? []),
       ...(surface?.projects ?? []),

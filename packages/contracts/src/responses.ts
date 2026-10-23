@@ -37,12 +37,10 @@ export type WorktreeDto = z.infer<typeof worktreeDtoSchema>;
 export const responseSchemas = {
   [CHANNELS.appPing]: appResultSchema(z.string()),
   [CHANNELS.terminalsList]: appResultSchema(z.array(terminalSummarySchema)),
-  [CHANNELS.terminalsOpenShell]: appResultSchema(z.object({ terminalId: z.string() })),
   [CHANNELS.terminalsWrite]: appResultSchema(z.undefined()),
   [CHANNELS.terminalsResize]: appResultSchema(z.undefined()),
   [CHANNELS.terminalsSubscribe]: appResultSchema(z.undefined()),
   [CHANNELS.terminalsUnsubscribe]: appResultSchema(z.undefined()),
-  [CHANNELS.terminalsClose]: appResultSchema(z.undefined()),
   [CHANNELS.workspacesList]: appResultSchema(z.array(workspaceDtoSchema)),
   [CHANNELS.workspacesOpen]: appResultSchema(workspaceDtoSchema),
   [CHANNELS.workspacesClose]: appResultSchema(z.undefined()),

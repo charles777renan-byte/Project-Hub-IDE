@@ -35,13 +35,10 @@ export const CHANNELS = {
   worktreesRemove: 'worktrees:remove:v1',
   /** Terminais dos agentes e shells (plano de agente real, Tarefa 7). Só entram ids, nunca caminho ou comando. */
   terminalsList: 'terminals:list:v1',
-  terminalsOpenShell: 'terminals:open-shell:v1',
   terminalsWrite: 'terminals:write:v1',
   terminalsResize: 'terminals:resize:v1',
   terminalsSubscribe: 'terminals:subscribe:v1',
   terminalsUnsubscribe: 'terminals:unsubscribe:v1',
-  /** Fecha um shell. O terminal de um agente se encerra cancelando a missão. */
-  terminalsClose: 'terminals:close:v1',
   /** Saída e fim de um terminal assinado, do processo principal para o renderer. Não tem resposta. */
   terminalsEvent: 'terminals:event:v1',
   /** Workspaces de painéis (plano da fase 1). Só entram ids; o provedor de cada painel é resolvido no processo principal. */

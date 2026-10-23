@@ -113,8 +113,6 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     },
     terminals: {
       list: () => call<TerminalSummary[]>(CHANNELS.terminalsList),
-      openShell: (projectId: string) =>
-        call<{ terminalId: string }>(CHANNELS.terminalsOpenShell, { projectId }),
       write: (terminalId: string, data: string) =>
         call<void>(CHANNELS.terminalsWrite, { terminalId, data }),
       resize: (terminalId: string, cols: number, rows: number) =>
@@ -122,7 +120,6 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       subscribe: (terminalId: string) => call<void>(CHANNELS.terminalsSubscribe, { terminalId }),
       unsubscribe: (terminalId: string) =>
         call<void>(CHANNELS.terminalsUnsubscribe, { terminalId }),
-      close: (terminalId: string) => call<void>(CHANNELS.terminalsClose, { terminalId }),
       onEvent: (listener: (event: TerminalEvent) => void) =>
         subscribe(CHANNELS.terminalsEvent, (payload) => {
           const parsed = terminalEventSchema.safeParse(payload);
