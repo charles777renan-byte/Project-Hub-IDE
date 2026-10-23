@@ -585,3 +585,213 @@
     overflow-x: auto;
   }
 }
+
+/*
+ * Árvore de painéis e painel do workspace. Sem cartões, raio nem sombra: as divisórias de 1px desenham
+ * as bordas e o terminal usa quase toda a superfície. A página do workspace não tem respiro nas bordas.
+ */
+.app-main:has(.pane-tree) {
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.app-main:has(.pane-tree) .app-main__content {
+  max-width: none;
+  height: 100%;
+}
+
+.pane-tree,
+.pane-tree__group,
+.pane-tree__panel,
+.pane-tree__leaf {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-tree {
+  display: flex;
+}
+
+/* A biblioteca dimensiona o painel por flex-basis: largura e altura do pai não podem brigar com ela. */
+.pane-tree__panel {
+  width: auto;
+  height: auto;
+}
+
+.pane-tree__leaf {
+  display: flex;
+}
+
+/*
+ * Divisória: a linha visível tem 1px e ocupa o espaço do layout; os 5px de pegada saem de um pseudo-elemento
+ * centrado nela, para o vão entre os painéis não crescer.
+ */
+.pane-tree__separator {
+  position: relative;
+  flex: none;
+  background: var(--line);
+  outline-offset: 0;
+}
+
+.pane-tree__separator::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+}
+
+.pane-tree__separator[aria-orientation='vertical'] {
+  width: 1px;
+  cursor: col-resize;
+}
+
+.pane-tree__separator[aria-orientation='vertical']::after {
+  inset: 0 -2px;
+}
+
+.pane-tree__separator[aria-orientation='horizontal'] {
+  height: 1px;
+  cursor: row-resize;
+}
+
+.pane-tree__separator[aria-orientation='horizontal']::after {
+  inset: -2px 0;
+}
+
+.pane-tree__separator:hover,
+.pane-tree__separator:active,
+.pane-tree__separator:focus-visible {
+  background: var(--field-line);
+}
+
+.pane-tree__separator:focus-visible {
+  outline: 2px solid var(--text);
+}
+
+.pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: var(--bg);
+}
+
+/* Painel ativo: uma linha de 1px no topo, sobre a cabeça, sem mudar o tamanho de nada. */
+.pane[data-active='true']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: 1px;
+  background: var(--field-line);
+  pointer-events: none;
+}
+
+.pane__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--line);
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pane[data-active='true'] .pane__head {
+  color: var(--muted);
+}
+
+.pane__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane__tag {
+  flex: none;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.pane__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.pane__actions button,
+.pane__launcher button {
+  padding: 0 var(--space-2);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.pane__actions button:focus-visible,
+.pane__launcher button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+/* O respiro fica no corpo: o terminal mede o próprio clientWidth/clientHeight e não pode ter padding. */
+.pane__body {
+  flex: 1;
+  min-height: 0;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.pane__body .terminal-view {
+  width: 100%;
+  height: 100%;
+}
+
+.pane__foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane__launcher {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 0;
+  color: var(--muted);
+}
+
+.pane__notice {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
