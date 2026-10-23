@@ -34,7 +34,10 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
 
   function searchFolders(): string[] {
     const raw = env['PATH'] ?? env['Path'] ?? '';
-    return raw.split(windows ? ';' : ':').filter((folder) => folder !== '');
+    // Entrada relativa do PATH dependeria da pasta de trabalho do app: só pastas absolutas valem.
+    return raw
+      .split(windows ? ';' : ':')
+      .filter((folder) => folder !== '' && pathApi.isAbsolute(folder));
   }
 
   function findExecutable(name: string): ProviderLaunch | undefined {

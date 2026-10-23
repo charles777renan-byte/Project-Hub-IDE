@@ -55,6 +55,14 @@ describe('registro de provedores', () => {
     });
   });
 
+  it('ignora entradas relativas do PATH', () => {
+    const registry = windowsRegistry(['bin\\claude.exe', '.\\claude.exe'], {
+      PATH: 'bin;.;C:\\bin',
+    });
+
+    expect(registry.resolve('claude').ok).toBe(false);
+  });
+
   it('lê o PATH também como Path', () => {
     const registry = windowsRegistry(['C:\\bin\\claude.exe'], { Path: 'C:\\bin' });
 

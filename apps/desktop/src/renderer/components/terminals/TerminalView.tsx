@@ -1,5 +1,6 @@
 import { Terminal } from '@xterm/xterm';
 import { useEffect, useRef } from 'react';
+import { EXIT_HINT } from './exit-hint';
 
 /** Cores do terminal: as mesmas do app (tokens.css). O xterm recebe valores, não variáveis de CSS. */
 const THEME = { background: '#080614', foreground: '#f5f2ff', cursor: '#c8ff2e' } as const;
@@ -65,7 +66,8 @@ export function fitTerminal(
 /**
  * Um terminal ao vivo. Assina a saída do terminal pelo preload (primeiro a guardada, depois a ao vivo),
  * manda a digitação de volta e acompanha o tamanho da área. A saída entra no xterm como dado, nunca como
- * HTML. Ao sair da tela, solta a assinatura: o terminal continua vivo no processo de terminais.
+ * HTML. `active` pede o foco e só deve vir de um gesto do usuário (clique, escolha na barra lateral),
+ * nunca da ativação inicial. Ctrl+Shift+Tab tira o foco do terminal sem mandar nada ao programa. Ao sair da tela, solta a assinatura: o terminal continua vivo no processo de terminais.
  */
 export function TerminalView({
   terminalId,
@@ -94,8 +96,15 @@ export function TerminalView({
     termRef.current = term;
     // Devolver false impede o xterm de mandar a tecla ao programa.
     term.attachCustomKeyEventHandler((event) => {
-      if (event.type !== 'keydown' || !event.ctrlKey || event.key.toLowerCase() !== 'c')
-        return true;
+      if (event.type !== 'keydown' || !event.ctrlKey) return true;
+      if (event.shiftKey && event.key === 'Tab') {
+        // O xterm consome Tab e Shift+Tab: sem uma saída reservada, quem usa teclado ficaria preso aqui.
+        event.preventDefault();
+        term.blur();
+        host.closest<HTMLElement>('.pane')?.focus();
+        return false;
+      }
+      if (event.key.toLowerCase() !== 'c') return true;
       const selection = term.getSelection();
       if (event.shiftKey) {
         if (selection !== '') copyText(selection);
@@ -137,5 +146,13 @@ export function TerminalView({
     if (active) termRef.current?.focus();
   }, [active, terminalId]);
 
-  return <div ref={hostRef} className="terminal-view" role="group" aria-label="Terminal" />;
+  return (
+    <div
+      ref={hostRef}
+      className="terminal-view"
+      role="group"
+      aria-label="Terminal"
+      title={EXIT_HINT}
+    />
+  );
 }

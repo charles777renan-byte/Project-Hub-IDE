@@ -10,6 +10,7 @@ const fake = vi.hoisted(() => ({
   disposed: 0,
   typed: undefined as ((data: string) => void) | undefined,
   focuses: 0,
+  blurs: 0,
   options: undefined as Record<string, unknown> | undefined,
   selection: '',
   keyHandler: undefined as ((event: KeyboardEvent) => boolean) | undefined,
@@ -25,6 +26,9 @@ vi.mock('@xterm/xterm', () => ({
     open() {}
     focus() {
       fake.focuses += 1;
+    }
+    blur() {
+      fake.blurs += 1;
     }
     getSelection() {
       return fake.selection;
@@ -62,6 +66,7 @@ beforeEach(() => {
   fake.disposed = 0;
   fake.typed = undefined;
   fake.focuses = 0;
+  fake.blurs = 0;
   fake.options = undefined;
   fake.selection = '';
   fake.keyHandler = undefined;
@@ -188,6 +193,33 @@ describe('TerminalView interativo', () => {
       fake.selection = '';
       expect(fake.keyHandler?.(key({ key: 'C', ctrlKey: true, shiftKey: true }))).toBe(false);
       expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Shift+Tab tira o foco do terminal para o painel, sem mandar nada ao programa', () => {
+      const pane = document.createElement('section');
+      pane.className = 'pane';
+      pane.tabIndex = -1;
+      document.body.append(pane);
+      render(<TerminalView terminalId="t1" />, {
+        container: pane.appendChild(document.createElement('div')),
+      });
+      const event = key({ key: 'Tab', ctrlKey: true, shiftKey: true, cancelable: true });
+
+      expect(fake.keyHandler?.(event)).toBe(false);
+
+      expect(fake.blurs).toBe(1);
+      expect(event.defaultPrevented).toBe(true);
+      expect(terminals['write']).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(pane);
+      pane.remove();
+    });
+
+    it('Tab e Shift+Tab sozinhos seguem ao programa', () => {
+      render(<TerminalView terminalId="t1" />);
+
+      expect(fake.keyHandler?.(key({ key: 'Tab' }))).toBe(true);
+      expect(fake.keyHandler?.(key({ key: 'Tab', shiftKey: true }))).toBe(true);
+      expect(fake.blurs).toBe(0);
     });
 
     it('só age no keydown e deixa Ctrl+V para o evento de colar do navegador', () => {

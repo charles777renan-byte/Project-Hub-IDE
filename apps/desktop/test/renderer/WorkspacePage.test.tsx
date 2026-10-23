@@ -164,6 +164,18 @@ describe('WorkspacePage', () => {
     expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t1');
   });
 
+  it('Limpar painel numa sessão encerrada chama endSession e esvazia o painel', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...shellTerminal, state: 'exited' }],
+    });
+    api.workspaces.endSession.mockResolvedValue({ ok: true, data: dto(padrao()) });
+    renderAt();
+    await userEvent.click(await screen.findByRole('button', { name: 'Limpar painel' }));
+    expect(api.workspaces.endSession).toHaveBeenCalledWith('w1', 'c');
+  });
+
   it('falha de startSession aparece em alert no painel certo', async () => {
     api.workspaces.startSession.mockResolvedValue({
       ok: false,

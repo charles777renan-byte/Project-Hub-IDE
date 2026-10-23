@@ -272,4 +272,71 @@ describe('useWorkspace', () => {
     });
     expect(api.saveLayout).toHaveBeenCalledTimes(2);
   });
+
+  it('a ativação inicial não pede o foco do terminal; clique e barra lateral pedem', async () => {
+    api.open.mockResolvedValue({ ok: true, data: dto(layoutOf(null, 't9')) });
+    const { result } = await mount();
+    expect(result.current.activeLeafId).toBe('a');
+    expect(result.current.focusLeafId).toBeNull();
+
+    act(() => result.current.activate('b'));
+    expect(result.current.focusLeafId).toBeNull();
+    act(() => result.current.activateWithFocus('a'));
+    expect(result.current.focusLeafId).toBe('a');
+    act(() => {
+      result.current.showTerminal('t9');
+    });
+    expect(result.current.focusLeafId).toBe('b');
+  });
+
+  it('divisória movida durante startSession volta a ser gravada em vez de ser sobrescrita', async () => {
+    let finish: (() => void) | undefined;
+    api.startSession.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ ok: true, data: dto(layoutOf('t1')) });
+        }),
+    );
+    const { result } = await mount();
+    let pending: Promise<string | null> | undefined;
+    await act(async () => {
+      pending = result.current.startSession('a');
+    });
+    act(() => result.current.setRatio('raiz', 0.3));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    api.saveLayout.mockClear();
+    await act(async () => {
+      finish?.();
+      await pending;
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    expect(api.saveLayout).toHaveBeenCalledTimes(1);
+    const saved = api.saveLayout.mock.calls[0]![1] as {
+      ratio: number;
+      first: { terminalId: string };
+    };
+    expect(saved.ratio).toBe(0.3);
+    expect(saved.first.terminalId).toBe('t1');
+  });
+
+  it('recusa VALIDATION_FAILED não é repetida e vira saveError', async () => {
+    api.saveLayout.mockResolvedValue({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'inválido' },
+    });
+    const { result } = await mount();
+    act(() => result.current.setRatio('raiz', 0.3));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
+    });
+    expect(api.saveLayout).toHaveBeenCalledTimes(1);
+    expect(result.current.saveError).not.toBeNull();
+  });
 });

@@ -113,7 +113,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
           className="pane"
           aria-label={`Painel ${providers.find((item) => item.id === providerId)?.label ?? providerId}`}
           data-active={workspace.activeLeafId === leaf.id ? 'true' : 'false'}
-          onPointerDown={() => workspace.activate(leaf.id)}
+          onPointerDown={() => workspace.activateWithFocus(leaf.id)}
         >
           <p className="pane__launcher" role="status">
             Abrindo a sessão…
@@ -128,15 +128,28 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
         provider={providers.find((item) => item.id === providerId)}
         projectName={projectName}
         active={workspace.activeLeafId === leaf.id}
+        focusTerminal={workspace.focusLeafId === leaf.id}
         busy={busy.has(leaf.id)}
         {...(errors[leaf.id] !== undefined ? { error: errors[leaf.id] } : {})}
         onActivate={() => workspace.activate(leaf.id)}
+        onPointerActivate={() => workspace.activateWithFocus(leaf.id)}
         onStart={() => void run(leaf.id, workspace.startSession)}
         onEnd={() => void run(leaf.id, workspace.endSession)}
         onDetach={() => workspace.detach(leaf.id)}
+        // Sessão de missão não fecha por aqui (só cancelando a missão): o painel só solta o terminal.
+        onClear={() =>
+          terminal?.missionId === undefined
+            ? void run(leaf.id, workspace.endSession)
+            : workspace.detach(leaf.id)
+        }
       />
     );
   };
 
-  return <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />;
+  return (
+    <>
+      {workspace.saveError !== null && <p role="alert">{workspace.saveError}</p>}
+      <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
+    </>
+  );
 }
