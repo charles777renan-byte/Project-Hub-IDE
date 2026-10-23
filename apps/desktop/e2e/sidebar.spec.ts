@@ -94,7 +94,7 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   // que saísse da borda da rolagem não seria medido. Por isso a altura da barra é limitada aqui, e a
   // guarda abaixo confirma que uma seção de fato rola antes da medição.
   await bar.evaluate((element) => {
-    (element as HTMLElement).style.maxHeight = '340px';
+    (element as HTMLElement).style.maxHeight = '240px';
   });
   expect(
     await bar.evaluate((element) =>
