@@ -4,6 +4,7 @@ import { MissionPage } from './pages/MissionPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { TerminalsPage } from './pages/TerminalsPage';
+import { WorkspacePage } from './pages/WorkspacePage';
 
 /**
  * Caminhos das rotas. No aplicativo (HashRouter) eles aparecem no endereço depois do `#`. Os
@@ -15,7 +16,6 @@ export const ROUTE_PATHS = {
   terminals: '/terminals',
   projectDetail: '/projects/:projectId',
   missionDetail: '/projects/:projectId/missions/:missionId',
-  // Sem página até a Tarefa 9: só o caminho, que a barra superior e o App já usam.
   workspace: '/workspaces/:projectId',
 } as const;
 
@@ -49,6 +49,7 @@ export function AppRoutes() {
       <Route path={ROUTE_PATHS.terminals} element={<TerminalsPage />} />
       <Route path={ROUTE_PATHS.projectDetail} element={<ProjectDetailPage />} />
       <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
+      <Route path={ROUTE_PATHS.workspace} element={<WorkspacePage />} />
     </Routes>
   );
 }

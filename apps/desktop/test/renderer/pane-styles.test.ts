@@ -94,4 +94,10 @@ describe('árvore de painéis e painel', () => {
       [],
     );
   });
+
+  it('o aviso da sessão encerrada é flex e as ações não encolhem (Limpar painel não é cortado)', () => {
+    expect(rule('.pane__notice').get('display')).toBe('flex');
+    expect(rule('.pane__notice > span:first-child').get('min-width')).toBe('0');
+    expect(rule('.pane__actions').get('flex')).toBe('none');
+  });
 });

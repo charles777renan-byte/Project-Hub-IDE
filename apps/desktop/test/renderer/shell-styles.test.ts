@@ -100,7 +100,6 @@ describe('casca do app', () => {
     const side = ruleDeclarations(workspaceCss, '.app-side');
     expect(side.get('display')).toBe('flex');
     expect(side.get('flex-direction')).toBe('column');
-    expect(side.get('flex')).toBe('none');
     expect(side.get('min-height')).toBe('0');
     expect(ruleDeclarations(workspaceCss, '.app-side > .sidebar').get('flex')).toBe('1');
   });
@@ -140,9 +139,8 @@ describe('leitor de regras dos testes', () => {
 
 /**
  * Barra lateral (Tarefas 4 do plano da interface e 7 do plano do workspace): ocupa toda a coluna que a
- * recebe, com a navegação no topo e uma rolagem por seção; o corpo da janela é uma linha flex; e abaixo
- * de 1000px as seções somem e a navegação vira uma faixa acima da página. As regras ficam em
- * workspace.css.
+ * recebe, com a navegação no topo e uma rolagem por seção; o corpo da janela é uma linha flex de painéis
+ * redimensionáveis (a largura é da divisória, sem pontos de corte). As regras ficam em workspace.css.
  */
 describe('barra lateral', () => {
   const workspaceCss = readCss('workspace.css');
@@ -151,8 +149,9 @@ describe('barra lateral', () => {
     expect(readCss('app.css')).not.toMatch(/\.sidebar/);
   });
 
-  it('a coluna lateral tem 230px e a barra enche a coluna, sem encolher a navegação', () => {
-    expect(ruleDeclarations(workspaceCss, '.app-side').get('width')).toBe('230px');
+  it('a barra enche a coluna redimensionável, sem encolher a navegação', () => {
+    expect(ruleDeclarations(workspaceCss, '.app-side').get('width')).toBe('100%');
+    expect(ruleDeclarations(workspaceCss, '.app-side').get('height')).toBe('100%');
     const sidebar = ruleDeclarations(workspaceCss, '.sidebar');
     expect(sidebar.get('display')).toBe('flex');
     expect(sidebar.get('flex-direction')).toBe('column');
@@ -205,12 +204,10 @@ describe('barra lateral', () => {
     expect(ruleDeclarations(workspaceCss, '.app-main').get('flex')).toBe('1');
   });
 
-  it('abaixo de 1000px as seções somem e a navegação vira uma faixa acima da página', () => {
+  it('a largura da barra não depende de ponto de corte da janela', () => {
     const narrow = mediaBlock(workspaceCss, '(max-width: 1000px)');
-    expect(ruleDeclarations(narrow, '.sidebar__section').get('display')).toBe('none');
-    expect(ruleDeclarations(narrow, '.sidebar').get('border-right')).toBe('0');
-    expect(ruleDeclarations(narrow, '.app-body').get('flex-direction')).toBe('column');
-    expect(ruleDeclarations(narrow, '.main-nav__list').get('flex-direction')).toBe('row');
+    expect(ruleDeclarations(narrow, '.sidebar__section').has('display')).toBe(false);
+    expect(ruleDeclarations(narrow, '.app-body').has('flex-direction')).toBe(false);
   });
 
   it('o contorno de foco de links e botões da barra fica por dentro dela', () => {
