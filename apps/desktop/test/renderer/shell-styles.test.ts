@@ -210,6 +210,27 @@ describe('ícones da barra superior e da barra lateral', () => {
   });
 });
 
+describe('barra superior: pistas da aba ativa e do botão +', () => {
+  const workspaceCss = readCss('workspace.css');
+
+  it('a aba ativa do workspace tem anel de 1px em --muted, e o link arredonda o foco', () => {
+    expect(
+      ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])").get(
+        'box-shadow',
+      ),
+    ).toBe('inset 0 0 0 1px var(--muted)');
+    expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('border-radius')).toBe(
+      'var(--radius-pill)',
+    );
+  });
+
+  it('o botão + tem fundo próprio em repouso, para o formato redondo aparecer', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar__add').get('background')).toBe(
+      'var(--surface-2)',
+    );
+  });
+});
+
 describe('barra lateral', () => {
   const workspaceCss = readCss('workspace.css');
 

@@ -60,9 +60,6 @@ const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ['--muted', '--line'],
   ['--text', '--field-line'],
   ['--text', '--line'],
-  // Identidade visual: o menu "+" flutua sobre --surface-2 (item selecionado em --line).
-  ['--muted', '--surface-2'],
-  ['--text', '--surface-2'],
   // Identidade visual: texto escuro dentro do botão e da aba cheios em lima.
   ['--accent-ink', '--accent'],
 ];

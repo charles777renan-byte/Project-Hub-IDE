@@ -301,7 +301,7 @@ describe('MissionPage: abas', () => {
     expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(6);
   });
 
-  it('cada aba leva a classe da sua cor (tab--<id>)', async () => {
+  it('cada aba leva a classe-gancho tab--<id> (sem cor própria)', async () => {
     installApi(viewOf());
     renderPage();
 

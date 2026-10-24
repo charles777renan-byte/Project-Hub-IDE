@@ -42,7 +42,7 @@ type MissionTab = 'conversation' | 'plan' | 'diff' | 'tests' | 'terminal' | 'log
 
 /**
  * As abas com a contagem de cada uma, quando ela diz algo: etapas no Plano, arquivos alterados no Diff
- * e testes que passaram em Testes (`missionTabCounts`). A cor de cada aba vem do CSS (`tab--<id>`).
+ * e testes que passaram em Testes (`missionTabCounts`). A classe `tab--<id>` é só um gancho, sem cor.
  */
 function missionTabs(counts: ReturnType<typeof missionTabCounts>): TabItem<MissionTab>[] {
   const withCount = (item: TabItem<MissionTab>, count: TabCount | undefined) =>
