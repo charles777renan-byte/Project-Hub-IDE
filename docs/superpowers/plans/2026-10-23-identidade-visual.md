@@ -14,7 +14,7 @@
 
 - Paleta de base: `#080614` (fundo), `#2a2656`, `#3a3570`, `#b7adcf`. Superfície elevada `#0e0b24`, superfície de menu `#14102e`. Destaque: lima `#c8ff2e`. Falha/parar: `#ff2d6f`. Atenção/aguardando: `#ffd23f`. Marca: `#b583ff`. Os acentos ciano, magenta, azul e laranja continuam definidos (telas antigas), mas a casca e os componentes novos não os usam.
 - Raios: controle 8px, cartão 12px, pílula 999px. Movimento: 120 a 200 ms, só CSS.
-- Lima só em: botão principal, estado ativo/executando, anel de foco e barra de item ativo na barra lateral. A aba ativa é pílula de gradiente `#3a3570` para `#2a2656`, sem lima.
+- Lima só em: botão principal, estado ativo/executando e concluído ("ok", sempre com o glifo ● ou ✓ e o rótulo), anel de foco e barra de item ativo na barra lateral. "Aguardando" (selo, contador, banner de decisão) é âmbar (--warn), nunca violeta. A aba ativa é pílula de gradiente `#3a3570` para `#2a2656`, sem lima.
 - Estado por forma e texto: ● ativo, ◐ aguardando, ✓ concluído, ✕ erro, ○ desconectado. Cor é reforço, nunca a única pista. Os glifos de texto do `StateMark` ficam; ícones lucide não os substituem.
 - CSP estrita do renderer: `style-src 'self'`. Sem `<style>` nem estilo inline escrito em texto; `style={{…}}` do React (CSSOM) é permitido. Toda biblioteca nova tem de provar, no E2E de CSP, que não gera violação. Sem CDN.
 - Contraste (WCAG 2.2 AA, 4,5:1) conferido por `apps/desktop/test/renderer/contrast.test.ts`, que lê `tokens.css`; cada par novo entra nele, e o teste não é afrouxado. O terminal fica em fundo opaco `#080614`.

@@ -88,9 +88,7 @@ export function Toaster() {
         </div>
       ))}
       {hidden > 0 ? (
-        <p role="status" className="toast-more">
-          {hidden === 1 ? 'mais 1 aviso' : `mais ${hidden} avisos`}
-        </p>
+        <p className="toast-more">{hidden === 1 ? 'mais 1 aviso' : `mais ${hidden} avisos`}</p>
       ) : null}
     </div>
   );
