@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readCss, ruleDeclarations } from './css-rules';
+import { mediaBlock, readCss, ruleDeclarations } from './css-rules';
 
 /**
  * O renderer roda com `style-src 'self'` e `script-src 'self'` (ADR 0007, item 6): sem estilo nem
@@ -217,6 +217,59 @@ describe('tokens da identidade visual', () => {
 
   it('`.app-main p` não declara font-size: parágrafos com classe própria (eyebrow, project-path) mantêm o tamanho que têm', () => {
     expect(ruleDeclarations(readCss('app.css'), '.app-main p').has('font-size')).toBe(false);
+  });
+});
+
+describe('botões, campos e anel de foco', () => {
+  const css = readCss('app.css');
+  const rule = (selector: string) => ruleDeclarations(css, selector);
+
+  it('o botão base usa o raio de controle, a borda de campo e cursor not-allowed quando desligado', () => {
+    expect(rule('button').get('border-radius')).toBe('var(--radius)');
+    expect(rule('button').get('border')).toBe('1px solid var(--field-line)');
+    expect(rule('button:disabled').get('cursor')).toBe('not-allowed');
+  });
+
+  it('o botão principal é lima cheio com texto --accent-ink; aprovar tem a mesma aparência', () => {
+    const primary = rule('.btn-primary');
+    expect(primary.get('background')).toBe('var(--accent)');
+    expect(primary.get('color')).toBe('var(--accent-ink)');
+    expect(primary.get('border-color')).toBe('var(--accent)');
+    expect(rule('.btn-decision').get('background')).toBe('var(--accent)');
+    expect(rule('.btn-decision').get('color')).toBe('var(--accent-ink)');
+  });
+
+  it('secundário tem contorno --field-line, fantasma não tem borda, perigo usa --danger', () => {
+    expect(rule('.btn-secondary').get('border-color')).toBe('var(--field-line)');
+    expect(rule('.btn-ghost').get('border-color')).toBe('transparent');
+    expect(rule('.btn-danger').get('border-color')).toBe('var(--danger)');
+    expect(rule('.btn-danger').get('color')).toBe('var(--danger)');
+  });
+
+  it('.btn-outline e .btn-link continuam, com a cor da marca', () => {
+    expect(rule('.btn-outline').get('color')).toBe('var(--brand)');
+    expect(rule('.btn-link').get('color')).toBe('var(--brand)');
+  });
+
+  it('o botão anima só cor de fundo e de borda, e o movimento reduzido desliga a transição', () => {
+    const transition = rule('button').get('transition') ?? '';
+    expect(transition).toContain('background-color var(--dur-fast) var(--ease)');
+    expect(transition).toContain('border-color var(--dur-fast) var(--ease)');
+    const reduced = mediaBlock(css, '(prefers-reduced-motion: reduce)');
+    expect(ruleDeclarations(reduced, 'button').get('transition')).toBe('none');
+  });
+
+  it('o anel de foco é 2px --focus com deslocamento de 2px', () => {
+    expect(rule(':focus-visible').get('outline')).toBe('2px solid var(--focus)');
+    expect(rule(':focus-visible').get('outline-offset')).toBe('2px');
+  });
+
+  it('campos têm fundo --surface (sólido; o cartão .form é translúcido), borda --field-line e raio de controle', () => {
+    const field = rule('.field input');
+    expect(field.get('background')).toBe('var(--surface)');
+    expect(field.get('border')).toBe('1px solid var(--field-line)');
+    expect(field.get('border-radius')).toBe('var(--radius)');
+    expect(rule('.field textarea').get('background')).toBe('var(--surface)');
   });
 });
 
