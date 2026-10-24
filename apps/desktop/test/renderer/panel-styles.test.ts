@@ -51,9 +51,12 @@ describe('forma do painel', () => {
     expect(body.get('min-height')).toBe('0');
   });
 
-  it('o título usa --text, e a meta e o estado vazio usam --muted (pares medidos em contrast.test.ts)', () => {
+  it('o título do painel usa --text; a meta e o estado vazio, --muted, com o título do vazio em --text', () => {
     expect(ruleDeclarations(appCss, '.panel__title').get('color')).toBe('var(--text)');
     expect(ruleDeclarations(appCss, '.panel__meta').get('color')).toBe('var(--muted)');
     expect(ruleDeclarations(appCss, '.panel__empty').get('color')).toBe('var(--muted)');
+    expect(
+      ruleDeclarations(readCss('workspace.css'), '.empty-state .empty-state__title').get('color'),
+    ).toBe('var(--text)');
   });
 });

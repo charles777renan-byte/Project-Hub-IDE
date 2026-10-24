@@ -45,7 +45,7 @@ export function Panel({
   );
 }
 
-/** Estado vazio de um painel: ícone decorativo e a frase como título, em `--muted`. */
+/** Estado vazio de um painel: ícone decorativo e a frase como título (o bloco fica em `--muted`, o título em `--text`). */
 export function PanelEmpty({ children }: { children: ReactNode }) {
   return <EmptyState icon={Inbox} title={children} className="panel__empty" />;
 }

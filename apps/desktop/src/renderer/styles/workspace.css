@@ -682,7 +682,9 @@
 }
 
 .pane-tree__separator:focus-visible {
+  /* Por dentro do vão de 8px: o cartão vizinho pintaria por cima de um anel que sai da caixa. */
   outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 /*
@@ -706,7 +708,8 @@
 }
 
 .pane[data-active='true'] {
-  box-shadow: inset 0 0 0 1px var(--field-line);
+  /* --muted: o contorno é a única marca do painel ativo sem foco, então passa de 3:1 (WCAG 1.4.11). */
+  box-shadow: inset 0 0 0 1px var(--muted);
 }
 
 .pane:focus {
@@ -772,14 +775,15 @@
 
 /*
  * O fundo opaco do terminal (--bg = #080614): o brilho violeta da janela nunca fica sob o texto. A margem de 4px
- * o afasta da borda do cartão e o padding de 8px afasta o texto da borda do preto. O respiro fica aqui: o terminal
+ * o afasta da borda do cartão e o padding de 4px afasta o texto da borda do preto (a área do terminal perde 8px por
+ * eixo em relação ao antigo padding de 4px do .xterm: a última coluna não encosta mais na borda). O respiro fica aqui: o terminal
  * mede o próprio clientWidth/clientHeight e não pode ter padding.
  */
 .pane__body {
   flex: 1;
   min-height: 0;
   margin: 0 4px 4px;
-  padding: 8px;
+  padding: 4px;
   overflow: hidden;
   border-radius: var(--radius);
   background: var(--bg);
@@ -813,7 +817,8 @@
   justify-content: center;
   gap: var(--space-2);
   min-height: 0;
-  padding: var(--space-3);
+  /* Sem padding próprio: o respiro vem do .empty-state (16px); somar os dois deixava o conteúdo a 32px da borda. */
+  padding: 0;
   color: var(--muted);
 }
 
