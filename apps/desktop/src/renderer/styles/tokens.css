@@ -1,7 +1,7 @@
 /*
- * Tokens visuais (R172): tema escuro de fundo único (#080614) com acentos fortes, cada um com um
- * papel (brain/decisoes/decisao-estilo-workspace-multicor.md). Fundo, painéis, botões e caixas
- * internas têm o mesmo tom; a separação vem das linhas. Só existe o tema escuro. Todo texto sobre um
+ * Tokens visuais (R172): tema escuro sobre o fundo #080614, com cartões numa superfície um tom acima
+ * (--surface) e acentos fortes, cada um com um papel (brain/decisoes/decisao-identidade-visual.md); a
+ * separação vem das linhas e do brilho. Só existe o tema escuro. Todo texto sobre um
  * fundo tem pelo menos 4,5:1 (WCAG 2.2 AA, seção 12.4): o teste test/renderer/contrast.test.ts lê
  * este arquivo e confere os pares. Cores em #rrggbb, que é o que o teste entende.
  *

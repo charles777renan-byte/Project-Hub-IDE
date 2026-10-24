@@ -33,6 +33,10 @@ const COLOR_TOKENS = [
   '--surface-2',
   '--accent',
   '--accent-ink',
+  '--focus',
+  '--danger',
+  '--warn',
+  '--brand',
   ...ACCENTS,
 ] as const;
 
@@ -42,8 +46,8 @@ const SURFACES = ['--bg', '--panel', '--panel-2', '--surface', '--surface-2'] as
 const TEXTS = ['--text', '--muted', '--accent', ...ACCENTS] as const;
 
 /**
- * Pares de texto sobre fundo que o aplicativo usa. O fundo é um tom só, então --panel e --panel-2
- * entram na lista para o teste falhar se um deles voltar a ser outro tom. Texto, texto secundário e
+ * Pares de texto sobre fundo que o aplicativo usa. --panel e --panel-2 valem --surface, então entram
+ * na lista para o teste falhar se um deles passar a ser outro tom. Texto, texto secundário e
  * cada acento (chip, link, borda com texto, aba) são medidos sobre cada superfície; o texto escuro
  * (`--bg`) dentro de botão ou aba cheios é medido sobre cada acento. Um par novo entra nesta lista.
  */

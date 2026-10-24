@@ -84,7 +84,6 @@ p {
 .app-main p {
   max-width: 62ch;
   margin: 0 0 var(--space-3);
-  font-size: var(--text-md);
 }
 
 /* Botões: primário e aprovar em lima, contornos violeta e vermelho. Texto sobre um acento cheio usa o fundo. */
@@ -560,7 +559,7 @@ button:disabled {
 
 .mission-summary h1 {
   min-width: 0;
-  font-size: 1.75rem;
+  font-size: var(--text-xl);
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
@@ -964,7 +963,7 @@ button:disabled {
   width: 8px;
   height: 8px;
   flex: none;
-  border-radius: var(--radius);
+  border-radius: 2px;
 }
 
 .overview-counter--lime::before {

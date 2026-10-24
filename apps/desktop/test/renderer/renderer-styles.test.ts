@@ -214,6 +214,10 @@ describe('tokens da identidade visual', () => {
     expect(body.get('font-size')).toBe('var(--text-md)');
     expect(body.get('color')).toBe('var(--text)');
   });
+
+  it('`.app-main p` não declara font-size: parágrafos com classe própria (eyebrow, project-path) mantêm o tamanho que têm', () => {
+    expect(ruleDeclarations(readCss('app.css'), '.app-main p').has('font-size')).toBe(false);
+  });
 });
 
 describe('módulos do renderer', () => {
