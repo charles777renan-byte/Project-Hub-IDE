@@ -111,15 +111,14 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
   }
 
   async function copyPath(fullPath: string) {
-    let next: CopyState;
     try {
       await navigator.clipboard.writeText(fullPath);
-      next = 'copied';
     } catch {
-      next = 'idle';
+      // A falha sai pelo aviso; o "Copiado" não entra e não há prazo a agendar.
       notify.error(COPY_ERROR);
+      return;
     }
-    setCopy(next);
+    setCopy('copied');
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopy('idle'), COPY_FEEDBACK_MS);
   }

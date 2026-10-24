@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import type { LayoutNode, WorkspaceDto } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getToasts, notify } from '../../src/renderer/notify';
 import { SAVE_DELAY_MS, useWorkspace } from '../../src/renderer/workspace/use-workspace';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
@@ -42,6 +43,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  notify.clear();
   vi.useRealTimers();
 });
 
@@ -338,5 +340,50 @@ describe('useWorkspace', () => {
     });
     expect(api.saveLayout).toHaveBeenCalledTimes(1);
     expect(result.current.saveError).not.toBeNull();
+  });
+
+  it('a recusa gravada na desmontagem vira aviso mesmo sem o hook montado', async () => {
+    api.saveLayout.mockResolvedValue({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'inválido' },
+    });
+    const { result, unmount } = await mount();
+    act(() => result.current.setRatio('raiz', 0.3));
+    unmount();
+    await act(async () => {});
+    expect(getToasts().map((toast) => toast.message)).toEqual([
+      'O layout não pôde ser gravado e não será tentado de novo.',
+    ]);
+  });
+
+  it('o aviso do layout se aposenta quando a próxima edição volta a gravar', async () => {
+    api.saveLayout.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'inválido' },
+    });
+    const { result } = await mount();
+    act(() => result.current.setRatio('raiz', 0.3));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    expect(getToasts()).toHaveLength(1);
+    act(() => result.current.setRatio('raiz', 0.4));
+    expect(getToasts()).toHaveLength(0);
+  });
+
+  it('o aviso do layout se aposenta na troca de projeto', async () => {
+    api.saveLayout.mockResolvedValue({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'inválido' },
+    });
+    const { result, rerender } = await mount();
+    act(() => result.current.setRatio('raiz', 0.3));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    expect(getToasts()).toHaveLength(1);
+    rerender({ id: 'p2' });
+    await act(async () => {});
+    expect(getToasts()).toHaveLength(0);
   });
 });

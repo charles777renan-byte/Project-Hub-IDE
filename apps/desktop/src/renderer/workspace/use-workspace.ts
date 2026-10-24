@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LayoutNode, WorkspaceDto } from '@project-hub/contracts';
+import { notify } from '../notify';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import {
   firstFreeLeaf,
@@ -58,7 +59,16 @@ export function useWorkspace(projectId: string): UseWorkspace {
   const [state, setState] = useState<WorkspaceState>({ status: 'loading' });
   const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
   const [focusLeafId, setFocusLeafId] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveErrorState] = useState<string | null>(null);
+  // O aviso da recusa do layout: sai da tela quando o erro se desfaz (próxima edição ou troca de projeto).
+  const refusalToast = useRef<number | null>(null);
+  const setSaveError = useCallback((message: string | null) => {
+    setSaveErrorState(message);
+    if (message === null && refusalToast.current !== null) {
+      notify.dismiss(refusalToast.current);
+      refusalToast.current = null;
+    }
+  }, []);
 
   // O layout mais recente, para os callbacks não dependerem do estado renderizado.
   const current = useRef<WorkspaceDto | null>(null);
@@ -98,7 +108,10 @@ export function useWorkspace(projectId: string): UseWorkspace {
       saved = false;
     }
     if (refused) {
-      if (current.current?.id === workspace.id) setSaveError(SAVE_REFUSED);
+      // O aviso é direto (o store é de módulo): vale também se o hook já saiu da tela, como na gravação
+      // que a desmontagem dispara. O estado só muda se o workspace ainda é o da tela.
+      refusalToast.current = notify.error(SAVE_REFUSED);
+      if (current.current?.id === workspace.id) setSaveErrorState(SAVE_REFUSED);
       return;
     }
     // Falhou: volta a ficar pendente e é tentado de novo, se o workspace na tela ainda é o mesmo.

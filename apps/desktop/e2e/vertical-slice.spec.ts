@@ -298,7 +298,7 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   expect(failed.map((execution) => execution.exitReason)).toEqual(['interrupted_by_restart']);
 });
 
-test('o aviso de falha ao copiar o caminho aparece, fecha e não viola a CSP', async ({
+test('o aviso de falha ao copiar o caminho aparece, fica no canto, fecha e não viola a CSP', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -320,6 +320,22 @@ test('o aviso de falha ao copiar o caminho aparece, fecha e não viola a CSP', a
   await createMission(page);
   await approvePlanAndStart(page);
 
+  /**
+   * Violações que não são do xterm. O xterm monta um <style> inline na página da missão (violação
+   * conhecida, coberta por regras em app.css; ver workspace.spec.ts). Esse é o único que se descarta: o
+   * <style> dele traz regras `.xterm`. Um <style> de outra origem (o aviso, por exemplo) ou qualquer outra
+   * diretiva continua falhando.
+   */
+  const unknownViolations = () =>
+    page.evaluate(() => {
+      const w = window as unknown as { cspViolations: string[] };
+      const foreignStyles = [...document.querySelectorAll('style')]
+        .map((style) => style.textContent ?? '')
+        .filter((text) => !text.includes('.xterm'));
+      const others = w.cspViolations.filter((item) => !item.startsWith('style-src-elem inline'));
+      return { foreignStyles, others };
+    });
+
   // A área de transferência recusa a cópia: o aviso nasce pelo Toaster (CSS por <link>, sem <style>).
   await page.evaluate(() => {
     Object.defineProperty(navigator.clipboard, 'writeText', {
@@ -330,31 +346,36 @@ test('o aviso de falha ao copiar o caminho aparece, fecha e não viola a CSP', a
   const summary = page.getByRole('region', { name: 'Resumo da missão' });
   await summary.getByRole('button', { name: 'Copiar caminho' }).click();
 
-  const alert = page.getByRole('status', { name: 'Avisos' }).getByRole('alert');
+  const region = page.getByRole('status', { name: 'Avisos' });
+  const alert = region.getByRole('alert');
   await expect(alert).toHaveText('Não foi possível copiar o caminho.');
-  // Posicionado no canto inferior direito, dentro da janela.
-  const box = await alert.boundingBox();
-  const viewport = page.viewportSize();
+  expect(await unknownViolations()).toEqual({ foreignStyles: [], others: [] });
+
+  // Canto inferior direito, a 16px das bordas (o viewportSize() do Playwright é nulo no Electron).
+  const view = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  const box = await region.boundingBox();
   expect(box).not.toBeNull();
   expect(box?.width ?? 0).toBeGreaterThan(0);
-  if (box !== null && viewport !== null) {
-    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
-    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
-    expect(box.x).toBeGreaterThan(viewport.width / 2);
-    expect(box.y).toBeGreaterThan(viewport.height / 2);
-  }
-  // Lido DEPOIS de o aviso aparecer, antes de qualquer outra coisa montar: o xterm da missão monta um
-  // <style> inline pouco depois (violação conhecida, coberta por regras em app.css; ver workspace.spec.ts),
-  // então a leitura vale para o aviso e não pode esperar por ele.
-  const violations = await page.evaluate(
-    () => (window as unknown as { cspViolations: string[] }).cspViolations,
-  );
-  expect(violations).toEqual([]);
+  const right = view.width - ((box?.x ?? 0) + (box?.width ?? 0));
+  const bottom = view.height - ((box?.y ?? 0) + (box?.height ?? 0));
+  expect(Math.abs(right - 16)).toBeLessThanOrEqual(2);
+  expect(Math.abs(bottom - 16)).toBeLessThanOrEqual(2);
 
-  // O erro fica até ser dispensado.
+  // O erro fica até ser dispensado; a dica do botão aparece sobre o aviso (z-index acima da barra).
   await page.waitForTimeout(6500);
   await expect(alert).toBeVisible();
+  const close = alert.getByRole('button', { name: 'Fechar aviso' });
+  await close.focus();
+  await expect(page.locator('.hint')).toHaveText('Fechar aviso');
+  await close.click();
+  await expect(alert).toHaveCount(0);
+  expect(await unknownViolations()).toEqual({ foreignStyles: [], others: [] });
+
+  // Um segundo aviso, depois do primeiro fechar, também nasce limpo.
+  await summary.getByRole('button', { name: 'Copiar caminho' }).click();
+  await expect(alert).toHaveText('Não foi possível copiar o caminho.');
   await alert.getByRole('button', { name: 'Fechar aviso' }).click();
   await expect(alert).toHaveCount(0);
+  expect(await unknownViolations()).toEqual({ foreignStyles: [], others: [] });
   await launched.close();
 });
