@@ -55,6 +55,12 @@ vi.mock('@xterm/xterm', () => ({
     }
     open(host: HTMLElement) {
       fake.openedIn = host;
+      // A tela do xterm, com as medidas de uma célula de 8 x 16 (640 x 384 para 80 x 24).
+      const screen = document.createElement('div');
+      screen.className = 'xterm-screen';
+      Object.defineProperty(screen, 'clientWidth', { value: 640 });
+      Object.defineProperty(screen, 'clientHeight', { value: 384 });
+      host.append(screen);
     }
     loadAddon() {
       if (fake.failLoad) throw new Error('WebGL indisponível');
@@ -224,6 +230,24 @@ describe('TerminalView: renderizador WebGL', () => {
     view.unmount();
 
     expect(fake.addonsDisposed).toBe(1);
+  });
+
+  it('ao perder o contexto e voltar ao DOM, ajusta as colunas de novo e avisa o processo; depois de desmontar, não', () => {
+    const view = render(<TerminalView terminalId="t1" />);
+    const host = fake.openedIn as HTMLElement;
+    // A área mede 800 x 320: com a célula de 8 x 16, cabem 100 x 20.
+    Object.defineProperty(host, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(host, 'clientHeight', { value: 320, configurable: true });
+
+    fake.contextLoss?.();
+
+    expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
+
+    terminals['resize']?.mockClear();
+    view.unmount();
+    fake.contextLoss?.();
+
+    expect(terminals['resize']).not.toHaveBeenCalled();
   });
 
   it('um addon por terminal: cada montagem cria e descarta o seu', () => {
