@@ -82,7 +82,7 @@ describe('casca do app', () => {
       '-2px',
     );
     expect(ruleDeclarations(readCss('app.css'), ':focus-visible').get('outline')).toBe(
-      '2px solid var(--text)',
+      '2px solid var(--focus)',
     );
   });
 

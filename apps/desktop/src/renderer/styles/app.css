@@ -33,9 +33,13 @@ body {
   line-height: 1.5;
 }
 
-/* Foco visível em todo controle, para quem navega por teclado (seção 12.4). Branco-violeta: aparece sobre qualquer acento. */
+/*
+ * Foco visível em todo controle, para quem navega por teclado (seção 12.4). Lima (--focus): aparece sobre
+ * qualquer fundo da casca. Barras com rolagem (topo, navegação, barra lateral) trocam só o deslocamento,
+ * para o anel não ser cortado.
+ */
 :focus-visible {
-  outline: 2px solid var(--text);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -86,7 +90,10 @@ p {
   margin: 0 0 var(--space-3);
 }
 
-/* Botões: primário e aprovar em lima, contornos violeta e vermelho. Texto sobre um acento cheio usa o fundo. */
+/*
+ * Botões. Lima só na ação principal (e em aprovar, que tem a mesma aparência); o resto é contorno ou
+ * fantasma. Texto sobre lima usa --accent-ink. Só cor de fundo e de borda animam.
+ */
 button {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--field-line);
@@ -96,6 +103,9 @@ button {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
 
 button:hover {
@@ -110,26 +120,55 @@ button:disabled {
 /* Ação principal e aprovar: lima cheio. */
 .btn-primary,
 .btn-decision {
-  border-color: var(--lime);
-  background: var(--lime);
-  color: var(--bg);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover,
 .btn-decision:hover {
-  border-color: var(--lime);
-  background: color-mix(in srgb, var(--lime) 88%, white);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
+/* Secundário: contorno de campo. */
+.btn-secondary {
+  border-color: var(--field-line);
+  background: transparent;
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-2);
+}
+
+/* Fantasma: sem borda até o mouse passar. */
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
+.btn-ghost:hover {
+  border-color: transparent;
+  background: var(--surface-2);
+}
+
+/* Contorno na cor da marca (telas antigas: plano, aviso de decisão). */
 .btn-outline {
-  border-color: var(--violet);
-  color: var(--violet);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
-/* Recusar, cancelar e parar: vermelho. */
+/* Recusar, cancelar e parar. */
 .btn-danger {
-  border-color: var(--red);
-  color: var(--red);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 /* Ação com aparência de link, usada no aviso da missão. */
@@ -137,8 +176,16 @@ button:disabled {
   border: 0;
   background: none;
   padding: 0;
-  color: var(--violet);
+  color: var(--brand);
   text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .field input,
+  .field textarea {
+    transition: none;
+  }
 }
 
 .page-alert {
@@ -862,7 +909,7 @@ button:disabled {
   color: var(--muted);
 }
 
-/* Formulários: campos com borda azul-violeta escura e foco branco-violeta. */
+/* Formulários: campos sólidos em --surface com borda de campo; o foco é o anel lima global. */
 .form {
   display: grid;
   gap: var(--space-3);
@@ -889,9 +936,15 @@ button:disabled {
   padding: var(--space-2);
   border: 1px solid var(--field-line);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--surface);
   color: var(--text);
   font: inherit;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.field input:hover,
+.field textarea:hover {
+  border-color: var(--muted);
 }
 
 .field textarea {
