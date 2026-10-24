@@ -739,5 +739,31 @@ describe('useWorkspace', () => {
       });
       expect(outcome).toBeNull();
     });
+
+    it('trocar de projeto durante a gravação que antecede addPane não deixa a gravação bloqueada', async () => {
+      let resolveSave: (value: unknown) => void = () => {};
+      api.saveLayout.mockReturnValueOnce(new Promise((r) => (resolveSave = r)));
+      api.addPane.mockResolvedValue({ ok: true, data: dto(tres(), 'p1') });
+      const { result, rerender } = await mount('p1');
+      act(() => result.current.setRatio('raiz', 0.3));
+      let pending: Promise<string | null> = Promise.resolve('x');
+      act(() => {
+        pending = result.current.addPane('codex');
+      });
+      await act(async () => {});
+      rerender({ id: 'p2' });
+      await act(async () => {});
+      await act(async () => {
+        resolveSave({ ok: true, data: undefined });
+        await pending;
+      });
+      api.saveLayout.mockClear();
+      act(() => result.current.setRatio('raiz', 0.7));
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS);
+      });
+      expect(api.saveLayout).toHaveBeenCalledTimes(1);
+      expect(api.saveLayout.mock.calls[0]![0]).toBe('w-p2');
+    });
   });
 });
