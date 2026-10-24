@@ -29,6 +29,8 @@ const api = {
   saveLayout: vi.fn(),
   startSession: vi.fn(),
   endSession: vi.fn(),
+  addPane: vi.fn(),
+  removePane: vi.fn(),
 };
 
 beforeEach(() => {
@@ -39,6 +41,8 @@ beforeEach(() => {
   api.saveLayout.mockReset().mockResolvedValue({ ok: true, data: undefined });
   api.startSession.mockReset();
   api.endSession.mockReset();
+  api.addPane.mockReset();
+  api.removePane.mockReset();
   window.projectHub = { workspaces: api } as unknown as typeof window.projectHub;
 });
 
@@ -54,7 +58,7 @@ async function mount(projectId = 'p1') {
 }
 
 function ratioOf(state: ReturnType<typeof useWorkspace>['state']): number {
-  if (state.status !== 'ready' || state.workspace.layout.type !== 'split') {
+  if (state.status !== 'ready' || state.workspace.layout?.type !== 'split') {
     throw new Error('estado');
   }
   return state.workspace.layout.ratio;
@@ -385,5 +389,155 @@ describe('useWorkspace', () => {
     rerender({ id: 'p2' });
     await act(async () => {});
     expect(getToasts()).toHaveLength(0);
+  });
+
+  describe('painéis', () => {
+    const tres = (): LayoutNode => ({
+      type: 'split',
+      id: 'raiz',
+      direction: 'row',
+      ratio: 0.5,
+      first: { type: 'leaf', id: 'a', provider: 'claude', terminalId: null },
+      second: {
+        type: 'split',
+        id: 'meio',
+        direction: 'column',
+        ratio: 0.5,
+        first: { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
+        second: { type: 'leaf', id: 'c', provider: 'codex', terminalId: null },
+      },
+    });
+    const vazio = null as unknown as LayoutNode;
+
+    it('addPane grava antes, adota o layout devolvido inteiro e ativa a folha nova com foco', async () => {
+      const order: string[] = [];
+      api.saveLayout.mockImplementation(async () => {
+        order.push('save');
+        return { ok: true, data: undefined };
+      });
+      api.addPane.mockImplementation(async () => {
+        order.push('add');
+        return { ok: true, data: dto(tres()) };
+      });
+      const { result } = await mount();
+      act(() => result.current.setRatio('raiz', 0.3));
+      let outcome: string | null = 'x';
+      await act(async () => {
+        outcome = await result.current.addPane('codex');
+      });
+      expect(order).toEqual(['save', 'add']);
+      expect(api.addPane).toHaveBeenCalledWith('w-p1', 'codex');
+      expect(outcome).toBeNull();
+      const state = result.current.state;
+      expect(state.status === 'ready' && state.workspace.layout).toEqual(tres());
+      expect(result.current.activeLeafId).toBe('c');
+      expect(result.current.focusLeafId).toBe('c');
+    });
+
+    it('addPane com erro do IPC devolve o texto e não muda o layout', async () => {
+      api.addPane.mockResolvedValue({
+        ok: false,
+        error: { code: 'x', message: 'Limite atingido' },
+      });
+      const { result } = await mount();
+      const before = result.current.state;
+      let outcome: string | null = null;
+      await act(async () => {
+        outcome = await result.current.addPane('shell');
+      });
+      expect(outcome).toBe('Limite atingido');
+      expect(result.current.state).toBe(before);
+      expect(result.current.activeLeafId).toBe('a');
+    });
+
+    it('addPane que lança devolve um texto de erro', async () => {
+      api.addPane.mockRejectedValue(new Error('boom'));
+      const { result } = await mount();
+      let outcome: string | null = null;
+      await act(async () => {
+        outcome = await result.current.addPane('shell');
+      });
+      expect(typeof outcome).toBe('string');
+    });
+
+    it('resposta de addPane de projeto antigo (geração trocada) é ignorada', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.addPane.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result, rerender } = await mount('p1');
+      let pending: Promise<string | null> = Promise.resolve(null);
+      act(() => {
+        pending = result.current.addPane('codex');
+      });
+      await act(async () => {});
+      rerender({ id: 'p2' });
+      await act(async () => {});
+      await act(async () => {
+        resolve({ ok: true, data: dto(tres(), 'p1') });
+        await pending;
+      });
+      const state = result.current.state;
+      expect(state.status === 'ready' && state.workspace.projectId).toBe('p2');
+      expect(state.status === 'ready' && state.workspace.layout).toEqual(layoutOf());
+      expect(result.current.activeLeafId).toBe('a');
+    });
+
+    it('removePane adota o devolvido e ativa a primeira restante se a ativa saiu', async () => {
+      const restante: LayoutNode = { type: 'leaf', id: 'b', provider: 'shell', terminalId: null };
+      api.removePane.mockResolvedValue({ ok: true, data: dto(restante) });
+      const { result } = await mount();
+      let outcome: string | null = 'x';
+      await act(async () => {
+        outcome = await result.current.removePane('a');
+      });
+      expect(api.removePane).toHaveBeenCalledWith('w-p1', 'a');
+      expect(outcome).toBeNull();
+      const state = result.current.state;
+      expect(state.status === 'ready' && state.workspace.layout).toEqual(restante);
+      expect(result.current.activeLeafId).toBe('b');
+    });
+
+    it('removePane mantém a folha ativa quando ela continua no layout', async () => {
+      const restante: LayoutNode = { type: 'leaf', id: 'a', provider: 'claude', terminalId: null };
+      api.removePane.mockResolvedValue({ ok: true, data: dto(restante) });
+      const { result } = await mount();
+      await act(async () => {
+        await result.current.removePane('b');
+      });
+      expect(result.current.activeLeafId).toBe('a');
+    });
+
+    it('removePane da última folha deixa o layout null e sem folha ativa', async () => {
+      api.removePane.mockResolvedValue({ ok: true, data: dto(vazio) });
+      const { result } = await mount();
+      await act(async () => {
+        await result.current.removePane('a');
+      });
+      const state = result.current.state;
+      expect(state.status === 'ready' && state.workspace.layout).toBeNull();
+      expect(result.current.activeLeafId).toBeNull();
+    });
+
+    it('removePane com erro devolve o texto e não muda o layout', async () => {
+      api.removePane.mockResolvedValue({ ok: false, error: { code: 'x', message: 'Sem painel' } });
+      const { result } = await mount();
+      const before = result.current.state;
+      let outcome: string | null = null;
+      await act(async () => {
+        outcome = await result.current.removePane('zzz');
+      });
+      expect(outcome).toBe('Sem painel');
+      expect(result.current.state).toBe(before);
+    });
+
+    it('showTerminal com layout null devolve null sem erro', async () => {
+      api.open.mockResolvedValue({ ok: true, data: dto(vazio) });
+      const { result } = await mount();
+      let id: string | null = 'x';
+      act(() => {
+        id = result.current.showTerminal('t1');
+      });
+      expect(id).toBeNull();
+      expect(result.current.activeLeafId).toBeNull();
+    });
   });
 });

@@ -149,7 +149,10 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
 
   return (
     <>
-      <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
+      {/* Provisório (Tarefa 4 troca por o estado vazio com o seletor de painéis). */}
+      {layout !== null ? (
+        <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
+      ) : null}
     </>
   );
 }
