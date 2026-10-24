@@ -84,6 +84,13 @@ describe('StateMark', () => {
     expect(screen.getByText('◐')).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it.each(KINDS)('o selo %s leva a classe do estado, a forma e o rótulo juntos', (kind) => {
+    const { container } = render(<StateMark kind={kind} withLabel />);
+    const mark = container.firstElementChild;
+    expect(mark).toHaveClass('state-mark', `state-mark--${kind}`);
+    expect(mark).toHaveTextContent(`${MARKS[kind].glyph}${MARKS[kind].label}`);
+  });
+
   it('a classe do estado ativo existe, para a CSS pulsar só ele', () => {
     const { container } = render(<StateMark kind="active" />);
     expect(container.firstElementChild).toHaveClass('state-mark', 'state-mark--active');

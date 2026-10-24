@@ -302,6 +302,54 @@ describe('botões, campos e anel de foco', () => {
   });
 });
 
+describe('selos de estado em pílula', () => {
+  const appCss = readCss('app.css');
+  const workspaceCss = readCss('workspace.css');
+  const BASES = [
+    ['.chip', appCss],
+    ['.state-mark', workspaceCss],
+  ] as const;
+  const TONE_OF: [selector: string, tone: string][] = [
+    ['.chip--lime', 'var(--accent)'],
+    ['.chip--warn', 'var(--warn)'],
+    ['.chip--red', 'var(--danger)'],
+    ['.chip--violet', 'var(--brand)'],
+    ['.chip--muted', 'var(--muted)'],
+    ['.chip--blue', 'var(--muted)'],
+    ['.chip--orange', 'var(--muted)'],
+    ['.chip--cyan', 'var(--muted)'],
+    ['.state-mark--active', 'var(--accent)'],
+    ['.state-mark--done', 'var(--accent)'],
+    ['.state-mark--waiting', 'var(--warn)'],
+    ['.state-mark--error', 'var(--danger)'],
+    ['.state-mark--disconnected', 'var(--muted)'],
+  ];
+
+  it.each(BASES)('%s tem raio de pílula e padding 2px 8px', (selector, css) => {
+    const rule = ruleDeclarations(css, selector);
+    expect(rule.size).toBeGreaterThan(0);
+    expect(rule.get('border-radius')).toBe('var(--radius-pill)');
+    expect(rule.get('padding')).toBe('2px 8px');
+  });
+
+  it.each(['.chip', '.state-mark'])('%s pinta fundo e texto com a cor do tom a 14%', (selector) => {
+    const rule = ruleDeclarations(appCss, selector);
+    expect(rule.get('background')).toBe('color-mix(in srgb, var(--tone) 14%, var(--surface))');
+    expect(rule.get('color')).toBe('var(--tone)');
+  });
+
+  it.each(TONE_OF)('%s define o tom %s', (selector, tone) => {
+    const rule = ruleDeclarations(appCss, selector);
+    expect(rule.size).toBeGreaterThan(0);
+    expect(rule.get('--tone')).toBe(tone);
+  });
+
+  it('o selo não tem hover: é informação, não controle', () => {
+    expect(appCss).not.toMatch(/\.chip[^{]*:hover/);
+    expect(workspaceCss).not.toMatch(/\.state-mark[^{]*:hover/);
+  });
+});
+
 describe('módulos do renderer', () => {
   it('não importam CSS', () => {
     const importsCss = /^\s*import\b.*\.css(?:\?[^'"]*)?['"]|\bimport\(\s*['"][^'"]*\.css/m;

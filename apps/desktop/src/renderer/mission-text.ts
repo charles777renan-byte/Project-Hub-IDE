@@ -1,10 +1,11 @@
 import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
 
 /**
- * Tom visual de um chip, pela cor do acento: lima para o que roda, violeta para o que espera a
- * pessoa, vermelho para falha, laranja para pausa e `muted` para o resto (sem destaque).
+ * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda,
+ * `red` para falha, `violet` para a marca e o que espera a pessoa, `muted` para o resto (sem destaque).
+ * `blue`, `orange` e `cyan` seguem aceitos para as telas antigas e têm a aparência neutra de `muted`.
  */
-export type Tone = 'lime' | 'violet' | 'red' | 'orange' | 'muted';
+export type Tone = 'lime' | 'warn' | 'violet' | 'red' | 'muted' | 'blue' | 'orange' | 'cyan';
 
 export type MissionStatus = MissionDto['status'];
 
@@ -97,8 +98,7 @@ export function needsDecisionInConversation(status: MissionStatus): boolean {
 }
 
 /** A ação principal que o resumo da missão oferece, quando a situação pede uma. */
-export type PrimaryAction =
-  'generate_plan' | 'approve_plan' | 'start' | 'resume' | 'retry';
+export type PrimaryAction = 'generate_plan' | 'approve_plan' | 'start' | 'resume' | 'retry';
 
 const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
   draft: 'generate_plan',

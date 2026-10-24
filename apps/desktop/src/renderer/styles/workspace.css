@@ -496,7 +496,7 @@
 }
 
 /*
- * Marca de estado: a forma e o rótulo em texto, nunca só a cor. O texto só para leitor de tela fica
+ * Marca de estado em pílula (as cores ficam em app.css): a forma e o rótulo em texto, nunca só a cor. O texto só para leitor de tela fica
  * fora da vista sem sair do fluxo de leitura. A marca ativa pulsa; quem pede menos movimento não vê.
  */
 .state-mark {
@@ -505,16 +505,12 @@
   flex: none;
   align-items: center;
   gap: 0.25rem;
-  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   line-height: 1;
   white-space: nowrap;
-}
-
-.state-mark--active,
-.state-mark--waiting {
-  color: var(--text);
 }
 
 .state-mark__glyph {
