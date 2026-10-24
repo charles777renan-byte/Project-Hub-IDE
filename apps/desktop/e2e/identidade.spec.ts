@@ -148,15 +148,33 @@ async function addProject(page: Page, projectName: string): Promise<void> {
   await expect(page.getByRole('heading', { name: projectName })).toBeVisible();
 }
 
-async function endShell(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Encerrar', exact: true }).click();
+/** Abre mais um PowerShell pela barra e espera o prompt da sessão nova. */
+async function openShell(page: Page): Promise<void> {
+  const panes = page.getByRole('region', { name: 'Painel PowerShell' });
+  const before = await panes.count();
   await page
-    .getByRole('group', { name: /^Encerrar a sessão/ })
-    .getByRole('button', { name: 'Encerrar', exact: true })
+    .getByRole('toolbar', { name: 'Abrir terminal' })
+    .getByRole('button', { name: 'PowerShell' })
     .click();
-  await expect(page.getByRole('button', { name: 'Iniciar PowerShell' })).toBeVisible({
-    timeout: 15_000,
+  await expect(panes).toHaveCount(before + 1);
+  await expect(panes.nth(before).locator('.xterm-rows')).toContainText('PS ', {
+    timeout: 30_000,
   });
+}
+
+/** Fecha todos os painéis (cada um encerra a sessão dele, com confirmação) e espera o estado vazio. */
+async function endShell(page: Page): Promise<void> {
+  const panes = page.getByRole('region', { name: 'Painel PowerShell' });
+  for (let left = await panes.count(); left > 0; left -= 1) {
+    await panes.first().getByRole('button', { name: 'Fechar painel', exact: true }).click();
+    await panes
+      .first()
+      .getByRole('group', { name: /^Fechar o painel/ })
+      .getByRole('button', { name: 'Fechar painel', exact: true })
+      .click();
+    await expect(panes).toHaveCount(left - 1, { timeout: 15_000 });
+  }
+  await expect(page.getByText('Nenhum terminal aberto')).toBeVisible({ timeout: 15_000 });
 }
 
 test('Início: sem violação de CSP e com foco visível em cada controle', async ({ launchApp }) => {
@@ -268,10 +286,14 @@ test('Workspace com o PowerShell: sem violação de CSP e com foco visível, at�
     .getByRole('complementary', { name: BAR_NAME })
     .getByRole('link', { name: projectName, exact: true })
     .click();
-  await expect(page.getByRole('button', { name: 'Iniciar PowerShell' })).toBeVisible();
+  // O workspace novo, vazio e com a barra: sem violação e com foco visível nos botões da barra.
+  await expect(page.getByRole('toolbar', { name: 'Abrir terminal' })).toBeVisible();
+  await expect(page.getByText('Nenhum terminal aberto')).toBeVisible();
+  await expectNoViolations(page);
+  await expectVisibleFocus(page, 3);
+  await expectNoViolations(page);
 
-  await page.getByRole('button', { name: 'Iniciar PowerShell' }).click();
-  await expect(page.locator('.xterm-rows')).toContainText('PS ', { timeout: 30_000 });
+  await openShell(page);
 
   try {
     await expectNoViolations(page);
@@ -291,6 +313,13 @@ test('Workspace com o PowerShell: sem violação de CSP e com foco visível, at�
     expect(card.shadow).toContain('inset');
 
     await expectVisibleFocus(page, 8);
+    await expectNoViolations(page);
+
+    // Com três painéis (um à esquerda, dois à direita) a tela também fica sem violação e com foco visível.
+    await openShell(page);
+    await openShell(page);
+    await expectNoViolations(page);
+    await expectVisibleFocus(page, 12);
     await expectNoViolations(page);
   } finally {
     await endShell(page);
