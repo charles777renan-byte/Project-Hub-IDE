@@ -144,6 +144,8 @@
   display: grid;
   flex: none;
   place-items: center;
+  /* Sem o padding de botão (8px 16px): com ele a caixa fica mais larga que o declarado e o ícone sai torto. */
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -154,8 +156,8 @@
 }
 
 .topbar__close {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   margin-right: 4px;
   border-radius: 4px;
   font-size: 1rem;
@@ -445,7 +447,7 @@
 }
 
 .sidebar__chevron {
-  width: 0.75rem;
+  width: 14px;
   text-align: center;
 }
 
