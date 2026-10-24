@@ -893,3 +893,82 @@
 .empty-state__action {
   margin-top: var(--space-1);
 }
+
+/*
+ * Página do workspace: barra para abrir terminais acima da área de painéis. A barra é compacta e usa botões
+ * secundários (o lima fica para a ação principal, ativo e foco). Sem painéis, a área mostra o estado vazio
+ * num cartão. Espelha as regras da árvore de painéis: sem padding na página e o brilho da janela nos vãos.
+ */
+.app-main:has(.workspace) {
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.app-main:has(.workspace) .app-main__content {
+  max-width: none;
+  height: 100%;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.workspace__toolbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.workspace__open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.workspace__open svg {
+  display: block;
+  flex: none;
+}
+
+.workspace__open:focus-visible,
+.workspace__open-wrap:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.workspace__open-wrap {
+  display: inline-flex;
+  border-radius: var(--radius);
+}
+
+.workspace__area {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace__empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}

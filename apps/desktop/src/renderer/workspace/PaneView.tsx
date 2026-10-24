@@ -2,7 +2,7 @@ import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/con
 import { ConfirmButton } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
-import { SquareTerminal } from '../components/Icon';
+import { ICON_PROPS, SquareTerminal, X } from '../components/Icon';
 import { StateMark } from '../components/StateMark';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
@@ -26,13 +26,30 @@ export type PaneViewProps = {
   onPointerActivate?(): void;
   /** Iniciar, ou iniciar de novo quando a sessão terminou. */
   onStart(): void;
-  /** Encerrar a sessão; não se aplica a sessão de missão. */
-  onEnd(): void;
   /** Tirar o terminal do painel sem encerrar o processo. */
   onDetach(): void;
-  /** Limpar um painel cuja sessão terminou: encerra a sessão (idempotente) e deixa o painel vazio. */
-  onClear(): void;
+  /** Fechar o painel: tira a folha do layout e encerra a sessão dela (a sessão de missão só sai do painel). */
+  onClose(): void;
 };
+
+/** Botão só de ícone que fecha o painel; o nome acessível é o texto, a dica descreve o efeito. */
+function CloseButton({
+  disabled,
+  onClick,
+  hint,
+}: {
+  disabled: boolean;
+  onClick(): void;
+  hint: string;
+}) {
+  return (
+    <Hint label={hint}>
+      <button type="button" aria-label="Fechar painel" disabled={disabled} onClick={onClick}>
+        <X {...ICON_PROPS} />
+      </button>
+    </Hint>
+  );
+}
 
 /** Um painel do workspace: lançador, sessão em andamento ou sessão que terminou. */
 export function PaneView(props: PaneViewProps) {
@@ -46,6 +63,9 @@ export function PaneView(props: PaneViewProps) {
       <>
         <div className="pane__head">
           <span className="pane__title">{label}</span>
+          <span className="pane__actions">
+            <CloseButton disabled={busy} onClick={props.onClose} hint="Fecha o painel" />
+          </span>
         </div>
         <div className="pane__launcher">
           <EmptyState
@@ -85,9 +105,7 @@ export function PaneView(props: PaneViewProps) {
                   Iniciar de novo
                 </button>
               )}
-              <button type="button" onClick={props.onClear}>
-                Limpar painel
-              </button>
+              <CloseButton disabled={busy} onClick={props.onClose} hint="Fecha o painel" />
             </span>
           </div>
         </div>
@@ -111,21 +129,29 @@ export function PaneView(props: PaneViewProps) {
             {terminal.origin === 'recovered' ? 'recuperada' : 'nova'}
           </span>
           <span className="pane__actions">
-            {terminal.missionId === undefined && (
+            {terminal.missionId === undefined ? (
               <ConfirmButton
-                label="Encerrar"
-                question="Encerrar a sessão? O processo será finalizado."
-                confirmLabel="Encerrar"
-                hint="Encerra a sessão e finaliza o processo"
+                label="Fechar painel"
+                question="Fechar o painel? O processo será finalizado."
+                confirmLabel="Fechar painel"
+                hint="Fecha o painel e finaliza o processo"
                 disabled={busy}
-                onConfirm={props.onEnd}
+                onConfirm={props.onClose}
               />
+            ) : (
+              <>
+                <Hint label="Tira o terminal do painel sem encerrar o processo">
+                  <button type="button" onClick={props.onDetach}>
+                    Tirar do painel
+                  </button>
+                </Hint>
+                <CloseButton
+                  disabled={busy}
+                  onClick={props.onClose}
+                  hint="Fecha o painel; a missão continua"
+                />
+              </>
             )}
-            <Hint label="Tira o terminal do painel sem encerrar o processo">
-              <button type="button" onClick={props.onDetach}>
-                Tirar do painel
-              </button>
-            </Hint>
           </span>
         </div>
         {error !== undefined && <p role="alert">{error}</p>}
