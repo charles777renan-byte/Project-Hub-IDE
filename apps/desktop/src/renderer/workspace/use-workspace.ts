@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LayoutNode, ProviderId, WorkspaceDto } from '@project-hub/contracts';
+import type { AppResult, LayoutNode, ProviderId, WorkspaceDto } from '@project-hub/contracts';
 import { notify } from '../notify';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import {
@@ -81,6 +81,9 @@ export function useWorkspace(projectId: string): UseWorkspace {
   const activeRef = useRef<string | null>(null);
   // Muda a cada abertura ou troca de projeto: respostas de pedidos antigos são ignoradas.
   const generation = useRef(0);
+  // Mudanças de estrutura (abrir/fechar painel) em voo: enquanto houver, o layout local está velho e
+  // gravá-lo atropelaria a mudança, então a gravação espera (o pendente continua marcado).
+  const structural = useRef(0);
 
   const setActive = useCallback((leafId: string | null, withFocus = false) => {
     activeRef.current = leafId;
@@ -99,6 +102,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
       timer.current = undefined;
     }
     const workspace = current.current;
+    if (structural.current > 0) return;
     if (!dirty.current || workspace === null) return;
     dirty.current = false;
     let saved: boolean;
@@ -231,9 +235,9 @@ export function useWorkspace(projectId: string): UseWorkspace {
       await saveNow();
       try {
         const result = await call(workspace.id, leafId);
-        if (!result.ok) return result.error.message || ACTION_ERROR;
-        // Outro projeto abriu enquanto o pedido estava em voo: a resposta não é dele.
+        // Outro projeto abriu enquanto o pedido estava em voo: a resposta (inclusive o erro) não é dele.
         if (generation.current !== mine) return null;
+        if (!result.ok) return result.error.message || ACTION_ERROR;
         // Só o terminal da folha entra: um ajuste de divisória feito durante o pedido não se perde.
         const terminalId = findLeaf(result.data.layout, leafId)?.terminalId;
         const latest = current.current;
@@ -271,33 +275,42 @@ export function useWorkspace(projectId: string): UseWorkspace {
    */
   const changePanes = useCallback(
     async (
-      call: (workspaceId: string) => ReturnType<typeof window.projectHub.workspaces.addPane>,
+      call: (workspaceId: string) => Promise<AppResult<WorkspaceDto>>,
       afterAdopt: (previous: LayoutNode | null, next: WorkspaceDto) => void,
     ): Promise<string | null> => {
       const workspace = current.current;
       if (workspace === null) return ACTION_ERROR;
       const mine = generation.current;
       await saveNow();
+      structural.current += 1;
+      let adopted = false;
       try {
         const result = await call(workspace.id);
-        if (!result.ok) return result.error.message || ACTION_ERROR;
-        // Outro projeto abriu enquanto o pedido estava em voo: a resposta não é dele.
+        // Outro projeto abriu enquanto o pedido estava em voo: a resposta (inclusive o erro) não é dele.
         if (generation.current !== mine) return null;
+        if (!result.ok) return result.error.message || ACTION_ERROR;
         const previous = current.current?.layout ?? null;
         if (timer.current !== undefined) {
           clearTimeout(timer.current);
           timer.current = undefined;
         }
+        // O servidor é a verdade: o pendente (feito sobre o layout velho) deixa de valer.
         dirty.current = false;
+        adopted = true;
         adopt(result.data);
+        setSaveError(null);
         afterAdopt(previous, result.data);
         window.dispatchEvent(new Event(WORKSPACES_CHANGED_EVENT));
         return null;
       } catch {
-        return ACTION_ERROR;
+        return generation.current !== mine ? null : ACTION_ERROR;
+      } finally {
+        structural.current -= 1;
+        // Sem sucesso, o que ficou pendente durante o pedido ainda precisa ser gravado.
+        if (!adopted && generation.current === mine && dirty.current) scheduleSave();
       }
     },
-    [adopt, saveNow],
+    [adopt, saveNow, scheduleSave, setSaveError],
   );
 
   const addPane = useCallback(

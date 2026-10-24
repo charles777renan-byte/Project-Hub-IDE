@@ -457,7 +457,7 @@ describe('useWorkspace', () => {
       await act(async () => {
         outcome = await result.current.addPane('shell');
       });
-      expect(typeof outcome).toBe('string');
+      expect(outcome).toBe('Não foi possível concluir o pedido. Tente de novo.');
     });
 
     it('resposta de addPane de projeto antigo (geração trocada) é ignorada', async () => {
@@ -538,6 +538,140 @@ describe('useWorkspace', () => {
       });
       expect(id).toBeNull();
       expect(result.current.activeLeafId).toBeNull();
+    });
+  });
+
+  describe('gravação e mudança de estrutura em voo', () => {
+    const unico = (): LayoutNode => ({
+      type: 'leaf',
+      id: 'b',
+      provider: 'shell',
+      terminalId: null,
+    });
+
+    it('addPane em voo: o debounce não grava o layout velho; o do servidor vale', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.addPane.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result } = await mount();
+      let pending: Promise<string | null> = Promise.resolve(null);
+      act(() => {
+        pending = result.current.addPane('codex');
+      });
+      await act(async () => {});
+      act(() => result.current.setRatio('raiz', 0.3));
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
+      });
+      expect(api.saveLayout).not.toHaveBeenCalled();
+      await act(async () => {
+        resolve({ ok: true, data: dto(layoutOf('t9')) });
+        await pending;
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
+      });
+      expect(api.saveLayout).not.toHaveBeenCalled();
+    });
+
+    it('removePane em voo: o debounce não grava o layout velho', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.removePane.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result } = await mount();
+      let pending: Promise<string | null> = Promise.resolve(null);
+      act(() => {
+        pending = result.current.removePane('a');
+      });
+      await act(async () => {});
+      act(() => result.current.setRatio('raiz', 0.3));
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
+      });
+      expect(api.saveLayout).not.toHaveBeenCalled();
+      await act(async () => {
+        resolve({ ok: true, data: dto(unico()) });
+        await pending;
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
+      });
+      expect(api.saveLayout).not.toHaveBeenCalled();
+    });
+
+    it('addPane com erro regrava o que ficou pendente durante o pedido', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.addPane.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result } = await mount();
+      let pending: Promise<string | null> = Promise.resolve(null);
+      act(() => {
+        pending = result.current.addPane('codex');
+      });
+      await act(async () => {});
+      act(() => result.current.setRatio('raiz', 0.3));
+      await act(async () => {
+        resolve({ ok: false, error: { code: 'x', message: 'falhou' } });
+        await pending;
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS);
+      });
+      expect(api.saveLayout).toHaveBeenCalledTimes(1);
+    });
+
+    it('sucesso de addPane limpa a recusa do layout', async () => {
+      api.saveLayout.mockResolvedValue({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED', message: 'inválido' },
+      });
+      const { result } = await mount();
+      act(() => result.current.setRatio('raiz', 0.3));
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS);
+      });
+      expect(result.current.saveError).not.toBeNull();
+      api.addPane.mockResolvedValue({ ok: true, data: dto(layoutOf('t1')) });
+      await act(async () => {
+        await result.current.addPane('codex');
+      });
+      expect(result.current.saveError).toBeNull();
+      expect(getToasts()).toHaveLength(0);
+    });
+
+    it('erro de addPane de projeto antigo é ignorado', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.addPane.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result, rerender } = await mount('p1');
+      let pending: Promise<string | null> = Promise.resolve('x');
+      act(() => {
+        pending = result.current.addPane('codex');
+      });
+      await act(async () => {});
+      rerender({ id: 'p2' });
+      await act(async () => {});
+      let outcome: string | null = 'x';
+      await act(async () => {
+        resolve({ ok: false, error: { code: 'x', message: 'do p1' } });
+        outcome = await pending;
+      });
+      expect(outcome).toBeNull();
+    });
+
+    it('erro de startSession de projeto antigo é ignorado', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.startSession.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result, rerender } = await mount('p1');
+      let pending: Promise<string | null> = Promise.resolve('x');
+      act(() => {
+        pending = result.current.startSession('a');
+      });
+      await act(async () => {});
+      rerender({ id: 'p2' });
+      await act(async () => {});
+      let outcome: string | null = 'x';
+      await act(async () => {
+        resolve({ ok: false, error: { code: 'x', message: 'do p1' } });
+        outcome = await pending;
+      });
+      expect(outcome).toBeNull();
     });
   });
 });
