@@ -13,10 +13,13 @@ describe('forma do painel', () => {
   const appCss = readCss('app.css');
   const tokensCss = readCss('tokens.css');
 
-  it('define --radius-panel como 12px e mantém --radius em 2px', () => {
+  // Atualizado na identidade visual: --radius dos controles subiu de 2px para 8px e o raio do painel
+  // passou a ser o alias de --radius-card (12px).
+  it('define --radius-panel como alias de --radius-card (12px) e --radius em 8px', () => {
     const root = ruleDeclarations(tokensCss, ':root');
-    expect(root.get('--radius-panel')).toBe('12px');
-    expect(root.get('--radius')).toBe('2px');
+    expect(root.get('--radius-card')).toBe('12px');
+    expect(root.get('--radius-panel')).toBe('var(--radius-card)');
+    expect(root.get('--radius')).toBe('8px');
   });
 
   it.each(ACCENTS)('panel--%s aponta --panel-accent para o token do acento', (accent) => {
