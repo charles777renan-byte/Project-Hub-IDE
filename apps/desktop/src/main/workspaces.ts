@@ -23,7 +23,7 @@ export type WorkspaceServiceDeps = {
   newId: () => string;
 };
 
-/** O que a interface pede ao app. Só entram ids: o provedor e o caminho de cada painel saem do banco. */
+/** O que a interface pede ao app. Entram ids e, em `addPane`, o provedor do painel novo; o provedor e o caminho dos painéis existentes saem do banco. */
 export type WorkspaceService = {
   /** Os workspaces abertos, por posição. */
   list(): Promise<AppResult<WorkspaceDto[]>>;

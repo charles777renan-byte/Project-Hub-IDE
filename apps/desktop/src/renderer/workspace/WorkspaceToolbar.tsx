@@ -1,8 +1,10 @@
 import type { KeyboardEvent } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { Hint } from '../components/Hint';
 import { ICON_PROPS, Plus } from '../components/Icon';
+
+export const LIMIT_HINT = 'Limite de 12 painéis';
 
 /**
  * Barra para abrir um terminal novo: um botão por programa. Setas, Home e End movem o foco entre os botões
@@ -12,13 +14,27 @@ import { ICON_PROPS, Plus } from '../components/Icon';
 export function WorkspaceToolbar({
   providers,
   busy,
+  limitReached = false,
+  focusToken = 0,
   onOpen,
 }: {
   providers: readonly ProviderInfo[];
   busy: boolean;
+  /** Todos os painéis possíveis já estão abertos: os botões ficam desabilitados, com a dica do limite. */
+  limitReached?: boolean;
+  /** Cada valor novo (maior que 0) leva o foco ao primeiro botão habilitado, ex.: depois de fechar o último painel. */
+  focusToken?: number;
   onOpen(provider: ProviderId): void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (focusToken === 0) return;
+    const first = Array.from(bar.current?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
+      (button) => !button.disabled,
+    );
+    (first ?? bar.current)?.focus();
+  }, [focusToken]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const all = Array.from(bar.current?.querySelectorAll<HTMLButtonElement>('button') ?? []).filter(
@@ -48,6 +64,7 @@ export function WorkspaceToolbar({
       role="toolbar"
       aria-label="Abrir terminal"
       aria-orientation="horizontal"
+      tabIndex={-1}
       className="workspace__toolbar"
       onKeyDown={onKeyDown}
     >
@@ -57,16 +74,17 @@ export function WorkspaceToolbar({
           <button
             type="button"
             className="btn-secondary workspace__open"
-            disabled={busy || unavailable}
+            disabled={busy || unavailable || limitReached}
             onClick={() => onOpen(provider.id)}
           >
             <Plus {...ICON_PROPS} />
             {provider.label}
           </button>
         );
-        if (!unavailable) return <span key={provider.id}>{button}</span>;
+        if (!unavailable && !limitReached) return <span key={provider.id}>{button}</span>;
+        const reason = unavailable ? (provider.reason ?? 'Programa indisponível.') : LIMIT_HINT;
         return (
-          <Hint key={provider.id} label={provider.reason ?? 'Programa indisponível.'}>
+          <Hint key={provider.id} label={reason}>
             <span className="workspace__open-wrap" tabIndex={0}>
               {button}
             </span>

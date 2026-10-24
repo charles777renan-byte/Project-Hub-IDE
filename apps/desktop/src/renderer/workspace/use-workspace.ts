@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AppResult, LayoutNode, ProviderId, WorkspaceDto } from '@project-hub/contracts';
+import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
+import type {
+  AppResult,
+  LayoutLeaf,
+  LayoutNode,
+  ProviderId,
+  WorkspaceDto,
+} from '@project-hub/contracts';
 import { notify } from '../notify';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import {
@@ -21,18 +29,22 @@ export const SAVE_DELAY_MS = 400;
 
 const OPEN_ERROR = 'Não foi possível abrir o workspace. Tente de novo.';
 const ACTION_ERROR = 'Não foi possível concluir o pedido. Tente de novo.';
+/** Também usada pela barra, que desabilita os botões no limite. */
+export const MAX_PANES_MESSAGE = 'O workspace já tem o máximo de 12 painéis.';
 const SAVE_REFUSED = 'O layout não pôde ser gravado e não será tentado de novo.';
 
 export type UseWorkspace = {
   state: WorkspaceState;
   /** Otimista: muda o layout na hora e grava depois de `SAVE_DELAY_MS`. */
   setRatio(splitId: string, ratio: number): void;
-  /** Folha que já tem a sessão: só a ativa e devolve o id dela. Senão, põe na folha ativa (ou na primeira livre). */
-  showTerminal(terminalId: string): string | null;
+  /**
+   * Mostra a sessão: folha que já a tem → ativa; senão a folha ativa sem sessão, a primeira livre ou um
+   * painel novo (até o limite). Nunca substitui uma sessão viva. `provider` é o do terminal, para o painel novo.
+   */
+  showTerminal(terminalId: string, provider?: ProviderId): string | null;
   detach(leafId: string): void;
   /** `null` = ok; texto = mensagem de erro. */
   startSession(leafId: string): Promise<string | null>;
-  endSession(leafId: string): Promise<string | null>;
   /** Abre um painel novo do provedor. `null` = ok; texto = erro. O servidor decide a organização: o layout devolvido vale inteiro. */
   addPane(provider: ProviderId): Promise<string | null>;
   /** Fecha o painel. `null` = ok; texto = erro. Se a folha ativa saiu, ativa a primeira restante. */
@@ -205,7 +217,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
   );
 
   const showTerminal = useCallback(
-    (terminalId: string): string | null => {
+    (terminalId: string, provider: ProviderId = 'shell'): string | null => {
       const workspace = current.current;
       if (workspace === null) return null;
       const holder = leafHolding(workspace.layout, terminalId);
@@ -214,14 +226,26 @@ export function useWorkspace(projectId: string): UseWorkspace {
         return holder.id;
       }
       const active = activeRef.current;
-      const target =
-        (active !== null ? findLeaf(workspace.layout, active) : undefined) ??
-        firstFreeLeaf(workspace.layout) ??
-        leavesOf(workspace.layout)[0];
-      if (target === undefined) return null;
-      edit((layout) => withTerminal(layout, target.id, terminalId));
-      setActive(target.id, true);
-      return target.id;
+      const activeLeaf = active !== null ? findLeaf(workspace.layout, active) : undefined;
+      const free =
+        activeLeaf !== undefined && activeLeaf.terminalId === null
+          ? activeLeaf
+          : firstFreeLeaf(workspace.layout);
+      if (free !== undefined) {
+        edit((layout) => withTerminal(layout, free.id, terminalId));
+        setActive(free.id, true);
+        return free.id;
+      }
+      // Todos ocupados (ou sem painel): abre um novo, sem tirar a sessão de ninguém.
+      const leaves = leavesOf(workspace.layout);
+      if (leaves.length >= LAYOUT_LIMITS.maxLeaves) {
+        notify.error(MAX_PANES_MESSAGE);
+        return null;
+      }
+      const pane: LayoutLeaf = { type: 'leaf', id: crypto.randomUUID(), provider, terminalId };
+      edit(() => arrangeLeaves([...leaves, pane], () => crypto.randomUUID()));
+      setActive(pane.id, true);
+      return pane.id;
     },
     [edit, setActive],
   );
@@ -266,12 +290,6 @@ export function useWorkspace(projectId: string): UseWorkspace {
   const startSession = useCallback(
     (leafId: string) =>
       act(leafId, (id, leaf) => window.projectHub.workspaces.startSession(id, leaf)),
-    [act],
-  );
-
-  const endSession = useCallback(
-    (leafId: string) =>
-      act(leafId, (id, leaf) => window.projectHub.workspaces.endSession(id, leaf)),
     [act],
   );
 
@@ -340,9 +358,13 @@ export function useWorkspace(projectId: string): UseWorkspace {
       changePanes(
         (id) => window.projectHub.workspaces.removePane(id, leafId),
         (_previous, next) => {
+          // O painel fechado levava o foco: devolve-o à folha ativa que restou, ou à primeira.
           const active = activeRef.current;
-          if (active !== null && findLeaf(next.layout, active) !== undefined) return;
-          setActive(firstLeafId(next.layout));
+          const keep =
+            active !== null && findLeaf(next.layout, active) !== undefined
+              ? active
+              : firstLeafId(next.layout);
+          setActive(keep, keep !== null);
         },
       ),
     [changePanes, setActive],
@@ -357,7 +379,6 @@ export function useWorkspace(projectId: string): UseWorkspace {
     showTerminal,
     detach,
     startSession,
-    endSession,
     addPane,
     removePane,
     activeLeafId,
