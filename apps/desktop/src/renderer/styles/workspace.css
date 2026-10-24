@@ -968,7 +968,18 @@
   flex: 1;
   align-items: center;
   justify-content: center;
+  /* O fundo topográfico (o mesmo do Início) vive só dentro do cartão vazio: `isolate` prende o z-index -1 dele aqui. */
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* O texto fica sobre uma base opaca, para as linhas do fundo não atrapalharem a leitura. */
+.workspace__empty .empty-state {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--surface);
 }

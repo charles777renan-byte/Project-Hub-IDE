@@ -107,6 +107,8 @@ test('o workspace novo abre vazio, com a barra para abrir um terminal de cada pr
   await addProjectAndOpenWorkspace(page, projectName);
 
   await expect(page.getByRole('region', { name: /^Painel / })).toHaveCount(0);
+  // O estado vazio mostra o fundo topográfico animado (o mesmo do Início), só dentro do cartão vazio.
+  await expect(page.locator('.workspace__empty canvas')).toHaveCount(1);
   await expect(
     page.getByText('Escolha um programa na barra acima para abrir um terminal.'),
   ).toBeVisible();
@@ -394,7 +396,7 @@ test('a barra lateral lista a sessão do workspace e leva de volta ao terminal d
   await endShell(page);
 });
 
-test('o workspace não tem fundo topográfico nem violação de CSP', async ({
+test('o workspace com painéis não tem fundo topográfico nem violação de CSP', async ({
   launchApp,
   gitRepo,
 }) => {
