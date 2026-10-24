@@ -8,6 +8,8 @@ import type {
   WorkspaceDto,
 } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Toaster } from '../../src/renderer/components/Toaster';
+import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
@@ -102,9 +104,12 @@ function tree() {
 
 function renderAt(state?: unknown, projectId = 'p1') {
   return render(
-    <MemoryRouter initialEntries={[{ pathname: `/workspaces/${projectId}`, state }]}>
-      {tree()}
-    </MemoryRouter>,
+    <>
+      <MemoryRouter initialEntries={[{ pathname: `/workspaces/${projectId}`, state }]}>
+        {tree()}
+      </MemoryRouter>
+      <Toaster />
+    </>,
   );
 }
 
@@ -142,6 +147,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  notify.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -187,6 +193,21 @@ describe('WorkspacePage', () => {
     expect(alert).toHaveTextContent('Não abriu');
     const pane = screen.getByRole('region', { name: 'Painel PowerShell' });
     expect(within(pane).getByRole('alert')).toBe(alert);
+  });
+
+  it('layout recusado na gravação sai pelo aviso (alert), não solto na página', async () => {
+    api.workspaces.saveLayout.mockResolvedValue({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'inválido' },
+    });
+    renderAt();
+    const separator = (await screen.findAllByRole('separator'))[0];
+    if (separator === undefined) throw new Error('sem separador');
+    separator.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    const alert = await screen.findByRole('alert', {}, { timeout: 3000 });
+    expect(alert).toHaveTextContent('O layout não pôde ser gravado e não será tentado de novo.');
+    expect(alert.closest('[aria-label="Avisos"]')).not.toBeNull();
   });
 
   it('location.state.showTerminal põe o terminal no painel ativo uma vez e limpa o estado', async () => {

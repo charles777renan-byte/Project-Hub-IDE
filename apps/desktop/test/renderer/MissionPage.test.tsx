@@ -8,6 +8,8 @@ import type {
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Link, MemoryRouter, Route, Routes } from 'react-router';
+import { Toaster } from '../../src/renderer/components/Toaster';
+import { notify } from '../../src/renderer/notify';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
@@ -96,16 +98,20 @@ function installApi(initial: MissionViewDto) {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
-      <Routes>
-        <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
-        <Route path={ROUTE_PATHS.projectDetail} element={<p>Página do projeto</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <>
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <Routes>
+          <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
+          <Route path={ROUTE_PATHS.projectDetail} element={<p>Página do projeto</p>} />
+        </Routes>
+      </MemoryRouter>
+      <Toaster />
+    </>,
   );
 }
 
 afterEach(() => {
+  notify.clear();
   Reflect.deleteProperty(window, 'projectHub');
 });
 
@@ -157,7 +163,7 @@ describe('MissionPage: cabeçalho', () => {
     writeText.mockRestore();
   });
 
-  it('se a cópia falha, o resumo diz que não foi possível copiar', async () => {
+  it('se a cópia falha, o aviso diz que não foi possível copiar o caminho', async () => {
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     const user = userEvent.setup();
     const writeText = vi
@@ -167,8 +173,11 @@ describe('MissionPage: cabeçalho', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Copiar caminho' }));
 
-    const feedback = await screen.findByText('Não foi possível copiar o caminho.');
-    expect(feedback).toHaveAttribute('aria-live', 'polite');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível copiar o caminho.',
+    );
+    const summary = screen.getByRole('region', { name: 'Resumo da missão' });
+    expect(within(summary).queryByText('Não foi possível copiar o caminho.')).toBeNull();
     expect(screen.queryByText('Copiado')).toBeNull();
     writeText.mockRestore();
   });

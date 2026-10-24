@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router';
 import { App } from './App';
 import { OverviewCounters } from './components/OverviewCounters';
+import { Toaster } from './components/Toaster';
 
 // Os estilos não são importados aqui: o index.html liga os arquivos CSS por <link> (ver o comentário
 // dele). HashRouter porque em produção o renderer roda de file://, onde as rotas não podem mudar o
@@ -17,5 +18,6 @@ createRoot(container).render(
     <HashRouter>
       <App headerStatus={<OverviewCounters />} />
     </HashRouter>
+    <Toaster />
   </StrictMode>,
 );

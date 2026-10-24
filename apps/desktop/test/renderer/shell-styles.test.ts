@@ -500,11 +500,9 @@ describe('layout do workspace da missão', () => {
     );
   });
 
-  it('o aviso da cópia do caminho usa lima quando copia e vermelho quando falha', () => {
+  // A falha da cópia saiu daqui para o aviso (Toaster, Tarefa 9): sobrou só o "Copiado", em lima.
+  it('o "Copiado" da cópia do caminho usa lima', () => {
     expect(ruleDeclarations(appCss, '.mission-meta__feedback').get('color')).toBe('var(--lime)');
-    expect(ruleDeclarations(appCss, '.mission-meta__feedback--failed').get('color')).toBe(
-      'var(--red)',
-    );
   });
 
   // Atualizado na identidade visual (Tarefa 6): as abas de seção viram pílulas uniformes. A cor por tipo
