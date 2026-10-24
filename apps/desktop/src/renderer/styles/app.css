@@ -1672,3 +1672,20 @@ button:disabled {
 .terminal-view .xterm-bg-15 {
   background-color: #ffffff;
 }
+
+/*
+ * Dica de botão (Hint.tsx, Radix Tooltip): flutua sobre a barra e os painéis, com a mesma superfície do menu "+".
+ * Só tokens neutros. Radix posiciona pelo CSSOM (element.style), que a CSP estrita permite.
+ */
+.hint {
+  z-index: 50;
+  max-width: 20rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  pointer-events: none;
+}
