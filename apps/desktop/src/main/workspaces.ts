@@ -1,37 +1,24 @@
 import { failure, type ProjectRepository } from '@project-hub/application';
 import {
+  LAYOUT_LIMITS,
   workspaceLayoutSchema,
   type AppResult,
   type LayoutLeaf,
   type LayoutNode,
+  type ProviderId,
   type WorkspaceDto,
 } from '@project-hub/contracts';
+import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database';
 import type { TerminalService } from './terminals';
-
-/** O layout de um workspace novo: Claude à esquerda, Codex e PowerShell empilhados à direita. */
-export function defaultLayout(newId: () => string): LayoutNode {
-  return {
-    type: 'split',
-    id: newId(),
-    direction: 'row',
-    ratio: 0.52,
-    first: { type: 'leaf', id: newId(), provider: 'claude', terminalId: null },
-    second: {
-      type: 'split',
-      id: newId(),
-      direction: 'column',
-      ratio: 0.5,
-      first: { type: 'leaf', id: newId(), provider: 'codex', terminalId: null },
-      second: { type: 'leaf', id: newId(), provider: 'shell', terminalId: null },
-    },
-  };
-}
 
 export type WorkspaceServiceDeps = {
   repo: WorkspaceRepository;
   projects: Pick<ProjectRepository, 'get'>;
-  terminals: Pick<TerminalService, 'openSession' | 'closeSession' | 'knownIds' | 'stateOf'>;
+  terminals: Pick<
+    TerminalService,
+    'openSession' | 'closeSession' | 'knownIds' | 'stateOf' | 'isMissionSession'
+  >;
   now: () => string;
   newId: () => string;
 };
@@ -44,9 +31,14 @@ export type WorkspaceService = {
   open(projectId: string): Promise<AppResult<WorkspaceDto>>;
   /** Só marca como fechado: as sessões dos painéis seguem vivas. */
   close(workspaceId: string): Promise<AppResult<undefined>>;
-  saveLayout(workspaceId: string, layout: LayoutNode): Promise<AppResult<undefined>>;
+  /** `null` é o workspace vazio, sem nenhum painel. */
+  saveLayout(workspaceId: string, layout: LayoutNode | null): Promise<AppResult<undefined>>;
   startSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
+  /** Abre a sessão do provedor e cria o painel dela; os painéis se reorganizam. Sem sessão aberta, sem painel. */
+  addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
+  /** Encerra a sessão do painel (menos a de missão) e tira o painel; os que sobram se reorganizam. */
+  removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
 };
 
 const OK: AppResult<undefined> = { ok: true, data: undefined };
@@ -55,10 +47,10 @@ const NO_PANE = 'O painel não foi encontrado.';
 const INVALID_LAYOUT = 'O layout não é válido.';
 
 /**
- * O layout, se o valor vale. O zod desce a árvore por recursão: uma árvore de milhares de níveis
+ * O layout, se o valor vale (`null` vale: é o workspace vazio); `undefined` é inválido. O zod desce a árvore por recursão: uma árvore de milhares de níveis
  * estoura a pilha e lança em vez de devolver falha, então o erro também conta como inválido.
  */
-function validLayout(value: unknown): LayoutNode | undefined {
+function validLayout(value: unknown): LayoutNode | null | undefined {
   try {
     const parsed = workspaceLayoutSchema.safeParse(value);
     return parsed.success ? parsed.data : undefined;
@@ -67,7 +59,7 @@ function validLayout(value: unknown): LayoutNode | undefined {
   }
 }
 
-function parseStored(json: string): LayoutNode | undefined {
+function parseStored(json: string): LayoutNode | null | undefined {
   try {
     return validLayout(JSON.parse(json));
   } catch {
@@ -75,7 +67,8 @@ function parseStored(json: string): LayoutNode | undefined {
   }
 }
 
-function leavesOf(node: LayoutNode): LayoutLeaf[] {
+function leavesOf(node: LayoutNode | null): LayoutLeaf[] {
+  if (node === null) return [];
   return node.type === 'leaf' ? [node] : [...leavesOf(node.first), ...leavesOf(node.second)];
 }
 
@@ -105,7 +98,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     return run;
   }
 
-  function toDto(record: WorkspaceRecord, layout: LayoutNode): WorkspaceDto {
+  function toDto(record: WorkspaceRecord, layout: LayoutNode | null): WorkspaceDto {
     return {
       id: record.id,
       projectId: record.projectId,
@@ -115,16 +108,15 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     };
   }
 
-  /** O layout guardado. Se não vale (JSON quebrado, fora dos limites), vale o padrão, e ele é gravado. */
-  function storedLayout(record: WorkspaceRecord): LayoutNode {
+  /** O layout guardado. Se não vale (JSON quebrado, fora dos limites), o workspace fica vazio (`null`), e isso é gravado. */
+  function storedLayout(record: WorkspaceRecord): LayoutNode | null {
     const layout = parseStored(record.layout);
     if (layout !== undefined) return layout;
-    const fallback = defaultLayout(newId);
-    repo.updateLayout(record.id, JSON.stringify(fallback), now());
-    return fallback;
+    repo.updateLayout(record.id, JSON.stringify(null), now());
+    return null;
   }
 
-  function persist(record: WorkspaceRecord, layout: LayoutNode): WorkspaceDto {
+  function persist(record: WorkspaceRecord, layout: LayoutNode | null): WorkspaceDto {
     repo.updateLayout(record.id, JSON.stringify(layout), now());
     return toDto(repo.get(record.id) ?? record, layout);
   }
@@ -140,7 +132,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       repo.insert({
         id: workspaceId,
         projectId,
-        layout: JSON.stringify(defaultLayout(newId)),
+        layout: JSON.stringify(null),
         isOpen: false,
         position: 0,
         lastActiveAt: at,
@@ -162,7 +154,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     held.forEach((id, index) => {
       if (states[index] === 'unknown') gone.add(id);
     });
-    if (gone.size > 0) {
+    if (layout !== null && gone.size > 0) {
       layout = mapLeaves(layout, (leaf) =>
         leaf.terminalId !== null && gone.has(leaf.terminalId)
           ? { ...leaf, terminalId: null }
@@ -175,7 +167,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
   async function saveLayout(
     workspaceId: string,
-    layout: LayoutNode,
+    layout: LayoutNode | null,
   ): Promise<AppResult<undefined>> {
     const record = repo.get(workspaceId);
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
@@ -185,10 +177,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     // Um terminal só entra no layout se é do projeto ou se já estava nele.
     const allowed = new Set(await terminals.knownIds(record.projectId));
     const before = parseStored(record.layout);
-    if (before !== undefined) {
-      for (const leaf of leavesOf(before)) {
-        if (leaf.terminalId !== null) allowed.add(leaf.terminalId);
-      }
+    for (const leaf of leavesOf(before ?? null)) {
+      if (leaf.terminalId !== null) allowed.add(leaf.terminalId);
     }
     const foreign = leavesOf(valid).find(
       (leaf) => leaf.terminalId !== null && !allowed.has(leaf.terminalId),
@@ -208,7 +198,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
     const layout = storedLayout(record);
     const leaf = leavesOf(layout).find((candidate) => candidate.id === leafId);
-    if (leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
+    if (layout === null || leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
 
     if (leaf.terminalId !== null) {
       if ((await terminals.stateOf(leaf.terminalId)) === 'running') {
@@ -230,7 +220,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
     const layout = storedLayout(record);
     const leaf = leavesOf(layout).find((candidate) => candidate.id === leafId);
-    if (leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
+    if (layout === null || leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
     if (leaf.terminalId === null) {
       return failure('VALIDATION_FAILED', 'Este painel não tem sessão.');
     }
@@ -239,6 +229,50 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     // Encerrar é idempotente: uma sessão que já não existe só deixa o painel vazio.
     if (!closed.ok && closed.error.code !== 'TERMINAL_NOT_FOUND') return closed;
     return { ok: true, data: persist(record, setTerminal(layout, leafId, null)) };
+  }
+
+  async function addPane(
+    workspaceId: string,
+    provider: ProviderId,
+  ): Promise<AppResult<WorkspaceDto>> {
+    const record = repo.get(workspaceId);
+    if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
+    const leaves = leavesOf(storedLayout(record));
+    // O limite vem antes: depois de aberta, a sessão teria de ser desfeita.
+    if (leaves.length >= LAYOUT_LIMITS.maxLeaves) {
+      return failure(
+        'VALIDATION_FAILED',
+        `O workspace já tem o máximo de ${LAYOUT_LIMITS.maxLeaves} painéis.`,
+      );
+    }
+    const session = await terminals.openSession(record.projectId, provider);
+    if (!session.ok) return session;
+    const { terminalId } = session.data;
+    try {
+      const pane: LayoutLeaf = { type: 'leaf', id: newId(), provider, terminalId };
+      return { ok: true, data: persist(record, arrangeLeaves([...leaves, pane], newId)) };
+    } catch (error) {
+      // Sem o painel no layout, a sessão aberta ficaria órfã: nenhuma tela a mostraria.
+      await terminals.closeSession(terminalId).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async function removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>> {
+    const record = repo.get(workspaceId);
+    if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
+    const leaves = leavesOf(storedLayout(record));
+    const leaf = leaves.find((candidate) => candidate.id === leafId);
+    if (leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
+
+    // A sessão de uma missão é da missão: o painel sai, o agente segue (cancelar é pela missão).
+    if (leaf.terminalId !== null && !terminals.isMissionSession(leaf.terminalId)) {
+      const closed = await terminals.closeSession(leaf.terminalId);
+      // Sessão que já não existe não impede de tirar o painel; qualquer outra falha o mantém.
+      if (!closed.ok && closed.error.code !== 'TERMINAL_NOT_FOUND') return closed;
+    }
+    const rest = leaves.filter((candidate) => candidate.id !== leafId);
+    return { ok: true, data: persist(record, arrangeLeaves(rest, newId)) };
   }
 
   return {
@@ -266,5 +300,9 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     startSession: (workspaceId, leafId) => serial(() => startSession(workspaceId, leafId)),
 
     endSession: (workspaceId, leafId) => serial(() => endSession(workspaceId, leafId)),
+
+    addPane: (workspaceId, provider) => serial(() => addPane(workspaceId, provider)),
+
+    removePane: (workspaceId, leafId) => serial(() => removePane(workspaceId, leafId)),
   };
 }

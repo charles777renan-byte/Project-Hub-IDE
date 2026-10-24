@@ -52,6 +52,8 @@ describe('CHANNELS', () => {
         'workspaces:save-layout:v1',
         'workspaces:start-session:v1',
         'workspaces:end-session:v1',
+        'workspaces:add-pane:v1',
+        'workspaces:remove-pane:v1',
         'providers:list:v1',
       ]),
     );
