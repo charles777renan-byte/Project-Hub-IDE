@@ -37,9 +37,8 @@ function setup(over: Partial<PaneViewProps> = {}) {
     busy: false,
     onActivate: vi.fn(),
     onStart: vi.fn(),
-    onEnd: vi.fn(),
     onDetach: vi.fn(),
-    onClear: vi.fn(),
+    onClose: vi.fn(),
     ...over,
   };
   const view = render(<PaneView {...props} />);
@@ -91,8 +90,9 @@ describe('PaneView', () => {
     expect(screen.getByText('Corrigir login')).toBeInTheDocument();
     expect(screen.getByText('Ativo')).toBeInTheDocument();
     expect(screen.getByText('recuperada')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Encerrar' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tirar do painel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
+    // Tirar do painel só existe para sessão de missão (o processo dela não se encerra por aqui).
+    expect(screen.queryByRole('button', { name: 'Tirar do painel' })).not.toBeInTheDocument();
     const terminal = screen.getByTestId('terminal-view');
     expect(terminal).toHaveTextContent('t1');
     expect(terminal).toHaveAttribute('data-active', 'true');
@@ -108,22 +108,32 @@ describe('PaneView', () => {
     expect(screen.getByText('Aguardando')).toBeInTheDocument();
   });
 
-  it('sessão de missão não tem Encerrar, mas pode sair do painel', async () => {
+  it('sessão de missão não tem Encerrar, pode sair do painel e fecha sem confirmar o processo', async () => {
     const { props } = setup({ terminal: { ...session, missionId: 'm1' } });
     expect(screen.queryByRole('button', { name: 'Encerrar' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Tirar do painel' }));
     expect(props.onDetach).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar painel' }));
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('encerrar pede confirmação antes de chamar onEnd', async () => {
+  it('fechar com a sessão rodando pede confirmação antes de chamar onClose', async () => {
     const { props } = setup();
-    await userEvent.click(screen.getByRole('button', { name: 'Encerrar' }));
-    expect(props.onEnd).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Encerrar' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar painel' }));
+    expect(props.onClose).not.toHaveBeenCalled();
     const group = screen.getByRole('group', {
-      name: 'Encerrar a sessão? O processo será finalizado.',
+      name: 'Fechar o painel? O processo será finalizado.',
     });
-    await userEvent.click(within(group).getByRole('button', { name: 'Encerrar' }));
-    expect(props.onEnd).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(group).getByRole('button', { name: 'Fechar painel' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('o lançador também tem o botão de fechar painel', async () => {
+    const { props } = setup({ leaf: emptyLeaf, terminal: undefined });
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar painel' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
   it('sessão encerrada mostra o aviso, as ações e a última saída', async () => {
@@ -132,15 +142,16 @@ describe('PaneView', () => {
     expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Iniciar de novo' }));
     expect(props.onStart).toHaveBeenCalledTimes(1);
-    await userEvent.click(screen.getByRole('button', { name: 'Limpar painel' }));
-    expect(props.onClear).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Limpar painel' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar painel' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(props.onDetach).not.toHaveBeenCalled();
   });
 
   it('sessão encerrada de missão não oferece Iniciar de novo', () => {
     setup({ terminal: { ...session, state: 'exited', missionId: 'm1' } });
     expect(screen.queryByRole('button', { name: 'Iniciar de novo' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Limpar painel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
   });
 
   it('terminalId fora da lista mostra o aviso, sem terminal', () => {
@@ -149,7 +160,7 @@ describe('PaneView', () => {
     expect(screen.queryByTestId('terminal-view')).not.toBeInTheDocument();
     // Sem registro não há como saber se era de missão: oferecer reiniciar é o caso comum.
     expect(screen.getByRole('button', { name: 'Iniciar de novo' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Limpar painel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
   });
 
   it('clicar no painel chama onActivate', async () => {
@@ -179,12 +190,12 @@ describe('PaneView', () => {
     expect(pane).toHaveAttribute('data-active', 'false');
   });
 
-  it('ocupado desabilita iniciar e encerrar', () => {
+  it('ocupado desabilita iniciar e fechar', () => {
     const first = setup({ leaf: emptyLeaf, terminal: undefined, busy: true });
     expect(screen.getByRole('button', { name: 'Iniciar Claude Code' })).toBeDisabled();
     first.unmount();
     const second = setup({ busy: true });
-    expect(screen.getByRole('button', { name: 'Encerrar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeDisabled();
     second.unmount();
     setup({ terminal: undefined, busy: true });
     expect(screen.getByRole('button', { name: 'Iniciar de novo' })).toBeDisabled();

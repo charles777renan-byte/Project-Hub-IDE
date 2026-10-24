@@ -49,6 +49,10 @@ export const CHANNELS = {
   /** Abre a sessão do provedor de um painel. */
   workspacesStartSession: 'workspaces:start-session:v1',
   workspacesEndSession: 'workspaces:end-session:v1',
+  /** Abre a sessão do programa e cria o painel dela, num pedido só. */
+  workspacesAddPane: 'workspaces:add-pane:v1',
+  /** Encerra a sessão do painel e o tira do layout, num pedido só. */
+  workspacesRemovePane: 'workspaces:remove-pane:v1',
   /** Programas que os painéis sabem abrir, com a disponibilidade de cada um. */
   providersList: 'providers:list:v1',
 } as const;

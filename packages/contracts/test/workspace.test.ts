@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { arrangeLeaves } from '../src/layout-arrange';
 import {
   LAYOUT_LIMITS,
+  addPaneInputSchema,
   layoutIssue,
   paneInputSchema,
   providerIdSchema,
@@ -74,6 +76,27 @@ describe('workspaceLayoutSchema', () => {
     expect(workspaceLayoutSchema.safeParse(doze).success).toBe(true);
     expect(workspaceLayoutSchema.safeParse(treze).success).toBe(false);
     expect(layoutIssue(treze)).toEqual(expect.any(String));
+  });
+
+  it('recusa 13 folhas mesmo na organização automática', () => {
+    const folhas = Array.from({ length: 13 }, (_, n) => leaf(`o${n}`));
+    let count = 0;
+    const organizado = arrangeLeaves(folhas, () => `os${count++}`);
+    expect(organizado).not.toBeNull();
+    expect(workspaceLayoutSchema.safeParse(organizado).success).toBe(false);
+  });
+
+  it('o pedido de abrir painel exige workspace e um provedor conhecido', () => {
+    expect(addPaneInputSchema.safeParse({ workspaceId: 'w', provider: 'codex' }).success).toBe(
+      true,
+    );
+    expect(addPaneInputSchema.safeParse({ workspaceId: '', provider: 'codex' }).success).toBe(
+      false,
+    );
+    expect(addPaneInputSchema.safeParse({ workspaceId: 'w', provider: 'bash' }).success).toBe(
+      false,
+    );
+    expect(addPaneInputSchema.safeParse({ workspaceId: 'w' }).success).toBe(false);
   });
 
   it('aceita profundidade 6 e recusa 7', () => {

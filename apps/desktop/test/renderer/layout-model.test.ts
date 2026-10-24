@@ -151,3 +151,20 @@ describe('withRatio', () => {
     expect(withRatio(original, 'raiz', 0.99)).not.toBe(original);
   });
 });
+
+describe('layout vazio (null)', () => {
+  it('leavesOf(null) é lista vazia', () => {
+    expect(leavesOf(null)).toEqual([]);
+  });
+
+  it('findLeaf, leafHolding e firstFreeLeaf devolvem undefined', () => {
+    expect(findLeaf(null, 'a')).toBeUndefined();
+    expect(firstFreeLeaf(null)).toBeUndefined();
+    expect(leafHolding(null, 't1')).toBeUndefined();
+  });
+
+  it('withRatio e withTerminal devolvem null', () => {
+    expect(withRatio(null, 'raiz', 0.3)).toBeNull();
+    expect(withTerminal(null, 'a', 't1')).toBeNull();
+  });
+});

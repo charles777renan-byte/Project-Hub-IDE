@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./layout-limits": "./src/layout-limits.ts"
+    "./layout-limits": "./src/layout-limits.ts",
+    "./layout-arrange": "./src/layout-arrange.ts"
   },
   "scripts": {
     "typecheck": "tsc",

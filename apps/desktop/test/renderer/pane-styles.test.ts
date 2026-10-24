@@ -164,4 +164,15 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__launcher').get('padding')).toBe('0');
     expect(rule(".pane__launcher [role='alert']").get('padding')).toBe('0 var(--space-3)');
   });
+
+  it('a barra de abrir terminais é um cartão compacto em --surface, sem cor nova nem lima', () => {
+    const bar = rule('.workspace__toolbar');
+    expect(bar.get('background')).toBe('var(--surface)');
+    expect(bar.get('border-radius')).toBe('var(--radius-card)');
+    expect(bar.get('gap')).toBe('var(--space-2)');
+    for (const selector of ['.workspace__toolbar', '.workspace__open', '.workspace__empty']) {
+      for (const value of rule(selector).values())
+        expect(value).not.toMatch(/--accent|#[0-9a-f]{3,6}/i);
+    }
+  });
 });

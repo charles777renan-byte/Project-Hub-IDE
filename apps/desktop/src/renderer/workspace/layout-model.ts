@@ -8,27 +8,40 @@ import type { LayoutLeaf, LayoutNode } from '@project-hub/contracts';
  */
 
 /** As folhas da esquerda/cima para a direita/baixo. */
-export function leavesOf(node: LayoutNode): LayoutLeaf[] {
+export function leavesOf(node: LayoutNode | null): LayoutLeaf[] {
+  if (node === null) return [];
   if (node.type === 'leaf') return [node];
   return [...leavesOf(node.first), ...leavesOf(node.second)];
 }
 
-export function findLeaf(node: LayoutNode, leafId: string): LayoutLeaf | undefined {
+export function findLeaf(node: LayoutNode | null, leafId: string): LayoutLeaf | undefined {
   return leavesOf(node).find((leaf) => leaf.id === leafId);
 }
 
 /** A folha que guarda a sessão de terminal, se alguma guarda. */
-export function leafHolding(node: LayoutNode, terminalId: string): LayoutLeaf | undefined {
+export function leafHolding(node: LayoutNode | null, terminalId: string): LayoutLeaf | undefined {
   return leavesOf(node).find((leaf) => leaf.terminalId === terminalId);
 }
 
 /** A primeira folha sem sessão aberta. */
-export function firstFreeLeaf(node: LayoutNode): LayoutLeaf | undefined {
+export function firstFreeLeaf(node: LayoutNode | null): LayoutLeaf | undefined {
   return leavesOf(node).find((leaf) => leaf.terminalId === null);
 }
 
 /** Muda o `ratio` de uma divisão, limitado a `LAYOUT_LIMITS`. Divisão inexistente não muda nada. */
-export function withRatio(node: LayoutNode, splitId: string, ratio: number): LayoutNode {
+export function withRatio(node: LayoutNode, splitId: string, ratio: number): LayoutNode;
+export function withRatio(node: null, splitId: string, ratio: number): null;
+export function withRatio(
+  node: LayoutNode | null,
+  splitId: string,
+  ratio: number,
+): LayoutNode | null;
+export function withRatio(
+  node: LayoutNode | null,
+  splitId: string,
+  ratio: number,
+): LayoutNode | null {
+  if (node === null) return null;
   if (node.type === 'leaf') return node;
 
   if (node.id === splitId) {
@@ -49,7 +62,19 @@ export function withTerminal(
   node: LayoutNode,
   leafId: string,
   terminalId: string | null,
-): LayoutNode {
+): LayoutNode;
+export function withTerminal(node: null, leafId: string, terminalId: string | null): null;
+export function withTerminal(
+  node: LayoutNode | null,
+  leafId: string,
+  terminalId: string | null,
+): LayoutNode | null;
+export function withTerminal(
+  node: LayoutNode | null,
+  leafId: string,
+  terminalId: string | null,
+): LayoutNode | null {
+  if (node === null) return null;
   if (findLeaf(node, leafId) === undefined) return node;
 
   const apply = (current: LayoutNode): LayoutNode => {

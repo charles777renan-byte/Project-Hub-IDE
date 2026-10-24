@@ -8,10 +8,14 @@ import {
 import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database';
 import { describe, expect, it, vi } from 'vitest';
 import type { TerminalService } from '../src/main/terminals';
-import { createWorkspaceService, defaultLayout } from '../src/main/workspaces';
+import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import { createWorkspaceService } from '../src/main/workspaces';
 
 type ProjectRecord = NonNullable<ReturnType<ProjectRepository['get']>>;
-type TerminalsPort = Pick<TerminalService, 'openSession' | 'closeSession' | 'knownIds' | 'stateOf'>;
+type TerminalsPort = Pick<
+  TerminalService,
+  'openSession' | 'closeSession' | 'knownIds' | 'stateOf' | 'isMissionSession'
+>;
 
 const projectA = { id: 'p1', name: 'app', path: 'C:/dev/app' } as ProjectRecord;
 const projectB = { id: 'p2', name: 'outro', path: 'C:/dev/outro' } as ProjectRecord;
@@ -101,6 +105,10 @@ function setup(
     known?: Record<string, string[]>;
     closeResult?: (terminalId: string) => AppResult<undefined>;
     openResult?: AppResult<{ terminalId: string }>;
+    /** Ids das sessões de missão (agente). */
+    missions?: string[];
+    /** Gera o id da sessão que cada `openSession` devolve (padrão: `novo`). */
+    openIds?: () => string;
   } = {},
 ) {
   const memory = memoryRepo(options.records);
@@ -109,7 +117,10 @@ function setup(
     openSession: vi.fn((_projectId: string, provider: ProviderId) => {
       calls.push(`open:${provider}`);
       return Promise.resolve(
-        options.openResult ?? { ok: true as const, data: { terminalId: 'novo' } },
+        options.openResult ?? {
+          ok: true as const,
+          data: { terminalId: options.openIds?.() ?? 'novo' },
+        },
       );
     }),
     closeSession: vi.fn((terminalId: string) => {
@@ -123,6 +134,9 @@ function setup(
     ),
     stateOf: vi.fn((terminalId: string) =>
       Promise.resolve(options.states?.[terminalId] ?? 'unknown'),
+    ),
+    isMissionSession: vi.fn(
+      (terminalId: string) => options.missions?.includes(terminalId) ?? false,
     ),
   };
   const projects = {
@@ -138,52 +152,19 @@ function setup(
   return { service, terminals, calls, ...memory };
 }
 
-function stored(rows: Map<string, WorkspaceRecord>, id: string): LayoutNode {
+function stored(rows: Map<string, WorkspaceRecord>, id: string): LayoutNode | null {
   const row = rows.get(id);
   if (row === undefined) throw new Error(`workspace ${id} não existe`);
-  return JSON.parse(row.layout) as LayoutNode;
+  return JSON.parse(row.layout) as LayoutNode | null;
 }
 
-function leavesOf(node: LayoutNode): Extract<LayoutNode, { type: 'leaf' }>[] {
+function leavesOf(node: LayoutNode | null): Extract<LayoutNode, { type: 'leaf' }>[] {
+  if (node === null) return [];
   return node.type === 'leaf' ? [node] : [...leavesOf(node.first), ...leavesOf(node.second)];
 }
 
-function idsOf(node: LayoutNode): string[] {
-  return node.type === 'leaf' ? [node.id] : [node.id, ...idsOf(node.first), ...idsOf(node.second)];
-}
-
-describe('defaultLayout', () => {
-  it('é a raiz row 0.52 com claude, e a coluna 0.5 com codex e shell', () => {
-    const layout = defaultLayout(counter('n'));
-
-    expect(layout).toMatchObject({
-      type: 'split',
-      direction: 'row',
-      ratio: 0.52,
-      first: { type: 'leaf', provider: 'claude', terminalId: null },
-      second: {
-        type: 'split',
-        direction: 'column',
-        ratio: 0.5,
-        first: { type: 'leaf', provider: 'codex', terminalId: null },
-        second: { type: 'leaf', provider: 'shell', terminalId: null },
-      },
-    });
-  });
-
-  it('tem ids distintos, todas as folhas sem terminal, e passa no schema', () => {
-    const layout = defaultLayout(counter('n'));
-
-    const ids = idsOf(layout);
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(5);
-    expect(leavesOf(layout).every((l) => l.terminalId === null)).toBe(true);
-    expect(workspaceLayoutSchema.safeParse(layout).success).toBe(true);
-  });
-});
-
 describe('open', () => {
-  it('cria o workspace com o layout padrão na posição 0, e o segundo projeto na 1', async () => {
+  it('cria o workspace vazio (layout null) na posição 0, e o segundo projeto na 1', async () => {
     const { service, rows } = setup();
 
     const first = await service.open('p1');
@@ -195,9 +176,9 @@ describe('open', () => {
     });
     expect(second).toMatchObject({ ok: true, data: { projectId: 'p2', position: 1 } });
     if (!first.ok) throw new Error('esperava sucesso');
-    expect(workspaceLayoutSchema.safeParse(first.data.layout).success).toBe(true);
+    expect(first.data.layout).toBeNull();
     expect(rows.size).toBe(2);
-    expect(stored(rows, first.data.id)).toEqual(first.data.layout);
+    expect(rows.get(first.data.id)?.layout).toBe('null');
   });
 
   it('um workspace já aberto mantém a posição', async () => {
@@ -246,25 +227,19 @@ describe('open', () => {
         ),
       ),
     ],
-  ])('layout guardado com %s volta ao padrão e é regravado', async (_case, layout) => {
+  ])('layout guardado com %s vira workspace vazio e é regravado', async (_case, layout) => {
     const { service, rows, updateLayout } = setup({ records: [record({ layout })] });
 
     const result = await service.open('p1');
 
     expect(result).toMatchObject({ ok: true, data: { id: 'w1' } });
     if (!result.ok) throw new Error('esperava sucesso');
-    expect(workspaceLayoutSchema.safeParse(result.data.layout).success).toBe(true);
-    expect(leavesOf(result.data.layout).map((l) => l.provider)).toEqual([
-      'claude',
-      'codex',
-      'shell',
-    ]);
+    expect(result.data.layout).toBeNull();
     expect(updateLayout).toHaveBeenCalledTimes(1);
-    expect(stored(rows, 'w1')).toEqual(result.data.layout);
-    expect(rows.has('w1')).toBe(true);
+    expect(rows.get('w1')?.layout).toBe('null');
   });
 
-  it('layout guardado com milhares de níveis volta ao padrão, sem lançar erro', async () => {
+  it('layout guardado com milhares de níveis vira workspace vazio, sem lançar erro', async () => {
     let deep: unknown = { type: 'leaf', id: 'fundo', provider: 'shell', terminalId: null };
     for (let n = 0; n < 5000; n += 1) {
       deep = {
@@ -282,8 +257,17 @@ describe('open', () => {
 
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) throw new Error('esperava sucesso');
-    expect(workspaceLayoutSchema.safeParse(result.data.layout).success).toBe(true);
-    expect(stored(rows, 'w1')).toEqual(result.data.layout);
+    expect(result.data.layout).toBeNull();
+    expect(rows.get('w1')?.layout).toBe('null');
+  });
+
+  it('layout guardado como "null" abre vazio, sem regravar', async () => {
+    const { service, updateLayout } = setup({ records: [record({ layout: 'null' })] });
+
+    const result = await service.open('p1');
+
+    expect(result).toMatchObject({ ok: true, data: { id: 'w1', layout: null } });
+    expect(updateLayout).not.toHaveBeenCalled();
   });
 
   it('zera o terminalId cujo estado é unknown e mantém o de uma sessão encerrada', async () => {
@@ -386,6 +370,28 @@ describe('saveLayout', () => {
       error: { code: 'VALIDATION_FAILED', message: 'O layout não é válido.' },
     });
     expect(updateLayout).not.toHaveBeenCalled();
+  });
+
+  it('aceita layout null (workspace vazio) e grava "null"', async () => {
+    const { service, rows } = setup({ records: [record({ layout: base })] });
+
+    const result = await service.saveLayout('w1', null);
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(rows.get('w1')?.layout).toBe('null');
+  });
+
+  it('em workspace vazio guardado, salva um layout só com terminais do projeto', async () => {
+    const { service, rows } = setup({
+      records: [record({ layout: 'null' })],
+      known: { p1: ['meu'] },
+    });
+
+    expect(await service.saveLayout('w1', leaf('l1', 'shell', 'meu'))).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(leavesOf(stored(rows, 'w1')).map((l) => l.terminalId)).toEqual(['meu']);
   });
 
   it('workspace inexistente devolve VALIDATION_FAILED', async () => {
@@ -579,6 +585,287 @@ describe('endSession', () => {
   });
 });
 
+describe('addPane', () => {
+  const seq = () => ({ openIds: counter('t') });
+
+  it('em workspace vazio cria 1 folha com o provedor e o terminalId da sessão aberta', async () => {
+    const { service, terminals, rows } = setup({
+      records: [record({ layout: 'null' })],
+      openIds: () => 'sessao-1',
+    });
+
+    const result = await service.addPane('w1', 'codex');
+
+    expect(terminals.openSession).toHaveBeenCalledWith('p1', 'codex');
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data.layout).toMatchObject({
+      type: 'leaf',
+      provider: 'codex',
+      terminalId: 'sessao-1',
+    });
+    expect(stored(rows, 'w1')).toEqual(result.data.layout);
+  });
+
+  it('depois de 3 chamadas há 3 folhas na organização de arrangeLeaves', async () => {
+    const { service, rows } = setup({ records: [record({ layout: 'null' })], ...seq() });
+
+    await service.addPane('w1', 'claude');
+    await service.addPane('w1', 'shell');
+    const third = await service.addPane('w1', 'shell');
+
+    if (!third.ok) throw new Error('esperava sucesso');
+    const layout = third.data.layout;
+    expect(leavesOf(layout).map((l) => [l.provider, l.terminalId])).toEqual([
+      ['claude', 't1'],
+      ['shell', 't2'],
+      ['shell', 't3'],
+    ]);
+    // 3 folhas: uma à esquerda e duas empilhadas à direita.
+    expect(layout).toMatchObject({
+      type: 'split',
+      direction: 'row',
+      first: { type: 'leaf' },
+      second: { type: 'split', direction: 'column' },
+    });
+    expect(workspaceLayoutSchema.safeParse(layout).success).toBe(true);
+    expect(stored(rows, 'w1')).toEqual(layout);
+  });
+
+  it('provedor indisponível devolve a falha e o layout fica igual', async () => {
+    const failed: AppResult<{ terminalId: string }> = {
+      ok: false,
+      error: { code: 'PROCESS_START_FAILED', message: 'Codex ausente.', retryable: false },
+    };
+    const { service, updateLayout, rows } = setup({
+      records: [record({ layout: JSON.stringify(pair(null, null)) })],
+      openResult: failed,
+    });
+
+    const result = await service.addPane('w1', 'codex');
+
+    expect(result).toEqual(failed);
+    expect(updateLayout).not.toHaveBeenCalled();
+    expect(leavesOf(stored(rows, 'w1'))).toHaveLength(2);
+  });
+
+  it('com 12 folhas recusa com VALIDATION_FAILED e não abre sessão', async () => {
+    const twelve = arrangeLeaves(
+      Array.from({ length: 12 }, (_, n) => ({
+        type: 'leaf' as const,
+        id: `f${n}`,
+        provider: 'shell' as const,
+        terminalId: null,
+      })),
+      counter('s'),
+    );
+    const { service, terminals, updateLayout } = setup({
+      records: [record({ layout: JSON.stringify(twelve) })],
+    });
+
+    const result = await service.addPane('w1', 'shell');
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'O workspace já tem o máximo de 12 painéis.',
+      },
+    });
+    expect(terminals.openSession).not.toHaveBeenCalled();
+    expect(updateLayout).not.toHaveBeenCalled();
+  });
+
+  it('dois addPane simultâneos resultam em 2 painéis (fila serial)', async () => {
+    const { service, terminals } = setup({ records: [record({ layout: 'null' })], ...seq() });
+
+    const [a, b] = await Promise.all([
+      service.addPane('w1', 'shell'),
+      service.addPane('w1', 'shell'),
+    ]);
+
+    expect([a.ok, b.ok]).toEqual([true, true]);
+    expect(terminals.openSession).toHaveBeenCalledTimes(2);
+    if (!b.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(b.data.layout).map((l) => l.terminalId)).toEqual(['t1', 't2']);
+  });
+
+  it('workspace inexistente devolve VALIDATION_FAILED, sem abrir sessão', async () => {
+    const { service, terminals } = setup();
+
+    expect(await service.addPane('nenhum', 'shell')).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    expect(terminals.openSession).not.toHaveBeenCalled();
+  });
+
+  it('em layout legado (3 folhas sem sessão) adiciona a quarta e reorganiza as 4', async () => {
+    const legacy = split(
+      's1',
+      leaf('a', 'claude'),
+      split('s2', leaf('b', 'codex'), leaf('c', 'shell'), 0.5, 'column'),
+      0.52,
+    );
+    const { service, rows } = setup({
+      records: [record({ layout: JSON.stringify(legacy) })],
+      openIds: () => 'nova',
+    });
+
+    const result = await service.addPane('w1', 'gemini');
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(result.data.layout).map((l) => [l.id, l.terminalId])).toEqual([
+      ['a', null],
+      ['b', null],
+      ['c', null],
+      [expect.any(String), 'nova'],
+    ]);
+    // 4 folhas: grade 2x2 (coluna de duas linhas).
+    expect(result.data.layout).toMatchObject({
+      type: 'split',
+      direction: 'column',
+      first: { type: 'split', direction: 'row' },
+      second: { type: 'split', direction: 'row' },
+    });
+    expect(stored(rows, 'w1')).toEqual(result.data.layout);
+  });
+
+  it('se a gravação falha depois de abrir a sessão, fecha a sessão aberta', async () => {
+    const { service, updateLayout, calls } = setup({
+      records: [record({ layout: 'null' })],
+      openIds: () => 'orfa',
+    });
+    updateLayout.mockImplementationOnce(() => {
+      throw new Error('disco cheio');
+    });
+
+    await expect(service.addPane('w1', 'shell')).rejects.toThrow('disco cheio');
+
+    expect(calls).toEqual(['open:shell', 'close:orfa']);
+  });
+});
+
+describe('removePane', () => {
+  const three = () =>
+    split(
+      's1',
+      leaf('a', 'claude', 'ta'),
+      split('s2', leaf('b', 'codex', 'tb'), leaf('c', 'shell', null), 0.5, 'column'),
+      0.52,
+    );
+
+  it('folha com sessão: fecha a sessão e remove a folha, reorganizando as restantes', async () => {
+    const { service, calls, rows } = setup({
+      records: [record({ layout: JSON.stringify(three()) })],
+    });
+
+    const result = await service.removePane('w1', 'a');
+
+    expect(calls).toEqual(['close:ta']);
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(result.data.layout).map((l) => l.id)).toEqual(['b', 'c']);
+    // 2 folhas: lado a lado, metade para cada.
+    expect(result.data.layout).toMatchObject({ type: 'split', direction: 'row', ratio: 0.5 });
+    expect(stored(rows, 'w1')).toEqual(result.data.layout);
+  });
+
+  it('closeSession com TERMINAL_NOT_FOUND segue e remove', async () => {
+    const { service } = setup({
+      records: [record({ layout: JSON.stringify(three()) })],
+      closeResult: () => ({
+        ok: false,
+        error: { code: 'TERMINAL_NOT_FOUND', message: 'x', retryable: false },
+      }),
+    });
+
+    const result = await service.removePane('w1', 'b');
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(result.data.layout).map((l) => l.id)).toEqual(['a', 'c']);
+  });
+
+  it('outra falha de closeSession é devolvida e a folha fica', async () => {
+    const { service, rows, updateLayout } = setup({
+      records: [record({ layout: JSON.stringify(three()) })],
+      closeResult: () => ({
+        ok: false,
+        error: { code: 'UNKNOWN', message: 'Algo deu errado.', retryable: true },
+      }),
+    });
+
+    const result = await service.removePane('w1', 'a');
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN' } });
+    expect(updateLayout).not.toHaveBeenCalled();
+    expect(leavesOf(stored(rows, 'w1')).map((l) => l.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('folha sem sessão: só remove', async () => {
+    const { service, terminals } = setup({
+      records: [record({ layout: JSON.stringify(three()) })],
+    });
+
+    const result = await service.removePane('w1', 'c');
+
+    expect(terminals.closeSession).not.toHaveBeenCalled();
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(result.data.layout).map((l) => l.id)).toEqual(['a', 'b']);
+  });
+
+  it('a última folha deixa o layout null', async () => {
+    const { service, rows } = setup({
+      records: [record({ layout: JSON.stringify(leaf('l1', 'shell', 'ta')) })],
+    });
+
+    const result = await service.removePane('w1', 'l1');
+
+    expect(result).toMatchObject({ ok: true, data: { layout: null } });
+    expect(rows.get('w1')?.layout).toBe('null');
+  });
+
+  it('folha inexistente (ou workspace vazio) devolve falha NO_PANE', async () => {
+    const { service, updateLayout } = setup({
+      records: [
+        record({ layout: JSON.stringify(three()) }),
+        record({ id: 'w2', projectId: 'p2', layout: 'null' }),
+      ],
+    });
+
+    expect(await service.removePane('w1', 'nao-existe')).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'O painel não foi encontrado.' },
+    });
+    expect(await service.removePane('w2', 'a')).toMatchObject({
+      ok: false,
+      error: { message: 'O painel não foi encontrado.' },
+    });
+    expect(updateLayout).not.toHaveBeenCalled();
+  });
+
+  it('workspace inexistente devolve VALIDATION_FAILED', async () => {
+    const { service } = setup();
+
+    expect(await service.removePane('nenhum', 'a')).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+  });
+
+  it('sessão de missão: a folha sai sem closeSession', async () => {
+    const { service, terminals } = setup({
+      records: [record({ layout: JSON.stringify(three()) })],
+      missions: ['ta'],
+    });
+
+    const result = await service.removePane('w1', 'a');
+
+    expect(terminals.isMissionSession).toHaveBeenCalledWith('ta');
+    expect(terminals.closeSession).not.toHaveBeenCalled();
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(leavesOf(result.data.layout).map((l) => l.id)).toEqual(['b', 'c']);
+  });
+});
+
 describe('close e list', () => {
   it('close só marca o workspace como fechado, sem fechar sessões', async () => {
     const { service, rows, terminals } = setup({
@@ -618,13 +905,13 @@ describe('close e list', () => {
     expect(result.data[0]).toMatchObject({ projectId: 'p1', position: 0, lastActiveAt: AT });
   });
 
-  it('list troca um layout corrompido pelo padrão e regrava', async () => {
+  it('list troca um layout corrompido por workspace vazio (null) e regrava', async () => {
     const { service, rows } = setup({ records: [record({ layout: '{nao e json' })] });
 
     const result = await service.list();
 
     if (!result.ok) throw new Error('esperava sucesso');
-    expect(workspaceLayoutSchema.safeParse(result.data[0]?.layout).success).toBe(true);
-    expect(stored(rows, 'w1')).toEqual(result.data[0]?.layout);
+    expect(result.data[0]?.layout).toBeNull();
+    expect(rows.get('w1')?.layout).toBe('null');
   });
 });
