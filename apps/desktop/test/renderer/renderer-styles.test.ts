@@ -255,8 +255,37 @@ describe('botões, campos e anel de foco', () => {
     const transition = rule('button').get('transition') ?? '';
     expect(transition).toContain('background-color var(--dur-fast) var(--ease)');
     expect(transition).toContain('border-color var(--dur-fast) var(--ease)');
-    const reduced = mediaBlock(css, '(prefers-reduced-motion: reduce)');
+    // Há mais de um bloco de movimento reduzido: o dos botões e campos é o que vem depois dos campos.
+    const reduced = mediaBlock(
+      css.slice(css.indexOf('.field input:hover')),
+      '(prefers-reduced-motion: reduce)',
+    );
     expect(ruleDeclarations(reduced, 'button').get('transition')).toBe('none');
+  });
+
+  it('o movimento reduzido também desliga a transição dos campos, e o bloco vem depois da regra deles', () => {
+    // Mesma especificidade: o bloco só vence se vier depois da regra base dos campos.
+    const reduced = mediaBlock(
+      css.slice(css.indexOf('.field textarea {')),
+      '(prefers-reduced-motion: reduce)',
+    );
+    expect(ruleDeclarations(reduced, '.field input').get('transition')).toBe('none');
+    expect(ruleDeclarations(reduced, '.field textarea').get('transition')).toBe('none');
+  });
+
+  it('o hover dos botões não vale para botão desabilitado', () => {
+    for (const selector of [
+      'button:hover:not(:disabled)',
+      '.btn-primary:hover:not(:disabled)',
+      '.btn-decision:hover:not(:disabled)',
+      '.btn-secondary:hover:not(:disabled)',
+      '.btn-ghost:hover:not(:disabled)',
+      '.btn-danger:hover:not(:disabled)',
+      '.btn-outline:hover:not(:disabled)',
+    ]) {
+      expect(ruleDeclarations(css, selector).size, selector).toBeGreaterThan(0);
+    }
+    expect(css).not.toMatch(/^button:hover \{/m);
   });
 
   it('o anel de foco é 2px --focus com deslocamento de 2px', () => {

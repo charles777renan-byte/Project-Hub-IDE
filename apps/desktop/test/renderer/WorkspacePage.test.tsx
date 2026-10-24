@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import type {
@@ -197,7 +197,8 @@ describe('WorkspacePage', () => {
     const [active, other] = screen.getAllByRole('region', { name: 'Painel PowerShell' });
     expect(within(active!).getByTestId('terminal-view')).toBeInTheDocument();
     expect(within(other!).queryByTestId('terminal-view')).not.toBeInTheDocument();
-    expect(current.state).toBeNull();
+    // O estado da rota é limpo por um efeito depois da inserção: espera, sem depender da ordem.
+    await waitFor(() => expect(current.state).toBeNull());
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     });
