@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { LayoutLeaf, ProviderInfo } from '@project-hub/contracts';
-import { notify } from '../notify';
 import { ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
@@ -35,12 +34,6 @@ export function WorkspacePage() {
 
 function WorkspaceBody({ projectId, projectName }: { projectId: string; projectName: string }) {
   const workspace = useWorkspace(projectId);
-
-  // A recusa do layout (permanente) sai pelo aviso e fica até a pessoa dispensar.
-  const { saveError } = workspace;
-  useEffect(() => {
-    if (saveError !== null) notify.error(saveError);
-  }, [saveError]);
 
   const { terminals, loaded, reload } = useTerminals();
   const location = useLocation();

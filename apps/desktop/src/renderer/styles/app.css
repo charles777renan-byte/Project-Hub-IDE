@@ -1695,7 +1695,8 @@ button:disabled {
   position: fixed;
   right: var(--space-3);
   bottom: var(--space-3);
-  z-index: 60;
+  /* Entre a barra superior (30) e a dica (50): a dica "Fechar aviso" precisa aparecer sobre o aviso. */
+  z-index: 40;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -1737,6 +1738,18 @@ button:disabled {
   margin: 0;
   font-size: var(--text-md);
   overflow-wrap: anywhere;
+}
+
+.toast-more {
+  align-self: flex-end;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-size: var(--text-sm);
+  pointer-events: auto;
 }
 
 .toast__close {
