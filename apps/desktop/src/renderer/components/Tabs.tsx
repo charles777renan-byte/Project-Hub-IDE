@@ -11,9 +11,9 @@ export type TabItem<T extends string> = { id: T; label: string; count?: TabCount
 
 /**
  * Abas de seção ou de missão. Cada aba é um botão com `aria-selected`, então o Tab e o Enter do
- * teclado funcionam sem código extra; as setas (e Home e End) também trocam de aba. `filled` deixa a
- * aba ativa como botão cheio (sub-abas do workspace da missão, seção 10.7). Cada aba ganha a classe
- * `tab--<id>`, e é o CSS que dá a cor dela. `panelId` diz qual painel cada aba controla; sem ele, o
+ * teclado funcionam sem código extra; as setas (e Home e End) também trocam de aba. `filled` marca as
+ * sub-abas do workspace da missão e do painel Diff (em mono). Cada aba ganha a classe
+ * `tab--<id>` (só um gancho de teste e de página: todas as abas são pílulas uniformes, sem cor por tipo). `panelId` diz qual painel cada aba controla; sem ele, o
  * painel é o `tab-panel` (uma página com um painel só). Uma aba com `count` mostra o número depois do
  * nome e ganha a frase da contagem como descrição (`aria-describedby`).
  */

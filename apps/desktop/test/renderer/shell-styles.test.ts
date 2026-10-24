@@ -56,12 +56,44 @@ describe('casca do app', () => {
     expect(tabs.get('min-width')).toBe('0');
   });
 
-  it('a aba ativa tem o fundo da cor de borda de campo', () => {
+  // Atualizado na identidade visual (Tarefa 6): a aba ativa deixa de ser um retângulo --field-line e vira
+  // pílula em gradiente #3a3570 -> #2a2656 (= --field-line -> --line, sem hex em workspace.css) com texto
+  // --text; a inativa fica transparente com --muted; nada de lima nem de cor por tipo.
+  it('a aba é uma pílula: a ativa em gradiente field-line para line, a inativa transparente', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar__tab').get('border-radius')).toBe(
+      'var(--radius-pill)',
+    );
+    const active = ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])");
+    expect(active.get('background')).toBe(
+      'linear-gradient(135deg, var(--field-line), var(--line))',
+    );
+    expect(ruleDeclarations(workspaceCss, '.topbar__tab').get('background')).toBeUndefined();
+    expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('color')).toBe('var(--muted)');
     expect(
-      ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])").get(
-        'background',
-      ),
-    ).toBe('var(--field-line)');
+      ruleDeclarations(workspaceCss, ".topbar__tab-link[aria-current='page']").get('color'),
+    ).toBe('var(--text)');
+    const rules = workspaceCss.match(/[^{}]*\.topbar__(?:tab|add)[^{}]*\{[^}]*\}/g) ?? [];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) expect(rule).not.toMatch(/--accent|--lime|--tab-accent/);
+  });
+
+  it('o botão de abrir workspace é redondo', () => {
+    const add = ruleDeclarations(workspaceCss, '.topbar__add');
+    expect(add.get('border-radius')).toBe('50%');
+    expect(add.get('width')).toBe(add.get('height'));
+  });
+
+  it('o menu de abrir workspace é um cartão flutuante: --surface-2, raio de cartão e --shadow-pop', () => {
+    const list = ruleDeclarations(workspaceCss, '.topbar__menu-list');
+    expect(list.get('background')).toBe('var(--surface-2)');
+    expect(list.get('border-radius')).toBe('var(--radius-card)');
+    expect(list.get('box-shadow')).toBe('var(--shadow-pop)');
+    expect(ruleDeclarations(workspaceCss, '.topbar__menu-item:hover').get('background')).toBe(
+      'var(--line)',
+    );
+    expect(
+      ruleDeclarations(workspaceCss, '.topbar__menu-item:focus-visible').get('background'),
+    ).toBe('var(--line)');
   });
 
   it('a barra é sólida, porque a faixa dos botões do Windows é opaca', () => {
@@ -319,30 +351,15 @@ describe('contadores do cabeçalho', () => {
     expect(ruleDeclarations(appCss, '.overview-counters').get('display')).toBe('flex');
   });
 
-  it('o texto de cada contador é caixa alta, 11.5px, mono e na cor muted', () => {
-    const counter = ruleDeclarations(appCss, '.overview-counter');
-    expect(counter.get('text-transform')).toBe('uppercase');
-    expect(counter.get('font-size')).toBe('11.5px');
-    expect(counter.get('font-family')).toBe('var(--font-mono)');
-    expect(counter.get('color')).toBe('var(--muted)');
-  });
-
-  it('o ponto de cada contador tem 8px', () => {
-    const dot = ruleDeclarations(appCss, '.overview-counter::before');
-    expect(dot.get('width')).toBe('8px');
-    expect(dot.get('height')).toBe('8px');
-  });
-
-  it('o ponto do contador "executando" é lima', () => {
-    expect(ruleDeclarations(appCss, '.overview-counter--lime::before').get('background')).toBe(
-      'var(--lime)',
-    );
-  });
-
-  it('o ponto do contador "aguarda você" é violeta', () => {
-    expect(ruleDeclarations(appCss, '.overview-counter--violet::before').get('background')).toBe(
-      'var(--violet)',
-    );
+  // Atualizado na identidade visual (Tarefa 6): os contadores viram selos de pílula (as classes .chip da
+  // Tarefa 3 dão forma, ponto, caixa alta, mono e cor do estado); a classe do contador só impede quebra.
+  it('cada contador é um selo de pílula, sem ponto quadrado nem cor própria', () => {
+    expect(ruleDeclarations(appCss, '.overview-counter').get('white-space')).toBe('nowrap');
+    expect(ruleDeclarations(appCss, '.overview-counter').get('color')).toBeUndefined();
+    expect(ruleDeclarations(appCss, '.overview-counter::before').size).toBe(0);
+    expect(ruleDeclarations(appCss, '.chip').get('border-radius')).toBe('var(--radius-pill)');
+    expect(ruleDeclarations(appCss, '.chip--lime').get('--tone')).toBe('var(--accent)');
+    expect(ruleDeclarations(appCss, '.chip--violet').get('--tone')).toBe('var(--brand)');
   });
 });
 
@@ -469,24 +486,30 @@ describe('layout do workspace da missão', () => {
     );
   });
 
-  it('as abas ganham um ponto redondo na cor do acento antes do nome', () => {
-    const dot = ruleDeclarations(appCss, '.mission-tabs > .tabs .tab::before');
-    expect(dot.get('background')).toBe('var(--tab-accent)');
-    expect(dot.get('border-radius')).toBe('50%');
+  // Atualizado na identidade visual (Tarefa 6): as abas de seção viram pílulas uniformes. A cor por tipo
+  // (ponto e sublinhado em --tab-accent, uma por .tab--<id>) e o lima somem; a ativa é o gradiente
+  // field-line -> line com texto --text, a inativa é transparente com --muted.
+  it('a aba é uma pílula: a ativa em gradiente, a inativa transparente e muted', () => {
+    const tab = ruleDeclarations(appCss, '.tab');
+    expect(tab.get('border-radius')).toBe('var(--radius-pill)');
+    expect(tab.get('background')).toBe('transparent');
+    expect(tab.get('color')).toBe('var(--muted)');
+    const active = ruleDeclarations(appCss, ".tab[aria-selected='true']");
+    expect(active.get('background')).toBe(
+      'linear-gradient(135deg, var(--field-line), var(--line))',
+    );
+    expect(active.get('color')).toBe('var(--text)');
   });
 
-  it.each([
-    ['conversation', 'magenta'],
-    ['plan', 'blue'],
-    ['diff', 'orange'],
-    ['tests', 'lime'],
-    ['terminal', 'cyan'],
-    ['logs', 'yellow'],
-  ] as const)('a aba %s usa o acento %s, e a ativa é sublinhada nele', (id, accent) => {
-    expect(ruleDeclarations(appCss, `.tab--${id}`).get('--tab-accent')).toBe(`var(--${accent})`);
-    expect(ruleDeclarations(appCss, ".tab[aria-selected='true']").get('border-bottom-color')).toBe(
-      'var(--tab-accent)',
-    );
+  it('as abas não têm cor por tipo nem lima: sem --tab-accent, sem .tab--<id> e sem ponto colorido', () => {
+    expect(appCss).not.toContain('--tab-accent');
+    expect(appCss).not.toMatch(/\.tab--/);
+    expect(ruleDeclarations(appCss, '.mission-tabs > .tabs .tab::before').size).toBe(0);
+    const rules = appCss.match(/[^{}]*\.tab\b[^{}]*\{[^}]*\}/g) ?? [];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) {
+      expect(rule).not.toMatch(/var\(--(?:accent|lime|cyan|blue|magenta|orange|yellow)\)/);
+    }
   });
 
   it('a contagem da aba é pequena, em mono e muted', () => {

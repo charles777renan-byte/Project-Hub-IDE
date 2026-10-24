@@ -218,10 +218,13 @@ describe('OverviewCounters', () => {
 
     const running = await screen.findByText('1 executando');
     expect(running.closest('.overview-counters')).toHaveAttribute('aria-live', 'polite');
-    expect(running).toHaveClass('overview-counter', 'overview-counter--lime');
+    // Selos de pílula (Tarefa 6): as classes .chip dão a forma e a cor do estado.
+    expect(running).toHaveClass('overview-counter', 'overview-counter--lime', 'chip', 'chip--lime');
     expect(screen.getByText('1 aguarda você')).toHaveClass(
       'overview-counter',
       'overview-counter--violet',
+      'chip',
+      'chip--violet',
     );
   });
 
