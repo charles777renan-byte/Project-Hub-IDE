@@ -68,9 +68,13 @@ describe('árvore de painéis e painel', () => {
     expect(section).not.toMatch(/box-shadow\s*:\s*(?!inset|none|\s)/);
   });
 
-  it('o painel ativo ganha o contorno em --field-line; o foco do teclado, o anel --focus no cartão', () => {
+  it('o painel ativo ganha o contorno em --muted (3:1); o foco do teclado, o anel --focus no cartão', () => {
     expect(rule(".pane[data-active='true']").get('box-shadow')).toBe(
-      'inset 0 0 0 1px var(--field-line)',
+      'inset 0 0 0 1px var(--muted)',
+    );
+    // Mesma especificidade: o anel de foco só vence o contorno do painel ativo se vier depois dele.
+    expect(css.indexOf('.pane:focus-within')).toBeGreaterThan(
+      css.indexOf(".pane[data-active='true']"),
     );
     // O anel vai no cartão (o xterm tem `outline: none` no CSS vendorizado): vale para o terminal e
     // para os botões do painel, e o próprio cartão (tabindex -1) não desenha outline.
@@ -93,7 +97,7 @@ describe('árvore de painéis e painel', () => {
     expect(body.get('min-height')).toBe('0');
     expect(body.get('background')).toBe('var(--bg)');
     expect(body.get('margin')).toBe('0 4px 4px');
-    expect(body.get('padding')).toBe('8px');
+    expect(body.get('padding')).toBe('4px');
     expect(body.get('border-radius')).toBe('var(--radius)');
     expect(body.get('overflow')).toBe('hidden');
     // O --bg do tema é o mesmo preto que o TerminalView entrega ao xterm.
@@ -157,7 +161,7 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.empty-state .empty-state__title').get('color')).toBe('var(--text)');
     expect(rule('.empty-state .empty-state__hint').get('overflow-wrap')).toBe('anywhere');
     // O "… não foi encontrado no PATH" ficava colado na borda esquerda do painel.
-    expect(rule('.pane__launcher').get('padding')).toBe('var(--space-3)');
+    expect(rule('.pane__launcher').get('padding')).toBe('0');
     expect(rule(".pane__launcher [role='alert']").get('padding')).toBe('0 var(--space-3)');
   });
 });
