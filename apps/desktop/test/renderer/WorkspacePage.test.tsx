@@ -76,6 +76,8 @@ const api = {
     saveLayout: vi.fn(),
     startSession: vi.fn(),
     endSession: vi.fn(),
+    addPane: vi.fn(),
+    removePane: vi.fn(),
   },
   providers: { list: vi.fn() },
   terminals: { list: vi.fn() },
@@ -136,6 +138,8 @@ beforeEach(() => {
   api.workspaces.saveLayout.mockReset().mockResolvedValue({ ok: true, data: undefined });
   api.workspaces.startSession.mockReset();
   api.workspaces.endSession.mockReset();
+  api.workspaces.addPane.mockReset();
+  api.workspaces.removePane.mockReset();
   api.providers.list.mockResolvedValue({ ok: true, data: providers });
   api.terminals.list.mockResolvedValue({ ok: true, data: [] });
   api.projects.list.mockResolvedValue({
@@ -170,16 +174,90 @@ describe('WorkspacePage', () => {
     expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t1');
   });
 
-  it('Limpar painel numa sessão encerrada chama endSession e esvazia o painel', async () => {
+  it('Fechar painel numa sessão encerrada chama removePane da folha', async () => {
     api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
     api.terminals.list.mockResolvedValue({
       ok: true,
       data: [{ ...shellTerminal, state: 'exited' }],
     });
-    api.workspaces.endSession.mockResolvedValue({ ok: true, data: dto(padrao()) });
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
     renderAt();
-    await userEvent.click(await screen.findByRole('button', { name: 'Limpar painel' }));
-    expect(api.workspaces.endSession).toHaveBeenCalledWith('w1', 'c');
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
+  });
+
+  it('fechar uma sessão rodando pede confirmação e só então chama removePane', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    renderAt();
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    const group = within(pane).getByRole('group', {
+      name: 'Fechar o painel? O processo será finalizado.',
+    });
+    await userEvent.click(within(group).getByRole('button', { name: 'Fechar painel' }));
+    expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
+  });
+
+  describe('sem painéis', () => {
+    beforeEach(() => {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    });
+
+    it('mostra o estado vazio e a barra de escolha', async () => {
+      renderAt();
+      expect(await screen.findByText('Nenhum terminal aberto')).toBeInTheDocument();
+      expect(
+        screen.getByText('Escolha um programa na barra acima para abrir um terminal.'),
+      ).toBeInTheDocument();
+      const bar = screen.getByRole('toolbar', { name: 'Abrir terminal' });
+      expect(within(bar).getByRole('button', { name: 'Claude Code' })).toBeEnabled();
+      expect(within(bar).getByRole('button', { name: 'Codex' })).toBeDisabled();
+    });
+
+    it('clicar em Claude Code chama addPane e mostra o painel novo', async () => {
+      api.workspaces.addPane.mockResolvedValue({ ok: true, data: dto(leaf('n', 'claude')) });
+      renderAt();
+      await userEvent.click(await screen.findByRole('button', { name: 'Claude Code' }));
+      expect(api.workspaces.addPane).toHaveBeenCalledWith('w1', 'claude');
+      expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+      expect(screen.queryByText('Nenhum terminal aberto')).not.toBeInTheDocument();
+      // A barra continua acima dos painéis.
+      expect(screen.getByRole('toolbar', { name: 'Abrir terminal' })).toBeInTheDocument();
+    });
+
+    it('falha ao abrir vira aviso com a mensagem do IPC', async () => {
+      api.workspaces.addPane.mockResolvedValue({
+        ok: false,
+        error: { code: 'x', message: 'Limite de painéis' },
+      });
+      renderAt();
+      await userEvent.click(await screen.findByRole('button', { name: 'Claude Code' }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Limite de painéis');
+      expect(alert.closest('[aria-label="Avisos"]')).not.toBeNull();
+    });
+
+    it('dois cliques seguidos enquanto ocupado chamam addPane uma vez', async () => {
+      let finish: (value: unknown) => void = () => {};
+      api.workspaces.addPane.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+      renderAt();
+      const button = await screen.findByRole('button', { name: 'Claude Code' });
+      await userEvent.click(button);
+      await userEvent.click(button);
+      expect(api.workspaces.addPane).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('button', { name: 'PowerShell' })).toBeDisabled();
+      await act(async () => finish({ ok: true, data: dto(leaf('n', 'claude')) }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'PowerShell' })).toBeEnabled());
+    });
+  });
+
+  it('com painéis, a barra aparece acima da área', async () => {
+    renderAt();
+    expect(await screen.findByRole('toolbar', { name: 'Abrir terminal' })).toBeInTheDocument();
   });
 
   it('falha de startSession aparece em alert no painel certo', async () => {
@@ -211,7 +289,11 @@ describe('WorkspacePage', () => {
   });
 
   it('location.state.showTerminal põe o terminal no painel ativo uma vez e limpa o estado', async () => {
-    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    // Sessão de missão: é a única que ainda tem "Tirar do painel".
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...shellTerminal, missionId: 'm1' }],
+    });
     const view = renderAt({ showTerminal: 't1' });
     expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t1');
     // A sessão entra no painel ativo (o primeiro); o rótulo vem do provedor da sessão.

@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import type { LayoutLeaf, ProviderInfo } from '@project-hub/contracts';
+import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
+import { EmptyState } from '../components/EmptyState';
+import { SquareTerminal } from '../components/Icon';
+import { notify } from '../notify';
 import { ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
 import { useWorkspace } from '../workspace/use-workspace';
+import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
 
 /** Lê o id da sessão que a barra lateral pediu para mostrar, se o estado da rota traz um. */
 function requestedTerminal(state: unknown): string | null {
@@ -42,6 +46,9 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const consumed = useRef<string | null>(null);
+  // Abrir um painel é um pedido por vez: a ref barra o segundo clique antes de o estado chegar.
+  const [opening, setOpening] = useState(false);
+  const openingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +109,23 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     }
   };
 
+  const openPane = async (provider: ProviderId) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
+    try {
+      const message = await workspace.addPane(provider);
+      if (message !== null) notify.error(message);
+    } finally {
+      openingRef.current = false;
+      setOpening(false);
+    }
+  };
+
+  // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
+  // A folha ainda existe se falhar: o erro aparece no próprio painel.
+  const closePane = (leafId: string) => run(leafId, workspace.removePane);
+
   const renderLeaf = (leaf: LayoutLeaf) => {
     const terminal =
       leaf.terminalId === null ? undefined : terminals.find((item) => item.id === leaf.terminalId);
@@ -135,24 +159,32 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
         onActivate={() => workspace.activate(leaf.id)}
         onPointerActivate={() => workspace.activateWithFocus(leaf.id)}
         onStart={() => void run(leaf.id, workspace.startSession)}
-        onEnd={() => void run(leaf.id, workspace.endSession)}
         onDetach={() => workspace.detach(leaf.id)}
-        // Sessão de missão não fecha por aqui (só cancelando a missão): o painel só solta o terminal.
-        onClear={() =>
-          terminal?.missionId === undefined
-            ? void run(leaf.id, workspace.endSession)
-            : workspace.detach(leaf.id)
-        }
+        onClose={() => void closePane(leaf.id)}
       />
     );
   };
 
   return (
-    <>
-      {/* Provisório (Tarefa 4 troca pelo estado vazio com o seletor de painéis). */}
-      {layout !== null ? (
-        <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
-      ) : null}
-    </>
+    <div className="workspace">
+      <WorkspaceToolbar
+        providers={providers}
+        busy={opening}
+        onOpen={(provider) => void openPane(provider)}
+      />
+      <div className="workspace__area">
+        {layout === null ? (
+          <div className="workspace__empty">
+            <EmptyState
+              icon={SquareTerminal}
+              title="Nenhum terminal aberto"
+              hint="Escolha um programa na barra acima para abrir um terminal."
+            />
+          </div>
+        ) : (
+          <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
+        )}
+      </div>
+    </div>
   );
 }
