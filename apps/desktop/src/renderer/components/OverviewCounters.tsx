@@ -11,8 +11,10 @@ export function OverviewCounters() {
   const shown = (count: number) => (loaded ? String(count) : '—');
   return (
     <div className="overview-counters" aria-live="polite">
-      <span className="overview-counter overview-counter--lime">{shown(running)} executando</span>
-      <span className="overview-counter overview-counter--violet">
+      <span className="chip chip--lime overview-counter overview-counter--lime">
+        {shown(running)} executando
+      </span>
+      <span className="chip chip--violet overview-counter overview-counter--violet">
         {shown(waiting)} aguarda você
       </span>
     </div>

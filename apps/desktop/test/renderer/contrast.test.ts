@@ -60,6 +60,9 @@ const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ['--muted', '--line'],
   ['--text', '--field-line'],
   ['--text', '--line'],
+  // Identidade visual: o menu "+" flutua sobre --surface-2 (item selecionado em --line).
+  ['--muted', '--surface-2'],
+  ['--text', '--surface-2'],
   // Identidade visual: texto escuro dentro do botão e da aba cheios em lima.
   ['--accent-ink', '--accent'],
 ];
@@ -235,10 +238,11 @@ describe('cores do chrome do workspace', () => {
     'utf8',
   ).replace(/\/\*[\s\S]*?\*\//g, '');
   // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
-  // --surface: o cartão da barra lateral (Tarefa 5).
+  // --surface: o cartão da barra lateral (Tarefa 5). --surface-2: o menu flutuante "+" (Tarefa 6).
   const NEUTRAL = new Set([
     '--bg',
     '--surface',
+    '--surface-2',
     '--line',
     '--field-line',
     '--muted',
@@ -272,6 +276,17 @@ describe('cores do chrome do workspace', () => {
     expect(workspaceCss).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
     for (const accent of ACCENTS) {
       expect(workspaceCss, accent).not.toContain(`var(${accent})`);
+    }
+  });
+
+  it('a pílula ativa (gradiente field-line -> line) tem texto --text legível nas duas pontas', () => {
+    // O gradiente #3a3570 -> #2a2656 usa só tokens existentes; se eles mudarem, o par sai da lista.
+    expect(tokens.get('--field-line')).toBe('#3a3570');
+    expect(tokens.get('--line')).toBe('#2a2656');
+    for (const stop of ['--field-line', '--line']) {
+      expect(
+        contrastRatio(tokens.get('--text') ?? '', tokens.get(stop) ?? ''),
+      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     }
   });
 
