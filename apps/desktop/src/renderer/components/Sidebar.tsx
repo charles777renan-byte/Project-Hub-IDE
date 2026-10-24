@@ -6,6 +6,7 @@ import { missionPath, projectPath, ROUTE_PATHS, workspacePath } from '../routes'
 import { markOfMission, markOfTerminal, type MarkKind } from '../state-mark';
 import { useTerminals } from '../terminals-data';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
+import { ChevronRight, ICON_PROPS } from './Icon';
 import { MainNav } from './MainNav';
 import { StateMark } from './StateMark';
 import { StatusChip } from './StatusChip';
@@ -224,7 +225,7 @@ function WorkspaceItem({
           onClick={onToggle}
         >
           <span aria-hidden="true" className="sidebar__chevron">
-            {isOpen ? '▾' : '▸'}
+            <ChevronRight {...ICON_PROPS} />
           </span>
           {sessions.length === 0 ? null : (
             <span aria-hidden="true" className="sidebar__count">

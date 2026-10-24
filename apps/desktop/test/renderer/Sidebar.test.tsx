@@ -364,6 +364,33 @@ describe('Sidebar: sessões de cada projeto', () => {
     expect(screen.queryByRole('button', { name: 'PowerShell · Notas' })).toBeNull();
   });
 
+  it('o botão de sessões leva um chevron SVG decorativo e o nome acessível não muda', async () => {
+    installApi({ terminals });
+    renderSidebar('/');
+
+    const toggle = await expandButton('Project Hub');
+    const icon = toggle.querySelector('svg');
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    expect(toggle).toHaveAccessibleName('Sessões de Project Hub');
+    expect(toggle.textContent).not.toMatch(/[▸▾]/);
+  });
+
+  it('os links de Início e Projetos levam um ícone SVG decorativo sem mudar o nome', async () => {
+    installApi({ terminals });
+    renderSidebar('/');
+
+    const nav = await screen.findByRole('navigation', { name: 'Principal' });
+    for (const name of ['Início', 'Projetos']) {
+      const link = within(nav).getByRole('link', { name });
+      const icon = link.querySelector('svg');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+      expect(link).toHaveAccessibleName(name);
+      expect(link.textContent).toBe(name);
+    }
+  });
+
   it('recolhe de novo ao clicar outra vez', async () => {
     installApi({ terminals });
     renderSidebar('/');
