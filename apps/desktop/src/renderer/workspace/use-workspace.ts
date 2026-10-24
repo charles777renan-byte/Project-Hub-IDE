@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LayoutNode, WorkspaceDto } from '@project-hub/contracts';
+import type { LayoutNode, ProviderId, WorkspaceDto } from '@project-hub/contracts';
 import { notify } from '../notify';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import {
@@ -33,6 +33,10 @@ export type UseWorkspace = {
   /** `null` = ok; texto = mensagem de erro. */
   startSession(leafId: string): Promise<string | null>;
   endSession(leafId: string): Promise<string | null>;
+  /** Abre um painel novo do provedor. `null` = ok; texto = erro. O servidor decide a organização: o layout devolvido vale inteiro. */
+  addPane(provider: ProviderId): Promise<string | null>;
+  /** Fecha o painel. `null` = ok; texto = erro. Se a folha ativa saiu, ativa a primeira restante. */
+  removePane(leafId: string): Promise<string | null>;
   activeLeafId: string | null;
   /** Folha cujo terminal deve receber o foco: só muda por gesto do usuário, nunca pela ativação inicial. */
   focusLeafId: string | null;
@@ -46,7 +50,7 @@ export type UseWorkspace = {
   flush(): Promise<void>;
 };
 
-function firstLeafId(layout: LayoutNode): string | null {
+function firstLeafId(layout: LayoutNode | null): string | null {
   return leavesOf(layout)[0]?.id ?? null;
 }
 
@@ -138,7 +142,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
   }, [saveNow]);
 
   const edit = useCallback(
-    (change: (layout: LayoutNode) => LayoutNode) => {
+    (change: (layout: LayoutNode | null) => LayoutNode | null) => {
       const workspace = current.current;
       if (workspace === null) return;
       const layout = change(workspace.layout);
@@ -260,6 +264,68 @@ export function useWorkspace(projectId: string): UseWorkspace {
     [act],
   );
 
+  /**
+   * Muda a estrutura de painéis no servidor e adota o DTO devolvido inteiro (a organização automática
+   * vale). Uma edição local pendente é gravada antes e, se surgir outra durante o pedido, o servidor
+   * ganha: o layout dele é a verdade.
+   */
+  const changePanes = useCallback(
+    async (
+      call: (workspaceId: string) => ReturnType<typeof window.projectHub.workspaces.addPane>,
+      afterAdopt: (previous: LayoutNode | null, next: WorkspaceDto) => void,
+    ): Promise<string | null> => {
+      const workspace = current.current;
+      if (workspace === null) return ACTION_ERROR;
+      const mine = generation.current;
+      await saveNow();
+      try {
+        const result = await call(workspace.id);
+        if (!result.ok) return result.error.message || ACTION_ERROR;
+        // Outro projeto abriu enquanto o pedido estava em voo: a resposta não é dele.
+        if (generation.current !== mine) return null;
+        const previous = current.current?.layout ?? null;
+        if (timer.current !== undefined) {
+          clearTimeout(timer.current);
+          timer.current = undefined;
+        }
+        dirty.current = false;
+        adopt(result.data);
+        afterAdopt(previous, result.data);
+        window.dispatchEvent(new Event(WORKSPACES_CHANGED_EVENT));
+        return null;
+      } catch {
+        return ACTION_ERROR;
+      }
+    },
+    [adopt, saveNow],
+  );
+
+  const addPane = useCallback(
+    (provider: ProviderId) =>
+      changePanes(
+        (id) => window.projectHub.workspaces.addPane(id, provider),
+        (previous, next) => {
+          const known = new Set(leavesOf(previous).map((leaf) => leaf.id));
+          const created = leavesOf(next.layout).find((leaf) => !known.has(leaf.id));
+          if (created !== undefined) setActive(created.id, true);
+        },
+      ),
+    [changePanes, setActive],
+  );
+
+  const removePane = useCallback(
+    (leafId: string) =>
+      changePanes(
+        (id) => window.projectHub.workspaces.removePane(id, leafId),
+        (_previous, next) => {
+          const active = activeRef.current;
+          if (active !== null && findLeaf(next.layout, active) !== undefined) return;
+          setActive(firstLeafId(next.layout));
+        },
+      ),
+    [changePanes, setActive],
+  );
+
   const activate = useCallback((leafId: string) => setActive(leafId), [setActive]);
   const activateWithFocus = useCallback((leafId: string) => setActive(leafId, true), [setActive]);
 
@@ -270,6 +336,8 @@ export function useWorkspace(projectId: string): UseWorkspace {
     detach,
     startSession,
     endSession,
+    addPane,
+    removePane,
     activeLeafId,
     focusLeafId,
     activate,
