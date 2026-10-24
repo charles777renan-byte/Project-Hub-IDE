@@ -13,19 +13,20 @@ import {
 } from '../../src/renderer/mission-text';
 
 /**
- * Cada estado mantém o seu sentido na cor: lima roda, violeta espera a pessoa, vermelho falhou,
- * laranja pausou, e o resto fica neutro (muted).
+ * Cada estado mantém o seu sentido na cor, igual ao da marca de estado (●◐✓✕○) na barra lateral: lima roda
+ * ou concluiu, amarelo (warn) aguarda, vermelho falhou, laranja pausou (aparência neutra), e o resto fica
+ * neutro (muted).
  */
 describe('tom dos estados da missão', () => {
   const expected: Record<MissionStatus, ReturnType<typeof statusTone>> = {
     draft: 'muted',
-    planned: 'violet',
-    queued: 'muted',
+    planned: 'warn',
+    queued: 'warn',
     running: 'lime',
-    waiting_approval: 'violet',
-    waiting_input: 'violet',
+    waiting_approval: 'warn',
+    waiting_input: 'warn',
     paused: 'orange',
-    succeeded: 'muted',
+    succeeded: 'lime',
     failed: 'red',
     cancelled: 'muted',
   };

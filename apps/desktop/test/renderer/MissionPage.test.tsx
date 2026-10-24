@@ -124,7 +124,7 @@ describe('MissionPage: cabeçalho', () => {
     );
     expect(within(summary).getByText('Aguarda aprovação do plano')).toHaveClass(
       'chip',
-      'chip--violet',
+      'chip--warn',
     );
     expect(within(summary).getByText('branch main')).toBeInTheDocument();
     expect(within(summary).getByText('worktree ainda não criado')).toBeInTheDocument();

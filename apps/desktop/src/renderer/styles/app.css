@@ -583,8 +583,16 @@ button:disabled {
   --summary-accent: var(--violet);
 }
 
-.mission-summary--orange {
-  --summary-accent: var(--orange);
+.mission-summary--warn {
+  --summary-accent: var(--warn);
+}
+
+/* Tons neutros do selo (muted, e orange, blue e cyan das telas antigas): faixa neutra, como o chip. */
+.mission-summary--muted,
+.mission-summary--orange,
+.mission-summary--blue,
+.mission-summary--cyan {
+  --summary-accent: var(--muted);
 }
 
 .mission-summary--red {

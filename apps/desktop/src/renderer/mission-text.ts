@@ -1,8 +1,8 @@
 import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
 
 /**
- * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda,
- * `red` para falha, `violet` para a marca e o que espera a pessoa, `muted` para o resto (sem destaque).
+ * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda a
+ * pessoa ou o início, `red` para falha, `violet` para a marca, `muted` para o resto (sem destaque).
  * `blue`, `orange` e `cyan` seguem aceitos para as telas antigas e têm a aparência neutra de `muted`.
  */
 export type Tone = 'lime' | 'warn' | 'violet' | 'red' | 'muted' | 'blue' | 'orange' | 'cyan';
@@ -11,13 +11,13 @@ export type MissionStatus = MissionDto['status'];
 
 const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
   draft: { label: 'Rascunho', tone: 'muted' },
-  planned: { label: 'Aguarda aprovação do plano', tone: 'violet' },
-  queued: { label: 'Plano aprovado, aguardando início', tone: 'muted' },
+  planned: { label: 'Aguarda aprovação do plano', tone: 'warn' },
+  queued: { label: 'Plano aprovado, aguardando início', tone: 'warn' },
   running: { label: 'Em execução', tone: 'lime' },
-  waiting_approval: { label: 'Aguarda sua aprovação', tone: 'violet' },
-  waiting_input: { label: 'Aguarda sua resposta', tone: 'violet' },
+  waiting_approval: { label: 'Aguarda sua aprovação', tone: 'warn' },
+  waiting_input: { label: 'Aguarda sua resposta', tone: 'warn' },
   paused: { label: 'Pausada', tone: 'orange' },
-  succeeded: { label: 'Concluída', tone: 'muted' },
+  succeeded: { label: 'Concluída', tone: 'lime' },
   failed: { label: 'Falhou', tone: 'red' },
   cancelled: { label: 'Cancelada', tone: 'muted' },
 };
