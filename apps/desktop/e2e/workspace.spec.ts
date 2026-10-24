@@ -226,3 +226,45 @@ test('o workspace não tem fundo topográfico nem violação de CSP', async ({
   expect(csp, csp.slice(0, 3).join(' | ')).toEqual([]);
   await endShell(page);
 });
+
+test('a dica de um botão só de ícone aparece ao focar, posiciona-se e não viola a CSP', async ({
+  launchApp,
+}) => {
+  const { page } = await launchApp();
+  // O ouvinte entra antes de qualquer script da página (addInitScript + reload), como em security.spec.ts.
+  await page.addInitScript(() => {
+    const violations: string[] = [];
+    Object.assign(window, { cspViolations: violations });
+    document.addEventListener('securitypolicyviolation', (event) => {
+      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
+  });
+  await page.reload();
+  const add = page.getByRole('button', { name: 'Abrir workspace' });
+  await expect(add).toBeVisible();
+
+  // Foco por teclado: Tab até o botão "+".
+  for (let step = 0; step < 40; step += 1) {
+    if ((await add.evaluate((element) => element === document.activeElement)) === true) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(add).toBeFocused();
+
+  // A dica visível (a que o Radix posiciona pelo CSSOM) aparece, com o texto e dentro da janela.
+  const hint = page.locator('.hint');
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveText('Abrir workspace');
+  const box = await hint.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box?.width ?? 0).toBeGreaterThan(0);
+  // O nome acessível do botão continua o mesmo; a dica só o descreve.
+  await expect(add).toHaveAccessibleName('Abrir workspace');
+
+  // Esc fecha a dica.
+  await page.keyboard.press('Escape');
+  await expect(hint).toHaveCount(0);
+
+  expect(
+    await page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations),
+  ).toEqual([]);
+});

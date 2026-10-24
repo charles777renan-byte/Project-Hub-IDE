@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Hint } from './Hint';
 
 /**
  * Ação que apaga um registro ou tira algo da lista. O primeiro clique troca o botão por uma pergunta na
@@ -9,6 +10,7 @@ export function ConfirmButton({
   question,
   confirmLabel,
   disabled = false,
+  hint,
   onConfirm,
 }: {
   label: string;
@@ -16,11 +18,13 @@ export function ConfirmButton({
   question: string;
   confirmLabel: string;
   disabled?: boolean;
+  /** Dica do botão inicial (não muda o nome acessível dele). */
+  hint?: string;
   onConfirm: () => void;
 }) {
   const [asking, setAsking] = useState(false);
   if (!asking) {
-    return (
+    const button = (
       <button
         type="button"
         className="btn-danger"
@@ -30,6 +34,7 @@ export function ConfirmButton({
         {label}
       </button>
     );
+    return hint === undefined ? button : <Hint label={hint}>{button}</Hint>;
   }
   return (
     <span className="confirm-inline" role="group" aria-label={question}>

@@ -1,6 +1,7 @@
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
+import { Hint } from '../components/Hint';
 import { SquareTerminal } from '../components/Icon';
 import { StateMark } from '../components/StateMark';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
@@ -115,13 +116,16 @@ export function PaneView(props: PaneViewProps) {
                 label="Encerrar"
                 question="Encerrar a sessão? O processo será finalizado."
                 confirmLabel="Encerrar"
+                hint="Encerra a sessão e finaliza o processo"
                 disabled={busy}
                 onConfirm={props.onEnd}
               />
             )}
-            <button type="button" onClick={props.onDetach}>
-              Tirar do painel
-            </button>
+            <Hint label="Tira o terminal do painel sem encerrar o processo">
+              <button type="button" onClick={props.onDetach}>
+                Tirar do painel
+              </button>
+            </Hint>
           </span>
         </div>
         {error !== undefined && <p role="alert">{error}</p>}

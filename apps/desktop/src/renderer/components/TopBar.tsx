@@ -5,6 +5,7 @@ import { ROUTE_PATHS, workspacePath } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useOpenWorkspaces } from '../workspaces-data';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
+import { Hint } from './Hint';
 import { ICON_PROPS, Plus, X } from './Icon';
 
 /** Nome mostrado na aba quando o projeto dela ainda não chegou na lista (ou saiu dela). */
@@ -83,14 +84,16 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
                   >
                     {name}
                   </NavLink>
-                  <button
-                    type="button"
-                    className="topbar__close"
-                    aria-label={`Fechar workspace ${name}`}
-                    onClick={() => void closeWorkspace(workspace)}
-                  >
-                    <X {...ICON_PROPS} />
-                  </button>
+                  <Hint label={`Fechar workspace ${name}`}>
+                    <button
+                      type="button"
+                      className="topbar__close"
+                      aria-label={`Fechar workspace ${name}`}
+                      onClick={() => void closeWorkspace(workspace)}
+                    >
+                      <X {...ICON_PROPS} />
+                    </button>
+                  </Hint>
                 </li>
               );
             })}
@@ -179,17 +182,19 @@ function OpenWorkspaceMenu({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      <button
-        ref={button}
-        type="button"
-        className="topbar__add"
-        aria-label="Abrir workspace"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Plus {...ICON_PROPS} />
-      </button>
+      <Hint label="Abrir workspace">
+        <button
+          ref={button}
+          type="button"
+          className="topbar__add"
+          aria-label="Abrir workspace"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <Plus {...ICON_PROPS} />
+        </button>
+      </Hint>
       {open ? (
         <ul role="menu" aria-label="Abrir workspace" className="topbar__menu-list">
           {projects.map((project) => (
