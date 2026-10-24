@@ -364,9 +364,15 @@ describe('layout do workspace da missão', () => {
     const summary = ruleDeclarations(appCss, '.mission-summary');
     expect(summary.get('border-top')).toBe('3px solid var(--summary-accent)');
     expect(summary.get('border-radius')).toBe('var(--radius-panel)');
-    for (const tone of ['lime', 'violet', 'orange', 'red'] as const) {
+    for (const tone of ['lime', 'violet', 'warn', 'red'] as const) {
       expect(ruleDeclarations(appCss, `.mission-summary--${tone}`).get('--summary-accent')).toBe(
         `var(--${tone})`,
+      );
+    }
+    // Tons neutros do selo (inclusive os das telas antigas): a faixa também é neutra, como o chip.
+    for (const tone of ['muted', 'orange', 'blue', 'cyan'] as const) {
+      expect(ruleDeclarations(appCss, `.mission-summary--${tone}`).get('--summary-accent')).toBe(
+        'var(--muted)',
       );
     }
   });
