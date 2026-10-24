@@ -19,6 +19,8 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* Brilho violeta suave no topo, sobre a cor de fundo; o fundo topográfico o repete por cima do canvas. */
+  background: var(--glow-app), var(--bg);
 }
 
 /*
@@ -264,6 +266,8 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  /* Respiro dos cartões nas bordas da janela e abaixo da barra superior. */
+  padding: 8px;
 }
 
 .app-body__panel {
@@ -285,10 +289,26 @@
 }
 
 /*
+ * Divisória entre a barra lateral e a página: ocupa o vão de 8px entre os cartões, sem desenhar nada até
+ * receber o mouse, o arraste ou o foco; aí aparece um traço de 2px no meio dela.
+ */
+.app-body > .pane-tree__separator[aria-orientation='vertical'] {
+  width: 8px;
+  background: transparent;
+}
+
+.app-body > .pane-tree__separator[aria-orientation='vertical']:hover,
+.app-body > .pane-tree__separator[aria-orientation='vertical']:active,
+.app-body > .pane-tree__separator[aria-orientation='vertical']:focus-visible {
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat;
+}
+
+/*
  * Barra lateral: a navegação principal no topo e, abaixo, as seções Workspaces e Em andamento. Cada
  * seção rola sozinha (o título e o botão de ação ficam parados), e a barra só rola como último recurso,
- * numa janela baixa demais para as duas. O fundo é translúcido, para o fundo topográfico aparecer.
- * Os anéis de foco ficam por dentro dos itens, que a rolagem cortaria por fora.
+ * numa janela baixa demais para as duas. É um cartão (B1): superfície opaca, raio de cartão, contorno de 1px
+ * por sombra interna e a sombra do cartão. Os anéis de foco ficam por dentro dos itens, que a rolagem
+ * cortaria por fora.
  */
 .sidebar {
   --sidebar-hover: color-mix(in srgb, var(--text) 8%, transparent);
@@ -299,8 +319,11 @@
   padding: var(--space-3) var(--space-2) var(--space-2);
   overflow-x: hidden;
   overflow-y: auto;
-  border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    var(--shadow-card);
 }
 
 /* Navegação principal, no topo da barra. */
@@ -338,8 +361,10 @@
   outline-offset: -2px;
 }
 
+/* Item ativo: fundo --line e barra lima de 3px à esquerda (por sombra interna, que não muda o tamanho). */
 .main-nav a[aria-current='page'] {
-  background: var(--field-line);
+  background: var(--line);
+  box-shadow: inset 3px 0 0 var(--accent);
   color: var(--text);
   font-weight: 700;
 }
@@ -369,6 +394,11 @@
   overflow-y: auto;
 }
 
+/* Mensagens soltas na lista ("Carregando…", "Nada em andamento."): alinhadas ao texto dos itens. */
+.sidebar__scroll > p {
+  padding: 0 var(--space-2);
+}
+
 .sidebar__list,
 .sidebar__sessions {
   display: grid;
@@ -389,6 +419,8 @@
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
+  /* A marca de estado e o chip "sem Git" são pílulas: sem este respiro encostariam na borda do cartão. */
+  padding-right: var(--space-1);
 }
 
 .sidebar__link,
@@ -432,9 +464,10 @@
   color: var(--text);
 }
 
-/* O projeto ou a missão da página atual: o mesmo fundo do item ativo da navegação. */
+/* O projeto ou a missão da página atual: o mesmo fundo e a mesma barra lima do item ativo da navegação. */
 .sidebar__link[aria-current='page'] {
-  background: var(--field-line);
+  background: var(--line);
+  box-shadow: inset 3px 0 0 var(--accent);
   color: var(--text);
   font-weight: 700;
 }
@@ -573,7 +606,8 @@
 .app-main:has(.pane-tree) {
   padding: 0;
   overflow: hidden;
-  background: var(--bg);
+  /* Sem fundo próprio: o brilho da janela continua visível no vão entre os cartões (a Tarefa 7 refaz os painéis). */
+  background: transparent;
 }
 
 .app-main:has(.pane-tree) .app-main__content {

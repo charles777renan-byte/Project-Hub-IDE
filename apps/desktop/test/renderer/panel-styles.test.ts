@@ -28,13 +28,18 @@ describe('forma do painel', () => {
     );
   });
 
-  it('.panel usa --radius-panel, a borda e a faixa de 3px na cor do acento', () => {
+  // Atualizado na identidade visual (Tarefa 5): o painel virou cartão (B1). Superfície opaca --surface,
+  // raio --radius-card, contorno de 1px por sombra interna e --shadow-card; a faixa colorida de 3px do
+  // topo saiu (o acento fica no ponto do cabeçalho) e o fundo deixou de ser translúcido.
+  it('.panel é um cartão: --surface, --radius-card, contorno por sombra interna e sem faixa no topo', () => {
     const panel = ruleDeclarations(appCss, '.panel');
-    expect(panel.get('border-radius')).toBe('var(--radius-panel)');
-    expect(panel.get('border')).toBe('1px solid var(--line)');
-    expect(panel.get('border-top')).toBe('3px solid var(--panel-accent)');
-    // Translúcido de propósito: o fundo topográfico aparece por trás (ver topographic-styles.test.ts).
-    expect(panel.get('background')).toBe('var(--surface-glass)');
+    expect(panel.get('border-radius')).toBe('var(--radius-card)');
+    expect(panel.get('background')).toBe('var(--surface)');
+    expect(panel.get('box-shadow')?.replaceAll(/\s+/g, ' ')).toBe(
+      'inset 0 0 0 1px var(--line), var(--shadow-card)',
+    );
+    expect(panel.has('border')).toBe(false);
+    expect(panel.has('border-top')).toBe(false);
     expect(panel.get('min-height')).toBe('0');
     expect(panel.get('overflow')).toBe('hidden');
   });

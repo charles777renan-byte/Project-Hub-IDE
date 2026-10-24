@@ -27,20 +27,27 @@ describe('fundo topográfico: estilos', () => {
     );
   });
 
-  it('painéis e cartões são translúcidos, com a mesma cor-base', () => {
+  // Atualizado na identidade visual (Tarefa 5): .panel passou a cartão opaco (--surface); os demais
+  // cartões das telas antigas seguem translúcidos até a camada 2.
+  it('cartões das telas antigas são translúcidos, com a mesma cor-base; o painel é opaco', () => {
     expect(ruleDeclarations(appCss, ':root').get('--surface-glass')).toBe(
       'color-mix(in srgb, var(--panel) 86%, transparent)',
     );
-    expect(ruleDeclarations(appCss, '.panel').get('background')).toBe('var(--surface-glass)');
+    expect(ruleDeclarations(appCss, '.panel').get('background')).toBe('var(--surface)');
     expect(ruleDeclarations(appCss, '.mission-card').get('background')).toBe(
       'var(--surface-glass)',
     );
     expect(ruleDeclarations(appCss, '.form').get('background')).toBe('var(--surface-glass)');
   });
 
-  it('a barra lateral é translúcida', () => {
+  // Atualizado (Tarefa 5): a barra lateral virou cartão opaco; o canvas é opaco (pinta --bg), então o
+  // brilho do app é desenhado por cima dele, numa camada do próprio fundo topográfico.
+  it('a barra lateral é opaca e o brilho do app aparece sobre o fundo topográfico', () => {
     expect(ruleDeclarations(readCss('workspace.css'), '.sidebar').get('background')).toBe(
-      'color-mix(in srgb, var(--bg) 80%, transparent)',
+      'var(--surface)',
+    );
+    expect(ruleDeclarations(appCss, '.topo-background::after').get('background')).toBe(
+      'var(--glow-app)',
     );
   });
 

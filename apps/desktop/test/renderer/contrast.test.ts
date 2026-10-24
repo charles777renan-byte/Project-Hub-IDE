@@ -234,9 +234,21 @@ describe('cores do chrome do workspace', () => {
     'utf8',
   ).replace(/\/\*[\s\S]*?\*\//g, '');
   // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
-  const NEUTRAL = new Set(['--bg', '--line', '--field-line', '--muted', '--text', '--focus']);
-  // Variáveis do chrome que não são cor: espaçamento, fonte e raio.
-  const NOT_COLOR = /^--(?:space|font|radius)(?:-|$)/;
+  // --surface: o cartão da barra lateral (Tarefa 5). --accent: o papel "estado ativo" (barra do item
+  // ativo da navegação); é o mesmo lima de --focus, e não o nome de uma cor de destaque dos dados.
+  const NEUTRAL = new Set([
+    '--bg',
+    '--surface',
+    '--line',
+    '--field-line',
+    '--muted',
+    '--text',
+    '--focus',
+    '--accent',
+  ]);
+  // Variáveis do chrome que não são cor: espaçamento, fonte, raio, sombra, brilho de fundo e movimento.
+  // Sombra e brilho são tokens compostos em tokens.css (as cores deles são conferidas lá).
+  const NOT_COLOR = /^--(?:space|font|radius|shadow|glow|ease|dur)(?:-|$)/;
 
   /** Variáveis derivadas, definidas em workspace.css: `--nome: color-mix(...)`. */
   const derived = new Map(
