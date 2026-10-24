@@ -1,6 +1,8 @@
 import { Terminal } from '@xterm/xterm';
 import { useEffect, useRef } from 'react';
+import { registerTerminalForE2e } from './e2e-hook';
 import { EXIT_HINT } from './exit-hint';
+import { attachWebglRenderer } from './webgl-renderer';
 
 /** Cores do terminal: as mesmas do app (tokens.css). O xterm recebe valores, não variáveis de CSS. */
 const THEME = { background: '#080614', foreground: '#f5f2ff', cursor: '#c8ff2e' } as const;
@@ -94,6 +96,10 @@ export function TerminalView({
     });
     term.open(host);
     termRef.current = term;
+    // O WebGL desenha blocos, caixas e cores de 24 bits; sem ele, o xterm segue no DOM (ver webgl-renderer.ts).
+    const releaseWebgl = attachWebglRenderer(term);
+    // Só existe quando o Playwright cria o gancho de teste; no app de verdade não faz nada.
+    const unregisterForE2e = registerTerminalForE2e(host, term);
     // Devolver false impede o xterm de mandar a tecla ao programa.
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown' || !event.ctrlKey) return true;
@@ -138,6 +144,8 @@ export function TerminalView({
       stopEvents();
       void api.unsubscribe(terminalId);
       termRef.current = null;
+      unregisterForE2e();
+      releaseWebgl();
       term.dispose();
     };
   }, [terminalId]);

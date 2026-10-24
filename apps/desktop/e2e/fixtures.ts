@@ -12,6 +12,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { createTempRepo, type TempRepo } from '@project-hub/test-utils';
+import { E2E_HOOK_KEY, installTerminalHook } from './terminals';
 
 // Fixtures dos testes de ponta a ponta (R188, R189, R193). Cada teste recebe pastas descartáveis
 // (dados do aplicativo e `userData` do Chromium), uma configuração do Git sem nada da máquina e abre
@@ -65,6 +66,12 @@ export type LaunchOptions = {
    * que nunca responde). Sem esta opção a variável continua removida do ambiente do aplicativo.
    */
   rendererUrl?: string;
+  /**
+   * Instala o gancho que deixa os testes lerem o buffer do terminal (ver terminals.ts). O padrão é instalar:
+   * o terminal usa WebGL e não tem texto no DOM. `false` deixa o app como o da pessoa, sem gancho, e serve
+   * ao teste que prova que nada fica exposto sem ele.
+   */
+  terminalHook?: boolean;
 };
 
 type Fixtures = {
@@ -199,6 +206,10 @@ export const test = base.extend<Fixtures>({
       const launched = await launchProcess(options);
       try {
         const page = await launched.app.firstWindow();
+        // A janela pode ter carregado antes do script de inicialização do contexto valer: o gancho
+        // também entra na página que já está aberta (só cria se ainda não existir). Nenhum terminal monta
+        // antes da interface ficar pronta, então nenhum fica de fora.
+        if (options.terminalHook !== false) await page.evaluate(installTerminalHook, E2E_HOOK_KEY);
         await (options.waitForReady ?? waitForNavigation)(page);
         return { ...launched, page };
       } catch (error) {
@@ -236,6 +247,11 @@ export const test = base.extend<Fixtures>({
         args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`],
         env,
       });
+      // O gancho vai como script de inicialização do contexto: roda antes dos scripts da janela, também
+      // depois de recarregar. O app nunca o cria; só o Playwright.
+      if (options.terminalHook !== false) {
+        await app.context().addInitScript(installTerminalHook, E2E_HOOK_KEY);
+      }
       // O fechamento é registrado antes de qualquer espera: se a janela não aparecer ou a interface
       // não ficar pronta, o processo não sobra e a pasta de dados pode ser apagada.
       let closing: Promise<void> | undefined;
