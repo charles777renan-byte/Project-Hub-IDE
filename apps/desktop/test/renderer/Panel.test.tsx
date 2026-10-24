@@ -149,10 +149,11 @@ describe('Panel', () => {
 });
 
 describe('PanelEmpty', () => {
-  it('mostra o texto recebido num parágrafo do estado vazio', () => {
-    render(<PanelEmpty>Nada por aqui</PanelEmpty>);
+  it('mostra o texto recebido como título do estado vazio, com ícone decorativo', () => {
+    const { container } = render(<PanelEmpty>Nada por aqui</PanelEmpty>);
     const text = screen.getByText('Nada por aqui');
-    expect(text.tagName).toBe('P');
-    expect(text).toHaveClass('panel__empty');
+    expect(text).toHaveClass('empty-state__title');
+    expect(text.closest('.panel__empty')).toHaveClass('empty-state');
+    expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 });

@@ -1532,9 +1532,16 @@ button:disabled {
  * Aparência do xterm sob a CSP estrita (style-src 'self'): o xterm monta estas regras num <style> que a CSP
  * bloqueia, então elas vivem aqui. Cores de 256 e RGB vão por estilo CSSOM e já passam.
  */
+/* Sem padding próprio: o ajuste mede o contêiner e o respiro de 8px fica no `.pane__body`; um padding aqui
+   deixaria a última coluna além da borda do contêiner, colada na borda do fundo do terminal. */
 .terminal-view .xterm {
-  padding: 4px;
+  padding: 0;
   height: 100%;
+}
+.terminal-view .xterm-viewport {
+  /* O xterm.css vendorizado pinta o viewport de preto puro e o tema do xterm vai num <style> que a CSP bloqueia:
+     sem isto, a sobra abaixo da última linha (a altura não é múltiplo da célula) fica numa faixa mais escura. */
+  background-color: var(--bg);
 }
 .terminal-view .xterm-rows {
   font-family: var(--font-mono);

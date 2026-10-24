@@ -6,7 +6,8 @@ import { missionPath, projectPath, ROUTE_PATHS, workspacePath } from '../routes'
 import { markOfMission, markOfTerminal, type MarkKind } from '../state-mark';
 import { useTerminals } from '../terminals-data';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
-import { ChevronRight, ICON_PROPS } from './Icon';
+import { EmptyState } from './EmptyState';
+import { ChevronRight, ICON_PROPS, Inbox } from './Icon';
 import { MainNav } from './MainNav';
 import { StateMark } from './StateMark';
 import { StatusChip } from './StatusChip';
@@ -306,7 +307,7 @@ function RunningItems({
       .filter((mission) => IN_PROGRESS.includes(mission.status))
       .map((mission) => ({ project, mission })),
   );
-  if (items.length === 0) return <p className="muted">Nada em andamento.</p>;
+  if (items.length === 0) return <EmptyState icon={Inbox} title="Nada em andamento." />;
 
   return (
     <ul className="sidebar__list">

@@ -56,6 +56,19 @@ describe('PaneView', () => {
     expect(screen.queryByTestId('terminal-view')).not.toBeInTheDocument();
   });
 
+  it('sem sessão, o lançador é um estado vazio: ícone decorativo, título e o botão como ação', () => {
+    const { container } = setup({ leaf: emptyLeaf, terminal: undefined });
+    const title = screen.getByText('Nenhuma sessão neste painel');
+    expect(title).toHaveClass('empty-state__title');
+    const empty = title.closest('.empty-state');
+    expect(empty).not.toBeNull();
+    expect(empty?.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    const start = screen.getByRole('button', { name: 'Iniciar Claude Code' });
+    expect(start.closest('.empty-state__action')).not.toBeNull();
+    // O cartão mantém o cabeçalho com o nome do programa.
+    expect(container.querySelector('.pane__head .pane__title')).toHaveTextContent('Claude Code');
+  });
+
   it('provedor indisponível desabilita o botão e mostra o motivo', () => {
     setup({
       leaf: emptyLeaf,
@@ -64,6 +77,8 @@ describe('PaneView', () => {
     });
     expect(screen.getByRole('button', { name: 'Iniciar Claude Code' })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('Comando não encontrado');
+    // O motivo é a dica do estado vazio, dentro do cartão (a CSS dá o respiro dele).
+    expect(screen.getByRole('status').closest('.empty-state')).not.toBeNull();
   });
 
   it('mostra a falha em um alerta', () => {

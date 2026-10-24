@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readCss, ruleDeclarations } from './css-rules';
 
 /**
- * Árvore de painéis e painel do workspace (Tarefa 8): sem cartões, sem raio, sem sombra; divisória de
- * 1px com área de pegada de 5px; cabeça de 28px e rodapé de 22px; o terminal enche o corpo. As regras
- * ficam numa seção própria no fim de workspace.css.
+ * Árvore de painéis e painel do workspace (identidade visual, Tarefa 7): cada painel é um cartão
+ * (--surface, raio de cartão, contorno de 1px por sombra interna) com 8px de vão entre os cartões; as
+ * divisórias são vãos transparentes de 8px, com um traço no meio ao passar o mouse, arrastar ou focar;
+ * o xterm fica num fundo opaco --bg (#080614), com margem de 4px, sem o brilho da casca sob o texto.
+ * Cabeça de 28px e rodapé de 22px. As regras ficam numa seção própria no fim de workspace.css.
  */
 
 describe('árvore de painéis e painel', () => {
@@ -26,42 +28,54 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__foot').get('white-space')).toBe('nowrap');
   });
 
-  it('a divisória desenha 1px em --line e tem 5px de área de pegada', () => {
+  it('a divisória é um vão transparente de 8px, e o mouse segue a orientação', () => {
     const separator = rule('.pane-tree__separator');
-    expect(separator.get('background')).toBe('var(--line)');
+    expect(separator.get('background')).toBe('transparent');
     expect(separator.get('position')).toBe('relative');
-    const grab = ruleDeclarations(section, '.pane-tree__separator::after');
-    expect(grab.get('content')).toBe("''");
-    expect(grab.get('position')).toBe('absolute');
-  });
-
-  it('a pegada vertical e a horizontal medem 5px e o cursor segue a orientação', () => {
+    expect(separator.get('flex')).toBe('none');
     const vertical = ".pane-tree__separator[aria-orientation='vertical']";
     const horizontal = ".pane-tree__separator[aria-orientation='horizontal']";
-    expect(rule(vertical).get('width')).toBe('1px');
+    expect(rule(vertical).get('width')).toBe('8px');
     expect(rule(vertical).get('cursor')).toBe('col-resize');
-    expect(rule(horizontal).get('height')).toBe('1px');
+    expect(rule(horizontal).get('height')).toBe('8px');
     expect(rule(horizontal).get('cursor')).toBe('row-resize');
-    expect(ruleDeclarations(section, `${vertical}::after`).get('inset')).toBe('0 -2px');
-    expect(ruleDeclarations(section, `${horizontal}::after`).get('inset')).toBe('-2px 0');
   });
 
-  it('passar o mouse, arrastar e focar acende a linha em --field-line, com anel visível', () => {
-    expect(rule('.pane-tree__separator:hover').get('background')).toBe('var(--field-line)');
-    expect(rule('.pane-tree__separator:active').get('background')).toBe('var(--field-line)');
-    const focus = rule('.pane-tree__separator:focus-visible');
-    expect(focus.get('background')).toBe('var(--field-line)');
-    expect(focus.get('outline')).toContain('var(--focus)');
+  it('passar o mouse, arrastar e focar acende um traço de 2px em --field-line no meio do vão', () => {
+    const vertical = ".pane-tree__separator[aria-orientation='vertical']";
+    const horizontal = ".pane-tree__separator[aria-orientation='horizontal']";
+    for (const state of [':hover', ':active', ':focus-visible']) {
+      expect(rule(`${vertical}${state}`).get('background'), vertical + state).toBe(
+        'linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat',
+      );
+      expect(rule(`${horizontal}${state}`).get('background'), horizontal + state).toBe(
+        'linear-gradient(var(--field-line), var(--field-line)) center / 100% 2px no-repeat',
+      );
+    }
+    // Foco por teclado: o anel lima do sistema, no vão entre os cartões.
+    expect(rule('.pane-tree__separator:focus-visible').get('outline')).toContain('var(--focus)');
   });
 
-  it('o painel não tem raio nem sombra que não seja uma linha interna', () => {
+  it('o painel é um cartão: --surface, raio de cartão e contorno de 1px por sombra interna', () => {
     const pane = rule('.pane');
-    expect(pane.has('border-radius')).toBe(false);
+    expect(pane.get('border-radius')).toBe('var(--radius-card)');
+    expect(pane.get('background')).toBe('var(--surface)');
     expect(pane.get('border')).toBe('0');
-    const shadow = pane.get('box-shadow');
-    expect(shadow === undefined || /^inset\b/.test(shadow)).toBe(true);
-    expect(section).not.toMatch(/border-radius\s*:\s*(?!0)/);
-    expect(section).not.toMatch(/box-shadow\s*:\s*(?!inset|none)/);
+    // Corta o conteúdo no raio do cartão.
+    expect(pane.get('overflow')).toBe('hidden');
+    expect(pane.get('box-shadow')).toBe('inset 0 0 0 1px var(--line)');
+    // Só sombras internas: uma externa seria cortada pelo overflow da árvore.
+    expect(section).not.toMatch(/box-shadow\s*:\s*(?!inset|none|\s)/);
+  });
+
+  it('o painel ativo ganha o contorno em --field-line; o foco do teclado, o anel --focus no cartão', () => {
+    expect(rule(".pane[data-active='true']").get('box-shadow')).toBe(
+      'inset 0 0 0 1px var(--field-line)',
+    );
+    // O anel vai no cartão (o xterm tem `outline: none` no CSS vendorizado): vale para o terminal e
+    // para os botões do painel, e o próprio cartão (tabindex -1) não desenha outline.
+    expect(rule('.pane:focus-within').get('box-shadow')).toBe('inset 0 0 0 2px var(--focus)');
+    expect(rule('.pane:focus').get('outline')).toBe('none');
   });
 
   it('os nós da árvore enchem o pai sem estourar', () => {
@@ -73,15 +87,38 @@ describe('árvore de painéis e painel', () => {
     }
   });
 
-  it('o corpo cresce e o espaçamento fica nele, não no terminal', () => {
+  it('o corpo é o fundo opaco do terminal (--bg = #080614), com margem de 4px e o respiro dentro', () => {
     const body = rule('.pane__body');
     expect(body.get('flex')).toBe('1');
     expect(body.get('min-height')).toBe('0');
-    expect(body.get('padding')).toBe('4px');
+    expect(body.get('background')).toBe('var(--bg)');
+    expect(body.get('margin')).toBe('0 4px 4px');
+    expect(body.get('padding')).toBe('8px');
+    expect(body.get('border-radius')).toBe('var(--radius)');
+    expect(body.get('overflow')).toBe('hidden');
+    // O --bg do tema é o mesmo preto que o TerminalView entrega ao xterm.
+    expect(ruleDeclarations(readCss('tokens.css'), ':root').get('--bg')).toBe('#080614');
+  });
+
+  it('o terminal não ganha padding nem muda de medida: o respiro fica no corpo', () => {
     expect(ruleDeclarations(css, '.pane__body .terminal-view').has('padding')).toBe(false);
     expect(ruleDeclarations(css, '.terminal-view').has('padding')).toBe(false);
     expect(rule('.pane__body .terminal-view').get('width')).toBe('100%');
     expect(rule('.pane__body .terminal-view').get('height')).toBe('100%');
+  });
+
+  it('a regra do xterm que preserva os espaços continua (célula só de espaço não colapsa)', () => {
+    const rows = ruleDeclarations(readCss('app.css'), '.terminal-view .xterm-rows');
+    expect(rows.get('white-space')).toBe('pre');
+    // O viewport do xterm vem preto puro do xterm.css: a sobra abaixo da última linha usa o mesmo --bg do corpo.
+    expect(
+      ruleDeclarations(readCss('app.css'), '.terminal-view .xterm-viewport').get(
+        'background-color',
+      ),
+    ).toBe('var(--bg)');
+    // O xterm não tem padding próprio: o ajuste mede o contêiner, e um padding dele empurraria a última
+    // coluna para fora da borda do fundo opaco (texto colado na borda).
+    expect(ruleDeclarations(readCss('app.css'), '.terminal-view .xterm').get('padding')).toBe('0');
   });
 
   it('a seção só usa as cores neutras do tema', () => {
@@ -90,15 +127,37 @@ describe('árvore de painéis e painel', () => {
     const used = [...section.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
     // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
-    const allowed = new Set(['--bg', '--line', '--field-line', '--muted', '--text', '--focus']);
-    expect(used.filter((name) => !allowed.has(name) && !/^--(?:space|font)/.test(name))).toEqual(
-      [],
-    );
+    // --surface: o fundo do cartão. --radius*: raios, que não são cor.
+    const allowed = new Set([
+      '--bg',
+      '--surface',
+      '--line',
+      '--field-line',
+      '--muted',
+      '--text',
+      '--focus',
+    ]);
+    expect(
+      used.filter((name) => !allowed.has(name) && !/^--(?:space|font|radius)/.test(name)),
+    ).toEqual([]);
   });
 
   it('o aviso da sessão encerrada é flex e as ações não encolhem (Limpar painel não é cortado)', () => {
     expect(rule('.pane__notice').get('display')).toBe('flex');
     expect(rule('.pane__notice > span:first-child').get('min-width')).toBe('0');
     expect(rule('.pane__actions').get('flex')).toBe('none');
+  });
+
+  it('o estado vazio é centrado e em --muted; no painel, o texto tem respiro e não encosta na borda', () => {
+    const empty = rule('.empty-state');
+    expect(empty.get('display')).toBe('flex');
+    expect(empty.get('flex-direction')).toBe('column');
+    expect(empty.get('align-items')).toBe('center');
+    expect(empty.get('color')).toBe('var(--muted)');
+    expect(rule('.empty-state .empty-state__title').get('color')).toBe('var(--text)');
+    expect(rule('.empty-state .empty-state__hint').get('overflow-wrap')).toBe('anywhere');
+    // O "… não foi encontrado no PATH" ficava colado na borda esquerda do painel.
+    expect(rule('.pane__launcher').get('padding')).toBe('var(--space-3)');
+    expect(rule(".pane__launcher [role='alert']").get('padding')).toBe('0 var(--space-3)');
   });
 });

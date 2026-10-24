@@ -607,9 +607,8 @@
 }
 
 /*
- * Árvore de painéis e painel do workspace. Ainda sem cartões, raio nem sombra (a Tarefa 7 refaz os painéis):
- * as divisórias de 1px desenham as bordas e o terminal usa quase toda a superfície. A página do workspace
- * não tem padding próprio; o respiro de 8px das bordas vem do `.app-body`.
+ * Árvore de painéis e painel do workspace (B1): cada painel é um cartão e as divisórias são vãos de 8px
+ * entre eles. A página do workspace não tem padding próprio; o respiro de 8px das bordas vem do `.app-body`.
  */
 .app-main:has(.pane-tree) {
   padding: 0;
@@ -649,50 +648,49 @@
 }
 
 /*
- * Divisória: a linha visível tem 1px e ocupa o espaço do layout; os 5px de pegada saem de um pseudo-elemento
- * centrado nela, para o vão entre os painéis não crescer.
+ * Divisória: o vão de 8px entre dois cartões. É transparente (o brilho da janela aparece nele) e é a própria
+ * pegada de arrastar; ao passar o mouse, arrastar ou focar, um traço de 2px em --field-line surge no meio
+ * dele. O anel de foco (--focus) contorna o vão.
  */
 .pane-tree__separator {
   position: relative;
   flex: none;
-  background: var(--line);
+  background: transparent;
   outline-offset: 0;
 }
 
-.pane-tree__separator::after {
-  content: '';
-  position: absolute;
-  z-index: 1;
-}
-
 .pane-tree__separator[aria-orientation='vertical'] {
-  width: 1px;
+  width: 8px;
   cursor: col-resize;
 }
 
-.pane-tree__separator[aria-orientation='vertical']::after {
-  inset: 0 -2px;
-}
-
 .pane-tree__separator[aria-orientation='horizontal'] {
-  height: 1px;
+  height: 8px;
   cursor: row-resize;
 }
 
-.pane-tree__separator[aria-orientation='horizontal']::after {
-  inset: -2px 0;
+.pane-tree__separator[aria-orientation='vertical']:hover,
+.pane-tree__separator[aria-orientation='vertical']:active,
+.pane-tree__separator[aria-orientation='vertical']:focus-visible {
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat;
 }
 
-.pane-tree__separator:hover,
-.pane-tree__separator:active,
-.pane-tree__separator:focus-visible {
-  background: var(--field-line);
+.pane-tree__separator[aria-orientation='horizontal']:hover,
+.pane-tree__separator[aria-orientation='horizontal']:active,
+.pane-tree__separator[aria-orientation='horizontal']:focus-visible {
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 100% 2px no-repeat;
 }
 
 .pane-tree__separator:focus-visible {
   outline: 2px solid var(--focus);
 }
 
+/*
+ * Cartão do painel: superfície, raio de cartão e contorno de 1px por sombra interna (uma sombra externa seria
+ * cortada pelo overflow da árvore). O painel ativo tem o contorno em --field-line; o foco do teclado, em
+ * qualquer ponto do cartão (o terminal, um botão), desenha o anel --focus por dentro: o xterm vendorizado
+ * tira o outline dele, então o anel vive no cartão. O cartão em si (tabindex -1) não desenha outline.
+ */
 .pane {
   position: relative;
   display: flex;
@@ -700,21 +698,23 @@
   width: 100%;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border: 0;
-  background: var(--bg);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* Painel ativo: uma linha de 1px no topo, sobre a cabeça, sem mudar o tamanho de nada. */
-.pane[data-active='true']::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 1;
-  height: 1px;
-  background: var(--field-line);
-  pointer-events: none;
+.pane[data-active='true'] {
+  box-shadow: inset 0 0 0 1px var(--field-line);
+}
+
+.pane:focus {
+  outline: none;
+}
+
+.pane:focus-within {
+  box-shadow: inset 0 0 0 2px var(--focus);
 }
 
 .pane__head {
@@ -770,12 +770,19 @@
   outline-offset: -2px;
 }
 
-/* O respiro fica no corpo: o terminal mede o próprio clientWidth/clientHeight e não pode ter padding. */
+/*
+ * O fundo opaco do terminal (--bg = #080614): o brilho violeta da janela nunca fica sob o texto. A margem de 4px
+ * o afasta da borda do cartão e o padding de 8px afasta o texto da borda do preto. O respiro fica aqui: o terminal
+ * mede o próprio clientWidth/clientHeight e não pode ter padding.
+ */
 .pane__body {
   flex: 1;
   min-height: 0;
-  padding: 4px;
+  margin: 0 4px 4px;
+  padding: 8px;
   overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--bg);
 }
 
 .pane__body .terminal-view {
@@ -806,7 +813,13 @@
   justify-content: center;
   gap: var(--space-2);
   min-height: 0;
+  padding: var(--space-3);
   color: var(--muted);
+}
+
+/* O erro de iniciar não encosta na borda do cartão. */
+.pane__launcher [role='alert'] {
+  padding: 0 var(--space-3);
 }
 
 .pane__notice {
@@ -838,4 +851,40 @@
 /* O chevron do projeto aponta para a direita recolhido e para baixo expandido. */
 .sidebar__toggle[aria-expanded='true'] .sidebar__chevron svg {
   transform: rotate(90deg);
+}
+
+/*
+ * Estado vazio (components/EmptyState.tsx): ícone decorativo, título, dica e uma ação opcional, centrados. No
+ * cartão do painel o texto longo quebra em vez de encostar na borda.
+ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state__icon {
+  flex: none;
+  color: var(--muted);
+}
+
+.empty-state .empty-state__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.empty-state .empty-state__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.empty-state__action {
+  margin-top: var(--space-1);
 }
