@@ -1,5 +1,7 @@
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { ConfirmButton } from '../components/ConfirmButton';
+import { EmptyState } from '../components/EmptyState';
+import { SquareTerminal } from '../components/Icon';
 import { StateMark } from '../components/StateMark';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
@@ -40,22 +42,33 @@ export function PaneView(props: PaneViewProps) {
   let content;
   if (leaf.terminalId === null) {
     content = (
-      <div className="pane__launcher">
-        <strong>{label}</strong>
-        <p>Nenhuma sessão neste painel</p>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={busy || provider?.available === false}
-          onClick={props.onStart}
-        >
-          {`Iniciar ${label}`}
-        </button>
-        {provider?.available === false && provider.reason !== undefined && (
-          <p role="status">{provider.reason}</p>
-        )}
-        {error !== undefined && <p role="alert">{error}</p>}
-      </div>
+      <>
+        <div className="pane__head">
+          <span className="pane__title">{label}</span>
+        </div>
+        <div className="pane__launcher">
+          <EmptyState
+            icon={SquareTerminal}
+            title="Nenhuma sessão neste painel"
+            hint={
+              provider?.available === false && provider.reason !== undefined ? (
+                <span role="status">{provider.reason}</span>
+              ) : undefined
+            }
+            action={
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || provider?.available === false}
+                onClick={props.onStart}
+              >
+                {`Iniciar ${label}`}
+              </button>
+            }
+          />
+          {error !== undefined && <p role="alert">{error}</p>}
+        </div>
+      </>
     );
   } else if (terminal === undefined || terminal.state === 'exited') {
     // Sem registro não dá para saber se a sessão era de missão: oferecer reiniciar é o caso comum.

@@ -449,9 +449,9 @@ describe('MissionPage: abas', () => {
     const terminal = await openTab('Terminal');
 
     expect(terminal.querySelector('.panel')).toBeNull();
-    expect(within(terminal).getByText('O agente ainda não executou comandos.')).toHaveClass(
-      'panel__empty',
-    );
+    const empty = within(terminal).getByText('O agente ainda não executou comandos.');
+    expect(empty).toHaveClass('empty-state__title');
+    expect(empty.closest('.panel__empty')).not.toBeNull();
   });
 
   it('a aba Testes mostra os critérios de aceite, cada um não verificado até um teste passar', async () => {

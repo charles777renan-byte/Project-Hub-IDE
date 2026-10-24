@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import type { Tone } from '../mission-text';
+import { EmptyState } from './EmptyState';
+import { Inbox } from './Icon';
 import { StatusChip } from './StatusChip';
 
 export type PanelAccent =
@@ -43,7 +45,7 @@ export function Panel({
   );
 }
 
-/** Estado vazio de um painel: uma frase em `--muted`. */
+/** Estado vazio de um painel: ícone decorativo e a frase como título, em `--muted`. */
 export function PanelEmpty({ children }: { children: ReactNode }) {
-  return <p className="panel__empty">{children}</p>;
+  return <EmptyState icon={Inbox} title={children} className="panel__empty" />;
 }

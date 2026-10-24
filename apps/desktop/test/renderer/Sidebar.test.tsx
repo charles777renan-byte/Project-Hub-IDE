@@ -625,7 +625,12 @@ describe('Sidebar: seção Em andamento', () => {
     installApi({ missions: { p1: [missionOf({ status: 'succeeded' })] } });
     renderSidebar('/');
 
-    expect(await screen.findByText('Nada em andamento.')).toBeInTheDocument();
+    const empty = await screen.findByText('Nada em andamento.');
+    expect(empty).toHaveClass('empty-state__title');
+    expect(empty.closest('.empty-state')?.querySelector('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
   });
 
   it('+ Nova missão aparece na rota de um projeto e leva à página dele', async () => {
