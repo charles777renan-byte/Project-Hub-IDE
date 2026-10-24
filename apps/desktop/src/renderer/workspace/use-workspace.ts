@@ -83,6 +83,9 @@ export function useWorkspace(projectId: string): UseWorkspace {
   const generation = useRef(0);
   // Mudanças de estrutura (abrir/fechar painel) em voo: enquanto houver, o layout local está velho e
   // gravá-lo atropelaria a mudança, então a gravação espera (o pendente continua marcado).
+  // Só vale para a geração atual: a de um projeto que já saiu não bloqueia nem reagenda nada no novo.
+  // Limitação aceita: uma edição pendente do projeto antigo, com mudança estrutural dele em voo na troca,
+  // é descartada.
   const structural = useRef(0);
 
   const setActive = useCallback((leafId: string | null, withFocus = false) => {
@@ -160,6 +163,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
   useEffect(() => {
     let cancelled = false;
     generation.current += 1;
+    structural.current = 0;
     current.current = null;
     dirty.current = false;
     setSaveError(null);
@@ -250,7 +254,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
         }
         return null;
       } catch {
-        return ACTION_ERROR;
+        return generation.current !== mine ? null : ACTION_ERROR;
       }
     },
     [adopt, saveNow, scheduleSave],
@@ -305,7 +309,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
       } catch {
         return generation.current !== mine ? null : ACTION_ERROR;
       } finally {
-        structural.current -= 1;
+        if (generation.current === mine) structural.current -= 1;
         // Sem sucesso, o que ficou pendente durante o pedido ainda precisa ser gravado.
         if (!adopted && generation.current === mine && dirty.current) scheduleSave();
       }

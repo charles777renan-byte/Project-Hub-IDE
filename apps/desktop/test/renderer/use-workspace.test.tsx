@@ -607,6 +607,36 @@ describe('useWorkspace', () => {
       });
       await act(async () => {});
       act(() => result.current.setRatio('raiz', 0.3));
+      // O debounce dispara durante o voo: a gravação bloqueada não envia nada.
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS * 2);
+      });
+      expect(api.saveLayout).not.toHaveBeenCalled();
+      await act(async () => {
+        resolve({ ok: false, error: { code: 'x', message: 'falhou' } });
+        await pending;
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS);
+      });
+      expect(api.saveLayout).toHaveBeenCalledTimes(1);
+    });
+
+    it('removePane com erro regrava o que ficou pendente durante o pedido', async () => {
+      let resolve: (value: unknown) => void = () => {};
+      api.removePane.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { result } = await mount();
+      let pending: Promise<string | null> = Promise.resolve(null);
+      act(() => {
+        pending = result.current.removePane('a');
+      });
+      await act(async () => {});
+      act(() => result.current.setRatio('raiz', 0.3));
+      // O debounce dispara durante o voo: a gravação bloqueada não envia nada.
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS * 2);
+      });
+      expect(api.saveLayout).not.toHaveBeenCalled();
       await act(async () => {
         resolve({ ok: false, error: { code: 'x', message: 'falhou' } });
         await pending;
@@ -669,6 +699,42 @@ describe('useWorkspace', () => {
       let outcome: string | null = 'x';
       await act(async () => {
         resolve({ ok: false, error: { code: 'x', message: 'do p1' } });
+        outcome = await pending;
+      });
+      expect(outcome).toBeNull();
+    });
+
+    it('addPane do projeto antigo em voo não bloqueia a gravação do projeto novo', async () => {
+      api.addPane.mockReturnValue(new Promise(() => {}));
+      const { result, rerender } = await mount('p1');
+      act(() => {
+        void result.current.addPane('codex');
+      });
+      await act(async () => {});
+      rerender({ id: 'p2' });
+      await act(async () => {});
+      act(() => result.current.setRatio('raiz', 0.3));
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS);
+      });
+      expect(api.saveLayout).toHaveBeenCalledTimes(1);
+      expect(api.saveLayout.mock.calls[0]![0]).toBe('w-p2');
+    });
+
+    it('catch de startSession de projeto antigo é ignorado', async () => {
+      let reject: (reason: unknown) => void = () => {};
+      api.startSession.mockReturnValue(new Promise((_, r) => (reject = r)));
+      const { result, rerender } = await mount('p1');
+      let pending: Promise<string | null> = Promise.resolve('x');
+      act(() => {
+        pending = result.current.startSession('a');
+      });
+      await act(async () => {});
+      rerender({ id: 'p2' });
+      await act(async () => {});
+      let outcome: string | null = 'x';
+      await act(async () => {
+        reject(new Error('boom'));
         outcome = await pending;
       });
       expect(outcome).toBeNull();
