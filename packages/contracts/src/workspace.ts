@@ -129,5 +129,8 @@ export const saveLayoutInputSchema = z.object({
   layout: workspaceLayoutSchema,
 });
 
+/** Entrada de `workspaces:add-pane:v1`: o workspace e o programa; o comando sai do registro de provedores. */
+export const addPaneInputSchema = z.object({ workspaceId: idSchema, provider: providerIdSchema });
+
 /** Entrada dos canais que agem num painel: o workspace e a folha, nunca comando ou caminho. */
 export const paneInputSchema = z.object({ workspaceId: idSchema, leafId: idSchema });

@@ -374,6 +374,15 @@ describe('serviço de terminais do app', () => {
     expect(h.killed()).toBe(0);
   });
 
+  it('isMissionSession é verdadeiro só para o terminal de um agente em andamento', async () => {
+    const h = setup({ executions: [agentExecution], missions: [mission] });
+    await h.service.openSession('p1', 'shell');
+
+    expect(h.service.isMissionSession('sessao-agente')).toBe(true);
+    expect(h.service.isMissionSession('shell-1')).toBe(false);
+    expect(h.service.isMissionSession('nao-existe')).toBe(false);
+  });
+
   it('closeSession de id desconhecido devolve TERMINAL_NOT_FOUND', async () => {
     const h = setup();
 
