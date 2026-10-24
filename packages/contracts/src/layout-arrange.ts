@@ -1,4 +1,5 @@
-// Sem zod: o renderer importa este arquivo direto (ver `layout-limits.ts`). Dos contratos só entram tipos.
+// Sem zod: o processo principal e o renderer (`showTerminal` do hook do workspace) importam este arquivo
+// direto (ver `layout-limits.ts`). Dos contratos só entram tipos.
 import type { LayoutLeaf, LayoutNode } from './workspace';
 import { LAYOUT_LIMITS } from './layout-limits';
 

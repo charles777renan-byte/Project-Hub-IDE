@@ -8,6 +8,7 @@ import type {
   WorkspaceDto,
 } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
@@ -367,5 +368,88 @@ describe('WorkspacePage', () => {
     renderAt(undefined, 'outro');
     expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /projetos/i })).toHaveAttribute('href', '/projects');
+  });
+
+  describe('abrir e fechar painéis (revisão final)', () => {
+    const vazio = () => ({ ...dto(padrao()), layout: null });
+
+    it('painel novo não pisca "A sessão terminou." enquanto a lista de terminais recarrega', async () => {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+      let releaseReload: (value: unknown) => void = () => {};
+      api.terminals.list
+        .mockResolvedValueOnce({ ok: true, data: [] })
+        .mockReturnValueOnce(new Promise((resolve) => (releaseReload = resolve)));
+      api.workspaces.addPane.mockResolvedValue({
+        ok: true,
+        data: dto(leaf('n', 'shell', 't1')),
+      });
+      renderAt();
+      await userEvent.click(await screen.findByRole('button', { name: 'PowerShell' }));
+      expect(await screen.findByText('Abrindo a sessão…')).toBeInTheDocument();
+      expect(screen.queryByText('A sessão terminou.')).not.toBeInTheDocument();
+      await act(async () => releaseReload({ ok: true, data: [shellTerminal] }));
+      expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t1');
+      expect(screen.queryByText('A sessão terminou.')).not.toBeInTheDocument();
+    });
+
+    it('com 12 painéis, os botões da barra ficam desabilitados com a dica do limite', async () => {
+      let n = 0;
+      const cheio = arrangeLeaves(
+        Array.from({ length: 12 }, (_, i) => leaf('f' + i, 'shell')),
+        () => 's' + n++,
+      );
+      api.workspaces.open.mockResolvedValue({
+        ok: true,
+        data: { ...dto(padrao()), layout: cheio },
+      });
+      renderAt();
+      const bar = await screen.findByRole('toolbar', { name: 'Abrir terminal' });
+      expect(within(bar).getByRole('button', { name: 'Claude Code' })).toBeDisabled();
+      expect(within(bar).getByRole('button', { name: 'PowerShell' })).toBeDisabled();
+      const wrap = bar.querySelector<HTMLElement>('.workspace__open-wrap');
+      expect(wrap).not.toBeNull();
+      act(() => wrap!.focus());
+      expect((await screen.findAllByText('Limite de 12 painéis')).length).toBeGreaterThan(0);
+    });
+
+    it('falha ao carregar os programas vira aviso e a dica não manda usar a barra vazia', async () => {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+      api.providers.list.mockResolvedValue({
+        ok: false,
+        error: { code: 'x', message: 'falhou' },
+      });
+      renderAt();
+      expect(
+        await screen.findByText('Nenhum programa disponível para abrir um terminal.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Não foi possível carregar os programas disponíveis.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Escolha um programa na barra acima para abrir um terminal.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('fechar o último painel leva o foco ao primeiro botão da barra', async () => {
+      api.workspaces.open.mockResolvedValue({
+        ok: true,
+        data: { ...dto(padrao()), layout: leaf('a', 'claude') },
+      });
+      api.workspaces.removePane.mockResolvedValue({ ok: true, data: vazio() });
+      renderAt();
+      const pane = await screen.findByRole('region', { name: 'Painel Claude Code' });
+      await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Claude Code' })).toHaveFocus(),
+      );
+    });
+
+    it('sessão pedida pela barra lateral com workspace vazio abre um painel com ela', async () => {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+      api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+      renderAt({ showTerminal: 't1' });
+      expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t1');
+      expect(screen.queryByText('Nenhum terminal aberto')).not.toBeInTheDocument();
+    });
   });
 });

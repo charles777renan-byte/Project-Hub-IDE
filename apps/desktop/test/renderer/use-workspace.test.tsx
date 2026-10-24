@@ -1,7 +1,9 @@
 import { act, renderHook } from '@testing-library/react';
 import type { LayoutNode, WorkspaceDto } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { getToasts, notify } from '../../src/renderer/notify';
+import { leavesOf } from '../../src/renderer/workspace/layout-model';
 import { SAVE_DELAY_MS, useWorkspace } from '../../src/renderer/workspace/use-workspace';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
@@ -28,7 +30,6 @@ const api = {
   open: vi.fn(),
   saveLayout: vi.fn(),
   startSession: vi.fn(),
-  endSession: vi.fn(),
   addPane: vi.fn(),
   removePane: vi.fn(),
 };
@@ -40,7 +41,6 @@ beforeEach(() => {
     .mockImplementation(async (id: string) => ({ ok: true, data: dto(layoutOf(), id) }));
   api.saveLayout.mockReset().mockResolvedValue({ ok: true, data: undefined });
   api.startSession.mockReset();
-  api.endSession.mockReset();
   api.addPane.mockReset();
   api.removePane.mockReset();
   window.projectHub = { workspaces: api } as unknown as typeof window.projectHub;
@@ -154,18 +154,6 @@ describe('useWorkspace', () => {
     });
     expect(outcome).toBe('Sem Codex');
     expect(result.current.state).toBe(before);
-  });
-
-  it('endSession adota o DTO e devolve null', async () => {
-    api.open.mockResolvedValue({ ok: true, data: dto(layoutOf('t1')) });
-    api.endSession.mockResolvedValue({ ok: true, data: dto(layoutOf()) });
-    const { result } = await mount();
-    let outcome: string | null = 'x';
-    await act(async () => {
-      outcome = await result.current.endSession('a');
-    });
-    expect(outcome).toBeNull();
-    expect(api.endSession).toHaveBeenCalledWith('w-p1', 'a');
   });
 
   it('showTerminal de terminal que já está numa folha só ativa a folha e não grava', async () => {
@@ -529,15 +517,97 @@ describe('useWorkspace', () => {
       expect(result.current.state).toBe(before);
     });
 
-    it('showTerminal com layout null devolve null sem erro', async () => {
+    it('showTerminal com workspace vazio cria um painel com a sessão e grava', async () => {
       api.open.mockResolvedValue({ ok: true, data: dto(vazio) });
       const { result } = await mount();
+      let id: string | null = null;
+      act(() => {
+        id = result.current.showTerminal('t1', 'codex');
+      });
+      expect(id).not.toBeNull();
+      const state = result.current.state;
+      expect(state.status === 'ready' && state.workspace.layout).toEqual({
+        type: 'leaf',
+        id,
+        provider: 'codex',
+        terminalId: 't1',
+      });
+      expect(result.current.activeLeafId).toBe(id);
+      await act(async () => {
+        vi.advanceTimersByTime(SAVE_DELAY_MS);
+      });
+      expect(api.saveLayout).toHaveBeenCalledTimes(1);
+    });
+
+    it('showTerminal sem provedor conhecido cria o painel como shell', async () => {
+      api.open.mockResolvedValue({ ok: true, data: dto(vazio) });
+      const { result } = await mount();
+      act(() => {
+        result.current.showTerminal('t1');
+      });
+      const state = result.current.state;
+      expect(state.status === 'ready' && state.workspace.layout).toMatchObject({
+        provider: 'shell',
+      });
+    });
+
+    it('showTerminal com todos os painéis ocupados abre um novo e não substitui nenhuma sessão', async () => {
+      api.open.mockResolvedValue({ ok: true, data: dto(layoutOf('t1', 't2')) });
+      const { result } = await mount();
+      let id: string | null = null;
+      act(() => {
+        id = result.current.showTerminal('t3', 'claude');
+      });
+      const state = result.current.state;
+      if (state.status !== 'ready') throw new Error('estado');
+      const terminals = leavesOf(state.workspace.layout).map((leaf) => leaf.terminalId);
+      expect(terminals.sort()).toEqual(['t1', 't2', 't3']);
+      expect(result.current.activeLeafId).toBe(id);
+    });
+
+    it('showTerminal com 12 painéis cheios avisa e não muda nada', async () => {
+      let n = 0;
+      const cheio = arrangeLeaves(
+        Array.from({ length: 12 }, (_, i) => ({
+          type: 'leaf' as const,
+          id: 'f' + i,
+          provider: 'shell' as const,
+          terminalId: 't' + i,
+        })),
+        () => 's' + n++,
+      );
+      api.open.mockResolvedValue({ ok: true, data: dto(cheio as LayoutNode) });
+      const { result } = await mount();
+      const before = result.current.state;
       let id: string | null = 'x';
       act(() => {
-        id = result.current.showTerminal('t1');
+        id = result.current.showTerminal('novo');
       });
       expect(id).toBeNull();
-      expect(result.current.activeLeafId).toBeNull();
+      expect(result.current.state).toBe(before);
+      expect(getToasts().map((toast) => toast.message)).toContain(
+        'O workspace já tem o máximo de 12 painéis.',
+      );
+    });
+
+    it('removePane devolve o foco à folha ativa que restou', async () => {
+      const restante: LayoutNode = { type: 'leaf', id: 'a', provider: 'claude', terminalId: null };
+      api.removePane.mockResolvedValue({ ok: true, data: dto(restante) });
+      const { result } = await mount();
+      await act(async () => {
+        await result.current.removePane('b');
+      });
+      expect(result.current.focusLeafId).toBe('a');
+    });
+
+    it('removePane da folha ativa leva o foco à primeira restante', async () => {
+      const restante: LayoutNode = { type: 'leaf', id: 'b', provider: 'shell', terminalId: null };
+      api.removePane.mockResolvedValue({ ok: true, data: dto(restante) });
+      const { result } = await mount();
+      await act(async () => {
+        await result.current.removePane('a');
+      });
+      expect(result.current.focusLeafId).toBe('b');
     });
   });
 

@@ -85,6 +85,8 @@ function SplitNode({
         defaultSize={String(split.ratio * 100)}
         minSize="15"
       >
+        {/* Mudar a estrutura (abrir/fechar painel) gera ids novos de divisão e remonta os painéis: o xterm
+            desmonta e remonta, e a saída volta do buffer do processo. Aceito de propósito. */}
         <Node key={split.first.id} node={split.first} onRatio={onRatio} renderLeaf={renderLeaf} />
       </Panel>
       <Separator className="pane-tree__separator" aria-label="Redimensionar painéis" />

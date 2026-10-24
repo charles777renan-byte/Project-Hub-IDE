@@ -4,7 +4,7 @@ import { ICON_PROPS } from './Icon';
 
 /**
  * Estado vazio: ícone decorativo (aria-hidden), título, dica opcional e uma ação opcional, em geral um botão que
- * já existe na tela ("Iniciar PowerShell"). Não cria fluxo: sem ação onde não houver. O título aceita nó
+ * já existe na tela ("Abrir projeto"). Não cria fluxo: sem ação onde não houver. O título aceita nó
  * (um link dentro da frase, por exemplo); a classe extra deixa o chamador ligar o estilo dele.
  */
 export function EmptyState({

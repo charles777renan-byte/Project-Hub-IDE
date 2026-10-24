@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
 import { SquareTerminal } from '../components/Icon';
@@ -9,8 +10,11 @@ import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
+import { leavesOf } from '../workspace/layout-model';
 import { useWorkspace } from '../workspace/use-workspace';
 import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
+
+const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.';
 
 /** Lê o id da sessão que a barra lateral pediu para mostrar, se o estado da rota traz um. */
 function requestedTerminal(state: unknown): string | null {
@@ -43,6 +47,10 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   const location = useLocation();
   const navigate = useNavigate();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  // Depois de fechar o último painel o foco vai para a barra (senão cairia no body).
+  const [toolbarFocus, setToolbarFocus] = useState(0);
+  const hadPanes = useRef(false);
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const consumed = useRef<string | null>(null);
@@ -55,10 +63,14 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     void (async () => {
       try {
         const result = await window.projectHub.providers.list();
-        if (!cancelled && result.ok) setProviders(result.data);
+        if (cancelled) return;
+        if (result.ok) setProviders(result.data);
+        else notify.error(PROVIDERS_ERROR);
       } catch {
         // Sem a lista, os painéis mostram o rótulo do provedor e deixam o botão habilitado.
+        if (!cancelled) notify.error(PROVIDERS_ERROR);
       }
+      if (!cancelled) setProvidersLoaded(true);
     })();
     return () => {
       cancelled = true;
@@ -68,13 +80,24 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   // Pedido da barra lateral: vale uma vez por navegação. O estado da rota é limpo logo depois.
   const wanted = requestedTerminal(location.state);
   const ready = workspace.state.status === 'ready';
+  const currentLayout =
+    workspace.state.status === 'ready' ? workspace.state.workspace.layout : undefined;
+  // Ao ficar sem painéis (o último foi fechado), o foco não pode cair no body: vai para a barra.
+  useEffect(() => {
+    if (currentLayout === undefined) return;
+    if (currentLayout !== null) hadPanes.current = true;
+    else if (hadPanes.current) {
+      hadPanes.current = false;
+      setToolbarFocus((previous) => previous + 1);
+    }
+  }, [currentLayout]);
   const { showTerminal } = workspace;
   useEffect(() => {
     if (wanted === null || !ready || consumed.current === location.key) return;
     consumed.current = location.key;
-    showTerminal(wanted);
+    showTerminal(wanted, terminals.find((item) => item.id === wanted)?.provider);
     navigate(location.pathname, { replace: true, state: null });
-  }, [wanted, ready, location.key, location.pathname, showTerminal, navigate]);
+  }, [wanted, ready, location.key, location.pathname, showTerminal, navigate, terminals]);
 
   if (workspace.state.status === 'loading') {
     return <p className="workspace-status">Abrindo o workspace…</p>;
@@ -116,6 +139,8 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     try {
       const message = await workspace.addPane(provider);
       if (message !== null) notify.error(message);
+      // A lista de terminais só se atualiza a cada 2 s: sem ler agora, o painel novo diria que a sessão terminou.
+      else await reload();
     } finally {
       openingRef.current = false;
       setOpening(false);
@@ -132,7 +157,11 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     const providerId = terminal?.provider ?? leaf.provider;
     // Sem a sessão na lista ainda (primeira leitura ou leitura depois de iniciar), não dá para dizer que
     // ela terminou.
-    if (leaf.terminalId !== null && terminal === undefined && (busy.has(leaf.id) || !loaded)) {
+    if (
+      leaf.terminalId !== null &&
+      terminal === undefined &&
+      (busy.has(leaf.id) || opening || !loaded)
+    ) {
       return (
         <section
           className="pane"
@@ -170,6 +199,8 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
       <WorkspaceToolbar
         providers={providers}
         busy={opening}
+        limitReached={leavesOf(layout).length >= LAYOUT_LIMITS.maxLeaves}
+        focusToken={toolbarFocus}
         onOpen={(provider) => void openPane(provider)}
       />
       <div className="workspace__area">
@@ -178,7 +209,11 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
             <EmptyState
               icon={SquareTerminal}
               title="Nenhum terminal aberto"
-              hint="Escolha um programa na barra acima para abrir um terminal."
+              hint={
+                providersLoaded && providers.length === 0
+                  ? 'Nenhum programa disponível para abrir um terminal.'
+                  : 'Escolha um programa na barra acima para abrir um terminal.'
+              }
             />
           </div>
         ) : (
