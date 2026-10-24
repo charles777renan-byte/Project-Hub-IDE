@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { statusTone, stepStatus, type MissionStatus } from '../../src/renderer/mission-text';
+import {
+  statusTone,
+  stepStatus,
+  verificationOutcome,
+  type MissionStatus,
+} from '../../src/renderer/mission-text';
 
 /**
  * Cada estado mantém o seu sentido na cor: lima roda, violeta espera a pessoa, vermelho falhou,
@@ -21,6 +26,15 @@ describe('tom dos estados da missão', () => {
 
   it.each(Object.entries(expected) as [MissionStatus, string][])('%s é %s', (status, tone) => {
     expect(statusTone(status)).toBe(tone);
+  });
+});
+
+describe('resultado de uma verificação', () => {
+  it('verificationOutcome devolve empty quando nenhum teste rodou', () => {
+    expect(verificationOutcome({ passed: 0, failed: 0 })).toBe('empty');
+    expect(verificationOutcome({ passed: 3, failed: 0 })).toBe('passed');
+    expect(verificationOutcome({ passed: 3, failed: 1 })).toBe('failed');
+    expect(verificationOutcome({ passed: 0, failed: 2 })).toBe('failed');
   });
 });
 

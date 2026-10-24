@@ -80,6 +80,16 @@ describe('runGit: só comandos de leitura', () => {
     [['diff', 'HEAD', '--textconv']],
     [['diff', 'HEAD', '--output=/tmp/alvo']],
     [['diff', '--cached', 'HEAD']],
+    // `check-ignore` só vale em `-- <caminhos>`: `-z` o Git só aceita com `--stdin`, `--stdin` lê
+    // caminhos de fora da lista, e `--no-index` e as demais opções mudam o que o Git responde.
+    [['check-ignore', '-z', '--', 'a']],
+    [['check-ignore', '--stdin']],
+    [['check-ignore', '--no-index', '--', 'a']],
+    [['check-ignore', 'a']],
+    [['check-ignore', '--']],
+    [['check-ignore', '--', '.env', '']],
+    [['check-ignore', '-v', '--', '.env']],
+    [['check-ignore']],
     // Opção antes do subcomando: `-c` mudaria a configuração do Git para esta chamada.
     [['-c', 'core.fsmonitor=comando', 'status']],
     [['--version']],
@@ -115,6 +125,8 @@ describe('runGit: só comandos de leitura', () => {
     ],
     [['diff', 'HEAD', '--patch', '--no-renames', '--', ':(literal)a.txt']],
     [['diff', 'HEAD', '--name-status', '--', 'pasta', 'outro']],
+    [['check-ignore', '--', '.env', '.vscode/']],
+    [['check-ignore', '--', 'config/local.json']],
   ])('aceita %j', async (args) => {
     await runGit(args, { cwd });
 
