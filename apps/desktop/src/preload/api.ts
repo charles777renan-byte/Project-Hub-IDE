@@ -16,6 +16,7 @@ import {
   type MissionViewDto,
   type ProjectHubApi,
   type ProjectSummary,
+  type ProviderId,
   type ProviderInfo,
   type ProvideInput,
   type TerminalEvent,
@@ -137,12 +138,17 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       list: () => call<WorkspaceDto[]>(CHANNELS.workspacesList),
       open: (projectId: string) => call<WorkspaceDto>(CHANNELS.workspacesOpen, { projectId }),
       close: (workspaceId: string) => call<void>(CHANNELS.workspacesClose, { workspaceId }),
-      saveLayout: (workspaceId: string, layout: LayoutNode) =>
+      saveLayout: (workspaceId: string, layout: LayoutNode | null) =>
         call<void>(CHANNELS.workspacesSaveLayout, { workspaceId, layout }),
       startSession: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesStartSession, { workspaceId, leafId }),
+      // Contrato do processo principal; a tela não usa (fechar o painel já encerra a sessão).
       endSession: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesEndSession, { workspaceId, leafId }),
+      addPane: (workspaceId: string, provider: ProviderId) =>
+        call<WorkspaceDto>(CHANNELS.workspacesAddPane, { workspaceId, provider }),
+      removePane: (workspaceId: string, leafId: string) =>
+        call<WorkspaceDto>(CHANNELS.workspacesRemovePane, { workspaceId, leafId }),
     },
     providers: {
       list: () => call<ProviderInfo[]>(CHANNELS.providersList),

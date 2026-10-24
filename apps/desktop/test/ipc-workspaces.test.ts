@@ -60,6 +60,8 @@ function setup() {
     saveLayout: vi.fn(() => Promise.resolve(ok)),
     startSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     endSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
+    addPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
+    removePane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
   };
   const providers = { list: vi.fn(() => PROVIDERS) };
   const fake = fakeRegistry();
@@ -74,6 +76,8 @@ const CALLS: [string, unknown, keyof WorkspaceService][] = [
   [CHANNELS.workspacesSaveLayout, { workspaceId: 'w1', layout }, 'saveLayout'],
   [CHANNELS.workspacesStartSession, { workspaceId: 'w1', leafId: 'l1' }, 'startSession'],
   [CHANNELS.workspacesEndSession, { workspaceId: 'w1', leafId: 'l1' }, 'endSession'],
+  [CHANNELS.workspacesAddPane, { workspaceId: 'w1', provider: 'shell' }, 'addPane'],
+  [CHANNELS.workspacesRemovePane, { workspaceId: 'w1', leafId: 'l1' }, 'removePane'],
 ];
 
 describe('canais de workspaces e provedores', () => {
@@ -114,12 +118,22 @@ describe('canais de workspaces e provedores', () => {
     await fake.call(CHANNELS.workspacesSaveLayout, TRUSTED, { workspaceId: 'w1', layout });
     await fake.call(CHANNELS.workspacesStartSession, TRUSTED, { workspaceId: 'w1', leafId: 'l1' });
     await fake.call(CHANNELS.workspacesEndSession, TRUSTED, { workspaceId: 'w1', leafId: 'l2' });
+    await fake.call(CHANNELS.workspacesAddPane, TRUSTED, {
+      workspaceId: 'w1',
+      provider: 'codex',
+      extra: 'ignorado',
+    });
+    await fake.call(CHANNELS.workspacesRemovePane, TRUSTED, { workspaceId: 'w1', leafId: 'l3' });
+    await fake.call(CHANNELS.workspacesSaveLayout, TRUSTED, { workspaceId: 'w1', layout: null });
 
     expect(service.open).toHaveBeenCalledWith('p1');
     expect(service.close).toHaveBeenCalledWith('w1');
     expect(service.saveLayout).toHaveBeenCalledWith('w1', layout);
     expect(service.startSession).toHaveBeenCalledWith('w1', 'l1');
     expect(service.endSession).toHaveBeenCalledWith('w1', 'l2');
+    expect(service.addPane).toHaveBeenCalledWith('w1', 'codex');
+    expect(service.removePane).toHaveBeenCalledWith('w1', 'l3');
+    expect(service.saveLayout).toHaveBeenCalledWith('w1', null);
   });
 
   it.each([
@@ -131,6 +145,15 @@ describe('canais de workspaces e provedores', () => {
     [CHANNELS.workspacesStartSession, { workspaceId: 'w1' }, 'Informe o painel.'],
     [CHANNELS.workspacesStartSession, { leafId: 'l1' }, 'Informe o painel.'],
     [CHANNELS.workspacesEndSession, { workspaceId: 'w1', leafId: '' }, 'Informe o painel.'],
+    [CHANNELS.workspacesAddPane, { workspaceId: 'w1' }, 'Informe o workspace e o programa.'],
+    [
+      CHANNELS.workspacesAddPane,
+      { workspaceId: 'w1', provider: 'bash' },
+      'Informe o workspace e o programa.',
+    ],
+    [CHANNELS.workspacesAddPane, { provider: 'shell' }, 'Informe o workspace e o programa.'],
+    [CHANNELS.workspacesRemovePane, { workspaceId: 'w1' }, 'Informe o painel.'],
+    [CHANNELS.workspacesRemovePane, { workspaceId: 'w1', leafId: '' }, 'Informe o painel.'],
     [CHANNELS.workspacesSaveLayout, { workspaceId: 'w1' }, 'O layout não é válido.'],
     [CHANNELS.workspacesSaveLayout, { layout }, 'O layout não é válido.'],
     [

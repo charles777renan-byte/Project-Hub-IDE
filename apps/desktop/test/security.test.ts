@@ -504,10 +504,12 @@ describe('buildProjectHubApi', () => {
     expect(Object.keys(api.approvals)).toEqual(['decide']);
     expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);
     expect(Object.keys(api.workspaces).sort()).toEqual([
+      'addPane',
       'close',
       'endSession',
       'list',
       'open',
+      'removePane',
       'saveLayout',
       'startSession',
     ]);
@@ -557,7 +559,7 @@ describe('buildProjectHubApi', () => {
     ]);
   });
 
-  it('workspaces.open, startSession e endSession levam só ids e conferem o workspace devolvido', async () => {
+  it('workspaces.open, startSession, endSession, addPane e removePane levam só ids e conferem o workspace devolvido', async () => {
     const calls: Array<[string, unknown]> = [];
     const workspace = {
       id: 'w1',
@@ -575,11 +577,15 @@ describe('buildProjectHubApi', () => {
     const opened = await api.workspaces.open('p1');
     await api.workspaces.startSession('w1', 'l1');
     await api.workspaces.endSession('w1', 'l1');
+    await api.workspaces.addPane('w1', 'codex');
+    await api.workspaces.removePane('w1', 'l1');
 
     expect(calls).toEqual([
       [CHANNELS.workspacesOpen, { projectId: 'p1' }],
       [CHANNELS.workspacesStartSession, { workspaceId: 'w1', leafId: 'l1' }],
       [CHANNELS.workspacesEndSession, { workspaceId: 'w1', leafId: 'l1' }],
+      [CHANNELS.workspacesAddPane, { workspaceId: 'w1', provider: 'codex' }],
+      [CHANNELS.workspacesRemovePane, { workspaceId: 'w1', leafId: 'l1' }],
     ]);
     expect(opened).toStrictEqual({
       ok: true,

@@ -1,6 +1,7 @@
 import { failure } from '@project-hub/application';
 import {
   CHANNELS,
+  addPaneInputSchema,
   openWorkspaceInputSchema,
   paneInputSchema,
   saveLayoutInputSchema,
@@ -54,6 +55,7 @@ export function registerWorkspaceHandlers(
   const byPane: [string, (workspaceId: string, leafId: string) => Promise<AppResult<unknown>>][] = [
     [CHANNELS.workspacesStartSession, (w, l) => service.startSession(w, l)],
     [CHANNELS.workspacesEndSession, (w, l) => service.endSession(w, l)],
+    [CHANNELS.workspacesRemovePane, (w, l) => service.removePane(w, l)],
   ];
   for (const [channel, action] of byPane) {
     reg(channel, (payload) => {
@@ -63,6 +65,13 @@ export function registerWorkspaceHandlers(
         : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o painel.'));
     });
   }
+
+  reg(CHANNELS.workspacesAddPane, (payload) => {
+    const input = addPaneInputSchema.safeParse(payload);
+    return input.success
+      ? service.addPane(input.data.workspaceId, input.data.provider)
+      : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o workspace e o programa.'));
+  });
 
   reg(CHANNELS.providersList, () => Promise.resolve({ ok: true, data: providers.list() }));
 }

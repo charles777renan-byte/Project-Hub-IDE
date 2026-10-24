@@ -47,6 +47,8 @@ export const responseSchemas = {
   [CHANNELS.workspacesSaveLayout]: appResultSchema(z.undefined()),
   [CHANNELS.workspacesStartSession]: appResultSchema(workspaceDtoSchema),
   [CHANNELS.workspacesEndSession]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.workspacesAddPane]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.workspacesRemovePane]: appResultSchema(workspaceDtoSchema),
   [CHANNELS.providersList]: appResultSchema(z.array(providerInfoSchema)),
   [CHANNELS.projectsList]: appResultSchema(z.array(projectSummarySchema)),
   [CHANNELS.projectsAdd]: appResultSchema(projectSummarySchema),

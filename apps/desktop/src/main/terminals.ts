@@ -37,6 +37,8 @@ export type TerminalService = {
   openSession(projectId: string, provider: ProviderId): Promise<AppResult<{ terminalId: string }>>;
   /** Mata o processo (se ainda existir) e marca a sessão como fechada. Terminal de missão: VALIDATION_FAILED. */
   closeSession(terminalId: string): Promise<AppResult<undefined>>;
+  /** Se o terminal é a sessão de uma missão em andamento (o agente), que só termina pela missão. */
+  isMissionSession(terminalId: string): boolean;
   /** Ids de terminal do projeto: sessões abertas dele e terminais de missões em andamento dele. */
   knownIds(projectId: string): Promise<Set<string>>;
   /** 'running' (processo vivo), 'exited' (o processo de terminais conhece e acabou, ou ele não respondeu e a sessão está aberta no banco) ou 'unknown' (ele não conhece o id: a linha aberta do banco é fechada aqui). */
@@ -266,6 +268,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     },
 
     stateOf: (terminalId) => reconcile(terminalId),
+
+    isMissionSession: (terminalId) => isAgentTerminal(terminalId),
 
     write: (terminalId, data) =>
       known(terminalId, async () => {
