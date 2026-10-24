@@ -5,6 +5,7 @@ import { ROUTE_PATHS, workspacePath } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useOpenWorkspaces } from '../workspaces-data';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
+import { ICON_PROPS, Plus, X } from './Icon';
 
 /** Nome mostrado na aba quando o projeto dela ainda não chegou na lista (ou saiu dela). */
 const UNKNOWN_PROJECT = 'Projeto';
@@ -88,7 +89,7 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
                     aria-label={`Fechar workspace ${name}`}
                     onClick={() => void closeWorkspace(workspace)}
                   >
-                    <span aria-hidden="true">×</span>
+                    <X {...ICON_PROPS} />
                   </button>
                 </li>
               );
@@ -187,7 +188,7 @@ function OpenWorkspaceMenu({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <span aria-hidden="true">+</span>
+        <Plus {...ICON_PROPS} />
       </button>
       {open ? (
         <ul role="menu" aria-label="Abrir workspace" className="topbar__menu-list">

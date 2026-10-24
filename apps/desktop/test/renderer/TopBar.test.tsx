@@ -151,6 +151,20 @@ describe('abas dos workspaces', () => {
     expect(screen.getByRole('button', { name: 'Fechar workspace <b>x</b>' })).toBeInTheDocument();
   });
 
+  it('fechar e abrir levam um ícone SVG decorativo e o nome acessível continua só o texto', async () => {
+    installApi({ projects: [project('p1', 'Alfa')], workspaces: [workspace('w1', 'p1')] });
+    renderBar('/projects');
+    const close = await screen.findByRole('button', { name: 'Fechar workspace Alfa' });
+    const add = screen.getByRole('button', { name: 'Abrir workspace' });
+    for (const button of [close, add]) {
+      const icon = button.querySelector('svg');
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+      // O símbolo de texto saiu: o botão só tem o SVG.
+      expect(button.textContent).toBe('');
+    }
+  });
+
   it('sem workspace aberto só aparece o botão de abrir', async () => {
     installApi({ projects: [project('p1', 'Project Hub')] });
     renderBar('/');
