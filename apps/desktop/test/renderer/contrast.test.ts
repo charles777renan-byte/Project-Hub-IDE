@@ -224,8 +224,9 @@ describe('selos de estado em pílula', () => {
 
 /**
  * O chrome novo (barra superior, navegação e casca, em workspace.css) usa só as cores neutras do
- * tema: --bg, --line, --field-line, --muted e --text, e misturas delas por color-mix. As cores de
- * destaque ficam para os dados (estados, contadores), nunca para o chrome. As variáveis derivadas
+ * tema: --bg, --surface, --line, --field-line, --muted e --text, o anel de foco (--focus) e misturas
+ * delas por color-mix. O lima (--accent) só marca o item ativo da navegação (teste próprio abaixo). As
+ * cores de destaque dos dados (estados, contadores) nunca entram no chrome. As variáveis derivadas
  * ficam em workspace.css, escopadas num seletor: o tokens.css só guarda #rrggbb.
  */
 describe('cores do chrome do workspace', () => {
@@ -234,8 +235,7 @@ describe('cores do chrome do workspace', () => {
     'utf8',
   ).replace(/\/\*[\s\S]*?\*\//g, '');
   // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
-  // --surface: o cartão da barra lateral (Tarefa 5). --accent: o papel "estado ativo" (barra do item
-  // ativo da navegação); é o mesmo lima de --focus, e não o nome de uma cor de destaque dos dados.
+  // --surface: o cartão da barra lateral (Tarefa 5).
   const NEUTRAL = new Set([
     '--bg',
     '--surface',
@@ -244,11 +244,11 @@ describe('cores do chrome do workspace', () => {
     '--muted',
     '--text',
     '--focus',
-    '--accent',
   ]);
-  // Variáveis do chrome que não são cor: espaçamento, fonte, raio, sombra, brilho de fundo e movimento.
-  // Sombra e brilho são tokens compostos em tokens.css (as cores deles são conferidas lá).
-  const NOT_COLOR = /^--(?:space|font|radius|shadow|glow|ease|dur)(?:-|$)/;
+  // Variáveis do chrome que não são cor: espaçamento, fonte, raio, movimento e os tokens compostos de
+  // sombra e brilho, por nome exato. As cores desses três são conferidas no teste "sombras e brilho".
+  const NOT_COLOR =
+    /^--(?:space|font|radius|ease|dur)(?:-|$)|^--(?:shadow-card|shadow-pop|glow-app)$/;
 
   /** Variáveis derivadas, definidas em workspace.css: `--nome: color-mix(...)`. */
   const derived = new Map(
@@ -261,7 +261,8 @@ describe('cores do chrome do workspace', () => {
     const used = [...workspaceCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
     const foreign = used.filter(
-      (name) => !NEUTRAL.has(name) && !NOT_COLOR.test(name) && !derived.has(name),
+      (name) =>
+        name !== '--accent' && !NEUTRAL.has(name) && !NOT_COLOR.test(name) && !derived.has(name),
     );
     expect(foreign).toEqual([]);
   });
@@ -271,6 +272,37 @@ describe('cores do chrome do workspace', () => {
     expect(workspaceCss).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
     for (const accent of ACCENTS) {
       expect(workspaceCss, accent).not.toContain(`var(${accent})`);
+    }
+  });
+
+  it('o lima (--accent) só aparece na barra do item ativo da navegação e do link atual da barra lateral', () => {
+    const allowed = [".main-nav a[aria-current='page']", ".sidebar__link[aria-current='page']"];
+    const rules = [...workspaceCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const using = rules.filter(([, , body = '']) => body.includes('var(--accent)'));
+    expect(using.length).toBeGreaterThan(0);
+    for (const [, selectors = '', body = ''] of using) {
+      const list = selectors.split(',').map((item) => item.trim());
+      expect(
+        list.every((item) => allowed.includes(item)),
+        selectors.trim(),
+      ).toBe(true);
+      // Só como barra lateral de 3px do item ativo.
+      expect(body, selectors.trim()).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--accent\)/);
+    }
+  });
+
+  it('as sombras e o brilho (tokens.css) só usam preto da casca, branco e o violeta da marca', () => {
+    const tokens = readFileSync(
+      resolve(import.meta.dirname, '../../src/renderer/styles/tokens.css'),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '');
+    const allowed = new Set(['4 2 16', '255 255 255', '181 131 255']);
+    for (const name of ['--shadow-card', '--shadow-pop', '--glow-app']) {
+      const value = new RegExp(String.raw`${name}\s*:([^;]+);`).exec(tokens)?.[1] ?? '';
+      expect(value, name).not.toBe('');
+      const colors = [...value.matchAll(/rgb\(\s*(\d+ \d+ \d+)\s*\//g)].map(([, rgb = '']) => rgb);
+      expect(colors.length, name).toBeGreaterThan(0);
+      for (const rgb of colors) expect(allowed.has(rgb), `${name}: rgb(${rgb})`).toBe(true);
     }
   });
 

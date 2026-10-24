@@ -6,7 +6,7 @@ export type PanelAccent =
   'violet' | 'red' | 'blue' | 'magenta' | 'orange' | 'lime' | 'cyan' | 'yellow';
 
 /**
- * Painel do workspace: faixa de 3px no topo na cor do acento, cabeçalho (ponto, título, meta e tag
+ * Painel do workspace em cartão (superfície, raio e contorno; sem faixa colorida): cabeçalho (ponto, título, meta e tag
  * opcionais; meta vazia não aparece) e corpo com rolagem própria. A região tem o nome do título; o `id` vem de `useId`, único
  * por instância. A cor vem da classe `panel--<acento>` (app.css), nunca de estilo inline.
  */

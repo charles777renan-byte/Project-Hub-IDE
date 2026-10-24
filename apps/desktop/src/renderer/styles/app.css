@@ -58,7 +58,7 @@ p {
 
 /*
  * Fundo topográfico (TopographicBackground): um canvas que cobre a janela, atrás de tudo. Superfícies
- * sólidas escondem as linhas; as translúcidas (--surface-glass e a barra lateral) deixam elas aparecerem.
+ * opacas (cartões, barra lateral) escondem as linhas; só as translúcidas (--surface-glass) deixam elas aparecerem.
  * Não recebe cliques.
  */
 .topo-background {
