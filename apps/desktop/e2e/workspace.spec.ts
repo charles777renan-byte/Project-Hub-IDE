@@ -595,3 +595,176 @@ test('sem o gancho de teste o app não expõe o terminal: nada no window nem na 
   expect(exposed.apiNames.filter((name) => /e2e|hook/i.test(name))).toEqual([]);
   await endShell(page);
 });
+
+/**
+ * Mensagens que acusam contexto WebGL perdido: o aviso do Chromium quando passa do limite de contextos vivos
+ * ("Too many active WebGL contexts") e as do xterm quando o contexto some e não volta.
+ */
+const WEBGL_LOSS =
+  /Too many active WebGL contexts|webglcontextlost|webgl context not restored|CONTEXT_LOST_WEBGL|lost context/i;
+
+test('remontar os terminais dezenas de vezes libera cada contexto WebGL e os painéis seguem em WebGL', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.setTimeout(240_000);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  // O ouvinte entra antes de qualquer montagem, para nenhuma mensagem escapar.
+  const messages: string[] = [];
+  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  // O teste guarda cada contexto WebGL que a página cria. Segurar as referências tira o coletor de lixo de cena:
+  // o contexto de um terminal descartado só deixa de contar se o app o liberar de propósito, e o resultado não
+  // depende de quando o Chromium coletaria o lixo.
+  await page.addInitScript(() => {
+    const contexts = new Set<WebGL2RenderingContext>();
+    Object.assign(window, { webglContexts: contexts });
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: Parameters<typeof original>
+    ) {
+      const context = original.apply(this, args);
+      if (args[0] === 'webgl2' && context !== null) contexts.add(context as WebGL2RenderingContext);
+      return context;
+    } as typeof original;
+  });
+  await page.reload();
+  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  /** Contextos WebGL criados pela página e quantos deles seguem vivos (não perdidos). */
+  const contexts = () =>
+    page.evaluate(() => {
+      const all = [
+        ...(window as unknown as { webglContexts: Set<WebGL2RenderingContext> }).webglContexts,
+      ];
+      return { created: all.length, alive: all.filter((gl) => !gl.isContextLost()).length };
+    });
+
+  await addProjectAndOpenWorkspace(page, projectName);
+  await openShell(page);
+  await openShell(page);
+  const views = page.locator('.terminal-view');
+  await expect(views).toHaveCount(2);
+  test.skip(
+    (await views.first().locator('canvas').count()) === 0,
+    'Sem WebGL nesta máquina: não há contexto para vazar.',
+  );
+
+  // Sair do workspace e voltar remonta cada TerminalView (dois por rodada), sem processo novo. A rota muda pelo
+  // hash, o mesmo caminho do app, e as idas e vindas são rápidas.
+  const rounds = 40;
+  let mounts = 2;
+  await page.evaluate(async (count) => {
+    const workspace = location.hash;
+    const frame = () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    for (let round = 0; round < count; round += 1) {
+      location.hash = '#/';
+      await frame();
+      location.hash = workspace;
+      await frame();
+    }
+  }, rounds);
+  await expect(views).toHaveCount(2);
+  mounts += rounds * 2;
+  // Mudança estrutural (abrir e fechar painel) também remonta todos os painéis, pelo caminho real do app.
+  for (let cycle = 0; cycle < 2; cycle += 1) {
+    await openShell(page);
+    await expect(views).toHaveCount(3);
+    await closePane(page, 2);
+    await expect(views).toHaveCount(2);
+    mounts += 3 + 2;
+  }
+  expect(mounts).toBeGreaterThan(50);
+
+  // Com dois terminais na tela, só os contextos deles estão vivos: os de todas as montagens anteriores foram
+  // liberados pelo app (sem isso passariam de 16 e o Chromium perderia o mais antigo).
+  const now = await contexts();
+  console.log(`[medida] ${mounts} montagens: ${JSON.stringify(now)}`);
+  // Nem toda ida e volta rápida chega a montar (o React junta algumas), mas passam muito de 16.
+  expect(now.created).toBeGreaterThan(40);
+  expect.soft(now.alive, 'contextos WebGL vivos com dois terminais na tela').toBeLessThanOrEqual(2);
+
+  // Fora do workspace nenhum terminal está montado, e nenhum contexto segue vivo.
+  await page
+    .getByRole('navigation', { name: 'Principal' })
+    .getByRole('link', { name: 'Início' })
+    .click();
+  await expect(views).toHaveCount(0);
+  expect
+    .soft((await contexts()).alive, 'contextos WebGL vivos sem nenhum terminal na tela')
+    .toBe(0);
+  await page.getByRole('navigation', { name: 'Workspaces abertos' }).getByRole('link').click();
+  await expect(views).toHaveCount(2);
+
+  // Cada painel que sobrou segue desenhando em WebGL (canvas) e não caiu para o DOM.
+  for (let index = 0; index < 2; index += 1) {
+    const view = views.nth(index);
+    await expect(view.locator('canvas').first()).toBeAttached();
+    expect(await view.locator('.xterm-rows').count()).toBe(0);
+    await expectTerminalToContain(view, 'PS ');
+  }
+  const loss = messages.filter((text) => WEBGL_LOSS.test(text));
+  // O soltar de propósito (loseContext) não deve gerar nenhuma mensagem de contexto no console.
+  const related = messages.filter((text) => /webgl|context/i.test(text));
+  console.log(`[medida] mensagens de contexto no console: ${JSON.stringify(related)}`);
+  expect.soft(loss).toEqual([]);
+  await endShell(page);
+});
+
+test('se o contexto WebGL se perde, o terminal volta ao DOM, ajusta as colunas à célula do DOM e segue vivo', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.setTimeout(120_000);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const messages: string[] = [];
+  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  await addProjectAndOpenWorkspace(page, projectName);
+  await openShell(page);
+  const view = page.locator('.terminal-view');
+  test.skip(
+    (await view.locator('canvas').count()) === 0,
+    'Sem WebGL nesta máquina: não há contexto para perder.',
+  );
+
+  /** Colunas do xterm, largura da área e largura da tela dele (a das células). */
+  const geometry = () =>
+    view.evaluate((host, key) => {
+      const hook = (
+        window as unknown as Record<string, { terminals: Map<Element, { cols: number }> }>
+      )[key];
+      const term = hook?.terminals.get(host);
+      const screen = host.querySelector<HTMLElement>('.xterm-screen');
+      if (term === undefined || screen === null) throw new Error('terminal sem tela');
+      return { cols: term.cols, host: host.clientWidth, screen: screen.clientWidth };
+    }, E2E_HOOK_KEY);
+  const withWebgl = await geometry();
+
+  // Perde o contexto como o Chromium faria. O xterm espera uns 3 s por uma restauração e então avisa o app.
+  await view.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(
+      '.terminal-view canvas:not(.xterm-link-layer)',
+    );
+    canvas?.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
+  });
+  await expect(view.locator('.xterm-rows')).toHaveCount(1, { timeout: 20_000 });
+  expect(await view.locator('canvas').count()).toBe(0);
+
+  // A célula do DOM (7,8px) é mais estreita que a do WebGL (8px): as colunas aumentam e a tela volta a preencher a
+  // área, sem sobrar uma faixa de mais de uma célula à direita.
+  await expect.poll(async () => (await geometry()).cols).toBeGreaterThan(withWebgl.cols);
+  const withDom = await geometry();
+  expect(withDom.host - withDom.screen, 'faixa vazia à direita do terminal, em px').toBeLessThan(8);
+
+  // O processo foi avisado do tamanho novo e o terminal segue funcionando.
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type('Write-Output "largura-$([Console]::WindowWidth)"');
+  await page.keyboard.press('Enter');
+  await expectTerminalToContain(view, `largura-${withDom.cols}`);
+  expect(messages.some((text) => text.includes('webgl context not restored'))).toBe(true);
+  await endShell(page);
+});

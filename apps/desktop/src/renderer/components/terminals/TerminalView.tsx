@@ -96,8 +96,17 @@ export function TerminalView({
     });
     term.open(host);
     termRef.current = term;
+    let disposed = false;
+    const refit = () => {
+      const size = fitTerminal(term, host);
+      if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
+    };
     // O WebGL desenha blocos, caixas e cores de 24 bits; sem ele, o xterm segue no DOM (ver webgl-renderer.ts).
-    const releaseWebgl = attachWebglRenderer(term);
+    // Se o contexto se perde e o terminal cai no DOM, a célula muda de largura: as colunas se ajustam de novo
+    // (e o processo é avisado), a menos que o terminal já tenha saído da tela.
+    const releaseWebgl = attachWebglRenderer(term, () => {
+      if (!disposed) refit();
+    });
     // Só existe quando o Playwright cria o gancho de teste; no app de verdade não faz nada.
     const unregisterForE2e = registerTerminalForE2e(host, term);
     // Devolver false impede o xterm de mandar a tecla ao programa.
@@ -130,15 +139,12 @@ export function TerminalView({
     const typing = term.onData((data) => {
       void api.write(terminalId, data);
     });
-    const refit = () => {
-      const size = fitTerminal(term, host);
-      if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
-    };
     const observer = new ResizeObserver(refit);
     observer.observe(host);
     void api.subscribe(terminalId).then(refit);
 
     return () => {
+      disposed = true;
       observer.disconnect();
       typing.dispose();
       stopEvents();
