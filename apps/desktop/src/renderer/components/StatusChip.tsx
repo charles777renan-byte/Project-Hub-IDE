@@ -1,8 +1,9 @@
 import type { Tone } from '../mission-text';
 
 /**
- * Chip quadrado com ponto de estado (visual do protótipo). O texto vai em maiúsculas pela CSS, e o
- * tom escolhe a cor: lima para o que roda, violeta para o que espera, laranja para pausa, vermelho para falha.
+ * Selo em pílula com ponto de estado. O rótulo em texto é obrigatório e vai em maiúsculas pela CSS; o
+ * tom só reforça (lima para o que roda, amarelo para o que aguarda, violeta para a marca, vermelho
+ * para falha, neutro para o resto). Blue, orange e cyan têm a aparência neutra.
  */
 export function StatusChip({ label, tone }: { label: string; tone: Tone }) {
   return <span className={`chip chip--${tone}`}>{label}</span>;

@@ -183,6 +183,46 @@ describe('tema escuro', () => {
 });
 
 /**
+ * Selos de estado (chip e marca de estado, em pílula): o texto é a cor do tom e o fundo é a mesma cor a
+ * 14% sobre --surface (`color-mix(in srgb, tom 14%, var(--surface))` em app.css). O teste calcula essa
+ * mistura aqui, em #rrggbb, e mede cada par com o mesmo limite de 4,5:1. Tons: lima (ativo/ok),
+ * --warn (aguardando), --danger (erro), --brand (marca) e --muted (neutro).
+ */
+const BADGE_TONES = ['--accent', '--warn', '--danger', '--brand', '--muted'] as const;
+const BADGE_TINT = 0.14;
+
+/** `foreground` a `alpha` sobre `background`, como `color-mix(in srgb, ...)`, devolvido em #rrggbb. */
+function mixOver(foreground: string, background: string, alpha: number): string {
+  const channels = (color: string): number[] => {
+    const hex = color.trim().replace(/^#/, '');
+    const full = hex.length === 3 ? [...hex].map((digit) => digit + digit).join('') : hex;
+    const value = Number.parseInt(full, 16);
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  };
+  const [front, back] = [channels(foreground), channels(background)];
+  const mixed = front.map((channel, index) =>
+    Math.round(channel * alpha + (back[index] ?? 0) * (1 - alpha)),
+  );
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+describe('selos de estado em pílula', () => {
+  it('a mistura calculada pelo teste confere com um caso conhecido', () => {
+    expect(mixOver('#ffffff', '#000000', 0.5)).toBe('#808080');
+    expect(mixOver('#ff0000', '#000000', 1)).toBe('#ff0000');
+  });
+
+  it.each(BADGE_TONES)('o tom %s sobre ele mesmo a 14% sobre --surface passa de 4,5:1', (tone) => {
+    const color = tokens.get(tone) ?? '';
+    const fill = mixOver(color, tokens.get('--surface') ?? '', BADGE_TINT);
+    expect(fill).not.toBe(color);
+    expect(contrastRatio(color, fill), `${tone} (${color}) sobre ${fill}`).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
+  });
+});
+
+/**
  * O chrome novo (barra superior, navegação e casca, em workspace.css) usa só as cores neutras do
  * tema: --bg, --line, --field-line, --muted e --text, e misturas delas por color-mix. As cores de
  * destaque ficam para os dados (estados, contadores), nunca para o chrome. As variáveis derivadas
