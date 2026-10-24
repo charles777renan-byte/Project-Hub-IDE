@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readCss, ruleDeclarations } from './css-rules';
 
 /**
  * O renderer roda com `style-src 'self'` e `script-src 'self'` (ADR 0007, item 6): sem estilo nem
@@ -183,6 +184,35 @@ describe('fontes locais', () => {
     expect(mono.startsWith("'JetBrains Mono',")).toBe(true);
     expect(mono).toContain('ui-monospace');
     expect(mono.endsWith('monospace')).toBe(true);
+  });
+});
+
+describe('tokens da identidade visual', () => {
+  const root = ruleDeclarations(readCss('tokens.css'), ':root');
+
+  it('define os raios, a escala tipográfica e as transições', () => {
+    expect(root.get('--radius')).toBe('8px');
+    expect(root.get('--radius-card')).toBe('12px');
+    expect(root.get('--radius-panel')).toBe('var(--radius-card)');
+    expect(root.get('--radius-pill')).toBe('999px');
+    expect(['xs', 'sm', 'md', 'lg', 'xl'].map((size) => root.get(`--text-${size}`))).toEqual([
+      '0.6875rem',
+      '0.8125rem',
+      '0.9375rem',
+      '1.125rem',
+      '1.5rem',
+    ]);
+    expect(root.get('--dur-fast')).toBe('120ms');
+    expect(root.get('--dur')).toBe('180ms');
+    for (const token of ['--ease', '--shadow-card', '--shadow-pop', '--glow-app']) {
+      expect(root.get(token), token).toBeDefined();
+    }
+  });
+
+  it('body define font-size e color, para o texto cru herdar do aplicativo', () => {
+    const body = ruleDeclarations(readCss('app.css'), 'body');
+    expect(body.get('font-size')).toBe('var(--text-md)');
+    expect(body.get('color')).toBe('var(--text)');
   });
 });
 

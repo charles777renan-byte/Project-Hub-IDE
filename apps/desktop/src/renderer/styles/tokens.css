@@ -12,10 +12,12 @@
 :root {
   color-scheme: dark;
 
-  /* Fundo único: --panel e --panel-2 existem para nomear o papel, mas valem o mesmo que --bg. */
+  /* Fundo da casca; os cartões ficam em --surface. --panel e --panel-2 são nomes antigos do mesmo tom. */
   --bg: #080614;
-  --panel: #080614;
-  --panel-2: #080614;
+  --surface: #0e0b24;
+  --surface-2: #14102e;
+  --panel: #0e0b24;
+  --panel-2: #0e0b24;
   --line: #2a2656;
   /* Borda de botão e de campo. */
   --field-line: #3a3570;
@@ -39,6 +41,15 @@
   /* Amarelo: logs e progresso. */
   --yellow: #ffd23f;
 
+  /* Papéis semânticos da identidade visual. Valem o mesmo que o acento citado, e ficam em #rrggbb
+     porque o teste de contraste não resolve var(). */
+  --accent: #c8ff2e; /* = --lime: ação principal e destaque */
+  --accent-ink: #080614; /* = --bg: texto sobre --accent */
+  --focus: #c8ff2e; /* = --lime */
+  --danger: #ff2d6f; /* = --red */
+  --warn: #ffd23f; /* = --yellow */
+  --brand: #b583ff; /* = --violet */
+
   /* Inter no texto e JetBrains Mono nos dados: arquivos locais declarados em fonts.css. A pilha do
      sistema fica depois como reserva, enquanto a fonte carrega (font-display: swap) e para os
      símbolos que o subconjunto latin não cobre. */
@@ -50,7 +61,29 @@
   --space-3: 1rem;
   --space-4: 1.5rem;
   --space-5: 2rem;
-  --radius: 2px;
-  /* Raio só do painel do workspace; --radius (botões, campos e cartões) continua em 2px. */
-  --radius-panel: 12px;
+  /* Controles (botões e campos), cartões e pílulas. --radius-panel é o nome antigo do raio do cartão. */
+  --radius: 8px;
+  --radius-card: 12px;
+  --radius-panel: var(--radius-card);
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 8px 24px rgb(4 2 16 / 45%);
+  --shadow-pop: 0 12px 40px rgb(4 2 16 / 65%), 0 0 0 1px var(--line);
+  /* Brilho violeta no fundo da casca. */
+  --glow-app: radial-gradient(
+    ellipse 70% 55% at 50% -10%,
+    rgb(181 131 255 / 18%) 0%,
+    rgb(181 131 255 / 0%) 70%
+  );
+
+  /* Escala tipográfica. */
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
 }

@@ -29,13 +29,17 @@ const COLOR_TOKENS = [
   '--field-line',
   '--text',
   '--muted',
+  '--surface',
+  '--surface-2',
+  '--accent',
+  '--accent-ink',
   ...ACCENTS,
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
 
-const SURFACES = ['--bg', '--panel', '--panel-2'] as const;
-const TEXTS = ['--text', '--muted', ...ACCENTS] as const;
+const SURFACES = ['--bg', '--panel', '--panel-2', '--surface', '--surface-2'] as const;
+const TEXTS = ['--text', '--muted', '--accent', ...ACCENTS] as const;
 
 /**
  * Pares de texto sobre fundo que o aplicativo usa. O fundo é um tom só, então --panel e --panel-2
@@ -52,6 +56,8 @@ const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ['--muted', '--line'],
   ['--text', '--field-line'],
   ['--text', '--line'],
+  // Identidade visual: texto escuro dentro do botão e da aba cheios em lima.
+  ['--accent-ink', '--accent'],
 ];
 
 function channelToLinear(channel: number): number {
@@ -137,9 +143,21 @@ describe('tema escuro', () => {
     }
   });
 
-  it('usa um fundo só: painéis e caixas internas valem o mesmo que o fundo', () => {
-    expect(tokens.get('--panel')).toBe(tokens.get('--bg'));
-    expect(tokens.get('--panel-2')).toBe(tokens.get('--bg'));
+  // Atualizado na identidade visual: os cartões passaram a ter superfície própria (--surface), mais
+  // clara que o fundo; --panel e --panel-2 seguem existindo e apontam para ela.
+  it('painéis e caixas internas valem --surface, e --surface difere do fundo', () => {
+    expect(tokens.get('--panel')).toBe(tokens.get('--surface'));
+    expect(tokens.get('--panel-2')).toBe(tokens.get('--surface'));
+    expect(tokens.get('--surface')).not.toBe(tokens.get('--bg'));
+  });
+
+  it('os aliases semânticos apontam para o acento certo', () => {
+    expect(tokens.get('--accent')).toBe(tokens.get('--lime'));
+    expect(tokens.get('--accent-ink')).toBe(tokens.get('--bg'));
+    expect(tokens.get('--focus')).toBe(tokens.get('--lime'));
+    expect(tokens.get('--danger')).toBe(tokens.get('--red'));
+    expect(tokens.get('--warn')).toBe(tokens.get('--yellow'));
+    expect(tokens.get('--brand')).toBe(tokens.get('--violet'));
   });
 
   it('não tem tema claro: o aplicativo é escuro (R172)', () => {
