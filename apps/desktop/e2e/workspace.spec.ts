@@ -1,9 +1,18 @@
-import { basename } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { decodePng, pixelAt } from './png';
+import {
+  E2E_HOOK_KEY,
+  expectTerminalToContain,
+  terminalForeground,
+  terminalRowBox,
+} from './terminals';
 
 // O workspace pela janela do Electron construído: painéis, sessões reais no processo de terminais (PowerShell),
 // o xterm, a barra lateral e a CSP real. Só roda no Windows, onde o shell do teste é o PowerShell.
+// O terminal desenha em WebGL (canvas): o texto dele é lido do buffer do xterm, por `./terminals`.
 test.skip(process.platform !== 'win32', 'o shell do teste é o PowerShell');
 
 const BAR_NAME = 'Projetos e missões';
@@ -36,7 +45,7 @@ async function openShell(page: Page): Promise<void> {
     .getByRole('button', { name: 'PowerShell' })
     .click();
   await expect(shellPanes(page)).toHaveCount(before + 1);
-  await expect(shellPanes(page).nth(before).locator('.xterm-rows')).toContainText('PS ', {
+  await expectTerminalToContain(shellPanes(page).nth(before).locator('.terminal-view'), 'PS ', {
     timeout: 30_000,
   });
 }
@@ -44,11 +53,10 @@ async function openShell(page: Page): Promise<void> {
 /** Abre o PowerShell pela barra, digita um comando e espera a saída `ola-4` (o workspace tem só esse painel). */
 async function runHello(page: Page): Promise<void> {
   await openShell(page);
-  const screen = page.locator('.xterm-rows');
   await page.locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('Write-Output "ola-$(2+2)"');
   await page.keyboard.press('Enter');
-  await expect(screen).toContainText('ola-4', { timeout: 15_000 });
+  await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
 }
 
 /** Fecha o painel de índice `index` pelo botão "Fechar painel" e confirma; o painel some da tela. */
@@ -143,7 +151,7 @@ test('abrir três terminais pela barra: um painel à esquerda e dois empilhados 
   await openShell(page);
   const panes = shellPanes(page);
   await expect(panes).toHaveCount(3);
-  await expect(page.locator('.xterm-rows')).toHaveCount(3);
+  await expect(page.locator('.terminal-view')).toHaveCount(3);
 
   const left = await panes.nth(0).boundingBox();
   const topRight = await panes.nth(1).boundingBox();
@@ -165,9 +173,7 @@ test('abrir três terminais pela barra: um painel à esquerda e dois empilhados 
     await panes.nth(index).locator('.xterm-helper-textarea').focus();
     await page.keyboard.type(`Write-Output "vivo-${index}-$(1+1)"`);
     await page.keyboard.press('Enter');
-    await expect(panes.nth(index).locator('.xterm-rows')).toContainText(`vivo-${index}-2`, {
-      timeout: 15_000,
-    });
+    await expectTerminalToContain(panes.nth(index).locator('.terminal-view'), `vivo-${index}-2`);
   }
   await endShell(page);
 });
@@ -233,9 +239,7 @@ test('recarregar a janela mantém os painéis e as sessões vivas', async ({ lau
   await shellPanes(page).nth(1).locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('Write-Output "antes-$(3+3)"');
   await page.keyboard.press('Enter');
-  await expect(shellPanes(page).nth(1).locator('.xterm-rows')).toContainText('antes-6', {
-    timeout: 15_000,
-  });
+  await expectTerminalToContain(shellPanes(page).nth(1).locator('.terminal-view'), 'antes-6');
 
   await page.reload();
   await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
@@ -244,17 +248,13 @@ test('recarregar a janela mantém os painéis e as sessões vivas', async ({ lau
   await expect(tab).toBeVisible();
   if ((await shellPanes(page).count()) === 0) await tab.click();
   await expect(shellPanes(page)).toHaveCount(3, { timeout: 30_000 });
-  await expect(page.locator('.xterm-rows')).toHaveCount(3);
-  await expect(shellPanes(page).nth(1).locator('.xterm-rows')).toContainText('antes-6', {
-    timeout: 15_000,
-  });
+  await expect(page.locator('.terminal-view')).toHaveCount(3);
+  await expectTerminalToContain(shellPanes(page).nth(1).locator('.terminal-view'), 'antes-6');
   // As sessões seguem vivas: o painel responde a um comando novo.
   await shellPanes(page).nth(2).locator('.xterm-helper-textarea').focus();
   await page.keyboard.type('Write-Output "depois-$(4+4)"');
   await page.keyboard.press('Enter');
-  await expect(shellPanes(page).nth(2).locator('.xterm-rows')).toContainText('depois-8', {
-    timeout: 15_000,
-  });
+  await expectTerminalToContain(shellPanes(page).nth(2).locator('.terminal-view'), 'depois-8');
   await endShell(page);
 });
 
@@ -266,23 +266,23 @@ test('a sessão do shell segue viva ao sair do workspace e ao fechar e reabrir a
   const { page } = await launchApp({ dialogPath: gitRepo.path });
   await addProjectAndOpenWorkspace(page, projectName);
   await runHello(page);
-  const screen = page.locator('.xterm-rows');
+  const screen = page.locator('.terminal-view');
 
   // Vai para o Início e volta pela aba do workspace: o processo não reinicia.
   await page
     .getByRole('navigation', { name: 'Principal' })
     .getByRole('link', { name: 'Início' })
     .click();
-  await expect(page.locator('.xterm-rows')).toHaveCount(0);
+  await expect(page.locator('.terminal-view')).toHaveCount(0);
   await page.getByRole('navigation', { name: 'Workspaces abertos' }).getByRole('link').click();
-  await expect(screen).toContainText('ola-4');
+  await expectTerminalToContain(screen, 'ola-4');
 
   // Fecha a aba e reabre por "+": a sessão continua com o mesmo texto.
   await page.getByRole('button', { name: `Fechar workspace ${projectName}` }).click();
   await expect(page.getByRole('navigation', { name: 'Workspaces abertos' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Abrir workspace' }).click();
   await page.getByRole('menuitem', { name: projectName }).click();
-  await expect(page.locator('.xterm-rows')).toContainText('ola-4', { timeout: 15_000 });
+  await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
   await expect(page.getByText('Nenhum terminal aberto')).toHaveCount(0);
   await endShell(page);
 });
@@ -297,12 +297,10 @@ test('Control+Shift+C copia a seleção do terminal para a área de transferênc
   await runHello(page);
 
   await app.evaluate(({ clipboard }) => clipboard.writeText('antes'));
-  // A linha da saída tem só `ola-4` (a do comando digitado traz `ola-$(2+2)`).
+  // A linha da saída tem só `ola-4` (a do comando digitado traz `ola-$(2+2)`). O terminal em WebGL não
+  // tem uma div por linha: a posição vem do buffer e da altura da célula.
   // Duplo clique no começo da linha (o centro dela é vazio, e ali não há palavra para selecionar).
-  const row = await page
-    .locator('.xterm-rows > div')
-    .filter({ hasText: /^ola-4$/ })
-    .boundingBox();
+  const row = await terminalRowBox(page.locator('.terminal-view'), /^ola-4$/);
   if (row === null) throw new Error('A linha da saída não tem caixa na tela.');
   await page.mouse.dblclick(row.x + 10, row.y + row.height / 2);
   await page.keyboard.press('Control+Shift+C');
@@ -388,9 +386,9 @@ test('a barra lateral lista a sessão do workspace e leva de volta ao terminal d
     .getByRole('navigation', { name: 'Principal' })
     .getByRole('link', { name: 'Início' })
     .click();
-  await expect(page.locator('.xterm-rows')).toHaveCount(0);
+  await expect(page.locator('.terminal-view')).toHaveCount(0);
   await session.click();
-  await expect(page.locator('.xterm-rows')).toContainText('ola-4', { timeout: 15_000 });
+  await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
   await endShell(page);
 });
 
@@ -409,7 +407,15 @@ test('o workspace não tem fundo topográfico nem violação de CSP', async ({
   await openShell(page);
   await expect(shellPanes(page)).toHaveCount(3);
 
-  await expect(page.locator('canvas')).toHaveCount(0);
+  // O fundo topográfico (canvas) não existe no workspace. O único canvas permitido é o do renderizador WebGL
+  // do xterm, dentro do terminal.
+  expect(
+    await page.evaluate(
+      () =>
+        [...document.querySelectorAll('canvas')].filter((c) => c.closest('.terminal-view') === null)
+          .length,
+    ),
+  ).toBe(0);
   // O xterm tenta montar um <style> inline, que a CSP bloqueia; as regras dele estão em app.css. Qualquer
   // outra violação (script, imagem, conexão, a biblioteca de painéis) é falha.
   const csp = messages.filter(
@@ -459,4 +465,133 @@ test('a dica de um botão só de ícone aparece ao focar, posiciona-se e não vi
   expect(
     await page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations),
   ).toEqual([]);
+});
+
+const ESC = '\u001b';
+const ORANGE = `${ESC}[38;2;215;119;87m`;
+const GRAY = `${ESC}[38;2;153;153;153m`;
+/**
+ * Amostra do cabeçalho de um agente de linha de comando: um mascote de blocos e meios-blocos em laranja de
+ * 24 bits, com o corpo sobre fundo preto, e o texto ao lado em cinza de 24 bits.
+ */
+const LOGO_SAMPLE =
+  [
+    `${ORANGE} ▐${ESC}[48;2;0;0;0m▛███▛█${ESC}[m   ${ESC}[1mClaude Code${ESC}[22m ${GRAY}v2.1.310`,
+    `${ORANGE}▝▜${ESC}[48;2;0;0;0m█████${ESC}[49m█▀  ${GRAY}Haiku 5.5 with xhigh effort · Claude Pro`,
+    `${ORANGE} ▝▝   ▝▝   ${GRAY}~\\OneDrive\\Documentos\\Project Hub${ESC}[m`,
+  ].join('\r\n') + '\r\n';
+
+test('o terminal desenha o mascote em blocos contínuos, com as cores de 24 bits, e sem violação de CSP', async ({
+  launchApp,
+  gitRepo,
+  dataDir,
+}, testInfo) => {
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const messages: string[] = [];
+  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  await addProjectAndOpenWorkspace(page, projectName);
+  await openShell(page);
+  const view = page.locator('.terminal-view');
+  const violations = () =>
+    messages.filter((text) => text.includes('Content Security Policy')).length;
+  const violationsBefore = violations();
+
+  // O PowerShell imprime a amostra por um arquivo: os bytes chegam ao xterm pelo pty de verdade (ConPTY).
+  const sample = join(dataDir, 'amostra.ansi');
+  writeFileSync(sample, LOGO_SAMPLE, 'utf8');
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type(
+    `[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write([IO.File]::ReadAllText('${sample.replaceAll("'", "''")}', [Text.Encoding]::UTF8))`,
+  );
+  await page.keyboard.press('Enter');
+  await expectTerminalToContain(view, 'Haiku 5.5 with xhigh effort');
+
+  // As cores chegam ao buffer do xterm em 24 bits (o ConPTY não as rebaixa), qualquer que seja o renderizador.
+  expect(await terminalForeground(view, '▛')).toEqual({ rgb: true, color: 0xd77757 });
+  expect(await terminalForeground(view, '·')).toEqual({ rgb: true, color: 0x999999 });
+
+  // Sem WebGL (máquina sem GPU) o xterm segue no DOM, que não desenha blocos nem aplica a cor pela CSP.
+  const canvases = await view.locator('canvas').count();
+  test.skip(canvases === 0, 'Sem WebGL nesta máquina: o terminal fica no renderizador do DOM.');
+  expect(await view.locator('.xterm-rows').count()).toBe(0);
+
+  // O mascote: as colunas 3 a 5 das duas primeiras linhas são blocos cheios, então a região é laranja de ponta
+  // a ponta, sem buraco entre as linhas nem entre as colunas. A coluna 0 da primeira linha é vazia (controle).
+  const top = await terminalRowBox(view, /▐▛███▛█/);
+  if (top === null) throw new Error('A linha do mascote não está na tela.');
+  const margin = 2;
+  const solid = decodePng(
+    await page.screenshot({
+      clip: {
+        x: top.x + top.cellWidth * 3 + margin,
+        y: top.y + margin,
+        width: top.cellWidth * 3 - margin * 2,
+        height: top.height * 2 - margin * 2,
+      },
+    }),
+  );
+  const empty = decodePng(
+    await page.screenshot({
+      clip: {
+        x: top.x + margin,
+        y: top.y + margin,
+        width: top.cellWidth - margin * 2,
+        height: top.height - margin * 2,
+      },
+    }),
+  );
+  const isOrange = (pixels: ReturnType<typeof decodePng>, x: number, y: number) => {
+    const [r, g, b] = pixelAt(pixels, x, y);
+    return Math.abs(r - 215) <= 12 && Math.abs(g - 119) <= 12 && Math.abs(b - 87) <= 12;
+  };
+  let notOrange = 0;
+  for (let y = 0; y < solid.height; y += 1) {
+    for (let x = 0; x < solid.width; x += 1) if (!isOrange(solid, x, y)) notOrange += 1;
+  }
+  let orangeInEmpty = 0;
+  for (let y = 0; y < empty.height; y += 1) {
+    for (let x = 0; x < empty.width; x += 1) if (isOrange(empty, x, y)) orangeInEmpty += 1;
+  }
+  expect(solid.width * solid.height).toBeGreaterThan(100);
+  expect(notOrange, 'pixels fora do laranja na região dos blocos cheios').toBe(0);
+  expect(orangeInEmpty, 'pixels laranja numa célula vazia').toBe(0);
+
+  const picture = testInfo.outputPath('terminal-logo.png');
+  await shellPanes(page).first().screenshot({ path: picture });
+  await testInfo.attach('terminal-logo', { path: picture, contentType: 'image/png' });
+
+  // Com WebGL a cor não passa por atributo de estilo: imprimir o logo não gera nenhuma recusa nova da CSP. (No DOM
+  // cada trecho colorido gera uma.)
+  console.log(`[medida] recusas da CSP: ${violationsBefore} antes do logo, ${violations()} depois`);
+  expect(violations()).toBe(violationsBefore);
+  await endShell(page);
+});
+
+test('sem o gancho de teste o app não expõe o terminal: nada no window nem na API do preload', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path, terminalHook: false });
+  await addProjectAndOpenWorkspace(page, projectName);
+  await page
+    .getByRole('toolbar', { name: 'Abrir terminal' })
+    .getByRole('button', { name: 'PowerShell' })
+    .click();
+  await expect(shellPanes(page)).toHaveCount(1);
+  await expect(shellPanes(page).first().locator('.xterm-helper-textarea')).toBeAttached();
+
+  const exposed = await page.evaluate((key) => {
+    const api = (window as unknown as { projectHub: Record<string, object> }).projectHub;
+    return {
+      hook: key in window,
+      windowNames: Object.getOwnPropertyNames(window).filter((name) => /e2e/i.test(name)),
+      apiNames: Object.entries(api).flatMap(([group, methods]) => [group, ...Object.keys(methods)]),
+    };
+  }, E2E_HOOK_KEY);
+  expect(exposed.hook).toBe(false);
+  expect(exposed.windowNames).toEqual([]);
+  expect(exposed.apiNames.filter((name) => /e2e|hook/i.test(name))).toEqual([]);
+  await endShell(page);
 });

@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { expectTerminalToContain } from './terminals';
 
 // Identidade visual (Tarefa 10), na janela real do Electron construído: em cada tela principal não há
 // violação de CSP (fora o <style> do xterm, coberto por regras em app.css) e o teclado percorre os
@@ -157,7 +158,7 @@ async function openShell(page: Page): Promise<void> {
     .getByRole('button', { name: 'PowerShell' })
     .click();
   await expect(panes).toHaveCount(before + 1);
-  await expect(panes.nth(before).locator('.xterm-rows')).toContainText('PS ', {
+  await expectTerminalToContain(panes.nth(before).locator('.terminal-view'), 'PS ', {
     timeout: 30_000,
   });
 }

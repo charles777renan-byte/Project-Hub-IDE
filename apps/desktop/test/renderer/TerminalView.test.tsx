@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import type { AppResult, ProjectHubApi, TerminalEvent } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { E2E_HOOK_KEY } from '../../src/renderer/components/terminals/e2e-hook';
 import { TerminalView, fitTerminal } from '../../src/renderer/components/terminals/TerminalView';
 
 // O xterm precisa de um navegador de verdade. Aqui ele é trocado por um terminal falso que anota o uso.
@@ -14,16 +15,51 @@ const fake = vi.hoisted(() => ({
   options: undefined as Record<string, unknown> | undefined,
   selection: '',
   keyHandler: undefined as ((event: KeyboardEvent) => boolean) | undefined,
+  // Opções em uso do terminal (`term.options`), que o app muda depois de abrir.
+  runtimeOptions: undefined as Record<string, unknown> | undefined,
+  // WebGL: `failLoad` simula um ambiente sem WebGL; os demais anotam o ciclo de vida do addon.
+  failLoad: false,
+  addonsCreated: 0,
+  addonsLoaded: 0,
+  addonsDisposed: 0,
+  contextLoss: undefined as (() => void) | undefined,
+  /** Terminal e área em que ele foi aberto, para conferir o gancho de teste. */
+  instance: undefined as object | undefined,
+  openedIn: undefined as HTMLElement | undefined,
+}));
+
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    constructor() {
+      fake.addonsCreated += 1;
+    }
+    onContextLoss(listener: () => void) {
+      fake.contextLoss = listener;
+      return { dispose() {} };
+    }
+    dispose() {
+      fake.addonsDisposed += 1;
+    }
+  },
 }));
 
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    options: Record<string, unknown> = {};
     constructor(options: Record<string, unknown>) {
       fake.options = options;
+      fake.runtimeOptions = this.options;
+      fake.instance = this;
     }
-    open() {}
+    open(host: HTMLElement) {
+      fake.openedIn = host;
+    }
+    loadAddon() {
+      if (fake.failLoad) throw new Error('WebGL indisponível');
+      fake.addonsLoaded += 1;
+    }
     focus() {
       fake.focuses += 1;
     }
@@ -70,6 +106,14 @@ beforeEach(() => {
   fake.options = undefined;
   fake.selection = '';
   fake.keyHandler = undefined;
+  fake.runtimeOptions = undefined;
+  fake.failLoad = false;
+  fake.addonsCreated = 0;
+  fake.addonsLoaded = 0;
+  fake.addonsDisposed = 0;
+  fake.contextLoss = undefined;
+  fake.instance = undefined;
+  fake.openedIn = undefined;
   emit = undefined;
   vi.stubGlobal(
     'ResizeObserver',
@@ -96,6 +140,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   Reflect.deleteProperty(window, 'projectHub');
+  Reflect.deleteProperty(window, E2E_HOOK_KEY);
 });
 
 describe('TerminalView', () => {
@@ -135,6 +180,83 @@ describe('TerminalView', () => {
     expect(terminals['unsubscribe']).toHaveBeenCalledWith('t1');
     expect(fake.disposed).toBe(1);
     expect(emit).toBeUndefined();
+  });
+});
+
+describe('TerminalView: renderizador WebGL', () => {
+  it('liga o WebGL ao abrir, dá 1px de espaço à célula e descarta o addon uma única vez ao desmontar', () => {
+    const view = render(<TerminalView terminalId="t1" />);
+
+    expect(fake.addonsLoaded).toBe(1);
+    expect(fake.runtimeOptions?.['letterSpacing']).toBe(1);
+
+    view.unmount();
+
+    expect(fake.addonsDisposed).toBe(1);
+    expect(fake.disposed).toBe(1);
+  });
+
+  it('segue com o renderizador do DOM, sem erro, quando o WebGL não carrega', () => {
+    fake.failLoad = true;
+
+    const view = render(<TerminalView terminalId="t1" />);
+    emit?.({ type: 'data', terminalId: 't1', data: 'oi' });
+    view.unmount();
+
+    // O terminal funciona (a saída entra, o descarte acontece) e o addon que não ativou é descartado.
+    expect(fake.writes).toEqual(['oi']);
+    expect(fake.addonsLoaded).toBe(0);
+    expect(fake.addonsDisposed).toBe(1);
+    expect(fake.runtimeOptions?.['letterSpacing']).toBeUndefined();
+    expect(fake.disposed).toBe(1);
+  });
+
+  it('ao perder o contexto, descarta o addon, devolve o espaço do DOM e não descarta de novo ao desmontar', () => {
+    const view = render(<TerminalView terminalId="t1" />);
+
+    fake.contextLoss?.();
+
+    expect(fake.addonsDisposed).toBe(1);
+    expect(fake.runtimeOptions?.['letterSpacing']).toBe(0);
+    emit?.({ type: 'data', terminalId: 't1', data: 'ainda escreve' });
+    expect(fake.writes).toEqual(['ainda escreve']);
+
+    view.unmount();
+
+    expect(fake.addonsDisposed).toBe(1);
+  });
+
+  it('um addon por terminal: cada montagem cria e descarta o seu', () => {
+    const first = render(<TerminalView terminalId="t1" />);
+    const second = render(<TerminalView terminalId="t2" />);
+
+    expect(fake.addonsCreated).toBe(2);
+    first.unmount();
+    second.unmount();
+    expect(fake.addonsDisposed).toBe(2);
+  });
+});
+
+describe('TerminalView: gancho de leitura só dos testes', () => {
+  it('sem o gancho (o app de verdade), nada é guardado nem criado no window', () => {
+    const view = render(<TerminalView terminalId="t1" />);
+
+    expect(Reflect.has(window, E2E_HOOK_KEY)).toBe(false);
+    view.unmount();
+    expect(Reflect.has(window, E2E_HOOK_KEY)).toBe(false);
+  });
+
+  it('com o gancho, guarda o terminal pela área onde abriu e o tira ao desmontar', () => {
+    const terminals = new Map<HTMLElement, unknown>();
+    Object.assign(window, { [E2E_HOOK_KEY]: { terminals } });
+
+    const view = render(<TerminalView terminalId="t1" />);
+
+    expect(terminals.size).toBe(1);
+    expect(fake.openedIn).toBeDefined();
+    expect(terminals.get(fake.openedIn as HTMLElement)).toBe(fake.instance);
+    view.unmount();
+    expect(terminals.size).toBe(0);
   });
 });
 
