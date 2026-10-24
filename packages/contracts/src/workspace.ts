@@ -100,12 +100,13 @@ const layoutShape: z.ZodType<LayoutNode> = z.lazy(() =>
   ]),
 );
 
-export const workspaceLayoutSchema: z.ZodType<LayoutNode> = layoutShape.superRefine(
-  (layout, ctx) => {
+/** `null` é o workspace vazio, sem nenhum painel. */
+export const workspaceLayoutSchema: z.ZodType<LayoutNode | null> = layoutShape
+  .superRefine((layout, ctx) => {
     const issue = layoutIssue(layout);
     if (issue !== null) ctx.addIssue({ code: 'custom', message: issue });
-  },
-);
+  })
+  .nullable();
 
 export const workspaceDtoSchema = z.object({
   id: z.string(),
