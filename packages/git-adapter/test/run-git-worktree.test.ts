@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, relative } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitError, runGit, runGitWorktree } from '../src/run-git';
 
@@ -331,6 +331,28 @@ describe('runGitWorktree: hooks do repositório no worktree add', () => {
     await runGit(['status'], { cwd });
 
     expect(call().args).toEqual([...FSMONITOR_OFF, 'status']);
+  });
+});
+
+describe('runGitWorktree: travas do Git', () => {
+  it('worktree remove de um worktree travado recusa com GIT_LOCKED sem criar processo', async () => {
+    const worktree = await mkdtemp(join(tmpdir(), 'project-hub-travado-'));
+    try {
+      await mkdir(join(worktree, '.git'));
+      await writeFile(join(worktree, '.git', 'locked'), 'manutenção');
+
+      await expect(runGitWorktree(['worktree', 'remove', worktree], { cwd })).rejects.toMatchObject(
+        {
+          name: 'GitError',
+          code: 'GIT_LOCKED',
+          message: expect.stringContaining('manutenção'),
+        },
+      );
+
+      expect(execFileMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(worktree, { recursive: true, force: true });
+    }
   });
 });
 

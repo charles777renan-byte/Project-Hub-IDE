@@ -39,6 +39,9 @@ export const ERROR_CODES = [
   'TERMINAL_ALREADY_EXISTS',
   'TERMINAL_EXITED',
   'TERMINAL_HOST_UNAVAILABLE',
+  // Acrescentado pelo plano de travas do Git: nenhum código da seção 13.7 diz "o Git está travado,
+  // tente depois".
+  'GIT_LOCKED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
