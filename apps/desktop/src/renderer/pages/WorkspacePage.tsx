@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
+import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
 import { notify } from '../notify';
 import { ROUTE_PATHS } from '../routes';
@@ -206,6 +207,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
       <div className="workspace__area">
         {layout === null ? (
           <div className="workspace__empty">
+            <TopographicBackground />
             <EmptyState
               icon={SquareTerminal}
               title="Nenhum terminal aberto"
