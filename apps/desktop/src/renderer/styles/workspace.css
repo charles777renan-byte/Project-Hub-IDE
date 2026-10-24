@@ -2,8 +2,9 @@
  * Casca do app e chrome do workspace: a barra superior de 36px (marca, abas dos workspaces, botão de
  * abrir e contadores), a barra lateral (navegação principal, workspaces e missões em andamento) e a área
  * da página. Ligado depois de
- * app.css no index.html. As cores são só as neutras do tema (--bg, --line, --field-line, --muted e
- * --text) e misturas delas por color-mix; as cores de destaque ficam para os dados. As variáveis
+ * app.css no index.html. As cores são só as neutras do tema (--bg, --surface, --line, --field-line,
+ * --muted e --text), o anel de foco (--focus) e misturas delas por color-mix; o lima (--accent) só
+ * marca o item ativo da navegação. As cores de destaque dos dados ficam fora. As variáveis
  * derivadas moram aqui, escopadas num seletor: o tokens.css só guarda #rrggbb
  * (test/renderer/contrast.test.ts confere as duas coisas).
  */
@@ -306,8 +307,8 @@
 /*
  * Barra lateral: a navegação principal no topo e, abaixo, as seções Workspaces e Em andamento. Cada
  * seção rola sozinha (o título e o botão de ação ficam parados), e a barra só rola como último recurso,
- * numa janela baixa demais para as duas. É um cartão (B1): superfície opaca, raio de cartão, contorno de 1px
- * por sombra interna e a sombra do cartão. Os anéis de foco ficam por dentro dos itens, que a rolagem
+ * numa janela baixa demais para as duas. É um cartão (B1): superfície opaca, raio de cartão e contorno de 1px
+ * por sombra interna (a sombra externa do cartão é cortada pelo overflow do painel e não aparece aqui). Os anéis de foco ficam por dentro dos itens, que a rolagem
  * cortaria por fora.
  */
 .sidebar {
@@ -600,13 +601,14 @@
 }
 
 /*
- * Árvore de painéis e painel do workspace. Sem cartões, raio nem sombra: as divisórias de 1px desenham
- * as bordas e o terminal usa quase toda a superfície. A página do workspace não tem respiro nas bordas.
+ * Árvore de painéis e painel do workspace. Ainda sem cartões, raio nem sombra (a Tarefa 7 refaz os painéis):
+ * as divisórias de 1px desenham as bordas e o terminal usa quase toda a superfície. A página do workspace
+ * não tem padding próprio; o respiro de 8px das bordas vem do `.app-body`.
  */
 .app-main:has(.pane-tree) {
   padding: 0;
   overflow: hidden;
-  /* Sem fundo próprio: o brilho da janela continua visível no vão entre os cartões (a Tarefa 7 refaz os painéis). */
+  /* Sem fundo próprio: o brilho da janela fica visível nos vãos quando os painéis virarem cartões. */
   background: transparent;
 }
 
