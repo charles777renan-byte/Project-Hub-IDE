@@ -74,23 +74,48 @@ export function isEnded(status: MissionStatus): boolean {
   return ENDED.includes(status);
 }
 
-/** Textos da ação e do aviso da missão (cabeçalho e painéis da missão). */
+/** Textos das ações e do aviso da missão (resumo, banner e abas da missão). */
 export const MISSION_TEXT = {
   pause: 'Pausar',
   resume: 'Retomar',
   retry: 'Tentar de novo',
-  decisionNotice: 'Aguarda sua decisão',
+  generatePlan: 'Gerar plano',
+  approvePlan: 'Aprovar plano',
+  start: 'Iniciar missão',
   decisionLink: 'Ver a decisão',
 } as const;
 
 /**
- * Estados que pedem uma decisão da pessoa: a aprovação fica na coluna Aguardando você e a resposta do
- * agente fica na Conversa. O aviso aparece no cabeçalho e o foco vai para o lugar da decisão (R182).
+ * Estados que pedem uma decisão da pessoa: a aprovação de uma ação protegida e a resposta do agente
+ * ficam na aba Conversa, e o banner "Aguardando você" aparece em todas as abas. O foco vai para o
+ * lugar da decisão (R182).
  */
 const DECISION_IN_CONVERSATION: readonly MissionStatus[] = ['waiting_approval', 'waiting_input'];
 
 export function needsDecisionInConversation(status: MissionStatus): boolean {
   return DECISION_IN_CONVERSATION.includes(status);
+}
+
+/** A ação principal que o resumo da missão oferece, quando a situação pede uma. */
+export type PrimaryAction =
+  'generate_plan' | 'approve_plan' | 'start' | 'resume' | 'retry';
+
+const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
+  draft: 'generate_plan',
+  planned: 'approve_plan',
+  queued: 'start',
+  paused: 'resume',
+  failed: 'retry',
+  cancelled: 'retry',
+};
+
+/**
+ * Uma única ação principal por situação. Em execução e concluída a missão não espera nada da pessoa,
+ * e ficam só as ações secundárias (pausar, cancelar ou excluir). Nas situações que esperam a decisão
+ * (aprovação ou resposta) o resumo não tem ação principal: o banner "Aguardando você" é o único convite.
+ */
+export function primaryActionOf(status: MissionStatus): PrimaryAction | undefined {
+  return PRIMARY_ACTION[status];
 }
 
 /** Estados em que a nova tentativa é oferecida (R180). */
@@ -197,6 +222,114 @@ export function verifiedCriteria(events: readonly MissionEventDto[]): Set<string
     for (const criterion of entry.criteria) verified.add(criterion.trim());
   }
   return verified;
+}
+
+/** Situação da verificação, para o indicador do resumo da missão. */
+export type VerificationSummary =
+  | { kind: 'none' }
+  | { kind: 'empty' }
+  | { kind: 'ran'; passed: number; total: number; failed: boolean };
+
+/**
+ * Situação da verificação: sem nenhum `verification.completed`, nenhum teste rodou; com comandos que
+ * não contaram teste algum, não há o que verificar. Com contagem, vale a última execução de cada
+ * comando (uma nova rodada do mesmo comando substitui a anterior), somadas.
+ */
+export function verificationSummary(events: readonly MissionEventDto[]): VerificationSummary {
+  const entries = verificationEntries(events);
+  if (entries.length === 0) return { kind: 'none' };
+  const latest = new Map<string, VerificationEntry>();
+  for (const entry of entries) latest.set(entry.command, entry);
+  let passed = 0;
+  let failed = 0;
+  for (const entry of latest.values()) {
+    passed += entry.passed;
+    failed += entry.failed;
+  }
+  const total = passed + failed;
+  if (total === 0) return { kind: 'empty' };
+  return { kind: 'ran', passed, total, failed: failed > 0 };
+}
+
+/**
+ * Nome curto do worktree, para a linha do resumo: a última pasta do caminho, com barras de Windows ou
+ * de Unix. O caminho inteiro continua disponível no botão "Copiar caminho".
+ */
+export function worktreeName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter((part) => part !== '');
+  return parts.at(-1) ?? path;
+}
+
+/** Contagem de uma aba: o número curto que aparece ao lado do nome e a frase lida pelo leitor de tela. */
+export type TabCountText = { value: string; label: string };
+
+/**
+ * Contagens das abas da missão, só onde dizem algo: Plano (número de etapas, quando há plano), Diff
+ * (arquivos alterados, quando há algum) e Testes (passaram/total, quando houve verificação com testes).
+ */
+export function missionTabCounts({
+  steps,
+  diff,
+  events,
+}: {
+  steps: readonly MissionStepDto[];
+  diff: { count: number; truncated: boolean } | undefined;
+  events: readonly MissionEventDto[];
+}): { plan?: TabCountText; diff?: TabCountText; tests?: TabCountText } {
+  const counts: { plan?: TabCountText; diff?: TabCountText; tests?: TabCountText } = {};
+  if (steps.length > 0) {
+    counts.plan = {
+      value: String(steps.length),
+      label: steps.length === 1 ? '1 etapa' : `${steps.length} etapas`,
+    };
+  }
+  if (diff !== undefined && diff.count > 0) {
+    const value = `${diff.count}${diff.truncated ? '+' : ''}`;
+    const single = diff.count === 1 && !diff.truncated;
+    counts.diff = {
+      value,
+      label: single ? '1 arquivo alterado' : `${value} arquivos alterados`,
+    };
+  }
+  const verification = verificationSummary(events);
+  if (verification.kind === 'ran') {
+    counts.tests = {
+      value: `${verification.passed}/${verification.total}`,
+      label: `${verification.passed} de ${verification.total} testes passaram`,
+    };
+  }
+  return counts;
+}
+
+/**
+ * Tipos de evento que contam a história da missão para a pessoa: a criação, o plano, as mudanças de
+ * situação, o que o agente disse, os pedidos e as respostas, e como a execução terminou. O detalhe
+ * técnico (worktree, tentativas, ferramentas e verificações) fica só nos Logs e nos Testes.
+ */
+const CONVERSATION_EVENTS: ReadonlySet<string> = new Set([
+  'mission.created',
+  'plan.generated',
+  'mission.status_changed',
+  'message.delta',
+  'input.requested',
+  'input.provided',
+  'approval.requested',
+  'approval.decided',
+  'approval.expired',
+  'execution.failed',
+  'execution.cancelled',
+  'execution.paused',
+  'execution.resumed',
+  'execution.interrupted',
+  'session.completed',
+  'session.failed',
+  'session.error',
+  'session.ended',
+]);
+
+/** Os eventos da Conversa: só a história para a pessoa, na ordem em que chegaram. */
+export function conversationEvents(events: readonly MissionEventDto[]): MissionEventDto[] {
+  return events.filter((event) => CONVERSATION_EVENTS.has(event.eventType));
 }
 
 /** Duração para a tela: `450 ms`, `2,3 s` ou `1 min 5 s`. */

@@ -21,7 +21,8 @@ const MISSION = {
 };
 
 /** Aviso do cabeçalho enquanto a missão espera uma decisão (R182). */
-const MISSION_NOTICE = 'Aguarda sua decisão';
+/** Nome do banner que aparece em todas as abas enquanto há uma decisão pendente. */
+const DECISION_BANNER = 'Aguardando você';
 
 const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
 
@@ -68,6 +69,7 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   await expect(
     page.getByRole('main').getByText('Aguarda aprovação do plano', { exact: true }),
   ).toBeVisible();
+  await page.getByRole('tab', { name: 'Plano' }).click();
   await expect(page.getByRole('list', { name: 'Etapas do plano' })).toBeVisible();
   await page.getByRole('button', { name: 'Aprovar plano' }).click();
 
@@ -76,23 +78,31 @@ async function approvePlanAndStart(page: Page): Promise<void> {
   ).toBeVisible();
   await page.getByRole('button', { name: 'Iniciar missão' }).click();
 
-  // A missão para no pedido de aprovação do agente, e a página mostra o pedido na coluna Aguardando você.
+  // A missão para no pedido de aprovação do agente. O pedido aparece no banner, e a página continua
+  // na aba do usuário (Plano). O cartão completo mora na aba Conversa, então o banner leva até ele.
   await expect(
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();
+  const banner = page.getByRole('region', { name: DECISION_BANNER });
+  await expect(banner).toBeVisible();
+  await banner.getByRole('button', { name: 'Ver a decisão' }).click();
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
 }
 
 /**
- * Caminho do worktree que o cabeçalho da missão mostra. O texto do cabeçalho é único na página:
- * projeto, branch e worktree, nessa ordem (a linha do tempo diz "Worktree criado em", sem a branch).
+ * Caminho do worktree que o resumo da missão guarda. A linha do resumo mostra a branch e só o nome
+ * curto do worktree (a última pasta); o caminho inteiro fica no título desse nome, o mesmo que o botão
+ * "Copiar caminho" copia.
  */
-async function worktreePathOf(page: Page, projectName: string): Promise<string> {
-  const prefix = `${projectName} · branch main · worktree `;
-  const header = await page.getByText(prefix).textContent();
-  const path = header?.startsWith(prefix) ? header.slice(prefix.length).trim() : undefined;
-  if (path === undefined || path === '' || path === 'ainda não criado') {
-    throw new Error(`O cabeçalho da missão não mostra um worktree: ${String(header)}`);
+async function worktreePathOf(page: Page): Promise<string> {
+  const summary = page.getByRole('region', { name: 'Resumo da missão' });
+  await expect(summary.getByText('branch main', { exact: true })).toBeVisible();
+  await expect(summary.getByRole('button', { name: 'Copiar caminho' })).toBeVisible();
+  const name = summary.locator('.mission-meta__path');
+  const path = await name.getAttribute('title');
+  const shown = await name.textContent();
+  if (path === null || path === '' || shown === null || !path.endsWith(shown)) {
+    throw new Error(`O resumo da missão não mostra um worktree: ${String(path)}`);
   }
   return path;
 }
@@ -136,7 +146,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await approvePlanAndStart(page);
 
   // 3. O worktree foi criado em PROJECT_HUB_DATA_DIR/worktrees, e o agente gravou o arquivo nele.
-  const worktreePath = await worktreePathOf(page, projectName);
+  const worktreePath = await worktreePathOf(page);
   const fromRoot = relative(worktreesDir, worktreePath);
   expect(fromRoot.startsWith('..') || isAbsolute(fromRoot)).toBe(false);
   expect(existsSync(worktreePath)).toBe(true);
@@ -163,15 +173,19 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   // 5. A missão fica concluída, e a linha do tempo da Conversa mostra o fim da sessão
   // (`session.completed`).
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  // A Conversa é um painel da grade (sem abas): fica sempre visível na página da missão.
-  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
+  // A Conversa é a aba de abertura da página da missão, e o banner some com a decisão tomada.
+  await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
   await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
-  // O painel Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
+  // A aba Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
+  await page.getByRole('tab', { name: 'Diff' }).click();
   const changes = page.getByRole('list', { name: 'Arquivos alterados' });
   await expect(changes.getByRole('button', { name: /project-hub-demo\.md/ })).toBeVisible();
+  // A linha do tempo mora na aba Conversa: volta para ela antes de contar os eventos.
+  await page.getByRole('tab', { name: 'Conversa' }).click();
   const eventsBeforeRestart = await timelineOf(page);
   expect(eventsBeforeRestart.length).toBeGreaterThan(5);
 
@@ -189,13 +203,13 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
 
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Eventos da missão' }).getByText('Sessão do agente concluída.'),
   ).toBeVisible();
   expect(await timelineOf(page)).toEqual(eventsBeforeRestart);
   // A missão concluída não foi mexida pela recuperação do início: continua com o mesmo worktree.
-  expect(await worktreePathOf(page, projectName)).toBe(worktreePath);
+  expect(await worktreePathOf(page)).toBe(worktreePath);
 
   // O banco guarda o fim da tentativa: ela terminou `succeeded`, a missão também, e a recuperação
   // do segundo início não fechou nem falhou nenhuma execução.
@@ -265,13 +279,13 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
     page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Em execução', { exact: true })).toHaveCount(0);
-  await expect(page.getByText(MISSION_NOTICE)).toHaveCount(0);
+  await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
   // A pessoa pode tentar de novo, e a conversa explica o que houve.
   await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Conversa', exact: true })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Execução interrompida ao fechar o aplicativo.')).toBeVisible();
   await expect(timeline.getByText('Aprovação expirou sem decisão.')).toBeVisible();

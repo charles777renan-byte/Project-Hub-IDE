@@ -2,16 +2,16 @@ import { render, screen, within } from '@testing-library/react';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
-import { MissionHeader } from '../../src/renderer/components/workspace/MissionHeader';
+import { MissionSummary } from '../../src/renderer/components/workspace/MissionSummary';
 import { readCss, ruleDeclarations } from './css-rules';
 
 type Conclusion = NonNullable<MissionViewDto['conclusion']>;
 
-function renderHeader(status: MissionViewDto['mission']['status'], conclusion?: Conclusion) {
+function renderSummary(status: MissionViewDto['mission']['status'], conclusion?: Conclusion) {
   const noop = vi.fn();
   return render(
     <MemoryRouter>
-      <MissionHeader
+      <MissionSummary
         mission={{
           id: 'm1',
           projectId: 'p1',
@@ -24,14 +24,18 @@ function renderHeader(status: MissionViewDto['mission']['status'], conclusion?: 
           updatedAt: '2026-10-20T09:00:00.000Z',
         }}
         project={{ id: 'p1', name: 'app', path: 'C:\\app', defaultBranch: 'main' }}
+        events={[]}
+        diff={undefined}
         busy={false}
         controlBusy={false}
+        onGeneratePlan={noop}
+        onApprovePlan={noop}
+        onStart={noop}
         onPause={noop}
         onResume={noop}
         onRetry={noop}
         onCancel={noop}
         onDelete={noop}
-        onOpenDecision={noop}
         {...(conclusion === undefined ? {} : { conclusion })}
       />
     </MemoryRouter>,
@@ -47,67 +51,84 @@ const CONCLUSION: Conclusion = {
 
 const BLOCK = { name: 'Resumo da conclusão' };
 
-describe('MissionHeader: resumo de conclusão', () => {
-  it('missão concluída mostra a frase, a verificação, os arquivos e o estado do Git', () => {
-    renderHeader('succeeded', CONCLUSION);
+describe('MissionSummary: resumo de conclusão', () => {
+  it('missão concluída mostra a frase final do agente e o estado do Git', () => {
+    renderSummary('succeeded', CONCLUSION);
 
     const block = screen.getByRole('region', BLOCK);
     expect(within(block).getByText('Login corrigido.')).toBeInTheDocument();
-    expect(within(block).getByText('Verificação 12/12 passou')).toBeInTheDocument();
-    expect(within(block).getByText('3 arquivos alterados')).toBeInTheDocument();
     expect(within(block).getByText('Git: alterações sem commit')).toBeInTheDocument();
   });
 
-  it('verificação com falha mostra passou/total e destaca a falha', () => {
-    renderHeader('succeeded', { ...CONCLUSION, verification: { passed: 9, failed: 3 } });
+  it('estado do Git limpo', () => {
+    renderSummary('succeeded', { ...CONCLUSION, changedFiles: 0, gitState: 'clean' });
 
-    expect(screen.getByText('Verificação 9/12 passou')).toHaveClass('conclusion__item--failed');
-  });
-
-  it('sem verificação, a linha da verificação não aparece', () => {
-    renderHeader('succeeded', { ...CONCLUSION, verification: undefined });
-
-    expect(screen.queryByText(/Verificação/)).not.toBeInTheDocument();
-    expect(screen.getByText('3 arquivos alterados')).toBeInTheDocument();
-  });
-
-  it('usa o singular e o estado limpo', () => {
-    renderHeader('succeeded', { ...CONCLUSION, changedFiles: 1, gitState: 'clean' });
-
-    expect(screen.getByText('1 arquivo alterado')).toBeInTheDocument();
     expect(screen.getByText('Git: sem alterações pendentes')).toBeInTheDocument();
+    expect(screen.queryByText('Git: alterações sem commit')).not.toBeInTheDocument();
   });
 
-  it('zero arquivos', () => {
-    renderHeader('succeeded', { ...CONCLUSION, changedFiles: 0, gitState: 'clean' });
+  it('verificação e arquivos ficam nos indicadores, sem se repetir no bloco', () => {
+    renderSummary('succeeded', CONCLUSION);
 
-    expect(screen.getByText('Nenhum arquivo alterado')).toBeInTheDocument();
+    const block = screen.getByRole('region', BLOCK);
+    expect(within(block).queryByText(/Verificação/)).not.toBeInTheDocument();
+    expect(within(block).queryByText(/arquivo/)).not.toBeInTheDocument();
+    const indicators = screen.getByRole('list', { name: 'Indicadores da missão' });
+    expect(within(indicators).getByText('Verificação')).toBeInTheDocument();
+    expect(within(indicators).getByText('Arquivos alterados')).toBeInTheDocument();
   });
 
   it('o texto vindo do agente entra como texto, não como HTML', () => {
-    renderHeader('succeeded', { ...CONCLUSION, summary: '<img src=x onerror=alert(1)> pronto' });
+    renderSummary('succeeded', { ...CONCLUSION, summary: '<img src=x onerror=alert(1)> pronto' });
 
     const block = screen.getByRole('region', BLOCK);
     expect(block.querySelector('img')).toBeNull();
     expect(within(block).getByText('<img src=x onerror=alert(1)> pronto')).toBeInTheDocument();
   });
 
-  it('missão cancelada ou com falha não mostra o bloco, mesmo que chegue um resumo', () => {
-    const { unmount } = renderHeader('cancelled', CONCLUSION);
-    expect(screen.queryByRole('region', BLOCK)).not.toBeInTheDocument();
-    unmount();
+  it('missão concluída não ganha ação principal; só Excluir missão como secundária', () => {
+    renderSummary('succeeded', CONCLUSION);
 
-    renderHeader('failed', CONCLUSION);
-    expect(screen.queryByRole('region', BLOCK)).not.toBeInTheDocument();
+    const summary = screen.getByRole('region', { name: 'Resumo da missão' });
+    expect(summary.querySelectorAll('.mission-summary__primary')).toHaveLength(0);
+    expect(within(summary).getByRole('button', { name: 'Excluir missão' })).toBeInTheDocument();
   });
+
+  it.each(['cancelled', 'failed', 'running', 'planned'] as const)(
+    'missão %s não mostra o bloco, mesmo que chegue um resumo',
+    (status) => {
+      renderSummary(status, CONCLUSION);
+
+      expect(screen.queryByRole('region', BLOCK)).not.toBeInTheDocument();
+      expect(screen.queryByText('Login corrigido.')).not.toBeInTheDocument();
+    },
+  );
 
   it('missão concluída sem resumo (missão antiga) também não mostra o bloco', () => {
-    renderHeader('succeeded');
+    renderSummary('succeeded');
 
     expect(screen.queryByRole('region', BLOCK)).not.toBeInTheDocument();
   });
 
-  it('o bloco tem estilo no CSS', () => {
-    expect(ruleDeclarations(readCss('app.css'), '.conclusion').size).toBeGreaterThan(0);
+  it('o bloco fica dentro do resumo, depois dos indicadores', () => {
+    renderSummary('succeeded', CONCLUSION);
+
+    const summary = screen.getByRole('region', { name: 'Resumo da missão' });
+    const block = within(summary).getByRole('region', BLOCK);
+    const indicators = within(summary).getByRole('list', { name: 'Indicadores da missão' });
+    expect(
+      indicators.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('o bloco é uma caixa discreta: borda da linha, raio do painel e o fundo da página', () => {
+    const css = readCss('app.css');
+    const block = ruleDeclarations(css, '.conclusion');
+    expect(block.get('border')).toBe('1px solid var(--line)');
+    expect(block.get('border-radius')).toBe('var(--radius-panel)');
+    expect(block.get('background')).toBe('var(--bg)');
+    // A frase não herda a margem dos parágrafos da página.
+    expect(ruleDeclarations(css, '.mission-summary .conclusion__summary').get('margin')).toBe('0');
+    expect(ruleDeclarations(css, '.conclusion__facts').get('color')).toBe('var(--muted)');
   });
 });

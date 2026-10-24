@@ -7,7 +7,7 @@ Aplicativo desktop, feito com Electron, para acompanhar projetos, missões e age
 - Cadastra pastas como projetos e mostra o estado do Git de cada uma.
 - Cria e remove worktrees de missão, sem apagar trabalho que ainda não foi salvo.
 - Executa uma missão com um agente simulado: plano, aprovação e eventos gravados no banco local.
-- Tem uma interface nova em construção: barra lateral, contadores no cabeçalho e o workspace da missão, com a coluna "Aguardando você". O painel inicial e as abas de diff, testes e terminal ainda não estão prontos.
+- Tem uma interface nova em construção: barra lateral, contadores no cabeçalho e o workspace da missão, com resumo fixo no topo, o banner "Aguardando você" e abas (Conversa, Plano, Diff, Testes, Terminal e Logs).
 
 **Plataforma:** o alvo de lançamento é o Windows, que é onde o app é desenvolvido e testado hoje. macOS e Linux estão no planejamento.
 
