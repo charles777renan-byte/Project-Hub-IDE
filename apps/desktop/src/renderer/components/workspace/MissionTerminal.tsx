@@ -23,15 +23,20 @@ export function MissionTerminal({
   useEffect(() => {
     let active = true;
     const find = async () => {
-      const result = await window.projectHub.terminals.list();
-      if (!active || !result.ok) return;
-      const found = result.data.find(
-        (terminal) =>
-          terminal.kind === 'agent' &&
-          terminal.missionId === missionId &&
-          terminal.state !== 'exited',
-      );
-      setTerminalId(found?.id);
+      // Uma falha da leitura (ponte indisponível, janela fechando) deixa o registro em leitura, sem rejeição solta.
+      try {
+        const result = await window.projectHub.terminals.list();
+        if (!active || !result.ok) return;
+        const found = result.data.find(
+          (terminal) =>
+            terminal.kind === 'agent' &&
+            terminal.missionId === missionId &&
+            terminal.state !== 'exited',
+        );
+        setTerminalId(found?.id);
+      } catch {
+        // Tenta de novo no próximo ciclo.
+      }
     };
     void find();
     const timer = setInterval(() => void find(), POLL_MS);
