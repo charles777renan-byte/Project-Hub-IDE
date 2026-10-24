@@ -288,6 +288,14 @@ describe('botões, campos e anel de foco', () => {
     expect(css).not.toMatch(/^button:hover \{/m);
   });
 
+  it('a aba ativa tem pistas além do preenchimento: peso 700 e anel de 1px em --muted', () => {
+    const active = rule(".tab[aria-selected='true']");
+    expect(active.get('font-weight')).toBe('700');
+    expect(active.get('box-shadow')).toBe('inset 0 0 0 1px var(--muted)');
+    // A inativa sob o mouse não usa a ponta do gradiente da ativa.
+    expect(rule('.tab:hover').get('background')).toBe('var(--surface-2)');
+  });
+
   it('o anel de foco é 2px --focus com deslocamento de 2px', () => {
     expect(rule(':focus-visible').get('outline')).toBe('2px solid var(--focus)');
     expect(rule(':focus-visible').get('outline-offset')).toBe('2px');
