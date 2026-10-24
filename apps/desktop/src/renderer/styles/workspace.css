@@ -689,7 +689,7 @@
 
 /*
  * Cartão do painel: superfície, raio de cartão e contorno de 1px por sombra interna (uma sombra externa seria
- * cortada pelo overflow da árvore). O painel ativo tem o contorno em --field-line; o foco do teclado, em
+ * cortada pelo overflow da árvore). O painel ativo tem o contorno em --muted (3:1); o foco do teclado, em
  * qualquer ponto do cartão (o terminal, um botão), desenha o anel --focus por dentro: o xterm vendorizado
  * tira o outline dele, então o anel vive no cartão. O cartão em si (tabindex -1) não desenha outline.
  */

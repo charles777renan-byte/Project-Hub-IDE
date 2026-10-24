@@ -222,9 +222,9 @@ describe('OverviewCounters', () => {
     expect(running).toHaveClass('overview-counter', 'overview-counter--lime', 'chip', 'chip--lime');
     expect(screen.getByText('1 aguarda você')).toHaveClass(
       'overview-counter',
-      'overview-counter--violet',
+      'overview-counter--warn',
       'chip',
-      'chip--violet',
+      'chip--warn',
     );
   });
 

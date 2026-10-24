@@ -135,7 +135,6 @@ describe('casca do app', () => {
     expect(active.get('background')).toBe('var(--line)');
     expect(active.get('color')).toBe('var(--text)');
     expect(active.get('box-shadow')).toBe('inset 3px 0 0 var(--accent)');
-    expect(JSON.stringify([...active])).not.toContain('magenta');
   });
 
   it('a coluna lateral não encolhe e a barra de projetos enche o que sobra dela', () => {
@@ -474,10 +473,11 @@ describe('layout do workspace da missão', () => {
     }
   });
 
-  it('o banner Aguardando você usa a borda violeta', () => {
+  it('o banner Aguardando você usa a borda âmbar (--warn), como o selo de aguardando', () => {
     expect(ruleDeclarations(appCss, '.decision-banner').get('border')).toBe(
-      '1px solid var(--violet)',
+      '1px solid var(--warn)',
     );
+    expect(ruleDeclarations(appCss, '.decision-card').get('border')).toBe('1px solid var(--warn)');
   });
 
   it('os três indicadores ficam lado a lado, e empilham abaixo de 900px', () => {

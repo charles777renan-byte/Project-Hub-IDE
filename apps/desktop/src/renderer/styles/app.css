@@ -537,8 +537,8 @@ button:disabled {
 
 /*
  * Resumo da missão (components/workspace/MissionSummary.tsx): é o bloco de maior peso da página. Uma
- * faixa de 3px no topo na cor da situação (--summary-accent: lima roda, violeta espera a pessoa, laranja
- * pausa, vermelho falhou, neutro no resto). À esquerda, o projeto (link ciano), o título e a linha com o
+ * faixa de 3px no topo na cor da situação (--summary-accent: lima roda ou concluiu, âmbar espera a pessoa,
+ * vermelho falhou, neutro no resto, inclusive a pausa). À esquerda, o projeto (link ciano), o título e a linha com o
  * chip, a branch e o nome curto do worktree; à direita, a ação principal em lima e as secundárias,
  * discretas. Abaixo, os três indicadores e, com a missão concluída, a caixa do fecho. Quebra de linha
  * sem rolar de lado: as ações passam para a linha de baixo em janela estreita.
@@ -847,13 +847,13 @@ button:disabled {
   font-size: 0.75rem;
 }
 
-/* Cartão de decisão: violeta, para aprovação do plano e de ação protegida. */
+/* Cartão de decisão: âmbar (--warn, "aguarda você"), para aprovação do plano e de ação protegida. */
 .decision-card {
   display: grid;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--violet);
+  border: 1px solid var(--warn);
   background: var(--surface-glass);
 }
 
@@ -1057,14 +1057,14 @@ button:disabled {
   align-items: center;
   gap: var(--space-2) var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--violet);
+  border: 1px solid var(--warn);
   border-radius: var(--radius-panel);
   background: var(--surface-glass);
 }
 
 .decision-banner__title {
   margin: 0;
-  color: var(--violet);
+  color: var(--warn);
   font-size: 0.875rem;
   font-weight: 700;
 }
