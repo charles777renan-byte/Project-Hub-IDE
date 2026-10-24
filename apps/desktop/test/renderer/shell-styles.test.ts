@@ -18,6 +18,12 @@ describe('casca do app', () => {
     expect(shell.get('height')).toBe('100vh');
   });
 
+  it('o fundo da janela leva o brilho violeta sobre a cor de fundo', () => {
+    expect(ruleDeclarations(workspaceCss, '.app-shell').get('background')).toBe(
+      'var(--glow-app), var(--bg)',
+    );
+  });
+
   it('a barra superior tem 36px, não encolhe e não quebra linha', () => {
     const topbar = ruleDeclarations(workspaceCss, '.topbar');
     expect(topbar.get('height')).toBe('36px');
@@ -90,10 +96,14 @@ describe('casca do app', () => {
     expect(ruleDeclarations(workspaceCss, '.topbar__status').get('margin-left')).toBe('auto');
   });
 
-  it('o item ativo da navegação principal tem o fundo da cor de borda de campo', () => {
+  // Atualizado na identidade visual (Tarefa 5): o item ativo troca o fundo --field-line por --line e ganha
+  // a barra lima de 3px à esquerda (--accent, o papel "estado ativo"); nunca magenta.
+  it('o item ativo da navegação principal tem fundo --line e barra lima de 3px à esquerda', () => {
     const active = ruleDeclarations(workspaceCss, ".main-nav a[aria-current='page']");
-    expect(active.get('background')).toBe('var(--field-line)');
+    expect(active.get('background')).toBe('var(--line)');
     expect(active.get('color')).toBe('var(--text)');
+    expect(active.get('box-shadow')).toBe('inset 3px 0 0 var(--accent)');
+    expect(JSON.stringify([...active])).not.toContain('magenta');
   });
 
   it('a coluna lateral não encolhe e a barra de projetos enche o que sobra dela', () => {
@@ -210,13 +220,36 @@ describe('barra lateral', () => {
     }
   });
 
-  it('a barra é translúcida e o item da página atual usa o fundo do item ativo da navegação', () => {
-    expect(ruleDeclarations(workspaceCss, '.sidebar').get('background')).toBe(
-      'color-mix(in srgb, var(--bg) 80%, transparent)',
+  // Atualizado na identidade visual (Tarefa 5): a barra é um cartão opaco (--surface, --radius-card,
+  // contorno por sombra interna e --shadow-card), com 8px de respiro ao redor; o item da página atual
+  // usa o mesmo fundo --line do item ativo da navegação.
+  it('a barra é um cartão e o item da página atual usa o fundo do item ativo da navegação', () => {
+    const sidebar = ruleDeclarations(workspaceCss, '.sidebar');
+    expect(sidebar.get('background')).toBe('var(--surface)');
+    expect(sidebar.get('border-radius')).toBe('var(--radius-card)');
+    expect(sidebar.get('box-shadow')?.replaceAll(/\s+/g, ' ')).toBe(
+      'inset 0 0 0 1px var(--line), var(--shadow-card)',
     );
+    expect(sidebar.has('border-right')).toBe(false);
     expect(
       ruleDeclarations(workspaceCss, ".sidebar__link[aria-current='page']").get('background'),
-    ).toBe('var(--field-line)');
+    ).toBe('var(--line)');
+  });
+
+  it('o corpo da janela dá 8px de respiro e a divisória da barra ocupa o vão de 8px entre os cartões', () => {
+    expect(ruleDeclarations(workspaceCss, '.app-body').get('padding')).toBe('8px');
+    const divider = ruleDeclarations(
+      workspaceCss,
+      ".app-body > .pane-tree__separator[aria-orientation='vertical']",
+    );
+    expect(divider.get('width')).toBe('8px');
+    expect(divider.get('background')).toBe('transparent');
+  });
+
+  it('a linha do projeto tem respiro à direita para a marca e o chip "sem Git" não encostarem na borda', () => {
+    expect(ruleDeclarations(workspaceCss, '.sidebar__row').get('padding-right')).toBe(
+      'var(--space-1)',
+    );
   });
 
   it('o corpo da janela é uma linha flex que ocupa o resto da altura', () => {

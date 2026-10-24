@@ -75,6 +75,14 @@ p {
   height: 100%;
 }
 
+/* O canvas pinta --bg por inteiro e cobriria o brilho da janela: o brilho é redesenhado por cima dele. */
+.topo-background::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--glow-app);
+}
+
 /* Superfícies de conteúdo translúcidas (painéis, cartões e formulários): quase opacas, para o texto ler bem. */
 :root {
   --surface-glass: color-mix(in srgb, var(--panel) 86%, transparent);
@@ -276,9 +284,9 @@ button:disabled {
 }
 
 /*
- * Painel do workspace (components/Panel.tsx): fundo --panel, borda --line, raio --radius-panel e
- * faixa de 3px no topo na cor do acento. A classe panel--<acento> só define --panel-accent; a faixa e
- * o ponto do cabeçalho leem essa variável. O corpo rola sozinho (min-height: 0 deixa o painel
+ * Painel do workspace (components/Panel.tsx), um cartão (B1): superfície --surface opaca, raio
+ * --radius-card, contorno de 1px por sombra interna e --shadow-card. A classe panel--<acento> só define
+ * --panel-accent, que o ponto do cabeçalho lê; não há mais faixa colorida no topo. O corpo rola sozinho (min-height: 0 deixa o painel
  * encolher dentro de uma grade, desde que a grade dê altura ao painel). O corpo base não força
  * fonte mono: o painel que mostrar log define a fonte no próprio conteúdo.
  */
@@ -288,10 +296,11 @@ button:disabled {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--panel-accent);
-  border-radius: var(--radius-panel);
-  background: var(--surface-glass);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    var(--shadow-card);
 }
 
 .panel--violet {
