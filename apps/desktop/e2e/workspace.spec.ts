@@ -768,3 +768,38 @@ test('se o contexto WebGL se perde, o terminal volta ao DOM, ajusta as colunas �
   expect(messages.some((text) => text.includes('webgl context not restored'))).toBe(true);
   await endShell(page);
 });
+
+test('abrir muitos painéis em sequência não estoura o limite de contextos WebGL: todos seguem em WebGL', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.setTimeout(300_000);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const messages: string[] = [];
+  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  await addProjectAndOpenWorkspace(page, projectName);
+  // Cada painel aberto remonta todos os anteriores. Sem soltar os contextos, ao abrir o décimo estão vivos os nove
+  // antigos e os dez novos (19, mais que o limite de 16 do Chromium), sem nenhum teste segurando referência: o GC
+  // natural não recolhe os antigos dentro da mesma remontagem.
+  const total = 10;
+  for (let index = 0; index < total; index += 1) await openShell(page);
+  const views = page.locator('.terminal-view');
+  await expect(views).toHaveCount(total);
+  test.skip(
+    (await views.first().locator('canvas').count()) === 0,
+    'Sem WebGL nesta máquina: não há contexto para estourar.',
+  );
+  // Um contexto perdido só devolve o painel ao DOM depois de o xterm esperar 3 s por uma restauração.
+  await page.waitForTimeout(4_000);
+
+  for (let index = 0; index < total; index += 1) {
+    const view = views.nth(index);
+    await expect(view.locator('canvas').first()).toBeAttached();
+    expect(await view.locator('.xterm-rows').count(), `painel ${index} caiu para o DOM`).toBe(0);
+  }
+  const loss = messages.filter((text) => WEBGL_LOSS.test(text));
+  console.log(`[medida] ${total} painéis, avisos de contexto: ${loss.length}`);
+  expect(loss).toEqual([]);
+  await endShell(page);
+});
