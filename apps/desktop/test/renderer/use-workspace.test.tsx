@@ -743,7 +743,7 @@ describe('useWorkspace', () => {
     it('trocar de projeto durante a gravação que antecede addPane não deixa a gravação bloqueada', async () => {
       let resolveSave: (value: unknown) => void = () => {};
       api.saveLayout.mockReturnValueOnce(new Promise((r) => (resolveSave = r)));
-      api.addPane.mockResolvedValue({ ok: true, data: dto(tres(), 'p1') });
+      api.addPane.mockResolvedValue({ ok: true, data: dto(layoutOf('t1'), 'p1') });
       const { result, rerender } = await mount('p1');
       act(() => result.current.setRatio('raiz', 0.3));
       let pending: Promise<string | null> = Promise.resolve('x');
