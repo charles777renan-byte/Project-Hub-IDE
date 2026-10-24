@@ -142,6 +142,32 @@ describe('leitor de regras dos testes', () => {
  * recebe, com a navegação no topo e uma rolagem por seção; o corpo da janela é uma linha flex de painéis
  * redimensionáveis (a largura é da divisória, sem pontos de corte). As regras ficam em workspace.css.
  */
+describe('ícones da barra superior e da barra lateral', () => {
+  const appCss = readCss('app.css');
+  const workspaceCss = readCss('workspace.css');
+
+  it('fechar e adicionar não herdam o padding de botão, para o ícone ficar centrado na caixa declarada', () => {
+    // Sem isto, button { padding: 0.5rem 1rem } alarga a caixa e o ícone fica deslocado.
+    expect(ruleDeclarations(appCss, 'button').get('padding')).toBe('var(--space-2) var(--space-3)');
+    for (const selector of ['.topbar__close', '.topbar__add']) {
+      expect(ruleDeclarations(workspaceCss, selector).get('padding'), selector).toBe('0');
+    }
+    // Alvo de toque de pelo menos 24px (WCAG 2.2, 2.5.8).
+    expect(ruleDeclarations(workspaceCss, '.topbar__close').get('width')).toBe('24px');
+    expect(ruleDeclarations(workspaceCss, '.topbar__close').get('height')).toBe('24px');
+  });
+
+  it('o chevron do projeto gira 90° quando o projeto está expandido e a caixa tem a largura do ícone', () => {
+    expect(
+      ruleDeclarations(
+        workspaceCss,
+        ".sidebar__toggle[aria-expanded='true'] .sidebar__chevron svg",
+      ).get('transform'),
+    ).toBe('rotate(90deg)');
+    expect(ruleDeclarations(workspaceCss, '.sidebar__chevron').get('width')).toBe('14px');
+  });
+});
+
 describe('barra lateral', () => {
   const workspaceCss = readCss('workspace.css');
 
