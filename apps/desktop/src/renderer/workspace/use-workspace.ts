@@ -83,7 +83,8 @@ export function useWorkspace(projectId: string): UseWorkspace {
   const generation = useRef(0);
   // Mudanças de estrutura (abrir/fechar painel) em voo: enquanto houver, o layout local está velho e
   // gravá-lo atropelaria a mudança, então a gravação espera (o pendente continua marcado).
-  // Só vale para a geração atual: a de um projeto que já saiu não bloqueia nem reagenda nada no novo.
+  // Conta só as da geração atual (zera a cada troca de projeto): uma mudança de projeto que já saiu não
+  // bloqueia nem reagenda nada no novo, e só quem incrementou na geração atual decrementa.
   // Limitação aceita: uma edição pendente do projeto antigo, com mudança estrutural dele em voo na troca,
   // é descartada.
   const structural = useRef(0);
@@ -237,6 +238,8 @@ export function useWorkspace(projectId: string): UseWorkspace {
       if (workspace === null) return ACTION_ERROR;
       const mine = generation.current;
       await saveNow();
+      // O projeto pode ter trocado durante a gravação: o pedido não é mais dele.
+      if (generation.current !== mine) return null;
       try {
         const result = await call(workspace.id, leafId);
         // Outro projeto abriu enquanto o pedido estava em voo: a resposta (inclusive o erro) não é dele.
@@ -286,6 +289,8 @@ export function useWorkspace(projectId: string): UseWorkspace {
       if (workspace === null) return ACTION_ERROR;
       const mine = generation.current;
       await saveNow();
+      // O projeto pode ter trocado durante a gravação: o pedido não é mais dele.
+      if (generation.current !== mine) return null;
       structural.current += 1;
       let adopted = false;
       try {
