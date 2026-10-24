@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
@@ -56,6 +57,13 @@ export function PaneView(props: PaneViewProps) {
   const { leaf, terminal, provider, projectName, active, busy, error } = props;
   const focusTerminal = props.focusTerminal === true;
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
+
+  // Sem terminal para receber o foco (lançador), o foco pedido vai para o próprio painel.
+  const section = useRef<HTMLElement>(null);
+  const isLauncher = leaf.terminalId === null;
+  useEffect(() => {
+    if (focusTerminal && isLauncher) section.current?.focus();
+  }, [focusTerminal, isLauncher]);
 
   let content;
   if (leaf.terminalId === null) {
@@ -169,6 +177,7 @@ export function PaneView(props: PaneViewProps) {
 
   return (
     <section
+      ref={section}
       className="pane"
       aria-label={`Painel ${label}`}
       data-active={active ? 'true' : 'false'}
