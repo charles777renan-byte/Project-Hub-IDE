@@ -51,7 +51,7 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane-tree__separator:active').get('background')).toBe('var(--field-line)');
     const focus = rule('.pane-tree__separator:focus-visible');
     expect(focus.get('background')).toBe('var(--field-line)');
-    expect(focus.get('outline')).toContain('var(--text)');
+    expect(focus.get('outline')).toContain('var(--focus)');
   });
 
   it('o painel não tem raio nem sombra que não seja uma linha interna', () => {
@@ -89,7 +89,8 @@ describe('árvore de painéis e painel', () => {
     expect(section).not.toMatch(/\b(?:rgba?|hsla?)\(/i);
     const used = [...section.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
-    const allowed = new Set(['--bg', '--line', '--field-line', '--muted', '--text']);
+    // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
+    const allowed = new Set(['--bg', '--line', '--field-line', '--muted', '--text', '--focus']);
     expect(used.filter((name) => !allowed.has(name) && !/^--(?:space|font)/.test(name))).toEqual(
       [],
     );

@@ -193,7 +193,8 @@ describe('cores do chrome do workspace', () => {
     resolve(import.meta.dirname, '../../src/renderer/styles/workspace.css'),
     'utf8',
   ).replace(/\/\*[\s\S]*?\*\//g, '');
-  const NEUTRAL = new Set(['--bg', '--line', '--field-line', '--muted', '--text']);
+  // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
+  const NEUTRAL = new Set(['--bg', '--line', '--field-line', '--muted', '--text', '--focus']);
   // Variáveis do chrome que não são cor: espaçamento, fonte e raio.
   const NOT_COLOR = /^--(?:space|font|radius)(?:-|$)/;
 

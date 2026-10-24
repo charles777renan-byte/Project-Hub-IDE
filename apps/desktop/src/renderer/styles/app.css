@@ -108,7 +108,7 @@ button {
     border-color var(--dur-fast) var(--ease);
 }
 
-button:hover {
+button:hover:not(:disabled) {
   border-color: var(--muted);
 }
 
@@ -125,8 +125,8 @@ button:disabled {
   color: var(--accent-ink);
 }
 
-.btn-primary:hover,
-.btn-decision:hover {
+.btn-primary:hover:not(:disabled),
+.btn-decision:hover:not(:disabled) {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 88%, white);
 }
@@ -138,7 +138,7 @@ button:disabled {
   color: var(--text);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background: var(--surface-2);
 }
 
@@ -149,8 +149,8 @@ button:disabled {
   color: var(--text);
 }
 
-.btn-ghost:hover {
-  border-color: transparent;
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--field-line);
   background: var(--surface-2);
 }
 
@@ -160,13 +160,18 @@ button:disabled {
   color: var(--brand);
 }
 
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+}
+
 /* Recusar, cancelar e parar. */
 .btn-danger {
   border-color: var(--danger);
   color: var(--danger);
 }
 
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
   border-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
@@ -178,14 +183,6 @@ button:disabled {
   padding: 0;
   color: var(--brand);
   text-decoration: underline;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  button,
-  .field input,
-  .field textarea {
-    transition: none;
-  }
 }
 
 .page-alert {
@@ -945,6 +942,14 @@ button:disabled {
 .field input:hover,
 .field textarea:hover {
   border-color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .field input,
+  .field textarea {
+    transition: none;
+  }
 }
 
 .field textarea {
