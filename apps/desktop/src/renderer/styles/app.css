@@ -669,10 +669,6 @@ button:disabled {
   color: var(--lime);
 }
 
-.mission-meta__feedback--failed {
-  color: var(--red);
-}
-
 /* Indicadores: verificação, arquivos alterados e Git, em três colunas (empilham abaixo de 900px). */
 .mission-indicators {
   display: grid;
@@ -1688,4 +1684,80 @@ button:disabled {
   font-size: var(--text-sm);
   line-height: 1.4;
   pointer-events: none;
+}
+
+/*
+ * Avisos (components/Toaster.tsx): pilha no canto inferior direito, o mais novo embaixo. Cartão em
+ * --surface-2 como o menu flutuante. O ícone marca o estado: lima no sucesso (destaque de estado), --danger
+ * no erro. O texto fica em --text (contraste já medido sobre --surface-2).
+ */
+.toaster {
+  position: fixed;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(24rem, calc(100vw - 2 * var(--space-3)));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-size: var(--text-md);
+  line-height: 1.4;
+  pointer-events: auto;
+  animation: toast-in var(--dur) var(--ease);
+}
+
+.toast__icon {
+  flex: none;
+  margin-top: 0.2rem;
+}
+
+.toast--success .toast__icon {
+  color: var(--lime);
+}
+
+.toast--error .toast__icon {
+  color: var(--danger);
+}
+
+.toast__message {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.toast__close {
+  flex: none;
+  padding: var(--space-1);
+  line-height: 0;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }

@@ -297,3 +297,64 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   const failed = readDatabase(dataDir, (repo) => repo.findExecutionsByStatus('failed'));
   expect(failed.map((execution) => execution.exitReason)).toEqual(['interrupted_by_restart']);
 });
+
+test('o aviso de falha ao copiar o caminho aparece, fecha e não viola a CSP', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const launched = await launchApp({ dialogPath: gitRepo.path });
+  const { page } = launched;
+  // O ouvinte entra antes de qualquer script da página (addInitScript + reload), como em security.spec.ts.
+  await page.addInitScript(() => {
+    const violations: string[] = [];
+    Object.assign(window, { cspViolations: violations });
+    document.addEventListener('securitypolicyviolation', (event) => {
+      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
+  });
+  await page.reload();
+
+  await addGitProject(page, projectName);
+  await openProject(page, projectName);
+  await createMission(page);
+  await approvePlanAndStart(page);
+
+  // A área de transferência recusa a cópia: o aviso nasce pelo Toaster (CSS por <link>, sem <style>).
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: () => Promise.reject(new Error('negado')),
+    });
+  });
+  const summary = page.getByRole('region', { name: 'Resumo da missão' });
+  await summary.getByRole('button', { name: 'Copiar caminho' }).click();
+
+  const alert = page.getByRole('status', { name: 'Avisos' }).getByRole('alert');
+  await expect(alert).toHaveText('Não foi possível copiar o caminho.');
+  // Posicionado no canto inferior direito, dentro da janela.
+  const box = await alert.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(box?.width ?? 0).toBeGreaterThan(0);
+  if (box !== null && viewport !== null) {
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    expect(box.x).toBeGreaterThan(viewport.width / 2);
+    expect(box.y).toBeGreaterThan(viewport.height / 2);
+  }
+  // Lido DEPOIS de o aviso aparecer, antes de qualquer outra coisa montar: o xterm da missão monta um
+  // <style> inline pouco depois (violação conhecida, coberta por regras em app.css; ver workspace.spec.ts),
+  // então a leitura vale para o aviso e não pode esperar por ele.
+  const violations = await page.evaluate(
+    () => (window as unknown as { cspViolations: string[] }).cspViolations,
+  );
+  expect(violations).toEqual([]);
+
+  // O erro fica até ser dispensado.
+  await page.waitForTimeout(6500);
+  await expect(alert).toBeVisible();
+  await alert.getByRole('button', { name: 'Fechar aviso' }).click();
+  await expect(alert).toHaveCount(0);
+  await launched.close();
+});

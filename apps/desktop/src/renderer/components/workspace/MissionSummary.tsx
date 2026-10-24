@@ -11,6 +11,7 @@ import {
   worktreeName,
   type PrimaryAction,
 } from '../../mission-text';
+import { notify } from '../../notify';
 import { projectPath } from '../../routes';
 import { ConfirmButton } from '../ConfirmButton';
 import { StatusChip } from '../StatusChip';
@@ -86,15 +87,18 @@ function ConclusionSummary({
   );
 }
 
-/** Tempo em que o aviso "Copiado" (ou a falha) fica na tela. */
+/** Tempo em que o aviso "Copiado" fica na tela. */
 const COPY_FEEDBACK_MS = 2500;
 
-type CopyState = 'idle' | 'copied' | 'failed';
+/** Texto do aviso quando a área de transferência recusa a cópia. */
+const COPY_ERROR = 'Não foi possível copiar o caminho.';
+
+type CopyState = 'idle' | 'copied';
 
 /**
  * O worktree na linha do resumo: o nome curto (a última pasta) e o botão que copia o caminho inteiro
- * para a área de transferência. O resultado aparece ao lado, numa região `aria-live` que fica montada
- * para o leitor de tela anunciar a mudança.
+ * para a área de transferência. O "Copiado" aparece ao lado, numa região `aria-live` que fica montada
+ * para o leitor de tela anunciar a mudança; a falha sai pelo aviso (`notify.error`).
  */
 function WorktreeMeta({ path }: { path: string | undefined }) {
   const [copy, setCopy] = useState<CopyState>('idle');
@@ -112,7 +116,8 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
       await navigator.clipboard.writeText(fullPath);
       next = 'copied';
     } catch {
-      next = 'failed';
+      next = 'idle';
+      notify.error(COPY_ERROR);
     }
     setCopy(next);
     clearTimeout(timer.current);
@@ -128,19 +133,8 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
       <button type="button" className="mission-meta__copy" onClick={() => void copyPath(path)}>
         Copiar caminho
       </button>
-      <span
-        aria-live="polite"
-        className={
-          copy === 'failed'
-            ? 'mission-meta__feedback mission-meta__feedback--failed'
-            : 'mission-meta__feedback'
-        }
-      >
-        {copy === 'copied'
-          ? 'Copiado'
-          : copy === 'failed'
-            ? 'Não foi possível copiar o caminho.'
-            : ''}
+      <span aria-live="polite" className="mission-meta__feedback">
+        {copy === 'copied' ? 'Copiado' : ''}
       </span>
     </span>
   );
