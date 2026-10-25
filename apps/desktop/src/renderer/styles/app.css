@@ -255,6 +255,15 @@ button:disabled {
   background: currentcolor;
 }
 
+/* Com ícone (StatusChip com `icon`), o ícone toma o lugar do ponto; o ícone herda a cor do tom. */
+.chip--icon::before {
+  display: none;
+}
+
+.chip__icon {
+  flex: none;
+}
+
 .chip--lime,
 .state-mark--active,
 .state-mark--done {
@@ -660,6 +669,9 @@ button:disabled {
 }
 
 .mission-meta__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: 0.125rem var(--space-2);
   font-family: var(--font-sans);
   font-size: 0.75rem;
@@ -1687,6 +1699,193 @@ button:disabled {
   font-size: var(--text-sm);
   line-height: 1.4;
   pointer-events: none;
+}
+
+/*
+ * Menu de ações (components/MenuAcoes.tsx, Radix DropdownMenu): a lista flutua abaixo do botão "Mais ações",
+ * com a mesma superfície e a mesma sombra do menu "+" e da dica. O botão (.menu-acoes__gatilho) herda o
+ * estilo dos botões da barra de ações da missão. O destaque do item vem do Radix (data-highlighted): vale
+ * para o mouse e para as setas, e o anel de foco do teclado é o do app. Excluir usa --danger; o fundo do destaque é só 10% dele, para o texto
+ * manter mais de 4,5:1.
+ */
+.menu-acoes {
+  z-index: 50;
+  min-width: 11rem;
+  padding: var(--space-1);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+}
+
+.menu-acoes__item {
+  display: block;
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.menu-acoes__item[data-highlighted] {
+  background: var(--line);
+}
+
+/* O anel de foco do app (lima, :focus-visible) fica por dentro do item, que o cortaria por fora. */
+.menu-acoes__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.menu-acoes__item--perigo {
+  color: var(--danger);
+}
+
+.menu-acoes__item--perigo[data-highlighted] {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.menu-acoes__item[data-disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/*
+ * Menu de programas da barra do workspace (workspace/WorkspaceToolbar.tsx): a mesma superfície e sombra do menu
+ * de ações e do menu de projetos. Fica aqui, e não em workspace.css, porque a sombra externa de um menu
+ * flutuante é o que a seção de painéis proíbe (ver pane-styles.test.ts).
+ */
+.workspace__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: var(--space-2);
+  z-index: 50;
+  min-width: 15rem;
+  padding: var(--space-1);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+}
+
+.workspace__menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.workspace__menu-item:focus-visible {
+  background: var(--line);
+  outline: none;
+}
+
+.workspace__menu-item[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.workspace__menu-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.workspace__menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.workspace__menu-text small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/*
+ * Paleta de comandos (components/PaletaComandos.tsx, Ctrl+K): um <dialog> modal nativo, perto do topo da janela,
+ * com a superfície e a sombra do menu de ações. O fundo escurece o resto da tela. O item marcado (cmdk,
+ * data-selected) usa a mesma cor do destaque do menu. O <dialog> do navegador traz borda e margem próprias:
+ * elas são zeradas aqui.
+ */
+.paleta {
+  inset-block-start: 12vh;
+  inset-block-end: auto;
+  margin-inline: auto;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: min(70vh, 30rem);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.paleta::backdrop {
+  background: rgb(4 2 16 / 60%);
+}
+
+.paleta__comando {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, 30rem);
+}
+
+.paleta__busca {
+  width: 100%;
+  padding: var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.paleta__busca::placeholder {
+  color: var(--muted);
+}
+
+.paleta__lista {
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+.paleta__grupo [cmdk-group-heading] {
+  padding: var(--space-2) 0.625rem var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.paleta__item {
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.paleta__item[data-selected='true'] {
+  background: var(--line);
+}
+
+.paleta__vazio {
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
 }
 
 /*

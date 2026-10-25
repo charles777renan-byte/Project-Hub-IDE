@@ -5,6 +5,7 @@ import {
   needsAttention,
   requiredActionOf,
   situationOf,
+  statusIcon,
   statusLabel,
   statusTone,
 } from '../mission-text';
@@ -21,7 +22,11 @@ export function MissionCard({ mission, projectId }: { mission: MissionDto; proje
   const classes = attention ? 'mission-card mission-card--attention' : 'mission-card';
   return (
     <article className={classes}>
-      <StatusChip label={statusLabel(mission.status)} tone={statusTone(mission.status)} />
+      <StatusChip
+        label={statusLabel(mission.status)}
+        tone={statusTone(mission.status)}
+        icon={statusIcon(mission.status)}
+      />
       <h2>
         <Link to={missionPath(projectId, mission.id)}>{mission.title}</Link>
       </h2>

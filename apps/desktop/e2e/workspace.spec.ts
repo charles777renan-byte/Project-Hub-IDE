@@ -4,6 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { decodePng, pixelAt } from './png';
 import {
+  expectOpenSessions,
   E2E_HOOK_KEY,
   expectTerminalToContain,
   expectWebglCanvas,
@@ -35,17 +36,15 @@ async function addProjectAndOpenWorkspace(page: Page, projectName: string): Prom
     .getByRole('link', { name: projectName, exact: true })
     .click();
   // O workspace novo abre vazio, com a barra para abrir terminais.
-  await expect(page.getByRole('toolbar', { name: 'Abrir terminal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Abrir terminal' })).toBeVisible();
   await expect(page.getByText('Nenhum terminal aberto')).toBeVisible();
 }
 
 /** Abre mais um painel do PowerShell pela barra e espera o prompt da sessão nova aparecer nele. */
 async function openShell(page: Page): Promise<void> {
   const before = await shellPanes(page).count();
-  await page
-    .getByRole('toolbar', { name: 'Abrir terminal' })
-    .getByRole('button', { name: 'PowerShell' })
-    .click();
+  await page.getByRole('button', { name: 'Abrir terminal' }).click();
+  await page.getByRole('menuitem', { name: /PowerShell/ }).click();
   await expect(shellPanes(page)).toHaveCount(before + 1);
   await expectTerminalToContain(shellPanes(page).nth(before).locator('.terminal-view'), 'PS ', {
     timeout: 30_000,
@@ -61,17 +60,13 @@ async function runHello(page: Page): Promise<void> {
   await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
 }
 
-/** Fecha o painel de índice `index` pelo botão "Fechar painel" e confirma; o painel some da tela. */
+/** Fecha o painel de índice `index` pelo botão "Fechar painel", sem confirmação; o painel some da tela. */
 async function closePane(page: Page, index: number): Promise<void> {
   const panes = shellPanes(page);
   const before = await panes.count();
   await panes.nth(index).getByRole('button', { name: 'Fechar painel', exact: true }).click();
-  await panes
-    .nth(index)
-    .getByRole('group', { name: /^Fechar o painel/ })
-    .getByRole('button', { name: 'Fechar painel', exact: true })
-    .click();
   await expect(panes).toHaveCount(before - 1, { timeout: 15_000 });
+  await expectOpenSessions(page, before - 1);
 }
 
 /**
@@ -122,17 +117,21 @@ test('o workspace novo abre vazio, com a barra para abrir um terminal de cada pr
   await expect(
     page.getByText('Escolha um programa na barra acima para abrir um terminal.'),
   ).toBeVisible();
-  const toolbar = page.getByRole('toolbar', { name: 'Abrir terminal' });
+  await page.getByRole('button', { name: 'Abrir terminal' }).click();
   for (const label of ['Claude Code', 'Codex']) {
-    const open = toolbar.getByRole('button', { name: label });
+    const open = page.getByRole('menuitem', { name: new RegExp(label) });
     await expect(open).toBeVisible();
-    // A disponibilidade depende da máquina: ou o botão está habilitado, ou o motivo aparece na dica.
-    if (!(await open.isEnabled())) {
-      await open.locator('xpath=..').focus();
-      await expect(page.locator('.hint')).toContainText('não foi encontrado no PATH');
+    // A disponibilidade depende da máquina: ou o item está habilitado, ou aparece como "Não instalado".
+    if ((await open.getAttribute('aria-disabled')) === 'true') {
+      await expect(open).toContainText('Não instalado');
     }
   }
-  await expect(toolbar.getByRole('button', { name: 'PowerShell' })).toBeEnabled();
+  await expect(page.getByRole('menuitem', { name: /PowerShell/ })).toHaveAttribute(
+    'aria-disabled',
+    'false',
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
 test('abrir três terminais pela barra: um painel à esquerda e dois empilhados à direita, cada um com sessão viva', async ({
@@ -182,7 +181,7 @@ test('abrir três terminais pela barra: um painel à esquerda e dois empilhados 
   await endShell(page);
 });
 
-test('fechar um painel pede confirmação, encerra a sessão e os outros ocupam o espaço; fechar todos volta ao estado vazio', async ({
+test('fechar um painel na hora encerra a sessão e os outros ocupam o espaço; fechar todos volta ao estado vazio', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -199,15 +198,7 @@ test('fechar um painel pede confirmação, encerra a sessão e os outros ocupam 
   const sessions = bar.locator('.sidebar__session').getByRole('button');
   await expect(sessions).toHaveCount(3);
 
-  // "Voltar" na confirmação desfaz o pedido: nada fecha.
-  await panes.nth(2).getByRole('button', { name: 'Fechar painel', exact: true }).click();
-  const question = panes.nth(2).getByRole('group', { name: /^Fechar o painel/ });
-  await expect(question).toBeVisible();
-  await question.getByRole('button', { name: 'Voltar' }).click();
-  await expect(panes).toHaveCount(3);
-  await expect(sessions).toHaveCount(3);
-
-  // Confirmado, o painel sai, a sessão dele termina e os dois restantes ficam lado a lado.
+  // Fechar sai na hora, sem confirmação: o painel some, a sessão dele termina e os dois restantes ficam lado a lado.
   await closePane(page, 2);
   await expect(sessions).toHaveCount(2, { timeout: 15_000 });
   const area = await page.locator('.workspace__area').boundingBox();
@@ -357,7 +348,7 @@ test('os painéis e a divisória da raiz voltam iguais depois de fechar e reabri
   await expect(shellPanes(second.page)).toHaveCount(2, { timeout: 30_000 });
   await expect(second.page.getByText('Nenhuma sessão neste painel')).toHaveCount(2);
   await expect(second.page.getByRole('button', { name: 'Iniciar PowerShell' })).toHaveCount(2);
-  await expect(second.page.getByRole('toolbar', { name: 'Abrir terminal' })).toBeVisible();
+  await expect(second.page.getByRole('button', { name: 'Abrir terminal' })).toBeVisible();
   await expect(
     second.page.getByRole('navigation', { name: 'Workspaces abertos' }).getByRole('link'),
   ).toHaveAttribute('aria-current', 'page');
@@ -580,10 +571,8 @@ test('sem o gancho de teste o app não expõe o terminal: nada no window nem na 
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path, terminalHook: false });
   await addProjectAndOpenWorkspace(page, projectName);
-  await page
-    .getByRole('toolbar', { name: 'Abrir terminal' })
-    .getByRole('button', { name: 'PowerShell' })
-    .click();
+  await page.getByRole('button', { name: 'Abrir terminal' }).click();
+  await page.getByRole('menuitem', { name: /PowerShell/ }).click();
   await expect(shellPanes(page)).toHaveCount(1);
   await expect(shellPanes(page).first().locator('.xterm-helper-textarea')).toBeAttached();
 

@@ -1,15 +1,27 @@
 import type { KeyboardEvent } from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
+import { ProviderIcon } from '../components/ProviderIcon';
 import { Hint } from '../components/Hint';
-import { ICON_PROPS, Plus } from '../components/Icon';
+import { ChevronDown, ICON_PROPS, Plus } from '../components/Icon';
 
 export const LIMIT_HINT = 'Limite de 12 painéis';
 
+/** Linha de apoio de cada programa no menu, abaixo do nome. */
+const DESCRIPTION: Record<ProviderId, string> = {
+  claude: 'Agente de código da Anthropic',
+  codex: 'Agente de código da OpenAI',
+  gemini: 'Agente de linha de comando do Google',
+  shell: 'Terminal do sistema',
+};
+
 /**
- * Barra para abrir um terminal novo: um botão por programa. Setas, Home e End movem o foco entre os botões
- * habilitados (mesmo padrão do menu "+" da barra superior). O motivo de um programa indisponível vai numa dica
- * no invólucro do botão, porque botão desabilitado não recebe foco nem mouse.
+ * Barra fina no topo do workspace, com um botão "Abrir terminal" que abre o menu dos programas. O menu tem
+ * o mesmo jeito do menu de projetos da barra superior: setas percorrem os programas disponíveis (com volta),
+ * Home e End vão às pontas, Esc fecha e devolve o foco ao botão, e clicar fora também fecha. Programa não
+ * instalado aparece marcado como "Não instalado", com o motivo na dica, e não abre nada. Com o limite de
+ * painéis, o botão fica desabilitado com a dica do limite. `focusToken` novo leva o foco ao botão, como
+ * quando o último painel é fechado.
  */
 export function WorkspaceToolbar({
   providers,
@@ -20,33 +32,55 @@ export function WorkspaceToolbar({
 }: {
   providers: readonly ProviderInfo[];
   busy: boolean;
-  /** Todos os painéis possíveis já estão abertos: os botões ficam desabilitados, com a dica do limite. */
+  /** Todos os painéis possíveis já estão abertos: o botão fica desabilitado, com a dica do limite. */
   limitReached?: boolean;
-  /** Cada valor novo (maior que 0) leva o foco ao primeiro botão habilitado, ex.: depois de fechar o último painel. */
+  /** Cada valor novo (maior que 0) leva o foco ao botão, ex.: depois de fechar o último painel. */
   focusToken?: number;
   onOpen(provider: ProviderId): void;
 }) {
-  const bar = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const blocked = busy || limitReached;
+
+  const enabledItems = () =>
+    Array.from(
+      wrapper.current?.querySelectorAll<HTMLElement>(
+        '[role="menuitem"]:not([aria-disabled="true"])',
+      ) ?? [],
+    );
 
   useEffect(() => {
     if (focusToken === 0) return;
-    const first = Array.from(bar.current?.querySelectorAll<HTMLButtonElement>('button') ?? []).find(
-      (button) => !button.disabled,
-    );
-    (first ?? bar.current)?.focus();
+    const target = button.current && !button.current.disabled ? button.current : wrapper.current;
+    target?.focus();
   }, [focusToken]);
 
+  useEffect(() => {
+    if (!open) return;
+    enabledItems()[0]?.focus();
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    return () => document.removeEventListener('pointerdown', closeOnOutside);
+  }, [open]);
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const all = Array.from(bar.current?.querySelectorAll<HTMLButtonElement>('button') ?? []).filter(
-      (button) => !button.disabled,
-    );
-    if (all.length === 0) return;
-    const at = all.indexOf(document.activeElement as HTMLButtonElement);
+    if (!open) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      button.current?.focus();
+      return;
+    }
+    const all = enabledItems();
+    const at = all.indexOf(document.activeElement as HTMLElement);
     const target = (index: number) => all[(index + all.length) % all.length];
-    if (event.key === 'ArrowRight') {
+    if (event.key === 'ArrowDown') {
       event.preventDefault();
       target(at + 1)?.focus();
-    } else if (event.key === 'ArrowLeft') {
+    } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       target(at < 0 ? -1 : at - 1)?.focus();
     } else if (event.key === 'Home') {
@@ -58,39 +92,74 @@ export function WorkspaceToolbar({
     }
   }
 
+  function choose(provider: ProviderInfo) {
+    if (provider.available === false) return;
+    setOpen(false);
+    onOpen(provider.id);
+  }
+
+  const trigger = (
+    <button
+      ref={button}
+      type="button"
+      className="btn-secondary workspace__open"
+      disabled={blocked}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      onClick={() => setOpen((current) => !current)}
+    >
+      <Plus {...ICON_PROPS} />
+      Abrir terminal
+      <ChevronDown {...ICON_PROPS} />
+    </button>
+  );
+
   return (
     <div
-      ref={bar}
-      role="toolbar"
-      aria-label="Abrir terminal"
-      aria-orientation="horizontal"
-      tabIndex={-1}
+      ref={wrapper}
       className="workspace__toolbar"
+      tabIndex={-1}
       onKeyDown={onKeyDown}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
     >
-      {providers.map((provider) => {
-        const unavailable = provider.available === false;
-        const button = (
-          <button
-            type="button"
-            className="btn-secondary workspace__open"
-            disabled={busy || unavailable || limitReached}
-            onClick={() => onOpen(provider.id)}
-          >
-            <Plus {...ICON_PROPS} />
-            {provider.label}
-          </button>
-        );
-        if (!unavailable && !limitReached) return <span key={provider.id}>{button}</span>;
-        const reason = unavailable ? (provider.reason ?? 'Programa indisponível.') : LIMIT_HINT;
-        return (
-          <Hint key={provider.id} label={reason}>
-            <span className="workspace__open-wrap" tabIndex={0}>
-              {button}
-            </span>
-          </Hint>
-        );
-      })}
+      {limitReached ? (
+        <Hint label={LIMIT_HINT}>
+          <span className="workspace__open-wrap" tabIndex={0}>
+            {trigger}
+          </span>
+        </Hint>
+      ) : (
+        trigger
+      )}
+      {open ? (
+        <ul role="menu" aria-label="Abrir terminal" className="workspace__menu">
+          {providers.map((provider) => {
+            const unavailable = provider.available === false;
+            return (
+              <li key={provider.id} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="workspace__menu-item"
+                  aria-disabled={unavailable}
+                  title={unavailable ? provider.reason : undefined}
+                  onClick={() => choose(provider)}
+                >
+                  <span className="workspace__menu-icon">
+                    <ProviderIcon provider={provider.id} />
+                  </span>
+                  <span className="workspace__menu-text">
+                    <span className="workspace__menu-name">{provider.label}</span>
+                    <small>{unavailable ? 'Não instalado' : DESCRIPTION[provider.id]}</small>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
     </div>
   );
 }

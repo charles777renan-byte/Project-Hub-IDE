@@ -111,6 +111,93 @@ describe('Tabs', () => {
     expect(second).not.toHaveAttribute('aria-describedby');
   });
 
+  it('só a aba ativa entra na ordem de tabulação, nos dois sentidos', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button">Antes</button>
+        <Tabs label="Exemplo" tabs={TABS} active="b" onChange={() => undefined} />
+        <button type="button">Depois</button>
+      </>,
+    );
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Antes' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('tab', { name: 'Segunda' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Depois' })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole('tab', { name: 'Segunda' })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole('button', { name: 'Antes' })).toHaveFocus();
+  });
+
+  it('as setas partem da aba focada, não da ativa', async () => {
+    const user = userEvent.setup();
+    // A ativa fica parada em "a" (o onChange não faz nada): só o foco anda.
+    render(<Tabs label="Exemplo" tabs={TABS} active="a" onChange={() => undefined} />);
+    screen.getByRole('tab', { name: 'Segunda' }).focus();
+
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.getByRole('tab', { name: 'Terceira' })).toHaveFocus();
+  });
+
+  it('depois do clique ou da seta, o foco fica na aba e o Tab sai da barra para o conteúdo', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <Harness />
+        <button type="button">Conteúdo da aba</button>
+      </>,
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Segunda' }));
+    expect(screen.getByRole('tab', { name: 'Segunda' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Conteúdo da aba' })).toHaveFocus();
+
+    screen.getByRole('tab', { name: 'Segunda' }).focus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: 'Terceira' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Conteúdo da aba' })).toHaveFocus();
+  });
+
+  it('o ponteiro do aria-controls da aba ativa leva ao painel que a página monta', () => {
+    // O Tabs não monta painéis: quem o usa monta o painel com o mesmo id que `panelId` devolve.
+    render(
+      <>
+        <Tabs
+          label="Exemplo"
+          tabs={TABS}
+          active="a"
+          onChange={() => undefined}
+          panelId={(id) => `painel-${id}`}
+        />
+        <div role="tabpanel" id="painel-a" aria-labelledby="tab-a" />
+      </>,
+    );
+
+    const tab = screen.getByRole('tab', { name: 'Primeira' });
+    const panel = document.getElementById(tab.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(panel).toBe(screen.getByRole('tabpanel', { name: 'Primeira' }));
+  });
+
+  it('a barra de abas é filha direta do contêiner da página, sem invólucro extra', () => {
+    render(
+      <div data-testid="contêiner">
+        <Tabs label="Exemplo" tabs={TABS} active="a" onChange={() => undefined} />
+      </div>,
+    );
+
+    const list = screen.getByRole('tablist', { name: 'Exemplo' });
+    expect(list.parentElement).toBe(screen.getByTestId('contêiner'));
+    expect(list).toHaveClass('tabs');
+  });
+
   it('outras teclas não trocam de aba', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();

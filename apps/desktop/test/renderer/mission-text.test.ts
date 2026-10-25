@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Icons from '../../src/renderer/components/Icon';
 import type { MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
+  formatTime,
   missionTabCounts,
   primaryActionOf,
+  statusIcon,
   statusTone,
   stepStatus,
   verificationOutcome,
@@ -34,6 +37,40 @@ describe('tom dos estados da missão', () => {
   it.each(Object.entries(expected) as [MissionStatus, string][])('%s é %s', (status, tone) => {
     expect(statusTone(status)).toBe(tone);
   });
+});
+
+/**
+ * O ícone de cada estado da missão, num ponto só. O estado `draft` fica sem ícone (o selo mantém o ponto);
+ * os que esperam o início dividem o relógio, o que espera uma resposta tem o círculo com interrogação, e
+ * o que pede a aprovação tem o escudo.
+ */
+describe('ícone dos estados da missão', () => {
+  const expected: Record<MissionStatus, string | undefined> = {
+    draft: undefined,
+    planned: 'Clock',
+    queued: 'Clock',
+    running: 'LoaderCircle',
+    waiting_approval: 'ShieldQuestionMark',
+    waiting_input: 'CircleQuestionMark',
+    paused: 'CirclePause',
+    succeeded: 'CircleCheck',
+    failed: 'CircleAlert',
+    cancelled: 'CircleSlash',
+  };
+
+  it.each(Object.entries(expected) as [MissionStatus, string | undefined][])(
+    '%s usa %s',
+    (status, name) => {
+      const icon = statusIcon(status);
+      if (name === undefined) {
+        expect(icon).toBeUndefined();
+        return;
+      }
+      // Um nome que o Icon.tsx não exporta daria `undefined` dos dois lados e passaria à toa.
+      expect(Icons[name as keyof typeof Icons]).toBeDefined();
+      expect(icon).toBe(Icons[name as keyof typeof Icons]);
+    },
+  );
 });
 
 describe('resultado de uma verificação', () => {
@@ -212,5 +249,66 @@ describe('conversationEvents', () => {
     ).map((item) => item.eventType);
 
     expect(kept).toEqual(types.slice(0, 11));
+  });
+});
+
+/**
+ * Os horários dos testes não levam `Z`: são lidos no fuso local, igual ao relógio fixo. Assim a
+ * expectativa vale em qualquer fuso, sem fixar `TZ` (o projeto não fixa).
+ */
+describe('formatTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T15:00:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('mostra agora para eventos de menos de um minuto', () => {
+    expect(formatTime('2026-10-21T14:59:40')).toBe('agora');
+  });
+
+  it('mostra há N min para eventos de menos de uma hora', () => {
+    expect(formatTime('2026-10-21T14:55:00')).toBe('há 5 min');
+  });
+
+  it('mostra só o horário no mesmo dia', () => {
+    expect(formatTime('2026-10-21T09:10:00')).toBe('09:10');
+  });
+
+  it('mostra data e hora para evento antigo, sem horas relativas', () => {
+    expect(formatTime('2026-10-19T14:02:00')).toBe('19/10 14:02');
+  });
+
+  it('com exatamente uma hora, já não usa minutos relativos', () => {
+    expect(formatTime('2026-10-21T14:00:00')).toBe('14:00');
+    expect(formatTime('2026-10-21T14:00:01')).toBe('há 59 min');
+  });
+
+  it('um evento de ontem a menos de uma hora ainda mostra há N min', () => {
+    vi.setSystemTime(new Date('2026-10-21T00:10:00'));
+
+    expect(formatTime('2026-10-20T23:50:00')).toBe('há 20 min');
+  });
+
+  it('um evento de ontem a mais de uma hora mostra a data', () => {
+    vi.setSystemTime(new Date('2026-10-21T00:10:00'));
+
+    expect(formatTime('2026-10-20T22:00:00')).toBe('20/10 22:00');
+  });
+
+  it('com 40 horas de idade, mostra data e hora e nunca horas relativas', () => {
+    expect(formatTime('2026-10-19T23:00:00')).toBe('19/10 23:00');
+    expect(formatTime('2026-10-19T23:00:00')).not.toContain('há');
+  });
+
+  it('um horário um pouco à frente do relógio (diferença entre máquinas) mostra agora', () => {
+    expect(formatTime('2026-10-21T15:00:30')).toBe('agora');
+  });
+
+  it('um horário ilegível volta como veio, sem quebrar a tela', () => {
+    expect(formatTime('não é data')).toBe('não é data');
   });
 });

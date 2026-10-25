@@ -253,3 +253,59 @@ describe('página de Projetos', () => {
     ).toBeInTheDocument();
   });
 });
+
+// Paleta de comandos (Ctrl+K, components/PaletaComandos.tsx). O atalho fica no App, então vale em qualquer tela.
+describe('paleta de comandos (Ctrl+K)', () => {
+  it('Ctrl+K abre a paleta com o foco na busca', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.getByRole('combobox')).toHaveFocus();
+  });
+
+  it('com a paleta aberta, Ctrl+K não a fecha: quem fecha é o Escape', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    await user.keyboard('{Control>}k{/Control}');
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.getByRole('combobox')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('escolher uma ação leva à tela e fecha a paleta', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(screen.getByRole('combobox'), 'Ir para Projetos{Enter}');
+    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('dentro do terminal, Ctrl+K segue para o programa e não abre a paleta', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <App />
+        <div className="terminal-view">
+          <input aria-label="Terminal de teste" />
+        </div>
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('textbox', { name: 'Terminal de teste' }));
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});

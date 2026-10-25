@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { AppError, WorktreeDto } from '@project-hub/contracts';
-import { statusLabel, statusTone } from '../mission-text';
+import { statusIcon, statusLabel, statusTone } from '../mission-text';
 import { missionPath } from '../routes';
 import { ConfirmButton } from './ConfirmButton';
 import { PathText } from './PathText';
@@ -110,7 +110,11 @@ export function WorktreesTab({ projectId }: { projectId: string }) {
         {state.worktrees.map((worktree) => (
           <li key={worktree.missionId}>
             <article className="mission-card">
-              <StatusChip label={statusLabel(worktree.status)} tone={statusTone(worktree.status)} />
+              <StatusChip
+                label={statusLabel(worktree.status)}
+                tone={statusTone(worktree.status)}
+                icon={statusIcon(worktree.status)}
+              />
               <h2>
                 <Link to={missionPath(projectId, worktree.missionId)}>{worktree.missionTitle}</Link>
               </h2>

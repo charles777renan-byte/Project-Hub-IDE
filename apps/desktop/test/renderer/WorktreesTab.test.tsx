@@ -62,6 +62,10 @@ describe('WorktreesTab', () => {
     expect(first.getByRole('link', { name: 'Ajustar login' })).toBeInTheDocument();
     expect(first.getByText('Concluída')).toBeInTheDocument();
     expect(within(items[1]!).getByText('Em execução')).toBeInTheDocument();
+    expect(first.getByText('Concluída').querySelector('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
   });
 
   it('mostra a lista vazia', async () => {
