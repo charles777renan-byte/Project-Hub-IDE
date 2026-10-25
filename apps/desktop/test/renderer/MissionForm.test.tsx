@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { MissionForm } from '../../src/renderer/components/MissionForm';
@@ -119,5 +119,53 @@ describe('MissionForm', () => {
 
       expect(submit).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// Validação com react-hook-form e zod: o formulário guarda o que foi digitado quando há erro, leva o foco
+// ao primeiro campo inválido e, depois do primeiro envio, atualiza a mensagem a cada tecla.
+describe('MissionForm: validação com react-hook-form e zod', () => {
+  it('título vazio não envia e mantém os outros campos preenchidos', async () => {
+    const submit = vi.fn();
+    render(<MissionForm onSubmit={submit} projectHasGit />);
+
+    await userEvent.type(screen.getByLabelText('Objetivo'), 'Gravar o arquivo');
+    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+
+    expect(await screen.findByText('Informe o título da missão.')).toBeInTheDocument();
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Objetivo')).toHaveValue('Gravar o arquivo');
+  });
+
+  it('o foco vai para o primeiro campo inválido', async () => {
+    render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+
+    await waitFor(() => expect(screen.getByLabelText('Título')).toHaveFocus());
+  });
+
+  it('título só com espaços conta como vazio', async () => {
+    const submit = vi.fn();
+    render(<MissionForm onSubmit={submit} projectHasGit />);
+
+    await userEvent.type(screen.getByLabelText('Título'), '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+
+    expect(await screen.findByText('Informe o título da missão.')).toBeInTheDocument();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('depois do primeiro envio, a mensagem some assim que o campo é corrigido', async () => {
+    render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    expect(await screen.findByText('Informe o título da missão.')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Título'), 'Ajustar login');
+
+    await waitFor(() =>
+      expect(screen.queryByText('Informe o título da missão.')).not.toBeInTheDocument(),
+    );
   });
 });
