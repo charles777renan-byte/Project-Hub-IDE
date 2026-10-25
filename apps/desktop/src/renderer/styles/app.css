@@ -1976,3 +1976,82 @@ button:disabled {
     animation: none;
   }
 }
+
+/*
+ * Cores de estado da lateral (components/Sidebar.tsx). Ficam aqui, fora da seção de chrome de workspace.css, que
+ * só leva cores neutras (contrast.test.ts). Como workspace.css carrega depois, nenhuma regra de lá declara cor
+ * nas propriedades que estas classes precisam.
+ */
+.state-ring {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 3.5px var(--ring, var(--line));
+}
+
+.state-ring--running {
+  --ring: var(--focus);
+}
+
+.state-ring--waiting {
+  --ring: var(--warn);
+}
+
+.state-ring--exited {
+  --ring: var(--line);
+}
+
+.state-rail::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--rail, var(--line));
+}
+
+.state-rail--running {
+  --rail: var(--focus);
+}
+
+.state-rail--waiting {
+  --rail: var(--warn);
+}
+
+.state-rail--exited {
+  --rail: var(--field-line);
+}
+
+.state-rail--running::before {
+  animation: state-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes state-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-rail--running::before {
+    animation: none;
+  }
+}
+
+.state-attention {
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+}
+
+.state-attention-tag {
+  color: var(--warn);
+}
+
+.state-attention-go {
+  background: var(--warn);
+  color: var(--bg);
+}

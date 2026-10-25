@@ -256,6 +256,12 @@ describe('serviço de terminais do app', () => {
         },
       ],
     });
+    if (!result.ok) throw new Error('esperava sucesso');
+    // A sessão avulsa diz quando começou; a de missão não traz hora de início.
+    expect(result.data.find((entry) => entry.kind === 'shell')?.startedAt).toEqual(
+      '2026-10-22T12:00:00.000Z',
+    );
+    expect(result.data.find((entry) => entry.kind === 'agent')).not.toHaveProperty('startedAt');
   });
 
   it('sessão do banco que este serviço não abriu sai como recuperada e rodando, se o processo responde', async () => {
@@ -274,6 +280,7 @@ describe('serviço de terminais do app', () => {
           provider: 'codex',
           origin: 'recovered',
           state: 'running',
+          startedAt: '2026-10-21T09:00:00.000Z',
         },
       ],
     });

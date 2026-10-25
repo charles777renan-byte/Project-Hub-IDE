@@ -308,4 +308,15 @@ describe('paleta de comandos (Ctrl+K)', () => {
     await user.keyboard('{Control>}k{/Control}');
     expect(screen.queryByRole('combobox')).toBeNull();
   });
+  it('o botão Buscar projeto ou agente da lateral abre a paleta de comandos', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('button', { name: /Buscar projeto ou agente/ }));
+    expect(screen.getByRole('dialog', { name: 'Paleta de comandos' })).toBeVisible();
+    expect(screen.getByRole('combobox')).toHaveFocus();
+  });
 });

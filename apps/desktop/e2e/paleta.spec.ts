@@ -1,9 +1,21 @@
-import type { Page } from '@playwright/test';
+import type { ElementHandle, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 
 // Paleta de comandos (Ctrl+K, components/PaletaComandos.tsx) na janela real, sob a CSP do app. O <dialog>
 // modal e o cmdk não podem montar <style> nem disparar violação de CSP. O foco entra na busca ao abrir e
 // volta a quem o tinha ao fechar, e Enter leva à tela escolhida.
+
+/**
+ * Foco do DOM: o elemento é o `document.activeElement`. O `toBeFocused` do Playwright também exige que a janela
+ * tenha o foco do sistema, o que depende de onde a janela de teste aparece. A paleta só promete o foco do DOM.
+ */
+async function expectDomFocus(page: Page, locator: Locator): Promise<void> {
+  const handle: ElementHandle | null = await locator.elementHandle();
+  expect(handle, 'o elemento existe').not.toBeNull();
+  await expect
+    .poll(() => page.evaluate((element) => document.activeElement === element, handle))
+    .toBe(true);
+}
 
 /**
  * Passa a anotar as violações de CSP da página em `window.cspViolations`. O ouvinte entra antes de qualquer
@@ -54,7 +66,7 @@ test('a paleta abre com Ctrl+K, leva à tela escolhida e fecha com Escape, sem v
 
   await page.keyboard.press('Control+K');
   await expect(paleta).toBeVisible();
-  await expect(paleta.getByRole('combobox')).toBeFocused();
+  await expectDomFocus(page, paleta.getByRole('combobox'));
   expect(await cspProblems(page)).toEqual({ styles: stylesAntes, others: [] });
 
   await page.keyboard.type('Ir para Projetos');
@@ -69,7 +81,7 @@ test('a paleta abre com Ctrl+K, leva à tela escolhida e fecha com Escape, sem v
   await expect(paleta).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(paleta).toBeHidden();
-  await expect(inicio).toBeFocused();
+  await expectDomFocus(page, inicio);
   await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
 
   expect(await cspProblems(page)).toEqual({ styles: stylesAntes, others: [] });

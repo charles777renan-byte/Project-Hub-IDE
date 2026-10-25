@@ -45,7 +45,10 @@ async function focusedItemInBar(page: Page): Promise<FocusedItem | null> {
         ring.left >= frame.left - tolerance &&
         ring.right <= frame.right + tolerance,
     );
-    const label = element.getAttribute('aria-label') ?? (element.textContent ?? '').trim();
+    // O nome do item sai do texto sem os trechos `aria-hidden` (a dica "Ctrl K" da busca, por exemplo).
+    const copy = element.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
+    const label = element.getAttribute('aria-label') ?? (copy.textContent ?? '').trim();
     return { label, style: style.outlineStyle, width, inside };
   });
 }
@@ -119,9 +122,11 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
     expect(item.inside, `o contorno de "${item.label}" cabe dentro da barra`).toBe(true);
   }
 
+  // A busca do topo da barra (abre a paleta) é um item de Tab, logo depois da navegação principal.
   expect(visited).toEqual([
     'Início',
     'Projetos',
+    'Buscar projeto ou agente',
     `Sessões de ${projectName}`,
     projectName,
     '+ Novo projeto',

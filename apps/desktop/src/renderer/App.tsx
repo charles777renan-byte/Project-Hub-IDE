@@ -94,7 +94,7 @@ export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
           collapsedSize={0}
         >
           <div className="app-side">
-            <Sidebar />
+            <Sidebar onSearch={() => setPaletaAberta(true)} />
           </div>
         </Panel>
         <Separator className="pane-tree__separator" aria-label="Redimensionar barra lateral" />

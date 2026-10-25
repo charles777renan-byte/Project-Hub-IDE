@@ -21,6 +21,8 @@ export const terminalSummarySchema = z.object({
   origin: z.enum(['new', 'recovered']),
   /** Último trecho do caminho do worktree, quando o terminal roda num. O caminho inteiro não sai do processo principal. */
   worktreeName: z.string().optional(),
+  /** Quando a sessão foi aberta (ISO). Só as sessões avulsas têm; a de missão mostra a missão, não a hora. */
+  startedAt: z.string().optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 
