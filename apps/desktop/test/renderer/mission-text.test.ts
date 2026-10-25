@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Icons from '../../src/renderer/components/Icon';
 import type { MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
+  formatTime,
   missionTabCounts,
   primaryActionOf,
   statusIcon,
@@ -248,5 +249,66 @@ describe('conversationEvents', () => {
     ).map((item) => item.eventType);
 
     expect(kept).toEqual(types.slice(0, 11));
+  });
+});
+
+/**
+ * Os horários dos testes não levam `Z`: são lidos no fuso local, igual ao relógio fixo. Assim a
+ * expectativa vale em qualquer fuso, sem fixar `TZ` (o projeto não fixa).
+ */
+describe('formatTime', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T15:00:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('mostra agora para eventos de menos de um minuto', () => {
+    expect(formatTime('2026-10-21T14:59:40')).toBe('agora');
+  });
+
+  it('mostra há N min para eventos de menos de uma hora', () => {
+    expect(formatTime('2026-10-21T14:55:00')).toBe('há 5 min');
+  });
+
+  it('mostra só o horário no mesmo dia', () => {
+    expect(formatTime('2026-10-21T09:10:00')).toBe('09:10');
+  });
+
+  it('mostra data e hora para evento antigo, sem horas relativas', () => {
+    expect(formatTime('2026-10-19T14:02:00')).toBe('19/10 14:02');
+  });
+
+  it('com exatamente uma hora, já não usa minutos relativos', () => {
+    expect(formatTime('2026-10-21T14:00:00')).toBe('14:00');
+    expect(formatTime('2026-10-21T14:00:01')).toBe('há 59 min');
+  });
+
+  it('um evento de ontem a menos de uma hora ainda mostra há N min', () => {
+    vi.setSystemTime(new Date('2026-10-21T00:10:00'));
+
+    expect(formatTime('2026-10-20T23:50:00')).toBe('há 20 min');
+  });
+
+  it('um evento de ontem a mais de uma hora mostra a data', () => {
+    vi.setSystemTime(new Date('2026-10-21T00:10:00'));
+
+    expect(formatTime('2026-10-20T22:00:00')).toBe('20/10 22:00');
+  });
+
+  it('com 40 horas de idade, mostra data e hora e nunca horas relativas', () => {
+    expect(formatTime('2026-10-19T23:00:00')).toBe('19/10 23:00');
+    expect(formatTime('2026-10-19T23:00:00')).not.toContain('há');
+  });
+
+  it('um horário um pouco à frente do relógio (diferença entre máquinas) mostra agora', () => {
+    expect(formatTime('2026-10-21T15:00:30')).toBe('agora');
+  });
+
+  it('um horário ilegível volta como veio, sem quebrar a tela', () => {
+    expect(formatTime('não é data')).toBe('não é data');
   });
 });
