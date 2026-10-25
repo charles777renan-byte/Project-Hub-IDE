@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
 
 /** Valores do formulário de missão. Os critérios chegam já separados, um por linha não vazia. */
 export type MissionFormValues = {
@@ -12,11 +14,40 @@ export type MissionFormValues = {
 const NO_GIT_WARNING =
   'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.';
 
-type FieldErrors = Partial<Record<'title' | 'objective' | 'criteria', string>>;
+/** Os critérios são uma caixa de texto: uma linha por critério, e as linhas em branco não contam. */
+function splitCriteria(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+}
+
+// O zod compila cada schema com `new Function` para validar mais rápido. A CSP do app não tem
+// 'unsafe-eval', então cada compilação vira uma violação `script-src eval`. `jitless` desliga a compilação e
+// precisa valer antes de o primeiro schema ser criado, por isso fica aqui, acima de `missionFormSchema`.
+z.config({ jitless: true });
+
+/**
+ * Regras do formulário. `trim()` vem antes da checagem de tamanho: título ou objetivo só com espaços é vazio.
+ * As mensagens são as de sempre, sem mudar uma letra.
+ */
+const missionFormSchema = z.object({
+  title: z.string().trim().min(1, 'Informe o título da missão.'),
+  objective: z.string().trim().min(1, 'Informe o objetivo da missão.'),
+  criteria: z
+    .string()
+    .refine((text) => splitCriteria(text).length > 0, 'Informe ao menos um critério de aceite'),
+  altersCode: z.boolean(),
+  planOnly: z.boolean(),
+});
+
+type MissionFormFields = z.infer<typeof missionFormSchema>;
 
 /**
  * Formulário de criação de missão (seção 10.6, com os campos do contrato, R162). Título, objetivo e
- * pelo menos um critério de aceite são obrigatórios: sem eles, a mensagem aparece e nada é enviado.
+ * pelo menos um critério de aceite são obrigatórios: sem eles, a mensagem aparece e nada é enviado. A
+ * validação é do react-hook-form com o zod (`missionFormSchema`); o foco vai para o primeiro campo com erro.
+ * Depois do primeiro envio, a mensagem de um campo acompanha o que a pessoa digita.
  */
 export function MissionForm({
   onSubmit,
@@ -28,39 +59,30 @@ export function MissionForm({
   /** Toda missão roda num worktree, e o worktree exige Git (R160, R214): sem Git, o formulário não cria a missão. */
   projectHasGit: boolean;
 }) {
-  const [title, setTitle] = useState('');
-  const [objective, setObjective] = useState('');
-  const [criteriaText, setCriteriaText] = useState('');
-  const [altersCode, setAltersCode] = useState(false);
-  const [planOnly, setPlanOnly] = useState(false);
-  const [errors, setErrors] = useState<FieldErrors>({});
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<MissionFormFields>({
+    resolver: zodResolver(missionFormSchema),
+    defaultValues: { title: '', objective: '', criteria: '', altersCode: false, planOnly: false },
+  });
 
   const blockedByGit = !projectHasGit;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function enviar(values: MissionFormFields) {
     if (blockedByGit) return;
-    const criteria = criteriaText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '');
-    const found: FieldErrors = {};
-    if (title.trim() === '') found.title = 'Informe o título da missão.';
-    if (objective.trim() === '') found.objective = 'Informe o objetivo da missão.';
-    if (criteria.length === 0) found.criteria = 'Informe ao menos um critério de aceite';
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
     void onSubmit({
-      title: title.trim(),
-      objective: objective.trim(),
-      acceptanceCriteria: criteria,
-      altersCode,
-      planOnly,
+      title: values.title,
+      objective: values.objective,
+      acceptanceCriteria: splitCriteria(values.criteria),
+      altersCode: values.altersCode,
+      planOnly: values.planOnly,
     });
   }
 
   return (
-    <form className="form" aria-label="Nova missão" onSubmit={handleSubmit} noValidate>
+    <form className="form" aria-label="Nova missão" onSubmit={handleSubmit(enviar)} noValidate>
       {blockedByGit ? (
         <p role="alert" className="page-alert">
           {NO_GIT_WARNING}
@@ -72,14 +94,13 @@ export function MissionForm({
         <input
           id="mission-title"
           type="text"
-          value={title}
           aria-invalid={errors.title !== undefined}
           aria-describedby={errors.title === undefined ? undefined : 'mission-title-error'}
-          onChange={(event) => setTitle(event.target.value)}
+          {...register('title')}
         />
         {errors.title === undefined ? null : (
           <p id="mission-title-error" className="field-error">
-            {errors.title}
+            {errors.title.message}
           </p>
         )}
       </div>
@@ -88,14 +109,13 @@ export function MissionForm({
         <label htmlFor="mission-objective">Objetivo</label>
         <textarea
           id="mission-objective"
-          value={objective}
           aria-invalid={errors.objective !== undefined}
           aria-describedby={errors.objective === undefined ? undefined : 'mission-objective-error'}
-          onChange={(event) => setObjective(event.target.value)}
+          {...register('objective')}
         />
         {errors.objective === undefined ? null : (
           <p id="mission-objective-error" className="field-error">
-            {errors.objective}
+            {errors.objective.message}
           </p>
         )}
       </div>
@@ -107,39 +127,28 @@ export function MissionForm({
         </p>
         <textarea
           id="mission-criteria"
-          value={criteriaText}
           aria-invalid={errors.criteria !== undefined}
           aria-describedby={
             errors.criteria === undefined
               ? 'mission-criteria-hint'
               : 'mission-criteria-hint mission-criteria-error'
           }
-          onChange={(event) => setCriteriaText(event.target.value)}
+          {...register('criteria')}
         />
         {errors.criteria === undefined ? null : (
           <p id="mission-criteria-error" className="field-error">
-            {errors.criteria}
+            {errors.criteria.message}
           </p>
         )}
       </div>
 
       <div className="check">
-        <input
-          id="mission-alters-code"
-          type="checkbox"
-          checked={altersCode}
-          onChange={(event) => setAltersCode(event.target.checked)}
-        />
+        <input id="mission-alters-code" type="checkbox" {...register('altersCode')} />
         <label htmlFor="mission-alters-code">Esta missão altera código</label>
       </div>
 
       <div className="check">
-        <input
-          id="mission-plan-only"
-          type="checkbox"
-          checked={planOnly}
-          onChange={(event) => setPlanOnly(event.target.checked)}
-        />
+        <input id="mission-plan-only" type="checkbox" {...register('planOnly')} />
         <label htmlFor="mission-plan-only">Somente planejar</label>
       </div>
 
