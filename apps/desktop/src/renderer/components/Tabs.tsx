@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react';
+import * as RadixTabs from '@radix-ui/react-tabs';
 
 /**
  * Contagem opcional de uma aba: `value` é o número curto ao lado do nome (escondido do leitor de tela)
@@ -10,12 +10,18 @@ export type TabCount = { value: string; label: string };
 export type TabItem<T extends string> = { id: T; label: string; count?: TabCount };
 
 /**
- * Abas de seção ou de missão. Cada aba é um botão com `aria-selected`, então o Tab e o Enter do
- * teclado funcionam sem código extra; as setas (e Home e End) também trocam de aba. `filled` marca as
- * sub-abas do workspace da missão e do painel Diff (em mono). Cada aba ganha a classe
- * `tab--<id>` (só um gancho de teste e de página: todas as abas são pílulas uniformes, sem cor por tipo). `panelId` diz qual painel cada aba controla; sem ele, o
- * painel é o `tab-panel` (uma página com um painel só). Uma aba com `count` mostra o número depois do
- * nome e ganha a frase da contagem como descrição (`aria-describedby`).
+ * Abas de seção ou de missão, sobre o `@radix-ui/react-tabs`: só a aba ativa entra na ordem de
+ * tabulação (o Tab sai da barra para o conteúdo) e as setas, Home e End andam a partir da aba focada.
+ * O Radix cuida do foco e do `aria-selected`; a aparência e as classes continuam as de sempre. O `Tabs`
+ * só desenha a barra: quem o usa monta os painéis. `filled` marca as sub-abas do workspace da missão
+ * e do painel Diff (em mono). Cada aba ganha a classe `tab--<id>` (só um gancho de teste e de página:
+ * todas as abas são pílulas uniformes, sem cor por tipo). `panelId` diz qual painel cada aba controla;
+ * sem ele, o painel é o `tab-panel` (uma página com um painel só). Uma aba com `count` mostra o número
+ * depois do nome e ganha a frase da contagem como descrição (`aria-describedby`).
+ *
+ * A raiz do Radix vira a própria barra (`asChild`), sem `div` extra: o CSS da missão depende de a barra
+ * ser filha direta do contêiner (`.mission-tabs > .tabs`). Os ids `tab-<id>` e o `aria-controls` ficam
+ * os mesmos de antes, porque os painéis apontam para eles por `aria-labelledby`.
  */
 export function Tabs<T extends string>({
   label,
@@ -32,57 +38,41 @@ export function Tabs<T extends string>({
   filled?: boolean;
   panelId?: (id: T) => string;
 }) {
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const current = tabs.findIndex((tab) => tab.id === active);
-    let next: number;
-    if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
-    else if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = tabs.length - 1;
-    else return;
-    const target = tabs[next];
-    if (target === undefined) return;
-    event.preventDefault();
-    onChange(target.id);
-    event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+  // O Radix entrega o valor como texto; devolvemos o `id` tipado da própria lista.
+  function handleValueChange(value: string) {
+    const target = tabs.find((tab) => tab.id === value);
+    if (target !== undefined) onChange(target.id);
   }
 
   return (
-    <div
-      role="tablist"
-      aria-label={label}
-      className={filled ? 'tabs tabs--filled' : 'tabs'}
-      onKeyDown={handleKeyDown}
-    >
-      {tabs.map((tab) => {
-        const selected = tab.id === active;
-        const countId = `tab-${tab.id}-count`;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            id={`tab-${tab.id}`}
-            aria-selected={selected}
-            aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
-            aria-describedby={tab.count === undefined ? undefined : countId}
-            className={`tab tab--${tab.id}`}
-            onClick={() => onChange(tab.id)}
-          >
-            {tab.label}
-            {tab.count === undefined ? null : (
-              <>
-                <span className="tab__count" aria-hidden="true">
-                  {tab.count.value}
-                </span>
-                <span id={countId} hidden>
-                  {tab.count.label}
-                </span>
-              </>
-            )}
-          </button>
-        );
-      })}
-    </div>
+    <RadixTabs.Root asChild value={active} onValueChange={handleValueChange}>
+      <RadixTabs.List aria-label={label} className={filled ? 'tabs tabs--filled' : 'tabs'}>
+        {tabs.map((tab) => {
+          const countId = `tab-${tab.id}-count`;
+          return (
+            <RadixTabs.Trigger
+              key={tab.id}
+              value={tab.id}
+              id={`tab-${tab.id}`}
+              aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
+              aria-describedby={tab.count === undefined ? undefined : countId}
+              className={`tab tab--${tab.id}`}
+            >
+              {tab.label}
+              {tab.count === undefined ? null : (
+                <>
+                  <span className="tab__count" aria-hidden="true">
+                    {tab.count.value}
+                  </span>
+                  <span id={countId} hidden>
+                    {tab.count.label}
+                  </span>
+                </>
+              )}
+            </RadixTabs.Trigger>
+          );
+        })}
+      </RadixTabs.List>
+    </RadixTabs.Root>
   );
 }
