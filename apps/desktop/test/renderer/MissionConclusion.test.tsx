@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
@@ -86,12 +87,15 @@ describe('MissionSummary: resumo de conclusão', () => {
     expect(within(block).getByText('<img src=x onerror=alert(1)> pronto')).toBeInTheDocument();
   });
 
-  it('missão concluída não ganha ação principal; só Excluir missão como secundária', () => {
+  it('missão concluída não ganha ação principal; só Excluir missão como secundária', async () => {
+    const user = userEvent.setup();
     renderSummary('succeeded', CONCLUSION);
 
     const summary = screen.getByRole('region', { name: 'Resumo da missão' });
     expect(summary.querySelectorAll('.mission-summary__primary')).toHaveLength(0);
-    expect(within(summary).getByRole('button', { name: 'Excluir missão' })).toBeInTheDocument();
+    await user.click(within(summary).getByRole('button', { name: 'Mais ações' }));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
   });
 
   it.each(['cancelled', 'failed', 'running', 'planned'] as const)(
