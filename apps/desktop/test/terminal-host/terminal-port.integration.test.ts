@@ -66,6 +66,25 @@ async function waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<vo
   }
 }
 
+/**
+ * O PowerShell mostra o prompt antes de o PSReadLine começar a ler o teclado, e o que se digita nesse intervalo
+ * se perde (no CI isso acontece quase sempre). Reenvia um comando de prova até a resposta chegar: depois
+ * disso, a entrada do teste vale.
+ */
+async function waitForInput(
+  id: string,
+  seen: { output: string },
+  timeoutMs = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!seen.output.includes('pronto-2')) {
+    if (Date.now() > deadline) throw new Error('o shell não passou a ler a entrada a tempo');
+    await port.write(id, 'Write-Output "pronto-$(1+1)"\r');
+    const until = Date.now() + 1_000;
+    while (Date.now() < until && !seen.output.includes('pronto-2')) await sleep(50);
+  }
+}
+
 function shellInput(id: string): TerminalOpenInput {
   return {
     id,
@@ -101,6 +120,7 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
     const { seen, subscriber } = collector();
     await port.subscribe(id, subscriber);
     await waitFor(() => seen.output.includes('PS '));
+    await waitForInput(id, seen);
 
     await port.write(id, 'Write-Output "porta-$(3+3)"\r');
 
@@ -114,6 +134,7 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
     const first = collector();
     await port.subscribe(id, first.subscriber);
     await waitFor(() => first.seen.output.includes('PS '));
+    await waitForInput(id, first.seen);
     await port.write(id, 'Write-Output "porta-$(3+3)"\r');
     await waitFor(() => first.seen.output.includes('porta-6'));
 
@@ -134,6 +155,7 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
     const { seen, subscriber } = collector();
     await port.subscribe(id, subscriber);
     await waitFor(() => seen.output.includes('PS '));
+    await waitForInput(id, seen);
 
     await port.kill(id);
 
@@ -177,6 +199,7 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
     const { seen, subscriber } = collector();
     await port.subscribe(id, subscriber);
     await waitFor(() => seen.output.includes('PS '));
+    await waitForInput(id, seen);
     await port.write(id, 'Write-Output "porta-$(3+3)"\r');
     await waitFor(() => seen.output.includes('porta-6'));
 
