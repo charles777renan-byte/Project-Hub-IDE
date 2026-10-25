@@ -577,6 +577,57 @@ describe('Sidebar: atividade dos cartões', () => {
     const card = await screen.findByRole('button', { name: /^npm test/ });
     expect(card.querySelector('.activity')).toBeNull();
   });
+
+  it('sessão com arquivos alterados mostra a contagem no detalhe do cartão', async () => {
+    installApi({ terminals: [terminalOf({ id: 't1', title: 'npm test', changedFiles: 14 })] });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(expandOf('Project Hub'));
+
+    expect(await screen.findByRole('button', { name: /^npm test/ })).toHaveTextContent(
+      'Project Hub · main · 14 arquivos alterados',
+    );
+  });
+
+  it('um arquivo alterado tem o singular, e nenhuma alteração não aparece', async () => {
+    installApi({
+      terminals: [
+        terminalOf({ id: 't1', title: 'um', changedFiles: 1 }),
+        terminalOf({ id: 't2', title: 'nenhum', changedFiles: 0 }),
+      ],
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(expandOf('Project Hub'));
+
+    expect(await screen.findByRole('button', { name: /^um/ })).toHaveTextContent(
+      '1 arquivo alterado',
+    );
+    expect(screen.getByRole('button', { name: /^nenhum/ })).not.toHaveTextContent('alterado');
+  });
+});
+
+describe('Sidebar: aviso para leitor de tela', () => {
+  it('a faixa anuncia o que espera a pessoa por uma região que já estava montada', async () => {
+    installApi({ terminals: [terminalOf({ id: 't1', title: 'Codex', state: 'waiting' })] });
+    renderSidebar('/');
+
+    await screen.findByRole('region', { name: 'Precisa de você' });
+    const live = document.querySelector('.sidebar__sr');
+    expect(live).toHaveAttribute('aria-live', 'polite');
+    expect(live).toHaveTextContent('Precisa de você: 1. Primeiro: Codex.');
+  });
+
+  it('sem nada esperando, a região de anúncio continua montada e vazia', async () => {
+    installApi({ terminals: [] });
+    renderSidebar('/');
+    await spaces();
+
+    expect(screen.queryByRole('region', { name: 'Precisa de você' })).not.toBeInTheDocument();
+    expect(document.querySelector('.sidebar__sr')).toBeEmptyDOMElement();
+  });
 });
 
 describe('Sidebar: o que precisa de você', () => {
