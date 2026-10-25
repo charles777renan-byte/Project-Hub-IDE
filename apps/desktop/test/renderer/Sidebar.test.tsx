@@ -120,7 +120,10 @@ function Destination({ label }: { label: string }) {
 }
 
 /** Barra e rotas de destino, para ver para onde os botões levam. */
-function renderSidebar(path: string, props: { currentProjectId?: string } = {}) {
+function renderSidebar(
+  path: string,
+  props: { currentProjectId?: string; onSearch?: () => void } = {},
+) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Sidebar {...props} />
@@ -138,6 +141,10 @@ function renderSidebar(path: string, props: { currentProjectId?: string } = {}) 
 afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
 });
+
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 describe('Sidebar: estrutura', () => {
   it('é uma barra com nome acessível, com a navegação principal no topo', async () => {
@@ -340,6 +347,11 @@ describe('Sidebar: sessões de cada projeto', () => {
     }),
   ];
 
+  /** O cartão de uma sessão: o nome acessível começa pelo título, e o detalhe e o estado vêm depois. */
+  function sessionCard(title: string): HTMLElement {
+    return screen.getByRole('button', { name: new RegExp(`^${escape(title)}`) });
+  }
+
   async function expandButton(name: string) {
     const workspaces = await screen.findByRole('region', { name: 'Workspaces' });
     return within(workspaces).getByRole('button', { name: `Sessões de ${name}` });
@@ -351,17 +363,25 @@ describe('Sidebar: sessões de cada projeto', () => {
 
     const toggle = await expandButton('Project Hub');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('button', { name: 'PowerShell · Project Hub' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: new RegExp('^' + escape('PowerShell · Project Hub')) }),
+    ).toBeNull();
 
     await userEvent.click(toggle);
 
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const powershell = screen.getByRole('button', { name: 'PowerShell · Project Hub' });
-    const claude = screen.getByRole('button', { name: 'Claude Code · Project Hub' });
+    const powershell = screen.getByRole('button', {
+      name: new RegExp('^' + escape('PowerShell · Project Hub')),
+    });
+    const claude = screen.getByRole('button', {
+      name: new RegExp('^' + escape('Claude Code · Project Hub')),
+    });
     expect(powershell.closest('li')).toHaveTextContent('Ativo');
     expect(claude.closest('li')).toHaveTextContent('Aguardando');
     // As sessões de outro projeto ficam no projeto delas.
-    expect(screen.queryByRole('button', { name: 'PowerShell · Notas' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: new RegExp('^' + escape('PowerShell · Notas')) }),
+    ).toBeNull();
   });
 
   it('o botão de sessões leva um chevron SVG decorativo e o nome acessível não muda', async () => {
@@ -400,7 +420,9 @@ describe('Sidebar: sessões de cada projeto', () => {
     await userEvent.click(toggle);
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('button', { name: 'PowerShell · Project Hub' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: new RegExp('^' + escape('PowerShell · Project Hub')) }),
+    ).toBeNull();
   });
 
   it('a sessão encerrada aparece como desconectada', async () => {
@@ -408,7 +430,9 @@ describe('Sidebar: sessões de cada projeto', () => {
     renderSidebar('/');
 
     await userEvent.click(await expandButton('Notas'));
-    const session = screen.getByRole('button', { name: 'PowerShell · Notas' });
+    const session = screen.getByRole('button', {
+      name: new RegExp('^' + escape('PowerShell · Notas')),
+    });
     expect(session.closest('li')).toHaveTextContent('Desconectado');
   });
 
@@ -420,12 +444,16 @@ describe('Sidebar: sessões de cada projeto', () => {
     expect(screen.getByText('Nenhuma sessão aberta.')).toBeInTheDocument();
   });
 
-  it('o botão de expandir mostra quantas sessões o projeto tem', async () => {
+  it('cada projeto mostra um ícone por sessão aberta, com o estado no anel', async () => {
     installApi({ terminals });
     renderSidebar('/');
 
-    await waitFor(async () => expect(await expandButton('Project Hub')).toHaveTextContent('2'));
-    expect(await expandButton('Notas')).toHaveTextContent('1');
+    const hub = (await expandButton('Project Hub')).closest('li') as HTMLElement;
+    await waitFor(() => expect(hub.querySelectorAll('.sidebar__avatar')).toHaveLength(2));
+    expect(hub.querySelector('.state-ring--waiting')).not.toBeNull();
+    expect(hub.querySelector('.state-ring--running')).not.toBeNull();
+    const notas = (await expandButton('Notas')).closest('li') as HTMLElement;
+    expect(notas.querySelectorAll('.sidebar__avatar')).toHaveLength(1);
   });
 
   it('clicar numa sessão leva ao workspace do projeto, pedindo para mostrar o terminal', async () => {
@@ -433,7 +461,9 @@ describe('Sidebar: sessões de cada projeto', () => {
     renderSidebar('/');
 
     await userEvent.click(await expandButton('Project Hub'));
-    await userEvent.click(screen.getByRole('button', { name: 'Claude Code · Project Hub' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: new RegExp('^' + escape('Claude Code · Project Hub')) }),
+    );
 
     expect(screen.getByText('Workspace {"showTerminal":"t2"}')).toBeInTheDocument();
   });
@@ -444,7 +474,7 @@ describe('Sidebar: sessões de cada projeto', () => {
     renderSidebar('/');
 
     await userEvent.click(await expandButton('Project Hub'));
-    const session = screen.getByRole('button', { name: title });
+    const session = sessionCard(title);
     expect(within(session).getByText(title)).toHaveAttribute('title', title);
     expect(document.querySelector('i')).toBeNull();
   });
@@ -843,5 +873,168 @@ describe('Sidebar: carregamento e atualização', () => {
       window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
     });
     expect(await screen.findByRole('link', { name: 'Project Hub' })).toBeInTheDocument();
+  });
+});
+
+describe('Sidebar: busca, aviso e cartões', () => {
+  it('com onSearch, a busca aparece no topo com o atalho escrito, e clicar nela a abre', async () => {
+    installApi();
+    const onSearch = vi.fn();
+    renderSidebar('/', { onSearch });
+
+    const search = await screen.findByRole('button', { name: /Buscar projeto ou agente/ });
+    expect(search).toHaveAttribute('aria-keyshortcuts', 'Control+K');
+    expect(search).toHaveTextContent('Ctrl K');
+    await userEvent.click(search);
+    expect(onSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem onSearch, a barra não mostra a busca', async () => {
+    installApi();
+    renderSidebar('/');
+
+    await screen.findByRole('navigation', { name: 'Principal' });
+    expect(screen.queryByRole('button', { name: /Buscar projeto/ })).toBeNull();
+  });
+
+  it('sessão aguardando aparece no aviso do topo, e Ir leva ao terminal dela', async () => {
+    installApi({
+      terminals: [
+        terminalOf({
+          id: 't2',
+          title: 'Claude Code · Project Hub',
+          state: 'waiting',
+          provider: 'claude',
+        }),
+      ],
+    });
+    renderSidebar('/');
+
+    const attention = await screen.findByRole('region', { name: 'Precisa de você' });
+    await userEvent.click(
+      within(attention).getByRole('button', { name: 'Ir para Claude Code · Project Hub' }),
+    );
+    expect(screen.getByText('Workspace {"showTerminal":"t2"}')).toBeInTheDocument();
+  });
+
+  it('com mais de uma aguardando, o aviso mostra o total', async () => {
+    installApi({
+      terminals: [
+        terminalOf({ id: 'a', state: 'waiting' }),
+        terminalOf({
+          id: 'b',
+          state: 'waiting',
+          title: 'PowerShell · Notas',
+          projectId: 'p2',
+          projectName: 'Notas',
+        }),
+      ],
+    });
+    renderSidebar('/');
+
+    expect(await screen.findByRole('region', { name: 'Precisa de você' })).toHaveTextContent(
+      'Precisa de você · 2',
+    );
+  });
+
+  it('sem sessão aguardando, o aviso não aparece', async () => {
+    installApi({ terminals: [terminalOf({ state: 'running' })] });
+    renderSidebar('/');
+
+    await screen.findByRole('navigation', { name: 'Principal' });
+    expect(screen.queryByRole('region', { name: 'Precisa de você' })).toBeNull();
+  });
+
+  it('sessões avulsas com o mesmo título ganham a posição no detalhe', async () => {
+    installApi({
+      terminals: [
+        terminalOf({
+          id: 'a',
+          title: 'Claude Code · Project Hub',
+          provider: 'claude',
+          origin: 'new',
+        }),
+        terminalOf({
+          id: 'b',
+          title: 'Claude Code · Project Hub',
+          provider: 'claude',
+          origin: 'new',
+        }),
+      ],
+    });
+    renderSidebar('/');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sessões de Project Hub' }));
+    const cards = screen.getAllByRole('button', { name: /^Claude Code · Project Hub/ });
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveTextContent('avulsa 1');
+    expect(cards[1]).toHaveTextContent('avulsa 2');
+  });
+
+  it('sessão com hora de início mostra há quanto tempo ela existe; sem hora, não mostra', async () => {
+    const startedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    installApi({
+      terminals: [
+        terminalOf({ id: 'a', title: 'PowerShell · Project Hub', startedAt }),
+        terminalOf({ id: 'b', title: 'PowerShell · Notas', projectId: 'p2', projectName: 'Notas' }),
+      ],
+    });
+    renderSidebar('/');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sessões de Project Hub' }));
+    expect(screen.getByRole('button', { name: /^PowerShell · Project Hub/ })).toHaveTextContent(
+      'há 5 min',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Sessões de Notas' }));
+    expect(
+      screen.getByRole('button', { name: /^PowerShell · Notas/ }).querySelector('time'),
+    ).toBeNull();
+  });
+
+  it('a partir de quatro sessões, o projeto mostra três ícones e o resto em +N', async () => {
+    installApi({
+      terminals: [1, 2, 3, 4].map((n) => terminalOf({ id: `t${n}`, title: `PowerShell ${n}` })),
+    });
+    renderSidebar('/');
+
+    const hub = (await screen.findByRole('button', { name: 'Sessões de Project Hub' })).closest(
+      'li',
+    ) as HTMLElement;
+    await waitFor(() => expect(hub.querySelectorAll('.sidebar__avatar')).toHaveLength(3));
+    expect(hub.querySelector('.sidebar__avatar-more')).toHaveTextContent('+1');
+  });
+});
+
+describe('Sidebar: detalhe e hora dos cartões', () => {
+  it('a sessão de missão mostra "missão", a recuperada mostra "recuperada", e o worktree vence', async () => {
+    installApi({
+      terminals: [
+        terminalOf({ id: 'a', kind: 'agent', title: 'Corrigir login', provider: 'claude', missionId: 'm1' }),
+        terminalOf({ id: 'b', title: 'Codex · Project Hub', provider: 'codex', origin: 'recovered' }),
+        terminalOf({
+          id: 'c',
+          title: 'Claude Code · Project Hub',
+          provider: 'claude',
+          origin: 'new',
+          worktreeName: 'missao-1',
+        }),
+      ],
+    });
+    renderSidebar('/');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sessões de Project Hub' }));
+    expect(screen.getByRole('button', { name: /^Corrigir login/ })).toHaveTextContent('missão');
+    expect(screen.getByRole('button', { name: /^Codex · Project Hub/ })).toHaveTextContent('recuperada');
+    expect(screen.getByRole('button', { name: /^Claude Code · Project Hub/ })).toHaveTextContent('missao-1');
+  });
+
+  it('passada uma hora, a sessão mostra o horário do dia, e não "há N h"', async () => {
+    const startedAt = new Date(Date.now() - 3 * 60 * 60_000).toISOString();
+    installApi({ terminals: [terminalOf({ id: 'a', title: 'PowerShell · Project Hub', startedAt })] });
+    renderSidebar('/');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sessões de Project Hub' }));
+    const card = screen.getByRole('button', { name: /^PowerShell · Project Hub/ });
+    expect(card.querySelector('time')?.textContent ?? '').toMatch(/^(\d{2}\/\d{2} )?\d{2}:\d{2}$/);
   });
 });
