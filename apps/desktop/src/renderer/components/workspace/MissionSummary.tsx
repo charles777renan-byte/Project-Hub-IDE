@@ -13,7 +13,8 @@ import {
 } from '../../mission-text';
 import { notify } from '../../notify';
 import { projectPath } from '../../routes';
-import { ConfirmButton } from '../ConfirmButton';
+import { ConfirmInline } from '../ConfirmButton';
+import { MenuAcoes, type AcaoMenu } from '../MenuAcoes';
 import { StatusChip } from '../StatusChip';
 import type { DiffSummary } from './DiffPanel';
 
@@ -25,6 +26,10 @@ const PRIMARY_LABEL: Record<PrimaryAction, string> = {
   resume: MISSION_TEXT.resume,
   retry: MISSION_TEXT.retry,
 };
+
+/** O que a pessoa lê antes de confirmar a exclusão. */
+const DELETE_QUESTION =
+  'Excluir esta missão? O plano, as tentativas e o histórico saem do app. Não dá para desfazer.';
 
 type Indicator = { label: string; value: string; tone?: 'ok' | 'bad'; note?: string };
 
@@ -147,6 +152,82 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
  * (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o
  * que a página passa: o comportamento das ações fica na página.
  */
+/**
+ * Pausar, cancelar e excluir, no menu "Mais ações", com as mesmas condições de antes: Pausar só com a
+ * missão em execução, Excluir só com ela encerrada, Cancelar no resto.
+ *
+ * Excluir pede confirmação. Escolher o item fecha o menu e o desmonta, então a pergunta vive aqui, fora
+ * dele, no lugar do botão. O chamador põe uma `key` que muda quando a missão entra ou sai do estado
+ * encerrado: a pergunta aberta não sobrevive a uma nova tentativa (como o `ConfirmButton`, que sumia junto
+ * com o botão) e não reaparece sozinha quando a missão falhar de novo.
+ */
+function SecondaryActions({
+  status,
+  controlBusy,
+  onPause,
+  onCancel,
+  onDelete,
+}: {
+  status: MissionViewDto['mission']['status'];
+  controlBusy: boolean;
+  onPause: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+}) {
+  const ended = isEnded(status);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef(false);
+  // Fechada a pergunta (Voltar ou confirmar), o foco volta ao botão do menu, que reaparece no lugar dela.
+  useEffect(() => {
+    if (!confirmingDelete && returnFocus.current) {
+      returnFocus.current = false;
+      root.current?.querySelector('button')?.focus();
+    }
+  }, [confirmingDelete]);
+  const closeQuestion = (then?: () => void) => {
+    returnFocus.current = true;
+    setConfirmingDelete(false);
+    then?.();
+  };
+
+  const actions: AcaoMenu[] = [];
+  if (status === 'running') {
+    actions.push({ rotulo: MISSION_TEXT.pause, onSelecionar: onPause, desabilitada: controlBusy });
+  }
+  if (ended) {
+    actions.push({
+      rotulo: 'Excluir missão',
+      onSelecionar: () => setConfirmingDelete(true),
+      perigosa: true,
+      desabilitada: controlBusy,
+    });
+  } else {
+    actions.push({
+      rotulo: 'Cancelar missão',
+      onSelecionar: onCancel,
+      desabilitada: controlBusy,
+    });
+  }
+
+  return (
+    <div ref={root} className="mission-summary__secondary">
+      {confirmingDelete ? (
+        <ConfirmInline
+          question={DELETE_QUESTION}
+          confirmLabel="Excluir"
+          disabled={controlBusy}
+          focusBack
+          onConfirm={() => closeQuestion(onDelete)}
+          onCancel={() => closeQuestion()}
+        />
+      ) : (
+        <MenuAcoes rotulo="Mais ações" acoes={actions} />
+      )}
+    </div>
+  );
+}
+
 export function MissionSummary({
   mission,
   project,
@@ -231,26 +312,14 @@ export function MissionSummary({
               {PRIMARY_LABEL[primary]}
             </button>
           )}
-          <div className="mission-summary__secondary">
-            {mission.status === 'running' ? (
-              <button type="button" disabled={controlBusy} onClick={onPause}>
-                {MISSION_TEXT.pause}
-              </button>
-            ) : null}
-            {isEnded(mission.status) ? (
-              <ConfirmButton
-                label="Excluir missão"
-                question="Excluir esta missão? O plano, as tentativas e o histórico saem do app. Não dá para desfazer."
-                confirmLabel="Excluir"
-                disabled={controlBusy}
-                onConfirm={onDelete}
-              />
-            ) : (
-              <button type="button" disabled={controlBusy} onClick={onCancel}>
-                Cancelar missão
-              </button>
-            )}
-          </div>
+          <SecondaryActions
+            key={isEnded(mission.status) ? 'ended' : 'open'}
+            status={mission.status}
+            controlBusy={controlBusy}
+            onPause={onPause}
+            onCancel={onCancel}
+            onDelete={onDelete}
+          />
         </div>
       </div>
       <ul className="mission-indicators" aria-label="Indicadores da missão">

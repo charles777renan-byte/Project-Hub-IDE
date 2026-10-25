@@ -26,6 +26,40 @@ const DECISION_BANNER = 'Aguardando você';
 
 const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
 
+/**
+ * Passa a anotar as violações de CSP da página em `window.cspViolations`. O ouvinte entra antes de qualquer
+ * script da página (addInitScript + reload), como em security.spec.ts.
+ */
+async function watchCspViolations(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const violations: string[] = [];
+    Object.assign(window, { cspViolations: violations });
+    document.addEventListener('securitypolicyviolation', (event) => {
+      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
+  });
+  await page.reload();
+}
+
+/**
+ * Violações que não são do xterm. O xterm monta um <style> inline na página da missão (violação
+ * conhecida, coberta por regras em app.css; ver workspace.spec.ts). Esse é o único que se descarta: o
+ * <style> dele traz regras `.xterm`. Um <style> de outra origem (o aviso ou o menu de ações, por exemplo) ou
+ * qualquer outra diretiva continua falhando.
+ */
+async function unknownViolations(
+  page: Page,
+): Promise<{ foreignStyles: string[]; others: string[] }> {
+  return page.evaluate(() => {
+    const w = window as unknown as { cspViolations: string[] };
+    const foreignStyles = [...document.querySelectorAll('style')]
+      .map((style) => style.textContent ?? '')
+      .filter((text) => !text.includes('.xterm'));
+    const others = w.cspViolations.filter((item) => !item.startsWith('style-src-elem inline'));
+    return { foreignStyles, others };
+  });
+}
+
 /** Abre Projetos e cadastra a pasta que o seletor de teste devolve. Confere nome, tipo e branch. */
 async function addGitProject(page: Page, projectName: string): Promise<void> {
   await page
@@ -283,6 +317,17 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
+  // Pausar, Cancelar missão e Excluir missão moram no menu "Mais ações": numa missão encerrada só sobra
+  // Excluir, e a confirmação dele sobrevive ao fechamento do menu.
+  const actionsMenu = page.getByRole('button', { name: 'Mais ações' });
+  await actionsMenu.click();
+  await expect(page.getByRole('menuitem', { name: 'Pausar' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Cancelar missão' })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: 'Excluir missão' }).click();
+  await expect(page.getByRole('group', { name: /^Excluir esta missão\?/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Voltar' })).toBeFocused();
+  await page.getByRole('button', { name: 'Voltar' }).click();
+  await expect(actionsMenu).toBeFocused();
   // A pessoa pode tentar de novo, e a conversa explica o que houve.
   await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
   await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
@@ -305,36 +350,12 @@ test('o aviso de falha ao copiar o caminho aparece, fica no canto, fecha e não 
   const projectName = basename(gitRepo.path);
   const launched = await launchApp({ dialogPath: gitRepo.path });
   const { page } = launched;
-  // O ouvinte entra antes de qualquer script da página (addInitScript + reload), como em security.spec.ts.
-  await page.addInitScript(() => {
-    const violations: string[] = [];
-    Object.assign(window, { cspViolations: violations });
-    document.addEventListener('securitypolicyviolation', (event) => {
-      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
-    });
-  });
-  await page.reload();
+  await watchCspViolations(page);
 
   await addGitProject(page, projectName);
   await openProject(page, projectName);
   await createMission(page);
   await approvePlanAndStart(page);
-
-  /**
-   * Violações que não são do xterm. O xterm monta um <style> inline na página da missão (violação
-   * conhecida, coberta por regras em app.css; ver workspace.spec.ts). Esse é o único que se descarta: o
-   * <style> dele traz regras `.xterm`. Um <style> de outra origem (o aviso, por exemplo) ou qualquer outra
-   * diretiva continua falhando.
-   */
-  const unknownViolations = () =>
-    page.evaluate(() => {
-      const w = window as unknown as { cspViolations: string[] };
-      const foreignStyles = [...document.querySelectorAll('style')]
-        .map((style) => style.textContent ?? '')
-        .filter((text) => !text.includes('.xterm'));
-      const others = w.cspViolations.filter((item) => !item.startsWith('style-src-elem inline'));
-      return { foreignStyles, others };
-    });
 
   // A área de transferência recusa a cópia: o aviso nasce pelo Toaster (CSS por <link>, sem <style>).
   await page.evaluate(() => {
@@ -349,7 +370,7 @@ test('o aviso de falha ao copiar o caminho aparece, fica no canto, fecha e não 
   const region = page.getByRole('status', { name: 'Avisos' });
   const alert = region.getByRole('alert');
   await expect(alert).toHaveText('Não foi possível copiar o caminho.');
-  expect(await unknownViolations()).toEqual({ foreignStyles: [], others: [] });
+  expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
 
   // Canto inferior direito, a 16px das bordas (o viewportSize() do Playwright é nulo no Electron).
   const view = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
@@ -369,13 +390,55 @@ test('o aviso de falha ao copiar o caminho aparece, fica no canto, fecha e não 
   await expect(page.locator('.hint')).toHaveText('Fechar aviso');
   await close.click();
   await expect(alert).toHaveCount(0);
-  expect(await unknownViolations()).toEqual({ foreignStyles: [], others: [] });
+  expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
 
   // Um segundo aviso, depois do primeiro fechar, também nasce limpo.
   await summary.getByRole('button', { name: 'Copiar caminho' }).click();
   await expect(alert).toHaveText('Não foi possível copiar o caminho.');
   await alert.getByRole('button', { name: 'Fechar aviso' }).click();
   await expect(alert).toHaveCount(0);
-  expect(await unknownViolations()).toEqual({ foreignStyles: [], others: [] });
+  expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
+  await launched.close();
+});
+
+test('o menu Mais ações abre e fecha sem violar a CSP, e o teclado e o foco funcionam', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const launched = await launchApp({ dialogPath: gitRepo.path });
+  const { page } = launched;
+  await watchCspViolations(page);
+
+  await addGitProject(page, projectName);
+  await openProject(page, projectName);
+  await createMission(page);
+  await approvePlanAndStart(page);
+
+  // Mão no teclado: o botão do menu abre com Enter, as setas percorrem os itens e Esc fecha devolvendo o foco.
+  const summary = page.getByRole('region', { name: 'Resumo da missão' });
+  const actionsMenu = summary.getByRole('button', { name: 'Mais ações' });
+  await actionsMenu.focus();
+  await page.keyboard.press('Enter');
+  const cancel = page.getByRole('menuitem', { name: 'Cancelar missão' });
+  await expect(cancel).toBeVisible();
+  await expect(cancel).toBeFocused();
+  // Pelo teclado o item mostra o anel de foco do app (lima), não só o fundo do destaque.
+  await expect(cancel).toHaveCSS('outline-style', 'solid');
+  // A página não trava (menu não modal): a barra lateral segue acessível aos leitores de tela.
+  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
+
+  await page.keyboard.press('Escape');
+  await expect(cancel).toHaveCount(0);
+  await expect(actionsMenu).toBeFocused();
+
+  // Com o mouse também, e o clique fora fecha.
+  await actionsMenu.click();
+  await expect(cancel).toBeVisible();
+  expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
+  await page.getByRole('heading', { level: 1, name: MISSION.title }).click();
+  await expect(cancel).toHaveCount(0);
+  expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
   await launched.close();
 });
