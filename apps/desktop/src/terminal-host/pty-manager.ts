@@ -48,6 +48,8 @@ type Entry = {
   exitListeners: Set<(exit: TerminalExit) => void>;
   /** Preenchido quando o terminal termina. Antes disso, fica indefinido. */
   exit: TerminalExit | undefined;
+  /** Total de bytes que o terminal já produziu. A barra lateral compara leituras para mostrar a atividade. */
+  outputBytes: number;
 };
 
 /**
@@ -87,10 +89,12 @@ export class PtyManager {
       dataListeners: new Set(),
       exitListeners: new Set(),
       exit: undefined,
+      outputBytes: 0,
     };
     this.entries.set(options.id, entry);
     pty.onData((data) => {
       entry.buffer.append(data);
+      entry.outputBytes += Buffer.byteLength(data);
       for (const listener of entry.dataListeners) listener(data);
     });
     pty.onExit(({ exitCode, signal }) => {
@@ -106,6 +110,11 @@ export class PtyManager {
 
   resize(id: string, cols: number, rows: number): void {
     this.requireAlive(id).pty.resize(cols, rows);
+  }
+
+  /** Total de bytes que o terminal produziu até agora. Undefined se o terminal não existe. */
+  outputBytesOf(id: string): number | undefined {
+    return this.entries.get(id)?.outputBytes;
   }
 
   /** Saída recente do terminal, para mostrar ao reconectar. Undefined se o terminal não existe. */

@@ -96,3 +96,23 @@ export async function listArchivedProjects(
   );
   return { ok: true, data: summaries };
 }
+
+const GROUP_MAX_LENGTH = 40;
+
+/**
+ * Põe o projeto num grupo da barra lateral (ou o tira, com `null` ou texto vazio). O nome é aparado e tem no
+ * máximo 40 caracteres. Só mexe em projeto que aparece na lista.
+ */
+export function setProjectGroup(
+  deps: Pick<ProjectLifecycleDeps, 'repo' | 'now'>,
+  input: { projectId: string; group: string | null },
+): AppResult<undefined> {
+  const project = listedProject(deps as ProjectLifecycleDeps, input.projectId);
+  if (project === undefined) return failure('PROJECT_NOT_FOUND', NOT_FOUND);
+  const group = input.group === null ? '' : input.group.trim();
+  if (group.length > GROUP_MAX_LENGTH) {
+    return failure('VALIDATION_FAILED', 'O nome do grupo pode ter até 40 caracteres.');
+  }
+  deps.repo.setGroup(input.projectId, group === '' ? null : group, deps.now());
+  return { ok: true, data: undefined };
+}

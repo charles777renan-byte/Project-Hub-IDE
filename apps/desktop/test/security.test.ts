@@ -482,7 +482,9 @@ describe('buildProjectHubApi', () => {
       'chooseDirectory',
       'list',
       'listArchived',
+      'openFolder',
       'remove',
+      'setGroup',
       'unarchive',
     ]);
     expect(Object.keys(api.missions).sort()).toEqual([

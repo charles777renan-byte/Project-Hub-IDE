@@ -79,7 +79,7 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   // Cria uma missão pelo formulário: o workspace abre e a missão, com o plano à espera de aprovação,
   // entra na seção Em andamento.
   const missionTitle = 'Missão da barra';
-  await page.getByRole('button', { name: 'Criar missão' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
   const form = page.getByRole('form', { name: 'Nova missão' });
   await form.getByLabel('Título').fill(missionTitle);
   await form.getByLabel('Objetivo').fill('Conferir a barra lateral.');
@@ -88,24 +88,20 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   await form.getByRole('button', { name: 'Criar missão' }).click();
   await expect(page.getByRole('heading', { level: 1, name: missionTitle })).toBeVisible();
 
-  const running = bar.getByRole('region', { name: 'Em andamento' });
-  await expect(running.getByRole('link', { name: missionTitle })).toBeVisible();
-  await expect(running.getByRole('button', { name: '+ Nova missão' })).toBeVisible();
-  await expect(running.getByText('Aguardando')).toBeVisible();
+  // A missão, com o plano à espera de aprovação, sobe para o aviso "Precisa de você", e o botão Nova missão
+  // fica no rodapé da barra.
+  const attention = bar.getByRole('region', { name: 'Precisa de você' });
+  await expect(attention.getByText(missionTitle)).toBeVisible();
+  await expect(attention.getByText(/Aguarda aprovação do plano/)).toBeVisible();
+  await expect(bar.getByRole('button', { name: '+ Nova missão' })).toBeVisible();
 
-  // As listas só rolam quando são maiores que a seção. Com poucos itens elas não rolam, e um contorno
+  // A barra só rola quando o conteúdo passa da altura dela. Com poucos itens ela não rola, e um contorno
   // que saísse da borda da rolagem não seria medido. Por isso a altura da barra é limitada aqui, e a
-  // guarda abaixo confirma que uma seção de fato rola antes da medição.
+  // guarda abaixo confirma que a barra de fato rola antes da medição.
   await bar.evaluate((element) => {
     (element as HTMLElement).style.maxHeight = '240px';
   });
-  expect(
-    await bar.evaluate((element) =>
-      [...element.querySelectorAll('.sidebar__scroll')].some(
-        (list) => list.scrollHeight > list.clientHeight,
-      ),
-    ),
-  ).toBe(true);
+  expect(await bar.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 
   // Tab a partir do começo da página até a barra, e depois por cada item dela, até o foco sair.
   const visited: string[] = [];
@@ -122,15 +118,17 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
     expect(item.inside, `o contorno de "${item.label}" cabe dentro da barra`).toBe(true);
   }
 
-  // A busca do topo da barra (abre a paleta) é um item de Tab, logo depois da navegação principal.
+  // A ordem da tela: a busca, o aviso (Ir), a navegação, a troca Lista/Grade, o projeto e o rodapé.
   expect(visited).toEqual([
+    'Buscar projeto ou agente',
+    `Ir para ${missionTitle}`,
     'Início',
     'Projetos',
-    'Buscar projeto ou agente',
+    'Lista',
+    'Grade',
     `Sessões de ${projectName}`,
     projectName,
-    '+ Novo projeto',
-    missionTitle,
+    '+ Projeto',
     '+ Nova missão',
   ]);
 });

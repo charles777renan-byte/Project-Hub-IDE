@@ -85,6 +85,9 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       archive: (projectId: string) => call<void>(CHANNELS.projectsArchive, { projectId }),
       unarchive: (projectId: string) => call<void>(CHANNELS.projectsUnarchive, { projectId }),
       remove: (projectId: string) => call<void>(CHANNELS.projectsRemove, { projectId }),
+      openFolder: (projectId: string) => call<void>(CHANNELS.projectsOpenFolder, { projectId }),
+      setGroup: (projectId: string, group: string | null) =>
+        call<void>(CHANNELS.projectsSetGroup, { projectId, group }),
     },
     missions: {
       create: (input: CreateMissionInput) => call<MissionDto>(CHANNELS.missionsCreate, input),
