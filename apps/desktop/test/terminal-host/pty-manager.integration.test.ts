@@ -6,6 +6,10 @@ import { PtyManager } from '../../src/terminal-host/pty-manager';
 
 // Os testes abrem o PowerShell de verdade num PTY e conferem a árvore de processos com o Windows.
 const onWindows = process.platform === 'win32';
+// No CI, uma execução levou mais de 20 s para o PowerShell ler a primeira tecla. Cada teste de shell espera duas
+// vezes (o prompt e a entrada), por isso os prazos de espera e do teste são maiores que o padrão.
+const SHELL_TIMEOUT_MS = 60_000;
+const SHELL_TEST_TIMEOUT_MS = 120_000;
 
 let manager: PtyManager;
 const spawnedPids: number[] = [];
@@ -27,7 +31,7 @@ afterEach(async () => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<void> {
+async function waitFor(condition: () => boolean, timeoutMs = SHELL_TIMEOUT_MS): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() > deadline) throw new Error('a condição não aconteceu a tempo');
@@ -40,10 +44,15 @@ async function waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<vo
  * se perde (no CI isso acontece quase sempre). Reenvia um comando de prova até a resposta chegar: depois
  * disso, a entrada do teste vale.
  */
-async function waitForInput(id: string, timeoutMs = 20_000): Promise<void> {
+async function waitForInput(id: string, timeoutMs = SHELL_TIMEOUT_MS): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!(manager.output(id) ?? '').includes('pronto-2')) {
-    if (Date.now() > deadline) throw new Error('o shell não passou a ler a entrada a tempo');
+    if (Date.now() > deadline) {
+      const tail = (manager.output(id) ?? '').slice(-300);
+      throw new Error(
+        `o shell não passou a ler a entrada a tempo; última saída: ${JSON.stringify(tail)}`,
+      );
+    }
     manager.write(id, 'Write-Output "pronto-$(1+1)"\r');
     const until = Date.now() + 1_000;
     while (Date.now() < until && !(manager.output(id) ?? '').includes('pronto-2')) await sleep(50);
@@ -70,65 +79,81 @@ function openShell(id: string): void {
 }
 
 describe.skipIf(!onWindows)('PtyManager com shell real', () => {
-  it('recebe a entrada digitada e devolve a saída do shell', async () => {
-    const id = randomUUID();
-    openShell(id);
-    await waitFor(() => (manager.output(id) ?? '').includes('PS '));
-    await waitForInput(id);
+  it(
+    'recebe a entrada digitada e devolve a saída do shell',
+    async () => {
+      const id = randomUUID();
+      openShell(id);
+      await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+      await waitForInput(id);
 
-    manager.write(id, 'Write-Output "ola-$(1+1)"\r');
+      manager.write(id, 'Write-Output "ola-$(1+1)"\r');
 
-    await waitFor(() => (manager.output(id) ?? '').includes('ola-2'));
-  });
+      await waitFor(() => (manager.output(id) ?? '').includes('ola-2'));
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
-  it('avisa a assinante quando o shell termina', async () => {
-    const id = randomUUID();
-    openShell(id);
-    await waitFor(() => (manager.output(id) ?? '').includes('PS '));
-    await waitForInput(id);
-    const exits: number[] = [];
-    manager.onExit(id, (exit) => exits.push(exit.exitCode));
+  it(
+    'avisa a assinante quando o shell termina',
+    async () => {
+      const id = randomUUID();
+      openShell(id);
+      await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+      await waitForInput(id);
+      const exits: number[] = [];
+      manager.onExit(id, (exit) => exits.push(exit.exitCode));
 
-    manager.write(id, 'exit\r');
+      manager.write(id, 'exit\r');
 
-    await waitFor(() => exits.length === 1);
-    expect(manager.has(id)).toBe(false);
-  });
+      await waitFor(() => exits.length === 1);
+      expect(manager.has(id)).toBe(false);
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
-  it('entrega a saída ao vivo para quem assinou', async () => {
-    const id = randomUUID();
-    openShell(id);
-    await waitFor(() => (manager.output(id) ?? '').includes('PS '));
-    await waitForInput(id);
-    let live = '';
-    const stop = manager.subscribe(id, (data) => {
-      live += data;
-    });
+  it(
+    'entrega a saída ao vivo para quem assinou',
+    async () => {
+      const id = randomUUID();
+      openShell(id);
+      await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+      await waitForInput(id);
+      let live = '';
+      const stop = manager.subscribe(id, (data) => {
+        live += data;
+      });
 
-    manager.write(id, 'Write-Output "ao-vivo-$(2+2)"\r');
-    await waitFor(() => live.includes('ao-vivo-4'));
+      manager.write(id, 'Write-Output "ao-vivo-$(2+2)"\r');
+      await waitFor(() => live.includes('ao-vivo-4'));
 
-    stop();
-    manager.write(id, 'Write-Output "depois"\r');
-    await sleep(500);
-    expect(live.includes('depois')).toBe(false);
-  });
+      stop();
+      manager.write(id, 'Write-Output "depois"\r');
+      await sleep(500);
+      expect(live.includes('depois')).toBe(false);
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
-  it('guarda só o fim da saída, dentro do limite do buffer', async () => {
-    manager = new PtyManager({ bufferBytes: 200 });
-    const id = randomUUID();
-    openShell(id);
-    await waitFor(() => (manager.output(id) ?? '').includes('PS '));
-    await waitForInput(id);
+  it(
+    'guarda só o fim da saída, dentro do limite do buffer',
+    async () => {
+      manager = new PtyManager({ bufferBytes: 200 });
+      const id = randomUUID();
+      openShell(id);
+      await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+      await waitForInput(id);
 
-    manager.write(id, `Write-Output ('x' * 500)\r`);
-    await waitFor(() => (manager.output(id) ?? '').includes('x'.repeat(50)));
+      manager.write(id, `Write-Output ('x' * 500)\r`);
+      await waitFor(() => (manager.output(id) ?? '').includes('x'.repeat(50)));
 
-    const kept = manager.output(id) ?? '';
-    expect(Buffer.byteLength(kept)).toBeLessThanOrEqual(200);
-    // O buffer guarda o fim: a saída mais antiga, o comando digitado, já saiu dele.
-    expect(kept.includes('Write-Output')).toBe(false);
-  });
+      const kept = manager.output(id) ?? '';
+      expect(Buffer.byteLength(kept)).toBeLessThanOrEqual(200);
+      // O buffer guarda o fim: a saída mais antiga, o comando digitado, já saiu dele.
+      expect(kept.includes('Write-Output')).toBe(false);
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
   it('não abre dois terminais com o mesmo id', async () => {
     const id = randomUUID();
@@ -170,17 +195,21 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
       await waitFor(() => !isAlive(childPid), 10_000);
       expect(manager.has(id)).toBe(false);
     },
-    60_000,
+    SHELL_TEST_TIMEOUT_MS,
   );
 
-  it('encerrar um terminal que já terminou não lança erro', async () => {
-    const id = randomUUID();
-    openShell(id);
-    await waitFor(() => (manager.output(id) ?? '').includes('PS '));
-    await waitForInput(id);
-    manager.write(id, 'exit\r');
-    await waitFor(() => !manager.has(id));
+  it(
+    'encerrar um terminal que já terminou não lança erro',
+    async () => {
+      const id = randomUUID();
+      openShell(id);
+      await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+      await waitForInput(id);
+      manager.write(id, 'exit\r');
+      await waitFor(() => !manager.has(id));
 
-    await expect(manager.kill(id)).resolves.toBeUndefined();
-  });
+      await expect(manager.kill(id)).resolves.toBeUndefined();
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 });

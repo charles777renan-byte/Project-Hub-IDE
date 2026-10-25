@@ -20,6 +20,10 @@ import { createHostToken } from '../../src/terminal-host/token';
 // A porta do app falando com um processo de terminais real (pipe e PowerShell de verdade).
 const onWindows = process.platform === 'win32';
 const TOKEN = createHostToken();
+// No CI, uma execução levou mais de 20 s para o PowerShell ler a primeira tecla. Cada teste de shell espera duas
+// vezes (o prompt e a entrada), por isso os prazos de espera e do teste são maiores que o padrão.
+const SHELL_TIMEOUT_MS = 60_000;
+const SHELL_TEST_TIMEOUT_MS = 120_000;
 
 let pipePath = '';
 let manager: PtyManager;
@@ -58,7 +62,7 @@ afterEach(async () => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<void> {
+async function waitFor(condition: () => boolean, timeoutMs = SHELL_TIMEOUT_MS): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() > deadline) throw new Error('a condição não aconteceu a tempo');
@@ -74,11 +78,16 @@ async function waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<vo
 async function waitForInput(
   id: string,
   seen: { output: string },
-  timeoutMs = 20_000,
+  timeoutMs = SHELL_TIMEOUT_MS,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!seen.output.includes('pronto-2')) {
-    if (Date.now() > deadline) throw new Error('o shell não passou a ler a entrada a tempo');
+    if (Date.now() > deadline) {
+      const tail = seen.output.slice(-300);
+      throw new Error(
+        `o shell não passou a ler a entrada a tempo; última saída: ${JSON.stringify(tail)}`,
+      );
+    }
     await port.write(id, 'Write-Output "pronto-$(1+1)"\r');
     const until = Date.now() + 1_000;
     while (Date.now() < until && !seen.output.includes('pronto-2')) await sleep(50);
@@ -114,58 +123,70 @@ function collector() {
 }
 
 describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
-  it('abre um shell, recebe a saída ao vivo e informa que o terminal está vivo', async () => {
-    const id = randomUUID();
-    await port.open(shellInput(id));
-    const { seen, subscriber } = collector();
-    await port.subscribe(id, subscriber);
-    await waitFor(() => seen.output.includes('PS '));
-    await waitForInput(id, seen);
+  it(
+    'abre um shell, recebe a saída ao vivo e informa que o terminal está vivo',
+    async () => {
+      const id = randomUUID();
+      await port.open(shellInput(id));
+      const { seen, subscriber } = collector();
+      await port.subscribe(id, subscriber);
+      await waitFor(() => seen.output.includes('PS '));
+      await waitForInput(id, seen);
 
-    await port.write(id, 'Write-Output "porta-$(3+3)"\r');
+      await port.write(id, 'Write-Output "porta-$(3+3)"\r');
 
-    await waitFor(() => seen.output.includes('porta-6'));
-    await expect(port.snapshot(id)).resolves.toEqual({ alive: true });
-  });
+      await waitFor(() => seen.output.includes('porta-6'));
+      await expect(port.snapshot(id)).resolves.toEqual({ alive: true });
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
-  it('uma assinatura nova recebe a saída guardada, e a anterior deixa de receber', async () => {
-    const id = randomUUID();
-    await port.open(shellInput(id));
-    const first = collector();
-    await port.subscribe(id, first.subscriber);
-    await waitFor(() => first.seen.output.includes('PS '));
-    await waitForInput(id, first.seen);
-    await port.write(id, 'Write-Output "porta-$(3+3)"\r');
-    await waitFor(() => first.seen.output.includes('porta-6'));
+  it(
+    'uma assinatura nova recebe a saída guardada, e a anterior deixa de receber',
+    async () => {
+      const id = randomUUID();
+      await port.open(shellInput(id));
+      const first = collector();
+      await port.subscribe(id, first.subscriber);
+      await waitFor(() => first.seen.output.includes('PS '));
+      await waitForInput(id, first.seen);
+      await port.write(id, 'Write-Output "porta-$(3+3)"\r');
+      await waitFor(() => first.seen.output.includes('porta-6'));
 
-    const second = collector();
-    await port.subscribe(id, second.subscriber);
-    await waitFor(() => second.seen.output.includes('porta-6'));
-    expect(second.seen.restarts).toBe(1);
+      const second = collector();
+      await port.subscribe(id, second.subscriber);
+      await waitFor(() => second.seen.output.includes('porta-6'));
+      expect(second.seen.restarts).toBe(1);
 
-    const frozen = first.seen.output.length;
-    await port.write(id, 'Write-Output "porta-$(4+5)"\r');
-    await waitFor(() => second.seen.output.includes('porta-9'));
-    expect(first.seen.output.length).toBe(frozen);
-  });
+      const frozen = first.seen.output.length;
+      await port.write(id, 'Write-Output "porta-$(4+5)"\r');
+      await waitFor(() => second.seen.output.includes('porta-9'));
+      expect(first.seen.output.length).toBe(frozen);
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
-  it('encerrar o terminal avisa a assinatura com o código de saída', async () => {
-    const id = randomUUID();
-    await port.open(shellInput(id));
-    const { seen, subscriber } = collector();
-    await port.subscribe(id, subscriber);
-    await waitFor(() => seen.output.includes('PS '));
-    await waitForInput(id, seen);
+  it(
+    'encerrar o terminal avisa a assinatura com o código de saída',
+    async () => {
+      const id = randomUUID();
+      await port.open(shellInput(id));
+      const { seen, subscriber } = collector();
+      await port.subscribe(id, subscriber);
+      await waitFor(() => seen.output.includes('PS '));
+      await waitForInput(id, seen);
 
-    await port.kill(id);
+      await port.kill(id);
 
-    await waitFor(() => seen.exits.length === 1);
-    expect(seen.exits[0]?.exitCode).toEqual(expect.any(Number));
-    await expect(port.snapshot(id)).resolves.toEqual({
-      alive: false,
-      exit: seen.exits[0],
-    });
-  });
+      await waitFor(() => seen.exits.length === 1);
+      expect(seen.exits[0]?.exitCode).toEqual(expect.any(Number));
+      await expect(port.snapshot(id)).resolves.toEqual({
+        alive: false,
+        exit: seen.exits[0],
+      });
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
   it('um terminal que não existe: snapshot devolve undefined e escrever lança TERMINAL_NOT_FOUND', async () => {
     await expect(port.snapshot('nao-existe')).resolves.toBeUndefined();
@@ -193,24 +214,28 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
     await expect(port.open(input)).rejects.toMatchObject({ code: 'PROCESS_START_FAILED' });
   });
 
-  it('reconecta depois de uma queda e refaz a assinatura, com a saída guardada', async () => {
-    const id = randomUUID();
-    await port.open(shellInput(id));
-    const { seen, subscriber } = collector();
-    await port.subscribe(id, subscriber);
-    await waitFor(() => seen.output.includes('PS '));
-    await waitForInput(id, seen);
-    await port.write(id, 'Write-Output "porta-$(3+3)"\r');
-    await waitFor(() => seen.output.includes('porta-6'));
+  it(
+    'reconecta depois de uma queda e refaz a assinatura, com a saída guardada',
+    async () => {
+      const id = randomUUID();
+      await port.open(shellInput(id));
+      const { seen, subscriber } = collector();
+      await port.subscribe(id, subscriber);
+      await waitFor(() => seen.output.includes('PS '));
+      await waitForInput(id, seen);
+      await port.write(id, 'Write-Output "porta-$(3+3)"\r');
+      await waitFor(() => seen.output.includes('porta-6'));
 
-    // A queda: a conexão do app some. A próxima operação abre outra sozinha.
-    clients[0]?.close();
-    await port.write(id, 'Write-Output "depois-$(7+7)"\r');
+      // A queda: a conexão do app some. A próxima operação abre outra sozinha.
+      clients[0]?.close();
+      await port.write(id, 'Write-Output "depois-$(7+7)"\r');
 
-    await waitFor(() => seen.output.includes('depois-14'));
-    expect(seen.restarts).toBeGreaterThanOrEqual(2);
-    expect(seen.output).toContain('porta-6');
-  });
+      await waitFor(() => seen.output.includes('depois-14'));
+      expect(seen.restarts).toBeGreaterThanOrEqual(2);
+      expect(seen.output).toContain('porta-6');
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
 
   it('sem processo de terminais, a porta devolve TERMINAL_HOST_UNAVAILABLE', async () => {
     const offline = createTerminalHostPort({
