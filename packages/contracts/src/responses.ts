@@ -70,6 +70,8 @@ export const responseSchemas = {
   [CHANNELS.missionsRetry]: appResultSchema(executionDtoSchema),
   [CHANNELS.missionsDelete]: appResultSchema(z.undefined()),
   [CHANNELS.missionsProvideInput]: appResultSchema(z.undefined()),
+  [CHANNELS.missionsApproveReview]: appResultSchema(z.undefined()),
+  [CHANNELS.missionsRequestChanges]: appResultSchema(executionDtoSchema),
   [CHANNELS.approvalsDecide]: appResultSchema(z.undefined()),
   [CHANNELS.worktreesList]: appResultSchema(z.array(worktreeDtoSchema)),
   [CHANNELS.worktreesRemove]: appResultSchema(z.undefined()),

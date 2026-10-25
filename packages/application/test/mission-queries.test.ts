@@ -207,6 +207,14 @@ describe('getMissionView: conclusão', () => {
     });
   });
 
+  it('missão em revisão já traz o resumo, para a pessoa decidir com ele à vista', () => {
+    const { repo, deps } = harness();
+    repo.insertMission(mission('m1', { status: 'review' }));
+    audited(repo);
+
+    expect(conclusionOf(deps)).toMatchObject({ summary: 'Login corrigido.', changedFiles: 4 });
+  });
+
   it('sem verificação, o resumo não traz o campo verification', () => {
     const { repo, deps } = harness();
     repo.insertMission(mission('m1', { status: 'succeeded' }));
