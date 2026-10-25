@@ -16,6 +16,9 @@ import type { TerminalSessionRepository } from '@project-hub/database';
 import { buildTerminalEnv } from '../terminal-host/env';
 import type { ProviderRegistry } from './providers';
 
+/** Quanto tempo uma contagem de arquivos alterados vale. O Git roda por pasta, não a cada leitura da lista. */
+const CHANGES_TTL_MS = 10_000;
+
 export type TerminalServiceDeps = {
   port: TerminalPort;
   repo: Pick<MissionRepository, 'findExecutionsByStatus' | 'getMission'>;
@@ -25,6 +28,8 @@ export type TerminalServiceDeps = {
   providers: ProviderRegistry;
   /** Entrega um evento de terminal ao renderer. */
   publish: (event: TerminalEvent) => void;
+  /** Arquivos com alteração numa pasta; `undefined` quando a pasta não é um repositório Git. */
+  countChanges: (folder: string) => Promise<number | undefined>;
   env: NodeJS.ProcessEnv;
   newId: () => string;
   now: () => string;
@@ -68,6 +73,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   /** A assinatura mais recente pedida por terminal: quem volta do `port.subscribe` com outra marca foi cancelado ou trocado. */
   const latestSubscription = new Map<string, number>();
   let subscriptionSeq = 0;
+  /** Última contagem de arquivos alterados por pasta, com a hora (ms) em que foi lida. */
+  const changes = new Map<string, { at: number; count: number | undefined }>();
 
   /** Execuções de agente em andamento que têm sessão: cada uma é um terminal. */
   function agentExecutions() {
@@ -125,6 +132,17 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     } catch {
       return 'unavailable' as const;
     }
+  }
+
+  /** Arquivos alterados na pasta, lidos de novo quando a última contagem passou de `CHANGES_TTL_MS`. */
+  async function changedFilesOf(folder: string | undefined): Promise<number | undefined> {
+    if (folder === undefined) return undefined;
+    const now = Date.parse(deps.now());
+    const last = changes.get(folder);
+    if (last !== undefined && now - last.at < CHANGES_TTL_MS) return last.count;
+    const count = await deps.countChanges(folder);
+    changes.set(folder, { at: now, count });
+    return count;
   }
 
   /**
@@ -223,6 +241,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           const live = await snapshotOf(execution.agentSessionId);
           const agentBytes =
             live === 'unavailable' || live === undefined ? undefined : live.outputBytes;
+          const changedFiles = await changedFilesOf(mission.worktreePath);
           out.push({
             id: execution.agentSessionId,
             kind: 'agent',
@@ -238,6 +257,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             origin: 'new',
             ...(worktreeName === undefined ? {} : { worktreeName }),
             ...(agentBytes === undefined ? {} : { outputBytes: agentBytes }),
+            ...(changedFiles === undefined ? {} : { changedFiles }),
           });
         }
         for (const record of sessions.listOpen()) {
@@ -247,17 +267,21 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           const { state, outputBytes } = await reconcile(record.id);
           // A sessão que o processo de terminais não conhece foi fechada agora: não é mais listada.
           if (state === 'unknown') continue;
+          // O terminal avulso roda na pasta do projeto, então a contagem é a dela.
+          const folder = projects.get(record.projectId);
+          const changedFiles = await changedFilesOf(folder?.path);
           out.push({
             id: record.id,
             kind: 'shell',
             title: record.title,
             projectId: record.projectId,
-            projectName: projects.get(record.projectId)?.name ?? '',
+            projectName: folder?.name ?? '',
             state,
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
             startedAt: record.createdAt,
             ...(outputBytes === undefined ? {} : { outputBytes }),
+            ...(changedFiles === undefined ? {} : { changedFiles }),
           });
         }
         return { ok: true, data: out };

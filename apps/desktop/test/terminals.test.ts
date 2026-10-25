@@ -59,6 +59,7 @@ function setup(
     snapshot?: Awaited<ReturnType<TerminalPort['snapshot']>> | 'fail';
     killError?: Error;
     slowSubscribe?: boolean;
+    countChanges?: (folder: string) => Promise<number | undefined>;
   } = {},
 ) {
   const opened: {
@@ -129,6 +130,7 @@ function setup(
     sessions: sessions.repo,
     providers,
     publish: (event) => events.push(event),
+    countChanges: options.countChanges ?? (() => Promise.resolve(undefined)),
     env: { PATH: 'C:/Windows', ANTHROPIC_API_KEY: 'segredo' },
     newId: () => ids.shift() ?? 'shell-x',
     now: () => '2026-10-22T12:00:00.000Z',
@@ -317,6 +319,46 @@ describe('serviço de terminais do app', () => {
 
     expect(result).toMatchObject({ ok: true, data: [{ worktreeName: 'missao-1' }] });
     expect(JSON.stringify(result)).not.toContain('hub');
+  });
+
+  it('conta os arquivos alterados da pasta de cada sessão e reaproveita a contagem por alguns segundos', async () => {
+    const folders: string[] = [];
+    const withWorktree = {
+      ...mission,
+      worktreePath: 'C:\\hub\\worktrees\\app\\missao-1',
+    } as Mission;
+    const h = setup({
+      executions: [agentExecution],
+      missions: [withWorktree],
+      countChanges: (folder) => {
+        folders.push(folder);
+        return Promise.resolve(3);
+      },
+    });
+    await h.service.openSession('p1', 'shell');
+
+    const first = await h.service.list();
+    await h.service.list();
+
+    expect(first).toMatchObject({
+      ok: true,
+      data: [
+        { kind: 'agent', changedFiles: 3 },
+        { kind: 'shell', changedFiles: 3 },
+      ],
+    });
+    // Cada pasta é lida uma vez; a segunda leitura da lista cai dentro do prazo e não roda o Git de novo.
+    expect(folders).toEqual(['C:\\hub\\worktrees\\app\\missao-1', 'C:/dev/app']);
+  });
+
+  it('pasta que não é repositório Git não traz a contagem', async () => {
+    const h = setup({ countChanges: () => Promise.resolve(undefined) });
+    await h.service.openSession('p1', 'shell');
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).not.toHaveProperty('changedFiles');
   });
 
   it('recusa escrever num terminal que o app não conhece', async () => {

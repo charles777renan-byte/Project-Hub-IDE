@@ -6,6 +6,7 @@ import {
   CHANNELS,
   ERROR_CODES,
   responseSchemas,
+  setProjectGroupInputSchema,
   type AppError,
   type AppResult,
   type ErrorCode,
@@ -28,6 +29,27 @@ describe('addProjectInputSchema', () => {
       expect(addProjectInputSchema.safeParse(payload).success).toBe(false);
     },
   );
+});
+
+describe('setProjectGroupInputSchema', () => {
+  it('aceita grupo de 40 caracteres, contando depois de aparar os espaços', () => {
+    expect(
+      setProjectGroupInputSchema.safeParse({ projectId: 'p1', group: `  ${'x'.repeat(40)}  ` })
+        .success,
+    ).toBe(true);
+  });
+
+  it('recusa grupo com mais de 40 caracteres', () => {
+    expect(
+      setProjectGroupInputSchema.safeParse({ projectId: 'p1', group: 'x'.repeat(41) }).success,
+    ).toBe(false);
+  });
+
+  it('aceita nulo, que tira o projeto do grupo', () => {
+    expect(setProjectGroupInputSchema.safeParse({ projectId: 'p1', group: null }).success).toBe(
+      true,
+    );
+  });
 });
 
 describe('CHANNELS', () => {
