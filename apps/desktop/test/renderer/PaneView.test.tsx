@@ -118,16 +118,12 @@ describe('PaneView', () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('fechar com a sessão rodando pede confirmação antes de chamar onClose', async () => {
+  it('fechar com a sessão rodando chama onClose na hora, sem pedir confirmação', async () => {
     const { props } = setup();
     expect(screen.queryByRole('button', { name: 'Encerrar' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Fechar painel' }));
-    expect(props.onClose).not.toHaveBeenCalled();
-    const group = screen.getByRole('group', {
-      name: 'Fechar o painel? O processo será finalizado.',
-    });
-    await userEvent.click(within(group).getByRole('button', { name: 'Fechar painel' }));
     expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
   });
 
   it('o lançador também tem o botão de fechar painel', async () => {

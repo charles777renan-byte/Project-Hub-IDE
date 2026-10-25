@@ -157,6 +157,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Abre o menu "Abrir terminal" e escolhe o programa pelo nome. */
+async function abrirPrograma(nome: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: 'Abrir terminal' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: nome }));
+}
+
 describe('WorkspacePage', () => {
   it('o layout padrão mostra um lançador por provedor', async () => {
     renderAt();
@@ -188,19 +194,47 @@ describe('WorkspacePage', () => {
     expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
   });
 
-  it('fechar uma sessão rodando pede confirmação e só então chama removePane', async () => {
+  it('fechar uma sessão rodando chama removePane direto, sem pedir confirmação', async () => {
     api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
     api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
     api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
     await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
-    expect(api.workspaces.removePane).not.toHaveBeenCalled();
-    const group = within(pane).getByRole('group', {
-      name: 'Fechar o painel? O processo será finalizado.',
-    });
-    await userEvent.click(within(group).getByRole('button', { name: 'Fechar painel' }));
     expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
+  });
+
+  it('o painel some na hora, sem esperar o processo principal responder', async () => {
+    api.workspaces.open.mockResolvedValue({
+      ok: true,
+      data: { ...dto(padrao()), layout: leaf('c', 'shell', 't1') },
+    });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    let finish: (value: unknown) => void = () => {};
+    api.workspaces.removePane.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    renderAt();
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    expect(screen.queryByRole('region', { name: 'Painel PowerShell' })).not.toBeInTheDocument();
+    expect(screen.getByText('Nenhum terminal aberto')).toBeInTheDocument();
+    await act(async () => finish({ ok: true, data: { ...dto(padrao()), layout: null } }));
+    expect(screen.getByText('Nenhum terminal aberto')).toBeInTheDocument();
+  });
+
+  it('se o processo principal recusar, o painel volta com o erro', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    api.workspaces.removePane.mockResolvedValue({
+      ok: false,
+      error: { code: 'x', message: 'Não foi possível fechar o painel' },
+    });
+    renderAt();
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    const back = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    expect(await within(back).findByRole('alert')).toHaveTextContent(
+      'Não foi possível fechar o painel',
+    );
   });
 
   describe('sem painéis', () => {
@@ -214,20 +248,23 @@ describe('WorkspacePage', () => {
       expect(
         screen.getByText('Escolha um programa na barra acima para abrir um terminal.'),
       ).toBeInTheDocument();
-      const bar = screen.getByRole('toolbar', { name: 'Abrir terminal' });
-      expect(within(bar).getByRole('button', { name: 'Claude Code' })).toBeEnabled();
-      expect(within(bar).getByRole('button', { name: 'Codex' })).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+      expect(screen.getByRole('menuitem', { name: /Claude Code/ })).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: /Codex/ })).toHaveAttribute('aria-disabled', 'true');
     });
 
     it('clicar em Claude Code chama addPane e mostra o painel novo', async () => {
       api.workspaces.addPane.mockResolvedValue({ ok: true, data: dto(leaf('n', 'claude')) });
       renderAt();
-      await userEvent.click(await screen.findByRole('button', { name: 'Claude Code' }));
+      await abrirPrograma(/Claude Code/);
       expect(api.workspaces.addPane).toHaveBeenCalledWith('w1', 'claude');
       expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
       expect(screen.queryByText('Nenhum terminal aberto')).not.toBeInTheDocument();
       // A barra continua acima dos painéis.
-      expect(screen.getByRole('toolbar', { name: 'Abrir terminal' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
     });
 
     it('falha ao abrir vira aviso com a mensagem do IPC', async () => {
@@ -236,7 +273,7 @@ describe('WorkspacePage', () => {
         error: { code: 'x', message: 'Limite de painéis' },
       });
       renderAt();
-      await userEvent.click(await screen.findByRole('button', { name: 'Claude Code' }));
+      await abrirPrograma(/Claude Code/);
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent('Limite de painéis');
       expect(alert.closest('[aria-label="Avisos"]')).not.toBeNull();
@@ -246,19 +283,19 @@ describe('WorkspacePage', () => {
       let finish: (value: unknown) => void = () => {};
       api.workspaces.addPane.mockReturnValue(new Promise((resolve) => (finish = resolve)));
       renderAt();
-      const button = await screen.findByRole('button', { name: 'Claude Code' });
-      await userEvent.click(button);
-      await userEvent.click(button);
+      await abrirPrograma(/Claude Code/);
+      const trigger = screen.getByRole('button', { name: 'Abrir terminal' });
+      expect(trigger).toBeDisabled();
+      await userEvent.click(trigger);
       expect(api.workspaces.addPane).toHaveBeenCalledTimes(1);
-      expect(screen.getByRole('button', { name: 'PowerShell' })).toBeDisabled();
       await act(async () => finish({ ok: true, data: dto(leaf('n', 'claude')) }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'PowerShell' })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeEnabled());
     });
   });
 
   it('com painéis, a barra aparece acima da área', async () => {
     renderAt();
-    expect(await screen.findByRole('toolbar', { name: 'Abrir terminal' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
   });
 
   it('falha de startSession aparece em alert no painel certo', async () => {
@@ -384,7 +421,7 @@ describe('WorkspacePage', () => {
         data: dto(leaf('n', 'shell', 't1')),
       });
       renderAt();
-      await userEvent.click(await screen.findByRole('button', { name: 'PowerShell' }));
+      await abrirPrograma(/PowerShell/);
       expect(await screen.findByText('Abrindo a sessão…')).toBeInTheDocument();
       expect(screen.queryByText('A sessão terminou.')).not.toBeInTheDocument();
       await act(async () => releaseReload({ ok: true, data: [shellTerminal] }));
@@ -403,11 +440,10 @@ describe('WorkspacePage', () => {
         data: { ...dto(padrao()), layout: cheio },
       });
       renderAt();
-      const bar = await screen.findByRole('toolbar', { name: 'Abrir terminal' });
-      expect(within(bar).getByRole('button', { name: 'Claude Code' })).toBeDisabled();
-      expect(within(bar).getByRole('button', { name: 'PowerShell' })).toBeDisabled();
-      const wrap = bar.querySelector<HTMLElement>('.workspace__open-wrap');
-      expect(wrap).not.toBeNull();
+      const trigger = await screen.findByRole('button', { name: 'Abrir terminal' });
+      expect(trigger).toBeDisabled();
+      const wrap = trigger.parentElement;
+      expect(wrap).toHaveClass('workspace__open-wrap');
       act(() => wrap!.focus());
       expect((await screen.findAllByText('Limite de 12 painéis')).length).toBeGreaterThan(0);
     });
@@ -430,7 +466,7 @@ describe('WorkspacePage', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('fechar o último painel leva o foco ao primeiro botão da barra', async () => {
+    it('fechar o último painel leva o foco ao botão Abrir terminal', async () => {
       api.workspaces.open.mockResolvedValue({
         ok: true,
         data: { ...dto(padrao()), layout: leaf('a', 'claude') },
@@ -440,7 +476,7 @@ describe('WorkspacePage', () => {
       const pane = await screen.findByRole('region', { name: 'Painel Claude Code' });
       await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
       await waitFor(() =>
-        expect(screen.getByRole('button', { name: 'Claude Code' })).toHaveFocus(),
+        expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveFocus(),
       );
     });
 

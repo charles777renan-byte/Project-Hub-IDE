@@ -4,6 +4,7 @@
  * leva mantém o nome acessível dele (aria-label ou texto).
  */
 export {
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleCheck,

@@ -194,3 +194,26 @@ export async function expectWebglCanvas(view: Locator): Promise<void> {
     'A página cria contexto WebGL2, mas o terminal não tem canvas: ele não está desenhando em WebGL',
   ).toBeAttached({ timeout: 5_000 });
 }
+
+/**
+ * Espera o processo principal ficar só com `count` sessões abertas. Fechar um painel tira o painel da tela na
+ * hora, mas a sessão só termina quando o processo principal acaba de encerrá-la. Sem esperar, o teste fecharia
+ * o app no meio do encerramento e o shell ficaria com a pasta do projeto aberta (EPERM na limpeza).
+ */
+export async function expectOpenSessions(page: Page, count: number): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const api = (
+            window as unknown as {
+              projectHub?: { terminals: { list(): Promise<{ ok: boolean; data?: unknown[] }> } };
+            }
+          ).projectHub;
+          const result = await api?.terminals.list();
+          return result?.ok === true ? (result.data?.length ?? -1) : -1;
+        }),
+      { timeout: 30_000 },
+    )
+    .toBe(count);
+}
