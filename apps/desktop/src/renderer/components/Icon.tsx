@@ -18,6 +18,7 @@ export {
   Inbox,
   LoaderCircle,
   Plus,
+  Search,
   ShieldQuestionMark,
   SquareTerminal,
   X,
