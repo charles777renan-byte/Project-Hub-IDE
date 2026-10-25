@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import type { ActivityDay } from '@project-hub/contracts';
 import {
   createOrchestrator,
   type MissionRepository,
@@ -18,6 +19,7 @@ import {
   type RemoveWorktreeDeps,
 } from '@project-hub/application';
 import {
+  countAuditEventsByLocalDay,
   createMissionRepository,
   createProjectRepository,
   createTerminalSessionRepository,
@@ -64,6 +66,8 @@ export type AppServices = AddProjectDeps & {
   };
   /** Repositórios do serviço de workspaces: os workspaces e os projetos. */
   workspaceDeps: { repo: WorkspaceRepository; projects: ProjectRepository };
+  /** Atividade da tela Início: eventos de auditoria por dia local (só leitura). */
+  activityDeps: { countByLocalDay(sinceIso: string): ActivityDay[] };
   close(): void;
 };
 
@@ -200,6 +204,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     lifecycle: { repo: projects, missions: repo, fs, now },
     terminalDeps: { repo, projects, sessions: createTerminalSessionRepository(db) },
     workspaceDeps: { repo: createWorkspaceRepository(db), projects },
+    activityDeps: { countByLocalDay: (sinceIso) => countAuditEventsByLocalDay(db, sinceIso) },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },

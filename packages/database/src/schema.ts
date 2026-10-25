@@ -41,6 +41,7 @@ export const projects = sqliteTable(
     archivedAt: text('archived_at'),
     removedAt: text('removed_at'),
     groupName: text('group_name'),
+    nickname: text('nickname'),
   },
   (table) => [
     check('projects_repository_kind_check', sql`${table.repositoryKind} IN ('git', 'none')`),

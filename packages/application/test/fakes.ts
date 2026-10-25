@@ -53,6 +53,14 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       else grouped.groupName = groupName;
       byId.set(id, grouped);
     },
+    setNickname(id, nickname, updatedAt) {
+      const record = byId.get(id);
+      if (record === undefined) return;
+      const named: ProjectRecord = { ...record, updatedAt };
+      if (nickname === null) delete named.nickname;
+      else named.nickname = nickname;
+      byId.set(id, named);
+    },
     markRemoved(id, removedAt) {
       const record = byId.get(id);
       if (record !== undefined) byId.set(id, { ...record, removedAt, updatedAt: removedAt });

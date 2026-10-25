@@ -19,6 +19,8 @@ export type ProjectRecord = {
   removedAt?: string;
   /** Grupo escolhido pela pessoa (Trabalho, Pessoal...), para agrupar a barra lateral. Sem grupo, ausente. */
   groupName?: string;
+  /** Apelido curto que a interface mostra no lugar do nome da pasta. Sem apelido, ausente. */
+  nickname?: string;
 };
 
 /** Dados que o usuário informa ao adicionar um projeto. O restante é preenchido pelo banco. */

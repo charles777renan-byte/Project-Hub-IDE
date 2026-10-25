@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { activityDailyResponseSchema } from './activity';
 import { CHANNELS } from './channels';
 import { projectSummarySchema } from './project';
 import {
@@ -59,6 +60,7 @@ export const responseSchemas = {
   [CHANNELS.projectsRemove]: appResultSchema(z.undefined()),
   [CHANNELS.projectsOpenFolder]: appResultSchema(z.undefined()),
   [CHANNELS.projectsSetGroup]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsSetNickname]: appResultSchema(z.undefined()),
   [CHANNELS.missionsCreate]: appResultSchema(missionDtoSchema),
   [CHANNELS.missionsList]: appResultSchema(z.array(missionDtoSchema)),
   [CHANNELS.missionsGet]: appResultSchema(missionViewSchema),
@@ -77,4 +79,5 @@ export const responseSchemas = {
   [CHANNELS.approvalsDecide]: appResultSchema(z.undefined()),
   [CHANNELS.worktreesList]: appResultSchema(z.array(worktreeDtoSchema)),
   [CHANNELS.worktreesRemove]: appResultSchema(z.undefined()),
+  [CHANNELS.activityDaily]: appResultSchema(activityDailyResponseSchema),
 } as const;

@@ -12,6 +12,7 @@ export const CHANNELS = {
   projectsRemove: 'projects:remove:v1',
   projectsOpenFolder: 'projects:open-folder:v1',
   projectsSetGroup: 'projects:set-group:v1',
+  projectsSetNickname: 'projects:set-nickname:v1',
   missionsCreate: 'missions:create:v1',
   missionsList: 'missions:list:v1',
   missionsGet: 'missions:get:v1',
@@ -59,4 +60,6 @@ export const CHANNELS = {
   workspacesRemovePane: 'workspaces:remove-pane:v1',
   /** Programas que os painéis sabem abrir, com a disponibilidade de cada um. */
   providersList: 'providers:list:v1',
+  /** Eventos de missão por dia local nos últimos 90 dias, para o painel de atividade. Só leitura. */
+  activityDaily: 'activity:daily:v1',
 } as const;

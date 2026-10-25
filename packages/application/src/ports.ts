@@ -27,6 +27,7 @@ export interface ProjectRepository {
   archive(id: string, archivedAt: string): void;
   unarchive(id: string, updatedAt: string): void;
   setGroup(id: string, groupName: string | null, updatedAt: string): void;
+  setNickname(id: string, nickname: string | null, updatedAt: string): void;
   markRemoved(id: string, removedAt: string): void;
   /**
    * Desfaz a remoção: o mesmo registro volta à lista, sem inserir outro. A pasta pode ter ganhado ou

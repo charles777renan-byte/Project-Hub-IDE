@@ -62,6 +62,8 @@ const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ['--text', '--line'],
   // Identidade visual: texto escuro dentro do botão e da aba cheios em lima.
   ['--accent-ink', '--accent'],
+  // Início em painéis: o número de falhas em vermelho (--danger) fica sobre o cartão e sobre o fundo.
+  ...SURFACES.map((surface): [ColorToken, ColorToken] => ['--danger', surface]),
 ];
 
 function channelToLinear(channel: number): number {
@@ -337,5 +339,94 @@ describe('cores do chrome do workspace', () => {
         expect(NEUTRAL.has(input), `${name} usa ${input}`).toBe(true);
       }
     }
+  });
+});
+
+/**
+ * Início em painéis (home.css): só tokens de tokens.css, sem cor literal, sem animação. Cada cor de
+ * destaque tem um lugar: o lima (--accent) só no ícone da chamada (o botão é o .btn-primary do app.css) e no dia de hoje do mapa de
+ * atividade, o vermelho (--danger) só no número de falhas, e o mapa usa a rampa de --muted (#b7adcf)
+ * por opacidade. O texto do cartão (--text e --muted sobre --surface) já está nos pares do começo.
+ */
+describe('cores do Início (home.css)', () => {
+  const homeCss = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles/home.css'),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...homeCss.matchAll(/([^{}@]+)\{([^{}]*)\}/g)].map(
+    ([, selectors = '', body = '']) => ({
+      selectors: selectors
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      body,
+    }),
+  );
+  const ALLOWED = new Set([
+    '--bg',
+    '--surface',
+    '--surface-2',
+    '--surface-glass',
+    '--line',
+    '--field-line',
+    '--muted',
+    '--text',
+    '--accent',
+    '--accent-ink',
+    '--danger',
+    '--cell',
+  ]);
+  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+
+  it('só usa var() de tokens permitidos', () => {
+    const used = [...homeCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((name) => !ALLOWED.has(name) && !NOT_COLOR.test(name))).toEqual([]);
+  });
+
+  it('não escreve cor literal nem usa outro acento', () => {
+    expect(homeCss).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(homeCss).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
+    for (const accent of ACCENTS) {
+      expect(homeCss, accent).not.toContain(`var(${accent})`);
+    }
+  });
+
+  it('o lima (--accent) só aparece no ícone da chamada e no dia de hoje do mapa', () => {
+    const using = rules.filter(({ body }) => body.includes('var(--accent)'));
+    expect(using.length).toBeGreaterThan(0);
+    for (const { selectors, body } of using) {
+      expect(
+        selectors.every((item) => item === '.home-cta__icon' || item === '.activity-cell--today'),
+        selectors.join(', '),
+      ).toBe(true);
+      expect(body).toMatch(/(?:background:|outline:\s*1px solid) var\(--accent\)/);
+    }
+  });
+
+  it('o vermelho (--danger) só pinta o número de falhas', () => {
+    const using = rules.filter(({ body }) => body.includes('var(--danger)'));
+    expect(using.map(({ selectors }) => selectors)).toEqual([
+      ['.stat-pill--danger .stat-pill__value'],
+    ]);
+    expect(using[0]?.body).toMatch(/color:\s*var\(--danger\)/);
+  });
+
+  it('a rampa do mapa vai de 0 a 4 só com --muted, em opacidade crescente', () => {
+    const percent: number[] = [];
+    for (let level = 0; level <= 4; level += 1) {
+      const rule = rules.find(({ selectors }) => selectors.includes(`.activity-level--${level}`));
+      expect(rule, `nível ${level}`).toBeDefined();
+      const body = rule?.body ?? '';
+      expect(body).toContain('var(--muted)');
+      const mix = /color-mix\(in srgb, var\(--muted\) (\d+)%, transparent\)/.exec(body);
+      percent.push(mix === null ? 100 : Number(mix[1]));
+    }
+    expect(percent).toEqual([...percent].sort((a, b) => a - b));
+    expect(new Set(percent).size).toBe(5);
+  });
+
+  it('não tem animação nem transição', () => {
+    expect(homeCss).not.toMatch(/\b(?:animation|transition)\b/);
   });
 });

@@ -217,6 +217,17 @@ describe('Sidebar: espaços', () => {
     expect(within(area).getByText('Notas')).toHaveAttribute('title', 'Notas');
   });
 
+  it('mostra o apelido no lugar do nome, com o nome da pasta no title', async () => {
+    installApi({ projects: [{ ...gitProject, nickname: 'Re_Zero' }, plainProject] });
+    renderSidebar('/');
+
+    const area = await spaces();
+    const apelido = within(area).getByText('Re_Zero');
+    expect(apelido).toHaveAttribute('title', 'Project Hub');
+    expect(within(area).queryByText('Project Hub')).not.toBeInTheDocument();
+    expect(within(area).getByText('Notas')).toHaveAttribute('title', 'Notas');
+  });
+
   it('marca só o projeto da rota do workspace com aria-current', async () => {
     installApi();
     renderSidebar('/workspaces/p1');

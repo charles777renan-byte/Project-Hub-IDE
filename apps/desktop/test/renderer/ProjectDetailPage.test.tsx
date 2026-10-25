@@ -40,6 +40,7 @@ function installApi(missions: MissionDto[]) {
       remove: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
       openFolder: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
       setGroup: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
+      setNickname: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
     },
     missions: {
       list: vi.fn(() => Promise.resolve({ ok: true, data: missions })),
@@ -453,5 +454,87 @@ describe('ProjectDetailPage: grupo do projeto', () => {
     );
 
     expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetailPage: apelido do projeto', () => {
+  it('sem apelido, o título é o nome da pasta; com apelido, é o apelido e o title guarda a pasta', async () => {
+    const api = installApi([]);
+    const { unmount } = renderAt('/projects/p1');
+    const semApelido = await screen.findByRole('heading', { level: 1, name: 'Project Hub' });
+    expect(semApelido).toHaveAttribute('title', 'Project Hub');
+    unmount();
+
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...project, nickname: 'Re_Zero' }],
+    } as never);
+    renderAt('/projects/p1');
+    const comApelido = await screen.findByRole('heading', { level: 1, name: 'Re_Zero' });
+    expect(comApelido).toHaveAttribute('title', 'Project Hub');
+  });
+
+  it('Definir apelido abre o formulário, grava o valor e avisa a barra lateral', async () => {
+    const api = installApi([]);
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    const user = userEvent.setup();
+    renderAt('/projects/p1');
+
+    await user.click(await screen.findByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Definir apelido…' }));
+    const form = screen.getByRole('form', { name: 'Apelido do projeto' });
+    const campo = within(form).getByLabelText('Apelido');
+    expect(campo).toHaveAttribute('maxlength', '24');
+    expect(campo).toHaveAttribute('placeholder', 'ex.: Re_Zero');
+    expect(within(form).queryByRole('button', { name: 'Remover apelido' })).not.toBeInTheDocument();
+    await user.type(campo, 'Re_Zero');
+    await user.click(within(form).getByRole('button', { name: 'Salvar' }));
+
+    expect(api.projects.setNickname).toHaveBeenCalledWith('p1', 'Re_Zero');
+    await waitFor(() => expect(avisos).toHaveBeenCalled());
+    expect(screen.queryByRole('form', { name: 'Apelido do projeto' })).not.toBeInTheDocument();
+    window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+  });
+
+  it('projeto com apelido parte dele e oferece Remover apelido, que grava null', async () => {
+    const api = installApi([]);
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...project, nickname: 'Re_Zero' }],
+    } as never);
+    const user = userEvent.setup();
+    renderAt('/projects/p1');
+
+    await user.click(await screen.findByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Definir apelido…' }));
+    expect(screen.getByLabelText('Apelido')).toHaveValue('Re_Zero');
+    await user.click(screen.getByRole('button', { name: 'Remover apelido' }));
+
+    expect(api.projects.setNickname).toHaveBeenCalledWith('p1', null);
+  });
+
+  it('falha ao gravar mostra o alerta e mantém o formulário', async () => {
+    const api = installApi([]);
+    api.projects.setNickname.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'O apelido pode ter até 24 caracteres.',
+        retryable: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderAt('/projects/p1');
+
+    await user.click(await screen.findByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Definir apelido…' }));
+    await user.type(screen.getByLabelText('Apelido'), 'x');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    const form = screen.getByRole('form', { name: 'Apelido do projeto' });
+    expect(await within(form).findByRole('alert')).toHaveTextContent(
+      'O apelido pode ter até 24 caracteres.',
+    );
   });
 });
