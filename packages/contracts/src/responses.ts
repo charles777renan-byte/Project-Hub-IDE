@@ -57,6 +57,8 @@ export const responseSchemas = {
   [CHANNELS.projectsArchive]: appResultSchema(z.undefined()),
   [CHANNELS.projectsUnarchive]: appResultSchema(z.undefined()),
   [CHANNELS.projectsRemove]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsOpenFolder]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsSetGroup]: appResultSchema(z.undefined()),
   [CHANNELS.missionsCreate]: appResultSchema(missionDtoSchema),
   [CHANNELS.missionsList]: appResultSchema(z.array(missionDtoSchema)),
   [CHANNELS.missionsGet]: appResultSchema(missionViewSchema),

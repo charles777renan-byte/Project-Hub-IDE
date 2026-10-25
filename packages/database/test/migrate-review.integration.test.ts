@@ -8,7 +8,6 @@ import type { Mission } from '@project-hub/domain';
 import { openDatabase, type AppDatabase } from '../src/client';
 import { migrateDatabase } from '../src/migrate';
 import { createMissionRepository } from '../src/repositories/mission-repository';
-import { createProjectRepository } from '../src/repositories/project-repository';
 
 // A migração 0005 recria a tabela `missions` para trocar a CHECK do estado (inclui `review`). Ela tem de
 // preservar as filhas, que apagam em cascata com a missão: etapas, critérios, tentativas e auditoria.
@@ -63,14 +62,12 @@ describe('migração da revisão (0005)', () => {
     const legacy = openDatabase(dbFile);
     opened.push(legacy);
     migrate(legacy, { migrationsFolder: legacyFolder(), migrationsTable: 'schema_migrations' });
-    createProjectRepository(legacy).insert({
-      id: 'p1',
-      name: 'app',
-      path: 'C:\\dev\\app',
-      normalizedPath: 'c:/dev/app',
-      repositoryKind: 'git',
-      createdAt: T0,
-    });
+    // O banco legado ainda não tem a coluna do grupo, então o projeto entra por SQL, sem o repositório atual.
+    legacy.$client
+      .prepare(
+        'INSERT INTO projects (id, name, path, normalized_path, repository_kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run('p1', 'app', 'C:/dev/app', 'c:/dev/app', 'git', T0, T0);
     const before = createMissionRepository(legacy);
     const mission: Mission = {
       id: 'missao-1',

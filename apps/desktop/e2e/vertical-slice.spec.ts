@@ -88,7 +88,7 @@ async function openProject(page: Page, projectName: string): Promise<void> {
 
 /** Cria a missão pelo formulário. A criação gera o plano e abre o workspace da missão. */
 async function createMission(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Criar missão' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
   const form = page.getByRole('form', { name: 'Nova missão' });
   await form.getByLabel('Título').fill(MISSION.title);
   await form.getByLabel('Objetivo').fill(MISSION.objective);
@@ -173,7 +173,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   // 1. Adiciona o projeto de teste, que tem Git, e vê o branch na tela.
   await addGitProject(page, projectName);
   await openProject(page, projectName);
-  await expect(page.getByText('Nenhuma missão ainda. Crie a primeira.')).toBeVisible();
+  await expect(page.getByText('Comece sua primeira missão')).toBeVisible();
 
   // 2. Cria a missão com um critério de aceite, vê o plano e o aprova.
   await createMission(page);

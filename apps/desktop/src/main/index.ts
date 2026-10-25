@@ -213,6 +213,7 @@ app
       services,
       lifecycle: services.lifecycle,
       chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
+      openFolder: (path) => shell.openPath(path),
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);

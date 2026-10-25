@@ -5,6 +5,7 @@ import {
   archiveProject,
   listArchivedProjects,
   removeProject,
+  setProjectGroup,
   unarchiveProject,
   type ProjectLifecycleDeps,
 } from '../src/projects/project-lifecycle';
@@ -210,5 +211,46 @@ describe('cadastro de pasta arquivada', () => {
       data: [expect.objectContaining({ id: 'p1' })],
     });
     expect(await listArchivedProjects({ repo: deps.repo, fs })).toEqual({ ok: true, data: [] });
+  });
+});
+
+describe('setProjectGroup', () => {
+  it('põe o projeto no grupo, com o nome aparado, e o resumo traz o grupo', async () => {
+    const { deps, repo, fs } = harness();
+
+    expect(setProjectGroup(deps, { projectId: 'p1', group: '  Trabalho  ' })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+
+    expect(repo.get('p1')).toMatchObject({ groupName: 'Trabalho', updatedAt: NOW });
+    const listed = await listProjects({ repo, fs });
+    expect(listed).toMatchObject({ ok: true, data: [{ id: 'p1', group: 'Trabalho' }] });
+  });
+
+  it('null ou texto vazio tira o projeto do grupo', () => {
+    const { deps, repo } = harness();
+    setProjectGroup(deps, { projectId: 'p1', group: 'Pessoal' });
+
+    setProjectGroup(deps, { projectId: 'p1', group: '   ' });
+
+    expect(repo.get('p1')?.groupName).toBeUndefined();
+    setProjectGroup(deps, { projectId: 'p1', group: 'Pessoal' });
+    setProjectGroup(deps, { projectId: 'p1', group: null });
+    expect(repo.get('p1')?.groupName).toBeUndefined();
+  });
+
+  it('recusa nome com mais de 40 caracteres e projeto que não está na lista', () => {
+    const { deps, repo } = harness();
+
+    expect(setProjectGroup(deps, { projectId: 'p1', group: 'x'.repeat(41) })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    expect(setProjectGroup(deps, { projectId: 'nao-existe', group: 'Trabalho' })).toMatchObject({
+      ok: false,
+      error: { code: 'PROJECT_NOT_FOUND' },
+    });
+    expect(repo.get('p1')?.groupName).toBeUndefined();
   });
 });

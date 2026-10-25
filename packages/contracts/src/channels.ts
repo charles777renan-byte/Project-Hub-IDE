@@ -10,6 +10,8 @@ export const CHANNELS = {
   projectsUnarchive: 'projects:unarchive:v1',
   /** Tira o projeto da lista. Não apaga a pasta, o Git nem as missões. */
   projectsRemove: 'projects:remove:v1',
+  projectsOpenFolder: 'projects:open-folder:v1',
+  projectsSetGroup: 'projects:set-group:v1',
   missionsCreate: 'missions:create:v1',
   missionsList: 'missions:list:v1',
   missionsGet: 'missions:get:v1',

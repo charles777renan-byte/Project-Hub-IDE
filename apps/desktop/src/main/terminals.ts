@@ -131,16 +131,24 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
    * Estado de uma sessão avulsa aberta no banco. Se o processo de terminais responde e não conhece o id
    * (reinício, reboot), a sessão não existe mais: a linha é fechada e o estado vira 'unknown'.
    */
-  async function reconcile(terminalId: string): Promise<'running' | 'exited' | 'unknown'> {
+  async function reconcile(
+    terminalId: string,
+  ): Promise<{ state: 'running' | 'exited' | 'unknown'; outputBytes?: number }> {
     const snapshot = await snapshotOf(terminalId);
-    if (snapshot === 'unavailable')
-      return openSessionRecord(terminalId) === undefined ? 'unknown' : 'exited';
-    if (snapshot !== undefined) return snapshot.alive ? 'running' : 'exited';
-    if (openSessionRecord(terminalId) === undefined) return 'unknown';
+    if (snapshot === 'unavailable') {
+      return { state: openSessionRecord(terminalId) === undefined ? 'unknown' : 'exited' };
+    }
+    if (snapshot !== undefined) {
+      return {
+        state: snapshot.alive ? 'running' : 'exited',
+        ...(snapshot.outputBytes === undefined ? {} : { outputBytes: snapshot.outputBytes }),
+      };
+    }
+    if (openSessionRecord(terminalId) === undefined) return { state: 'unknown' };
     stopSubscription(terminalId);
     sessions.close(terminalId, deps.now());
     openedHere.delete(terminalId);
-    return 'unknown';
+    return { state: 'unknown' };
   }
 
   async function openSession(
@@ -212,6 +220,9 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           if (mission === undefined || project === undefined) continue;
           if (execution.agentSessionId === undefined) continue;
           const worktreeName = lastSegment(mission.worktreePath);
+          const live = await snapshotOf(execution.agentSessionId);
+          const agentBytes =
+            live === 'unavailable' || live === undefined ? undefined : live.outputBytes;
           out.push({
             id: execution.agentSessionId,
             kind: 'agent',
@@ -226,13 +237,14 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             provider: 'claude',
             origin: 'new',
             ...(worktreeName === undefined ? {} : { worktreeName }),
+            ...(agentBytes === undefined ? {} : { outputBytes: agentBytes }),
           });
         }
         for (const record of sessions.listOpen()) {
           const provider = providerIdSchema.safeParse(record.provider);
           // Um provedor que esta versão não conhece não tem como ser aberto nem mostrado.
           if (!provider.success) continue;
-          const state = await reconcile(record.id);
+          const { state, outputBytes } = await reconcile(record.id);
           // A sessão que o processo de terminais não conhece foi fechada agora: não é mais listada.
           if (state === 'unknown') continue;
           out.push({
@@ -245,6 +257,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
             startedAt: record.createdAt,
+            ...(outputBytes === undefined ? {} : { outputBytes }),
           });
         }
         return { ok: true, data: out };
@@ -269,7 +282,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       return Promise.resolve(ids);
     },
 
-    stateOf: (terminalId) => reconcile(terminalId),
+    stateOf: async (terminalId) => (await reconcile(terminalId)).state,
 
     isMissionSession: (terminalId) => isAgentTerminal(terminalId),
 

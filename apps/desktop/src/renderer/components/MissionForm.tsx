@@ -83,74 +83,145 @@ export function MissionForm({
 
   return (
     <form className="form" aria-label="Nova missão" onSubmit={handleSubmit(enviar)} noValidate>
+      <div className="form-head">
+        <h2 className="form-head__title">Nova missão</h2>
+        <p className="form-head__hint">
+          Diga o que o agente deve fazer e como você vai saber que deu certo.
+        </p>
+      </div>
+
       {blockedByGit ? (
         <p role="alert" className="page-alert">
           {NO_GIT_WARNING}
         </p>
       ) : null}
 
-      <div className="field">
-        <label htmlFor="mission-title">Título</label>
-        <input
-          id="mission-title"
-          type="text"
-          aria-invalid={errors.title !== undefined}
-          aria-describedby={errors.title === undefined ? undefined : 'mission-title-error'}
-          {...register('title')}
-        />
-        {errors.title === undefined ? null : (
-          <p id="mission-title-error" className="field-error">
-            {errors.title.message}
+      <section className="form-section">
+        <h3 className="form-section__title">
+          <span className="form-section__num" aria-hidden="true">
+            1
+          </span>
+          O que fazer
+        </h3>
+        <p className="form-section__hint">Dê um nome curto e explique o objetivo.</p>
+        <div className="field">
+          <label htmlFor="mission-title">Título</label>
+          <p id="mission-title-hint" className="field-hint">
+            Um nome curto, para achar a missão na lista.
           </p>
-        )}
-      </div>
+          <input
+            id="mission-title"
+            type="text"
+            placeholder="Ajustar o login com Google"
+            aria-invalid={errors.title !== undefined}
+            aria-describedby={
+              errors.title === undefined
+                ? 'mission-title-hint'
+                : 'mission-title-hint mission-title-error'
+            }
+            {...register('title')}
+          />
+          {errors.title === undefined ? null : (
+            <p id="mission-title-error" className="field-error">
+              {errors.title.message}
+            </p>
+          )}
+        </div>
 
-      <div className="field">
-        <label htmlFor="mission-objective">Objetivo</label>
-        <textarea
-          id="mission-objective"
-          aria-invalid={errors.objective !== undefined}
-          aria-describedby={errors.objective === undefined ? undefined : 'mission-objective-error'}
-          {...register('objective')}
-        />
-        {errors.objective === undefined ? null : (
-          <p id="mission-objective-error" className="field-error">
-            {errors.objective.message}
+        <div className="field">
+          <label htmlFor="mission-objective">Objetivo</label>
+          <p id="mission-objective-hint" className="field-hint">
+            O que precisa ser feito e por quê. Quanto mais claro, melhor o resultado.
           </p>
-        )}
-      </div>
+          <textarea
+            id="mission-objective"
+            rows={3}
+            placeholder="Hoje o login só aceita e-mail e senha. Quero entrar também com a conta Google."
+            aria-invalid={errors.objective !== undefined}
+            aria-describedby={
+              errors.objective === undefined
+                ? 'mission-objective-hint'
+                : 'mission-objective-hint mission-objective-error'
+            }
+            {...register('objective')}
+          />
+          {errors.objective === undefined ? null : (
+            <p id="mission-objective-error" className="field-error">
+              {errors.objective.message}
+            </p>
+          )}
+        </div>
+      </section>
 
-      <div className="field">
-        <label htmlFor="mission-criteria">Critérios de aceite</label>
-        <p id="mission-criteria-hint" className="field-hint">
-          Um critério por linha. Pelo menos um é obrigatório.
-        </p>
-        <textarea
-          id="mission-criteria"
-          aria-invalid={errors.criteria !== undefined}
-          aria-describedby={
-            errors.criteria === undefined
-              ? 'mission-criteria-hint'
-              : 'mission-criteria-hint mission-criteria-error'
-          }
-          {...register('criteria')}
-        />
-        {errors.criteria === undefined ? null : (
-          <p id="mission-criteria-error" className="field-error">
-            {errors.criteria.message}
+      <section className="form-section">
+        <h3 className="form-section__title">
+          <span className="form-section__num" aria-hidden="true">
+            2
+          </span>
+          Como saber que ficou pronto
+        </h3>
+        <p className="form-section__hint">Cada critério vira uma etapa do plano.</p>
+        <div className="field">
+          <label htmlFor="mission-criteria">Critérios de aceite</label>
+          <p id="mission-criteria-hint" className="field-hint">
+            Como você vai saber que ficou pronto. Um critério por linha, pelo menos um.
           </p>
-        )}
-      </div>
+          <textarea
+            id="mission-criteria"
+            rows={4}
+            placeholder={
+              'O botão Entrar com Google aparece na tela de login\nOs testes do login passam'
+            }
+            aria-invalid={errors.criteria !== undefined}
+            aria-describedby={
+              errors.criteria === undefined
+                ? 'mission-criteria-hint'
+                : 'mission-criteria-hint mission-criteria-error'
+            }
+            {...register('criteria')}
+          />
+          {errors.criteria === undefined ? null : (
+            <p id="mission-criteria-error" className="field-error">
+              {errors.criteria.message}
+            </p>
+          )}
+        </div>
+      </section>
 
-      <div className="check">
-        <input id="mission-alters-code" type="checkbox" {...register('altersCode')} />
-        <label htmlFor="mission-alters-code">Esta missão altera código</label>
-      </div>
+      <section className="form-section">
+        <h3 className="form-section__title">
+          <span className="form-section__num" aria-hidden="true">
+            3
+          </span>
+          Como o agente trabalha
+        </h3>
+        <p className="form-section__hint">Escolha o que o agente pode fazer.</p>
+        <div className="check option-card">
+          <input
+            id="mission-alters-code"
+            type="checkbox"
+            aria-describedby="mission-alters-code-hint"
+            {...register('altersCode')}
+          />
+          <label htmlFor="mission-alters-code">Esta missão altera código</label>
+          <p id="mission-alters-code-hint" className="check__hint">
+            Marque se o agente vai editar arquivos do projeto.
+          </p>
+        </div>
 
-      <div className="check">
-        <input id="mission-plan-only" type="checkbox" {...register('planOnly')} />
-        <label htmlFor="mission-plan-only">Somente planejar</label>
-      </div>
+        <div className="check option-card">
+          <input
+            id="mission-plan-only"
+            type="checkbox"
+            aria-describedby="mission-plan-only-hint"
+            {...register('planOnly')}
+          />
+          <label htmlFor="mission-plan-only">Somente planejar</label>
+          <p id="mission-plan-only-hint" className="check__hint">
+            Gera o plano e para aí, para você revisar antes de iniciar.
+          </p>
+        </div>
+      </section>
 
       <div className="form-actions">
         <button type="submit" className="btn-primary" disabled={blockedByGit}>

@@ -39,7 +39,8 @@ test('arquivar tira o projeto da lista, aparece em Arquivados e Restaurar o devo
   await addGitProject(page, projectName);
   await openProject(page, projectName);
 
-  await page.getByRole('button', { name: 'Arquivar projeto' }).click();
+  await page.getByRole('button', { name: 'Mais ações' }).click();
+  await page.getByRole('menuitem', { name: 'Arquivar projeto' }).click();
 
   await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -67,7 +68,8 @@ test('remover da lista pede confirmação, tira o projeto da lista e mantém a p
   await addGitProject(page, projectName);
   await openProject(page, projectName);
 
-  await page.getByRole('button', { name: 'Remover da lista' }).click();
+  await page.getByRole('button', { name: 'Mais ações' }).click();
+  await page.getByRole('menuitem', { name: 'Remover da lista' }).click();
   await expect(page.getByRole('button', { name: 'Remover', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Remover', exact: true }).click();
