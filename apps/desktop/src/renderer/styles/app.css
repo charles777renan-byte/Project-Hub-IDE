@@ -1751,6 +1751,82 @@ button:disabled {
 }
 
 /*
+ * Paleta de comandos (components/PaletaComandos.tsx, Ctrl+K): um <dialog> modal nativo, perto do topo da janela,
+ * com a superfície e a sombra do menu de ações. O fundo escurece o resto da tela. O item marcado (cmdk,
+ * data-selected) usa a mesma cor do destaque do menu. O <dialog> do navegador traz borda e margem próprias:
+ * elas são zeradas aqui.
+ */
+.paleta {
+  inset-block-start: 12vh;
+  inset-block-end: auto;
+  margin-inline: auto;
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: min(70vh, 30rem);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.paleta::backdrop {
+  background: rgb(4 2 16 / 60%);
+}
+
+.paleta__comando {
+  display: flex;
+  flex-direction: column;
+  max-height: min(70vh, 30rem);
+}
+
+.paleta__busca {
+  width: 100%;
+  padding: var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.paleta__busca::placeholder {
+  color: var(--muted);
+}
+
+.paleta__lista {
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+.paleta__grupo [cmdk-group-heading] {
+  padding: var(--space-2) 0.625rem var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.paleta__item {
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.paleta__item[data-selected='true'] {
+  background: var(--line);
+}
+
+.paleta__vazio {
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/*
  * Avisos (components/Toaster.tsx): pilha no canto inferior direito, o mais novo embaixo. Cartão em
  * --surface-2 como o menu flutuante. O ícone marca o estado: lima no sucesso (destaque de estado), --danger
  * no erro. O texto fica em --text (contraste já medido sobre --surface-2).

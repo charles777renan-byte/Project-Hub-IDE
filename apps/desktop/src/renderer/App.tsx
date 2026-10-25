@@ -1,10 +1,13 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels';
-import { useMatch } from 'react-router';
+import { useMatch, useNavigate } from 'react-router';
+import { PaletaComandos } from './components/PaletaComandos';
 import { Sidebar } from './components/Sidebar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { TopographicBackground } from './components/TopographicBackground';
+import { buildPaletteItems } from './palette-items';
 import { AppRoutes, ROUTE_PATHS } from './routes';
+import { useSidebarData } from './use-sidebar-data';
 
 const SIDE_STORAGE_KEY = 'project-hub:sidebar-layout';
 const SIDE_ID = 'side';
@@ -46,6 +49,30 @@ function saveSideLayout(layout: Layout) {
  */
 export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
   const inWorkspace = useMatch(ROUTE_PATHS.workspace) !== null;
+  const [paletaAberta, setPaletaAberta] = useState(false);
+  const sidebar = useSidebarData();
+  const navigate = useNavigate();
+  const itensPaleta = useMemo(() => buildPaletteItems(sidebar, navigate), [sidebar, navigate]);
+
+  // Ctrl+K abre a paleta em qualquer tela; quem fecha é o Escape. Com a paleta aberta, o Ctrl+K já é do cmdk
+  // (sobe na lista), que o marca como tratado. Dentro do terminal ele segue para o programa: no Claude Code,
+  // Ctrl+K apaga até o fim da linha, e a paleta não pode roubar essa tecla.
+  useEffect(() => {
+    function atalhoPaleta(event: KeyboardEvent) {
+      const ctrlK =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'k';
+      if (!ctrlK || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('.terminal-view') !== null) return;
+      event.preventDefault();
+      setPaletaAberta(true);
+    }
+    window.addEventListener('keydown', atalhoPaleta);
+    return () => window.removeEventListener('keydown', atalhoPaleta);
+  }, []);
+
   return (
     <div className="app-shell">
       {inWorkspace ? null : <TopographicBackground />}
@@ -79,6 +106,11 @@ export function App({ headerStatus }: { headerStatus?: ReactNode } = {}) {
           </main>
         </Panel>
       </Group>
+      <PaletaComandos
+        aberta={paletaAberta}
+        aoFechar={() => setPaletaAberta(false)}
+        itens={itensPaleta}
+      />
     </div>
   );
 }
