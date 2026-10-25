@@ -491,10 +491,6 @@
   text-align: center;
 }
 
-.sidebar__count {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-}
 
 /* Sessões de um projeto: recuadas, com um traço à esquerda. */
 .sidebar__sessions {
@@ -503,12 +499,6 @@
   border-left: 1px solid var(--line);
 }
 
-.sidebar__session {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
 
 .sidebar__empty {
   padding: 0.25rem var(--space-2);
@@ -537,6 +527,242 @@
 .sidebar a:focus-visible,
 .sidebar button:focus-visible {
   outline-offset: -2px;
+}
+
+/*
+ * Lateral v2 (components/Sidebar.tsx): busca, aviso, ícones dos agentes por projeto e cartões das sessões. Aqui
+ * só layout e cores neutras: as cores de estado vêm das classes state-* de app.css (a seção de chrome do
+ * workspace só leva cores neutras, ver contrast.test.ts). Este arquivo carrega depois de app.css, então estas
+ * regras não declaram cor onde a classe de estado precisa valer.
+ */
+.sidebar__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.4375rem var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar__search:hover {
+  border-color: var(--field-line);
+  color: var(--text);
+}
+
+.sidebar__search span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__search kbd {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--line);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+/* Sem cor de borda nem de fundo: quem pinta o aviso é .state-attention (app.css), que carrega antes. */
+.sidebar__attention {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 12px;
+}
+
+.sidebar__attention-tag {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sidebar__attention-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sidebar__attention-ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.sidebar__attention-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar__attention-text b {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__attention-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__attention-go {
+  flex: none;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Um ícone por sessão, sobrepostos; o anel do estado (cor) vem de .state-ring em app.css. */
+.sidebar__avatars {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding-left: 4px;
+}
+
+.sidebar__avatar {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.sidebar__avatars .sidebar__avatar:first-child {
+  margin-left: 0;
+}
+
+.sidebar__avatar-more {
+  margin-left: 4px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+.sidebar__vazio {
+  flex: none;
+  padding-right: 2px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+.sidebar__avatar svg,
+.sidebar__card-ico svg,
+.sidebar__attention-ico svg {
+  display: block;
+  flex: none;
+}
+
+/* Cada sessão é um cartão: o trilho de estado (state-rail, em app.css), o programa, o título e o detalhe, e à direita o estado e a hora. */
+.sidebar__session {
+  display: block;
+  min-width: 0;
+}
+
+.sidebar__card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--space-2);
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 7px 8px 7px 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar__card:hover {
+  border-color: var(--field-line);
+}
+
+.sidebar__card--exited {
+  color: var(--muted);
+}
+
+.sidebar__card-ico {
+  display: grid;
+  grid-row: 1 / span 2;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.sidebar__card-text {
+  display: flex;
+  flex-direction: column;
+  grid-column: 2;
+  min-width: 0;
+}
+
+.sidebar__card-text .sidebar__name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.sidebar__card-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar__card-side {
+  display: flex;
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.sidebar__card time {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
 }
 
 /*

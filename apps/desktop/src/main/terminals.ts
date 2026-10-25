@@ -244,6 +244,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             state,
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
+            startedAt: record.createdAt,
           });
         }
         return { ok: true, data: out };
