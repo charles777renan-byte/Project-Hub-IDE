@@ -1526,7 +1526,10 @@ button:disabled {
 
 /*
  * Aparência do xterm sob a CSP estrita (style-src 'self'): o xterm monta estas regras num <style> que a CSP
- * bloqueia, então elas vivem aqui. Cores de 256 e RGB vão por estilo CSSOM e já passam.
+ * bloqueia, então elas vivem aqui. Estas regras só valem para o renderizador do DOM, que é a reserva quando o
+ * WebGL não carrega (ver webgl-renderer.ts). No DOM o xterm pinta cor de 24 bits e as de 16 a 255 por atributo
+ * `style` e por classes de um <style>, e a CSP bloqueia os dois: sem o WebGL essas cores saem na cor padrão.
+ * O WebGL (o renderizador de verdade) desenha tudo num canvas e não usa nada disto.
  */
 /* Sem padding próprio: o ajuste mede o contêiner e o respiro de 8px fica no `.pane__body`; um padding aqui
    deixaria a última coluna além da borda do contêiner, colada na borda do fundo do terminal. */

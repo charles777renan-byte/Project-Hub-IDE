@@ -1,6 +1,8 @@
 import { Terminal } from '@xterm/xterm';
 import { useEffect, useRef } from 'react';
+import { registerTerminalForE2e } from './e2e-hook';
 import { EXIT_HINT } from './exit-hint';
+import { attachWebglRenderer } from './webgl-renderer';
 
 /** Cores do terminal: as mesmas do app (tokens.css). O xterm recebe valores, não variáveis de CSS. */
 const THEME = { background: '#080614', foreground: '#f5f2ff', cursor: '#c8ff2e' } as const;
@@ -94,6 +96,19 @@ export function TerminalView({
     });
     term.open(host);
     termRef.current = term;
+    let disposed = false;
+    const refit = () => {
+      const size = fitTerminal(term, host);
+      if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
+    };
+    // O WebGL desenha blocos, caixas e cores de 24 bits; sem ele, o xterm segue no DOM (ver webgl-renderer.ts).
+    // Se o contexto se perde e o terminal cai no DOM, a célula muda de largura: as colunas se ajustam de novo
+    // (e o processo é avisado), a menos que o terminal já tenha saído da tela.
+    const releaseWebgl = attachWebglRenderer(term, () => {
+      if (!disposed) refit();
+    });
+    // Só existe quando o Playwright cria o gancho de teste; no app de verdade não faz nada.
+    const unregisterForE2e = registerTerminalForE2e(host, term);
     // Devolver false impede o xterm de mandar a tecla ao programa.
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown' || !event.ctrlKey) return true;
@@ -124,20 +139,19 @@ export function TerminalView({
     const typing = term.onData((data) => {
       void api.write(terminalId, data);
     });
-    const refit = () => {
-      const size = fitTerminal(term, host);
-      if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
-    };
     const observer = new ResizeObserver(refit);
     observer.observe(host);
     void api.subscribe(terminalId).then(refit);
 
     return () => {
+      disposed = true;
       observer.disconnect();
       typing.dispose();
       stopEvents();
       void api.unsubscribe(terminalId);
       termRef.current = null;
+      unregisterForE2e();
+      releaseWebgl();
       term.dispose();
     };
   }, [terminalId]);

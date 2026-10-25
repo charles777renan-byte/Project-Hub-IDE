@@ -170,6 +170,15 @@ const storedSession: TerminalSessionRecord = {
 };
 
 describe('serviço de terminais do app', () => {
+  it('abre o terminal com COLORTERM=truecolor, sem deixar passar segredos do ambiente', async () => {
+    const h = setup();
+
+    await h.service.openSession('p1', 'shell');
+
+    expect(h.opened[0]?.env).toMatchObject({ COLORTERM: 'truecolor', PATH: 'C:/Windows' });
+    expect(h.opened[0]?.env).not.toHaveProperty('ANTHROPIC_API_KEY');
+  });
+
   it('abre a sessão do provedor na pasta do projeto, grava no banco e usa o ambiente filtrado', async () => {
     const h = setup();
 
