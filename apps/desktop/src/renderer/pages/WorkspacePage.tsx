@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
+import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
@@ -54,6 +55,8 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   const hadPanes = useRef(false);
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
+  // Painéis que estão fechando: somem da tela já, antes da resposta do processo principal.
+  const [closing, setClosing] = useState<ReadonlySet<string>>(new Set());
   const consumed = useRef<string | null>(null);
   // Abrir um painel é um pedido por vez: a ref barra o segundo clique antes de o estado chegar.
   const [opening, setOpening] = useState(false);
@@ -113,6 +116,14 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   }
 
   const layout = workspace.state.workspace.layout;
+  // O arranjo sem os painéis que estão fechando: o mesmo que o servidor vai devolver (arrangeLeaves).
+  const shown =
+    closing.size === 0 || layout === null
+      ? layout
+      : arrangeLeaves(
+          leavesOf(layout).filter((leaf) => !closing.has(leaf.id)),
+          () => crypto.randomUUID(),
+        );
 
   const run = async (leafId: string, action: (id: string) => Promise<string | null>) => {
     setBusy((previous) => new Set(previous).add(leafId));
@@ -149,8 +160,17 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   };
 
   // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
-  // A folha ainda existe se falhar: o erro aparece no próprio painel.
-  const closePane = (leafId: string) => run(leafId, workspace.removePane);
+  // O painel some na hora, sem esperar o processo principal. Se o pedido falhar, ele volta e o erro aparece nele.
+  const closePane = (leafId: string) => {
+    setClosing((previous) => new Set(previous).add(leafId));
+    void run(leafId, workspace.removePane).finally(() =>
+      setClosing((previous) => {
+        const next = new Set(previous);
+        next.delete(leafId);
+        return next;
+      }),
+    );
+  };
 
   const renderLeaf = (leaf: LayoutLeaf) => {
     const terminal =
@@ -205,7 +225,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
         onOpen={(provider) => void openPane(provider)}
       />
       <div className="workspace__area">
-        {layout === null ? (
+        {shown === null ? (
           <div className="workspace__empty">
             <TopographicBackground />
             <EmptyState
@@ -219,7 +239,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
             />
           </div>
         ) : (
-          <PaneTree layout={layout} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
+          <PaneTree layout={shown} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
         )}
       </div>
     </div>
