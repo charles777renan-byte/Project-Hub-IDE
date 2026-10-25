@@ -160,7 +160,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       cwd: target.path,
       command: resolution.launch.command,
       args: resolution.launch.args,
-      env: buildTerminalEnv(deps.env),
+      // COLORTERM fica fora da lista de permitidos (que protege segredos): o valor é fixo e nosso.
+      env: buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }),
     });
     const label = providers.list().find((info) => info.id === provider)?.label ?? provider;
     try {
