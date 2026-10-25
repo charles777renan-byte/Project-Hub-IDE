@@ -13,8 +13,11 @@ const ALLOWED: ReadonlyArray<readonly [MissionStatus, MissionStatus]> = [
   ['running', 'waiting_approval'],
   ['running', 'waiting_input'],
   ['running', 'paused'],
-  ['running', 'succeeded'],
+  ['running', 'review'],
   ['running', 'failed'],
+  ['review', 'succeeded'],
+  ['review', 'queued'],
+  ['review', 'cancelled'],
   ['waiting_approval', 'running'],
   ['waiting_input', 'running'],
   ['paused', 'running'],
@@ -35,6 +38,17 @@ describe('canTransition', () => {
     expect(canTransition('running', 'waiting_approval')).toBe(true);
   });
 
+  it('o agente que termina leva a missão a review, e só a pessoa a leva a succeeded', () => {
+    expect(canTransition('running', 'succeeded')).toBe(false);
+    expect(canTransition('running', 'review')).toBe(true);
+    expect(canTransition('review', 'succeeded')).toBe(true);
+  });
+
+  it('revisão não volta a running direto: o pedido de ajuste abre nova tentativa pela fila', () => {
+    expect(canTransition('review', 'running')).toBe(false);
+    expect(canTransition('review', 'queued')).toBe(true);
+  });
+
   it('estado terminal não volta a running', () => {
     expect(canTransition('succeeded', 'running')).toBe(false);
   });
@@ -44,7 +58,7 @@ describe('canTransition', () => {
   });
 
   it('segue a tabela da seção 9.3, par a par, nos dez estados', () => {
-    expect(MISSION_STATUSES).toHaveLength(10);
+    expect(MISSION_STATUSES).toHaveLength(11);
     for (const from of MISSION_STATUSES) {
       for (const to of MISSION_STATUSES) {
         const expected = ALLOWED.some(([a, b]) => a === from && b === to);

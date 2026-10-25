@@ -63,6 +63,8 @@ function installApi(initial: MissionViewDto) {
       retry: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e2', attempt: 2 } })),
       delete: vi.fn(() => Promise.resolve<AppResult<void>>(OK)),
       provideInput: vi.fn(() => Promise.resolve(OK)),
+      approveReview: vi.fn(() => Promise.resolve(OK)),
+      requestChanges: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e3', attempt: 2 } })),
       subscribe: vi.fn((next: Listener) => {
         listener = next;
         return () => {
@@ -1216,6 +1218,37 @@ describe('MissionPage: conversa', () => {
       expect(hub.api.approvals.decide).toHaveBeenCalledWith({
         approvalId: 'ap1',
         decision: 'approved',
+      }),
+    );
+  });
+
+  it('em revisão, a Conversa oferece aprovar a conclusão, que vai para missions.approveReview', async () => {
+    const hub = installApi(viewOf({ status: 'review' }));
+    renderPage();
+
+    const conversation = await screen.findByRole('tabpanel', { name: 'Conversa' });
+    const review = within(conversation).getByRole('region', { name: 'Revisão da conclusão' });
+    await userEvent.click(within(review).getByRole('button', { name: 'Aprovar conclusão' }));
+
+    await waitFor(() => expect(hub.api.missions.approveReview).toHaveBeenCalledWith('m1'));
+  });
+
+  it('em revisão, pedir ajustes exige texto e envia o pedido aparado para missions.requestChanges', async () => {
+    const hub = installApi(viewOf({ status: 'review' }));
+    renderPage();
+
+    const conversation = await screen.findByRole('tabpanel', { name: 'Conversa' });
+    const request = within(conversation).getByRole('form', { name: 'Pedir ajustes' });
+    const adjust = within(request).getByRole('button', { name: 'Pedir ajustes' });
+    expect(adjust).toBeDisabled();
+
+    await userEvent.type(within(request).getByLabelText('O que ajustar'), '  Trocar a função  ');
+    await userEvent.click(adjust);
+
+    await waitFor(() =>
+      expect(hub.api.missions.requestChanges).toHaveBeenCalledWith({
+        missionId: 'm1',
+        feedback: 'Trocar a função',
       }),
     );
   });

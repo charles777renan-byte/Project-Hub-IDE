@@ -13,6 +13,7 @@ import type {
   MissionPlanDto,
   MissionViewDto,
   ProvideInput,
+  RequestChanges,
 } from './mission';
 
 /**
@@ -65,6 +66,10 @@ export type ProjectHubApi = {
     delete(missionId: string): Promise<AppResult<void>>;
     /** Resposta do usuário ao pedido de entrada do agente. */
     provideInput(input: ProvideInput): Promise<AppResult<void>>;
+    /** Aprova a conclusão que o agente entregou: a missão em revisão vira concluída. */
+    approveReview(missionId: string): Promise<AppResult<void>>;
+    /** Pede ajustes na revisão: abre nova tentativa no mesmo worktree, com o pedido no prompt. */
+    requestChanges(input: RequestChanges): Promise<AppResult<ExecutionDto>>;
     /**
      * Assina os eventos das missões. Cada evento chega validado. Devolve a função que cancela a
      * assinatura.

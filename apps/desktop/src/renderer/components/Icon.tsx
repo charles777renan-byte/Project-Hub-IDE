@@ -13,6 +13,7 @@ export {
   CircleSlash,
   Clock,
   Copy,
+  Eye,
   FolderGit2,
   House,
   Inbox,

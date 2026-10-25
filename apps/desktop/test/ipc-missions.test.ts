@@ -17,6 +17,7 @@ import {
   handleMissionAction,
   handleMissionDiff,
   handleProvideInput,
+  handleRequestChanges,
   registerMissionHandlers,
 } from '../src/main/ipc/missions';
 import type { IpcRegistry } from '../src/main/ipc/trusted-handler';
@@ -45,6 +46,8 @@ function spyOrchestrator(): Orchestrator {
     retryMission: vi.fn(ok),
     pauseMission: vi.fn(ok),
     resumeMission: vi.fn(ok),
+    approveReview: vi.fn(ok),
+    requestChanges: vi.fn(() => Promise.resolve({ ok: true as const, data: { id: 'e2' } })),
   } as unknown as Orchestrator;
 }
 
@@ -144,6 +147,44 @@ describe('ações sobre a missão', () => {
 
     await handleProvideInput(orchestrator, { missionId: 'm1', text: 'sim' });
     expect(orchestrator.provideInput).toHaveBeenCalledWith({ missionId: 'm1', text: 'sim' });
+  });
+});
+
+describe('revisão da conclusão (missions:approve-review:v1, missions:request-changes:v1)', () => {
+  it('os canais existem com a versão no nome', () => {
+    expect(CHANNELS.missionsApproveReview).toBe('missions:approve-review:v1');
+    expect(CHANNELS.missionsRequestChanges).toBe('missions:request-changes:v1');
+  });
+
+  it('aprovar a revisão repassa o id ao orquestrador', async () => {
+    const orchestrator = spyOrchestrator();
+
+    await handleMissionAction(orchestrator, 'approveReview', { missionId: 'm1' });
+
+    expect(orchestrator.approveReview).toHaveBeenCalledWith('m1');
+  });
+
+  it('pedir ajustes recusa texto vazio ou em branco, sem chamar o orquestrador', () => {
+    const orchestrator = spyOrchestrator();
+
+    for (const feedback of ['', '   ']) {
+      expect(handleRequestChanges(orchestrator, { missionId: 'm1', feedback })).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    }
+    expect(orchestrator.requestChanges).not.toHaveBeenCalled();
+  });
+
+  it('pedir ajustes repassa o pedido ao orquestrador', async () => {
+    const orchestrator = spyOrchestrator();
+
+    await handleRequestChanges(orchestrator, { missionId: 'm1', feedback: 'Trocar a função' });
+
+    expect(orchestrator.requestChanges).toHaveBeenCalledWith({
+      missionId: 'm1',
+      feedback: 'Trocar a função',
+    });
   });
 });
 

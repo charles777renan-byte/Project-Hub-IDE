@@ -19,6 +19,7 @@ import {
   type ProviderId,
   type ProviderInfo,
   type ProvideInput,
+  type RequestChanges,
   type TerminalEvent,
   type TerminalSummary,
   type WorkspaceDto,
@@ -99,6 +100,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       retry: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsRetry, { missionId }),
       delete: (missionId: string) => call<void>(CHANNELS.missionsDelete, { missionId }),
       provideInput: (input: ProvideInput) => call<void>(CHANNELS.missionsProvideInput, input),
+      approveReview: (missionId: string) =>
+        call<void>(CHANNELS.missionsApproveReview, { missionId }),
+      requestChanges: (input: RequestChanges) =>
+        call<ExecutionDto>(CHANNELS.missionsRequestChanges, input),
       subscribe: (listener: (event: MissionEventDto) => void) =>
         subscribe(CHANNELS.missionsEvent, (payload) => {
           const parsed = missionEventDtoSchema.safeParse(payload);

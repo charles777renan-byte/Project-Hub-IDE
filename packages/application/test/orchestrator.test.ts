@@ -228,7 +228,7 @@ describe('startMission', () => {
     const execution = data(await h.orchestrator.startMission(MISSION));
 
     expect(execution).toMatchObject({ attempt: 1, status: 'succeeded', exitReason: 'completed' });
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     const executionEvents = h.repo.audit().filter((e) => e.aggregateId === execution.id);
     expect(executionEvents.map((e) => e.sequence)).toEqual(
       executionEvents.map((_, index) => index + 1),
@@ -250,7 +250,7 @@ describe('startMission', () => {
       .map((e) => e.payload);
     expect(transitions).toEqual([
       { from: 'queued', to: 'running' },
-      { from: 'running', to: 'succeeded' },
+      { from: 'running', to: 'review' },
     ]);
   });
 
@@ -386,7 +386,7 @@ describe('startMission', () => {
 
     data(await h.orchestrator.decideApproval({ approvalId, decision: 'approved' }));
 
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     expect(h.repo.approvals()[0]).toMatchObject({ status: 'approved' });
     expect(h.agent.sessions[0]?.decisions).toEqual([{ decision: 'approved' }]);
   });
@@ -442,7 +442,7 @@ describe('startMission', () => {
 
     data(await h.orchestrator.provideInput({ missionId: MISSION, text: 'use a opção B' }));
 
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     expect(h.agent.sessions[0]?.inputs).toEqual([{ text: 'use a opção B' }]);
   });
 
@@ -467,10 +467,11 @@ describe('cancelMission', () => {
     expect(h.agent.starts).toHaveLength(0);
   });
 
-  it('missão já encerrada não pode ser cancelada', async () => {
+  it('missão já concluída não pode ser cancelada, mas a que está em revisão pode', async () => {
     const h = harness({ scripts: [[]] });
     h.repo.insertMission(missionFixture());
     await h.orchestrator.startMission(MISSION);
+    data(await h.orchestrator.approveReview(MISSION));
 
     expect(codeOf(await h.orchestrator.cancelMission(MISSION))).toBe('MISSION_INVALID_STATE');
     expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
@@ -645,7 +646,7 @@ describe('retryMission', () => {
       [2, 'succeeded'],
     ]);
     expect(attempts[0]).toMatchObject({ id: first.id, exitReason: 'agent_failed' });
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
   });
 
   it('retry reaproveita o worktree da missão, sem criar outro', async () => {
@@ -769,7 +770,7 @@ describe('pausa e retomada (R181)', () => {
     expect(data(await starting)).toMatchObject({ status: 'succeeded' });
     expect(h.agent.sessions[0]?.resumes).toBe(1);
     expect(deltas(h)).toEqual(['antes', 'depois']);
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     const [execution] = h.repo.listExecutions(MISSION);
     expect(
       h.repo
@@ -1068,7 +1069,7 @@ describe('resumo de conclusão (R130)', () => {
     const execution = data(await h.orchestrator.startMission(MISSION));
 
     expect(diff).toHaveBeenCalledWith(WORKTREE_PATH);
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     expect(concludedEvents(h)).toEqual([
       expect.objectContaining({
         aggregateType: 'execution',
@@ -1119,7 +1120,7 @@ describe('resumo de conclusão (R130)', () => {
     data(await h.orchestrator.startMission(MISSION));
     spy.mockRestore();
 
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     expect(concludedEvents(h)).toHaveLength(0);
   });
 
@@ -1129,7 +1130,7 @@ describe('resumo de conclusão (R130)', () => {
 
     data(await h.orchestrator.startMission(MISSION));
 
-    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
     expect(concludedEvents(h)).toHaveLength(0);
   });
 
@@ -1156,5 +1157,108 @@ describe('resumo de conclusão (R130)', () => {
     expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
     expect(diff).not.toHaveBeenCalled();
     expect(concludedEvents(h)).toHaveLength(0);
+  });
+});
+
+describe('revisão da conclusão', () => {
+  const finish = [
+    { kind: 'event', event: { type: 'message.completed', messageId: 'm1' } },
+  ] as const;
+
+  it('o agente que termina deixa a missão em review, e a tentativa fica concluída', async () => {
+    const h = harness({ scripts: [[...finish]] });
+    h.repo.insertMission(missionFixture());
+
+    const execution = data(await h.orchestrator.startMission(MISSION));
+
+    expect(execution.status).toBe('succeeded');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+  });
+
+  it('aprovar a revisão conclui a missão e grava review.approved pela pessoa', async () => {
+    const h = harness({ scripts: [[...finish]] });
+    h.repo.insertMission(missionFixture());
+    await h.orchestrator.startMission(MISSION);
+
+    data(await h.orchestrator.approveReview(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('succeeded');
+    const approved = h.repo.audit().filter((e) => e.eventType === 'review.approved');
+    expect(approved).toHaveLength(1);
+    expect(approved[0]).toMatchObject({ actor: 'user', aggregateId: MISSION });
+  });
+
+  it('aprovar fora da revisão é recusado e a missão não muda', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture({ status: 'queued' }));
+
+    expect(codeOf(await h.orchestrator.approveReview(MISSION))).toBe('MISSION_INVALID_STATE');
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+  });
+
+  it('pedir ajustes abre nova tentativa no mesmo worktree, com o pedido no prompt', async () => {
+    const h = harness({ scripts: [[...finish], []] });
+    h.repo.insertMission(missionFixture({ altersCode: true }));
+    await h.orchestrator.startMission(MISSION);
+
+    const second = data(
+      await h.orchestrator.requestChanges({
+        missionId: MISSION,
+        feedback: '  Trocar o nome da função  ',
+      }),
+    );
+
+    expect(second).toMatchObject({ attempt: 2, status: 'succeeded' });
+    expect(h.worktrees.created).toHaveLength(1);
+    expect(h.agent.starts[1]?.cwd).toBe(h.agent.starts[0]?.cwd);
+    expect(h.agent.starts[1]?.prompt).toBe(
+      'Corrigir o login\n\nAjustes pedidos na revisão:\nTrocar o nome da função',
+    );
+    expect(h.agent.starts[0]?.prompt).toBe('Corrigir o login');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+  });
+
+  it('o prompt leva só o pedido mais recente, quando a revisão pede ajustes mais de uma vez', async () => {
+    const h = harness({ scripts: [[...finish], [...finish], []] });
+    h.repo.insertMission(missionFixture());
+    await h.orchestrator.startMission(MISSION);
+    data(await h.orchestrator.requestChanges({ missionId: MISSION, feedback: 'Primeiro pedido' }));
+
+    data(await h.orchestrator.requestChanges({ missionId: MISSION, feedback: 'Segundo pedido' }));
+
+    expect(h.agent.starts[2]?.prompt).toContain('Segundo pedido');
+    expect(h.agent.starts[2]?.prompt).not.toContain('Primeiro pedido');
+  });
+
+  it('pedido de ajuste vazio é recusado antes de qualquer mudança', async () => {
+    const h = harness({ scripts: [[...finish]] });
+    h.repo.insertMission(missionFixture());
+    await h.orchestrator.startMission(MISSION);
+
+    const error = await h.orchestrator.requestChanges({ missionId: MISSION, feedback: '   ' });
+
+    expect(codeOf(error)).toBe('VALIDATION_FAILED');
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+    expect(h.repo.audit().some((e) => e.eventType === 'review.changes_requested')).toBe(false);
+  });
+
+  it('pedir ajustes fora da revisão é recusado', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture({ status: 'queued' }));
+
+    const error = await h.orchestrator.requestChanges({ missionId: MISSION, feedback: 'Ajuste' });
+
+    expect(codeOf(error)).toBe('MISSION_INVALID_STATE');
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+  });
+
+  it('cancelar uma missão em revisão a encerra como cancelada', async () => {
+    const h = harness({ scripts: [[...finish]] });
+    h.repo.insertMission(missionFixture());
+    await h.orchestrator.startMission(MISSION);
+
+    data(await h.orchestrator.cancelMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
   });
 });

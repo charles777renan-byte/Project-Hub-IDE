@@ -15,6 +15,7 @@ export const MISSION_STATUS_VALUES = [
   'waiting_approval',
   'waiting_input',
   'paused',
+  'review',
   'succeeded',
   'failed',
   'cancelled',
@@ -77,6 +78,13 @@ export const provideInputSchema = z.object({
   text: z.string().min(1),
 });
 export type ProvideInput = z.infer<typeof provideInputSchema>;
+
+/** Entrada de `missions:request-changes:v1`: o que a pessoa pede que o agente ajuste na revisão. */
+export const requestChangesInputSchema = z.object({
+  missionId: z.string().min(1),
+  feedback: z.string().trim().min(1),
+});
+export type RequestChanges = z.infer<typeof requestChangesInputSchema>;
 
 /** Entrada de `approvals:decide:v1`. A nota é opcional e só vai ao agente quando a pessoa a escreve. */
 export const decideApprovalInputSchema = z.object({

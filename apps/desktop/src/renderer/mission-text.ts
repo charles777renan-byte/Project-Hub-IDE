@@ -8,6 +8,7 @@ import {
   CircleQuestionMark,
   CircleSlash,
   Clock,
+  Eye,
   LoaderCircle,
   ShieldQuestionMark,
   type LucideIcon,
@@ -30,6 +31,7 @@ const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
   waiting_approval: { label: 'Aguarda sua aprovação', tone: 'warn' },
   waiting_input: { label: 'Aguarda sua resposta', tone: 'warn' },
   paused: { label: 'Pausada', tone: 'orange' },
+  review: { label: 'Aguarda sua revisão', tone: 'warn' },
   succeeded: { label: 'Concluída', tone: 'lime' },
   failed: { label: 'Falhou', tone: 'red' },
   cancelled: { label: 'Cancelada', tone: 'muted' },
@@ -49,6 +51,7 @@ const STATUS_ICON: Record<MissionStatus, LucideIcon | undefined> = {
   waiting_approval: ShieldQuestionMark,
   waiting_input: CircleQuestionMark,
   paused: CirclePause,
+  review: Eye,
   succeeded: CircleCheck,
   failed: CircleAlert,
   cancelled: CircleSlash,
@@ -58,7 +61,12 @@ const STATUS_ICON: Record<MissionStatus, LucideIcon | undefined> = {
 const ENDED: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
 
 /** Estados que pedem uma decisão da pessoa: o cartão da lista fica destacado. */
-const NEEDS_ATTENTION: readonly MissionStatus[] = ['planned', 'waiting_approval', 'waiting_input'];
+const NEEDS_ATTENTION: readonly MissionStatus[] = [
+  'planned',
+  'waiting_approval',
+  'waiting_input',
+  'review',
+];
 
 const SITUATION: Record<MissionStatus, string> = {
   draft: 'Ainda sem plano. Gere o plano para começar.',
@@ -68,6 +76,7 @@ const SITUATION: Record<MissionStatus, string> = {
   waiting_approval: 'O agente pediu permissão para uma ação protegida.',
   waiting_input: 'O agente precisa de uma resposta sua.',
   paused: 'A execução está pausada.',
+  review: 'O agente terminou. Revise o resultado e aprove ou peça ajustes.',
   succeeded: 'Missão concluída.',
   failed: 'A execução terminou com falha.',
   cancelled: 'Missão cancelada.',
@@ -80,6 +89,7 @@ const REQUIRED_ACTION: Partial<Record<MissionStatus, string>> = {
   queued: 'Iniciar missão',
   waiting_approval: 'Decidir a aprovação',
   waiting_input: 'Responder ao agente',
+  review: 'Revisar a conclusão',
 };
 
 const STEP_STATUS: Record<MissionStepDto['status'], { label: string; tone: Tone }> = {
@@ -120,6 +130,8 @@ export const MISSION_TEXT = {
   approvePlan: 'Aprovar plano',
   start: 'Iniciar missão',
   decisionLink: 'Ver a decisão',
+  approveReview: 'Aprovar conclusão',
+  requestChanges: 'Pedir ajustes',
 } as const;
 
 /**
@@ -127,7 +139,11 @@ export const MISSION_TEXT = {
  * ficam na aba Conversa, e o banner "Aguardando você" aparece em todas as abas. O foco vai para o
  * lugar da decisão (R182).
  */
-const DECISION_IN_CONVERSATION: readonly MissionStatus[] = ['waiting_approval', 'waiting_input'];
+const DECISION_IN_CONVERSATION: readonly MissionStatus[] = [
+  'waiting_approval',
+  'waiting_input',
+  'review',
+];
 
 export function needsDecisionInConversation(status: MissionStatus): boolean {
   return DECISION_IN_CONVERSATION.includes(status);
@@ -361,6 +377,8 @@ const CONVERSATION_EVENTS: ReadonlySet<string> = new Set([
   'session.failed',
   'session.error',
   'session.ended',
+  'review.approved',
+  'review.changes_requested',
 ]);
 
 /** Os eventos da Conversa: só a história para a pessoa, na ordem em que chegaram. */
@@ -461,6 +479,12 @@ export function describeEvent(event: MissionEventDto): string | null {
       return 'Execução retomada por você.';
     case 'execution.interrupted':
       return 'Execução interrompida ao fechar o aplicativo.';
+    case 'review.approved':
+      return 'Conclusão aprovada por você.';
+    case 'review.changes_requested': {
+      const feedback = textOf(payload['feedback']);
+      return feedback === undefined ? 'Ajustes pedidos.' : `Ajustes pedidos: ${feedback}`;
+    }
     default:
       return null;
   }

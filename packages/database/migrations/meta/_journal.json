@@ -36,6 +36,13 @@
       "when": 1792710018316,
       "tag": "0004_workspaces_e_sessoes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792941602225,
+      "tag": "0005_revisao_da_missao",
+      "breakpoints": true
     }
   ]
 }

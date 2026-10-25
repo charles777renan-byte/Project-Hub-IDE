@@ -17,6 +17,7 @@ import {
   listMissionsInputSchema,
   missionIdInputSchema,
   provideInputSchema,
+  requestChangesInputSchema,
   type AppResult,
 } from '@project-hub/contracts';
 import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
@@ -77,7 +78,8 @@ export function handleDeleteMission(deps: DeleteMissionDeps, payload: unknown) {
  */
 export function handleMissionAction(
   orchestrator: Orchestrator,
-  action: 'plan' | 'approvePlan' | 'start' | 'cancel' | 'pause' | 'resume' | 'retry',
+  action:
+    'plan' | 'approvePlan' | 'start' | 'cancel' | 'pause' | 'resume' | 'retry' | 'approveReview',
   payload: unknown,
 ) {
   const input = missionIdInputSchema.safeParse(payload);
@@ -98,6 +100,8 @@ export function handleMissionAction(
       return orchestrator.resumeMission(missionId);
     case 'retry':
       return orchestrator.retryMission(missionId);
+    case 'approveReview':
+      return orchestrator.approveReview(missionId);
   }
 }
 
@@ -105,6 +109,13 @@ export function handleProvideInput(orchestrator: Orchestrator, payload: unknown)
   const input = provideInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
   return orchestrator.provideInput(input.data);
+}
+
+/** Pedido de ajuste na revisão: a entrada é validada aqui, e a regra de estado fica no orquestrador. */
+export function handleRequestChanges(orchestrator: Orchestrator, payload: unknown) {
+  const input = requestChangesInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
+  return orchestrator.requestChanges(input.data);
 }
 
 /** Liga os canais de missão. Todos recusam remetente de outra origem (R65, R165). */
@@ -137,4 +148,8 @@ export function registerMissionHandlers(
   on(CHANNELS.missionsRetry, (payload) => handleMissionAction(orchestrator, 'retry', payload));
   on(CHANNELS.missionsDelete, (payload) => handleDeleteMission(deps.deleteDeps, payload));
   on(CHANNELS.missionsProvideInput, (payload) => handleProvideInput(orchestrator, payload));
+  on(CHANNELS.missionsApproveReview, (payload) =>
+    handleMissionAction(orchestrator, 'approveReview', payload),
+  );
+  on(CHANNELS.missionsRequestChanges, (payload) => handleRequestChanges(orchestrator, payload));
 }

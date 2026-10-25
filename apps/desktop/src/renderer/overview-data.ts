@@ -36,7 +36,7 @@ export type UnreadApproval = { projectId: string; missionId: string; missionTitl
 export type Overview = {
   /** Missões em `running`. */
   running: number;
-  /** Missões que esperam a pessoa: `planned`, `waiting_approval` e `waiting_input`. */
+  /** Missões que esperam a pessoa: `planned`, `waiting_approval`, `waiting_input` e `review`. */
   waiting: number;
   /** As missões que entram em `running` ou em `waiting`, na ordem dos projetos. */
   items: OverviewItem[];

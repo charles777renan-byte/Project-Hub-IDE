@@ -26,6 +26,8 @@ export const CHANNELS = {
   /** Exclui uma missão encerrada, com o plano, as tentativas, as aprovações e a auditoria. */
   missionsDelete: 'missions:delete:v1',
   missionsProvideInput: 'missions:provide-input:v1',
+  missionsApproveReview: 'missions:approve-review:v1',
+  missionsRequestChanges: 'missions:request-changes:v1',
   /** Evento da missão, do processo principal para o renderer. Não tem resposta. */
   missionsEvent: 'missions:event:v1',
   approvalsDecide: 'approvals:decide:v1',

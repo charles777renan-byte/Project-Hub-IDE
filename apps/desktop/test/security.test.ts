@@ -487,6 +487,7 @@ describe('buildProjectHubApi', () => {
     ]);
     expect(Object.keys(api.missions).sort()).toEqual([
       'approvePlan',
+      'approveReview',
       'cancel',
       'create',
       'delete',
@@ -496,6 +497,7 @@ describe('buildProjectHubApi', () => {
       'pause',
       'plan',
       'provideInput',
+      'requestChanges',
       'resume',
       'retry',
       'start',
