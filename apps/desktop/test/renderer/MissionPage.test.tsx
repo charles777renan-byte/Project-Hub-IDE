@@ -256,6 +256,47 @@ describe('MissionPage: cabeçalho', () => {
     expect(screen.queryByText('Página do projeto')).not.toBeInTheDocument();
   });
 
+  it('falha ao excluir: a pergunta some e o menu volta, com a missão ainda na tela', async () => {
+    const { api } = installApi(viewOf({ status: 'failed' }));
+    api.missions.delete.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+        message: 'O worktree tem alterações não salvas.',
+        retryable: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('group', { name: /Excluir esta missão/ })).not.toBeInTheDocument();
+    // Dá para tentar de novo: o menu voltou e ainda oferece Excluir missão.
+    await openActionsMenu(user);
+    expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
+  });
+
+  it('falha ao excluir: o foco volta ao botão Mais ações', async () => {
+    const { api } = installApi(viewOf({ status: 'failed' }));
+    api.missions.delete.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'WORKTREE_HAS_UNSAVED_CHANGES', message: 'Falhou.', retryable: false },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    await screen.findByRole('alert');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mais ações' })).toHaveFocus());
+  });
+
   it('Voltar desfaz o pedido de exclusão: nada é apagado e o foco volta ao menu', async () => {
     const { api } = installApi(viewOf({ status: 'succeeded' }));
     const user = userEvent.setup();

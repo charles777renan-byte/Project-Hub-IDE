@@ -145,14 +145,6 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
 }
 
 /**
- * Resumo fixo no topo da página da missão (seção 10.7): o projeto (link), o título, a linha com a
- * situação (chip com texto e cor), a branch e o nome curto do worktree, a ação principal que a situação
- * permite, as ações secundárias (pausar, cancelar ou excluir) em botões discretos e três indicadores
- * (verificação, arquivos alterados e Git). Com a missão concluída, mostra também o fecho da conclusão
- * (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o
- * que a página passa: o comportamento das ações fica na página.
- */
-/**
  * Pausar, cancelar e excluir, no menu "Mais ações", com as mesmas condições de antes: Pausar só com a
  * missão em execução, Excluir só com ela encerrada, Cancelar no resto.
  *
@@ -228,6 +220,14 @@ function SecondaryActions({
   );
 }
 
+/**
+ * Resumo fixo no topo da página da missão (seção 10.7): o projeto (link), o título, a linha com a
+ * situação (chip com texto e cor), a branch e o nome curto do worktree, a ação principal que a situação
+ * permite, as ações secundárias (pausar, cancelar ou excluir) no menu "Mais ações" e três indicadores
+ * (verificação, arquivos alterados e Git). Com a missão concluída, mostra também o fecho da conclusão
+ * (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o
+ * que a página passa: o comportamento das ações fica na página.
+ */
 export function MissionSummary({
   mission,
   project,
