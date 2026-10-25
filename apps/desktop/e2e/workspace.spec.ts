@@ -6,7 +6,9 @@ import { decodePng, pixelAt } from './png';
 import {
   E2E_HOOK_KEY,
   expectTerminalToContain,
+  expectWebglCanvas,
   terminalForeground,
+  skipWithoutWebgl2,
   terminalRowBox,
 } from './terminals';
 
@@ -488,6 +490,9 @@ test('o terminal desenha o mascote em blocos contínuos, com as cores de 24 bits
 }, testInfo) => {
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
+  // Sem WebGL na página (máquina sem GPU) o xterm segue no DOM, que não desenha blocos nem aplica a cor pela CSP:
+  // o teste pula, antes de abrir shell. Com WebGL na página e sem canvas no terminal, ele falha.
+  await skipWithoutWebgl2(page);
   const messages: string[] = [];
   page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
   await addProjectAndOpenWorkspace(page, projectName);
@@ -511,9 +516,7 @@ test('o terminal desenha o mascote em blocos contínuos, com as cores de 24 bits
   expect(await terminalForeground(view, '▛')).toEqual({ rgb: true, color: 0xd77757 });
   expect(await terminalForeground(view, '·')).toEqual({ rgb: true, color: 0x999999 });
 
-  // Sem WebGL (máquina sem GPU) o xterm segue no DOM, que não desenha blocos nem aplica a cor pela CSP.
-  const canvases = await view.locator('canvas').count();
-  test.skip(canvases === 0, 'Sem WebGL nesta máquina: o terminal fica no renderizador do DOM.');
+  await expectWebglCanvas(view);
   expect(await view.locator('.xterm-rows').count()).toBe(0);
 
   // O mascote: as colunas 3 a 5 das duas primeiras linhas são blocos cheios, então a região é laranja de ponta
@@ -631,6 +634,7 @@ test('remontar os terminais dezenas de vezes libera cada contexto WebGL e os pai
   });
   await page.reload();
   await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  await skipWithoutWebgl2(page);
   /** Contextos WebGL criados pela página e quantos deles seguem vivos (não perdidos). */
   const contexts = () =>
     page.evaluate(() => {
@@ -645,46 +649,51 @@ test('remontar os terminais dezenas de vezes libera cada contexto WebGL e os pai
   await openShell(page);
   const views = page.locator('.terminal-view');
   await expect(views).toHaveCount(2);
-  test.skip(
-    (await views.first().locator('canvas').count()) === 0,
-    'Sem WebGL nesta máquina: não há contexto para vazar.',
-  );
+  await expectWebglCanvas(views);
 
   // Sair do workspace e voltar remonta cada TerminalView (dois por rodada), sem processo novo. A rota muda pelo
-  // hash, o mesmo caminho do app, e as idas e vindas são rápidas.
+  // hash, o mesmo caminho do app, sem pausa além de esperar o desmonte e a montagem acontecerem: cada rodada tem
+  // de montar mesmo os dois terminais (o React não junta rodadas), e é isso que a contagem de contextos confere.
   const rounds = 40;
-  let mounts = 2;
-  await page.evaluate(async (count) => {
-    const workspace = location.hash;
-    const frame = () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-    for (let round = 0; round < count; round += 1) {
-      location.hash = '#/';
-      await frame();
-      location.hash = workspace;
-      await frame();
-    }
-  }, rounds);
+  await page.evaluate(
+    async ({ count, panes }) => {
+      const workspace = location.hash;
+      const waitForViews = (expected: number) =>
+        new Promise<void>((resolve, reject) => {
+          const started = performance.now();
+          const check = () => {
+            if (document.querySelectorAll('.terminal-view').length === expected) resolve();
+            else if (performance.now() - started > 10_000) {
+              reject(new Error(`esperava ${expected} terminais na tela`));
+            } else requestAnimationFrame(check);
+          };
+          check();
+        });
+      for (let round = 0; round < count; round += 1) {
+        location.hash = '#/';
+        await waitForViews(0);
+        location.hash = workspace;
+        await waitForViews(panes);
+      }
+    },
+    { count: rounds, panes: 2 },
+  );
   await expect(views).toHaveCount(2);
-  mounts += rounds * 2;
   // Mudança estrutural (abrir e fechar painel) também remonta todos os painéis, pelo caminho real do app.
   for (let cycle = 0; cycle < 2; cycle += 1) {
     await openShell(page);
     await expect(views).toHaveCount(3);
     await closePane(page, 2);
     await expect(views).toHaveCount(2);
-    mounts += 3 + 2;
   }
-  expect(mounts).toBeGreaterThan(50);
 
   // Com dois terminais na tela, só os contextos deles estão vivos: os de todas as montagens anteriores foram
   // liberados pelo app (sem isso passariam de 16 e o Chromium perderia o mais antigo).
   const now = await contexts();
-  console.log(`[medida] ${mounts} montagens: ${JSON.stringify(now)}`);
-  // Nem toda ida e volta rápida chega a montar (o React junta algumas), mas passam muito de 16.
-  expect(now.created).toBeGreaterThan(40);
+  console.log(`[medida] contextos WebGL criados e vivos: ${JSON.stringify(now)}`);
+  // A guarda de que o teste montou o que disse, medida na página: cada rodada monta dois terminais e cada terminal
+  // cria um contexto, então só as rodadas já dão 80, muito além do limite de 16.
+  expect(now.created).toBeGreaterThanOrEqual(rounds * 2);
   expect.soft(now.alive, 'contextos WebGL vivos com dois terminais na tela').toBeLessThanOrEqual(2);
 
   // Fora do workspace nenhum terminal está montado, e nenhum contexto segue vivo.
@@ -699,11 +708,12 @@ test('remontar os terminais dezenas de vezes libera cada contexto WebGL e os pai
   await page.getByRole('navigation', { name: 'Workspaces abertos' }).getByRole('link').click();
   await expect(views).toHaveCount(2);
 
-  // Cada painel que sobrou segue desenhando em WebGL (canvas) e não caiu para o DOM.
+  // Pré-condição, não prova do vazamento: os painéis que sobraram desenham em WebGL (sem isso, "vivos <= 2"
+  // valeria por vazio) e seguem com a sessão. Os painéis vivos são sempre os contextos mais novos, então esta
+  // checagem passa também sem a correção; quem acusa o vazamento são as contagens acima e o aviso do Chromium.
   for (let index = 0; index < 2; index += 1) {
     const view = views.nth(index);
     await expect(view.locator('canvas').first()).toBeAttached();
-    expect(await view.locator('.xterm-rows').count()).toBe(0);
     await expectTerminalToContain(view, 'PS ');
   }
   const loss = messages.filter((text) => WEBGL_LOSS.test(text));
@@ -721,15 +731,13 @@ test('se o contexto WebGL se perde, o terminal volta ao DOM, ajusta as colunas �
   test.setTimeout(120_000);
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await skipWithoutWebgl2(page);
   const messages: string[] = [];
   page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
   await addProjectAndOpenWorkspace(page, projectName);
   await openShell(page);
   const view = page.locator('.terminal-view');
-  test.skip(
-    (await view.locator('canvas').count()) === 0,
-    'Sem WebGL nesta máquina: não há contexto para perder.',
-  );
+  await expectWebglCanvas(view);
 
   /** Colunas do xterm, largura da área e largura da tela dele (a das células). */
   const geometry = () =>
@@ -769,13 +777,14 @@ test('se o contexto WebGL se perde, o terminal volta ao DOM, ajusta as colunas �
   await endShell(page);
 });
 
-test('abrir muitos painéis em sequência não estoura o limite de contextos WebGL: todos seguem em WebGL', async ({
+test('abrir muitos painéis em sequência não gera o aviso "Too many active WebGL contexts" do Chromium', async ({
   launchApp,
   gitRepo,
 }) => {
   test.setTimeout(300_000);
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await skipWithoutWebgl2(page);
   const messages: string[] = [];
   page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
   await addProjectAndOpenWorkspace(page, projectName);
@@ -786,20 +795,20 @@ test('abrir muitos painéis em sequência não estoura o limite de contextos Web
   for (let index = 0; index < total; index += 1) await openShell(page);
   const views = page.locator('.terminal-view');
   await expect(views).toHaveCount(total);
-  test.skip(
-    (await views.first().locator('canvas').count()) === 0,
-    'Sem WebGL nesta máquina: não há contexto para estourar.',
-  );
+  await expectWebglCanvas(views);
   // Um contexto perdido só devolve o painel ao DOM depois de o xterm esperar 3 s por uma restauração.
   await page.waitForTimeout(4_000);
 
+  // Guarda extra: nenhum painel caiu para o DOM. Com dez painéis ela passa também sem a correção (os contextos
+  // perdidos eram os de painéis já descartados), então não é ela que reprova o teste.
   for (let index = 0; index < total; index += 1) {
     const view = views.nth(index);
     await expect(view.locator('canvas').first()).toBeAttached();
     expect(await view.locator('.xterm-rows').count(), `painel ${index} caiu para o DOM`).toBe(0);
   }
+  // A asserção que reprova sem a correção: o Chromium avisa quando passa de 16 contextos vivos.
   const loss = messages.filter((text) => WEBGL_LOSS.test(text));
   console.log(`[medida] ${total} painéis, avisos de contexto: ${loss.length}`);
-  expect(loss).toEqual([]);
+  expect(loss, 'avisos de contexto WebGL perdido ou em excesso').toEqual([]);
   await endShell(page);
 });

@@ -1,4 +1,4 @@
-import { expect, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { E2E_HOOK_KEY } from '../src/renderer/components/terminals/e2e-hook';
 
 // Leitura do terminal pelos testes de ponta a ponta. O terminal do app usa o renderizador WebGL do xterm,
@@ -155,4 +155,42 @@ export async function terminalForeground(
     },
     { key: E2E_HOOK_KEY, wanted: char },
   );
+}
+
+/**
+ * A página sabe criar um contexto WebGL2? A sonda cria um canvas à parte, pede o contexto e o solta na hora.
+ * É a pergunta ao navegador do teste, e não ao app: só ela decide se o WebGL é de se esperar.
+ */
+export async function pageSupportsWebgl2(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (gl === null) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  });
+}
+
+/**
+ * Pré-condição dos testes que dependem do terminal em WebGL, na primeira metade: pula só quando a própria página
+ * diz que não há WebGL2 (o xterm fica no DOM, sem blocos nem cor de 24 bits). Chamar logo depois de abrir o app,
+ * antes de abrir qualquer shell: um teste que pula com shell vivo deixa o app sem fechar.
+ */
+export async function skipWithoutWebgl2(page: Page): Promise<void> {
+  const supported = await pageSupportsWebgl2(page);
+  console.log(`[medida] sonda de WebGL2 na página: ${supported ? 'disponível' : 'indisponível'}`);
+  test.skip(
+    !supported,
+    'A página não cria contexto WebGL2 nesta máquina: o terminal fica no renderizador do DOM.',
+  );
+}
+
+/**
+ * Segunda metade, depois de o terminal abrir: se a página tem WebGL2 (a sonda passou) e o terminal não tem
+ * canvas, o teste FALHA. O app deixou de usar o WebGL, e pular esconderia isso.
+ */
+export async function expectWebglCanvas(view: Locator): Promise<void> {
+  await expect(
+    view.first().locator('canvas').first(),
+    'A página cria contexto WebGL2, mas o terminal não tem canvas: ele não está desenhando em WebGL',
+  ).toBeAttached({ timeout: 5_000 });
 }
