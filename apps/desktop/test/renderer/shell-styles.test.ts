@@ -130,11 +130,11 @@ describe('casca do app', () => {
 
   // Atualizado na identidade visual (Tarefa 5): o item ativo troca o fundo --field-line por --line e ganha
   // a barra lima de 3px à esquerda (--accent, o papel "estado ativo"); nunca magenta.
-  it('o item ativo da navegação principal tem fundo --line e barra lima de 3px à esquerda', () => {
+  it('o item ativo da navegação principal tem fundo --line e traço lima de 2px embaixo', () => {
     const active = ruleDeclarations(workspaceCss, ".main-nav a[aria-current='page']");
     expect(active.get('background')).toBe('var(--line)');
     expect(active.get('color')).toBe('var(--text)');
-    expect(active.get('box-shadow')).toBe('inset 3px 0 0 var(--accent)');
+    expect(active.get('box-shadow')).toBe('inset 0 -2px 0 var(--accent)');
   });
 
   it('a coluna lateral não encolhe e a barra de projetos enche o que sobra dela', () => {

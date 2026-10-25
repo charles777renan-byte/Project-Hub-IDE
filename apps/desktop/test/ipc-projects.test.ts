@@ -10,7 +10,9 @@ import {
 import {
   handleAddProject,
   handleChooseDirectory,
+  handleOpenFolder,
   handleProjectLifecycle,
+  handleSetGroup,
   registerProjectHandlers,
 } from '../src/main/ipc/projects';
 import { registerTrustedHandler, type IpcRegistry } from '../src/main/ipc/trusted-handler';
@@ -200,6 +202,74 @@ describe('handleChooseDirectory', () => {
   });
 });
 
+describe('handleOpenFolder', () => {
+  function deps(overrides: { found?: boolean; directory?: boolean; problem?: string } = {}) {
+    const openFolder = vi.fn(() => Promise.resolve(overrides.problem ?? ''));
+    return {
+      openFolder,
+      deps: {
+        services: {
+          repo: { get: () => (overrides.found === false ? undefined : PROJECT) },
+          fs: { isDirectory: () => Promise.resolve(overrides.directory !== false) },
+        } as unknown as AddProjectDeps,
+        lifecycle: neverCalledLifecycle,
+        chooseDirectory: () => Promise.resolve(null),
+        openFolder,
+      },
+    };
+  }
+
+  it('recusa a entrada sem o id do projeto, sem abrir nada', async () => {
+    const { deps: d, openFolder } = deps();
+    await expect(handleOpenFolder(d, {})).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    expect(openFolder).not.toHaveBeenCalled();
+  });
+
+  it('abre a pasta do registro, e não um caminho vindo da tela', async () => {
+    const { deps: d, openFolder } = deps();
+    await expect(handleOpenFolder(d, { projectId: 'p1', path: 'C:\\Windows' })).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(openFolder).toHaveBeenCalledWith(PROJECT.path);
+  });
+
+  it('projeto desconhecido e pasta que sumiu viram erro do contrato', async () => {
+    await expect(
+      handleOpenFolder(deps({ found: false }).deps, { projectId: 'x' }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'PROJECT_NOT_FOUND' } });
+    const missing = deps({ directory: false });
+    await expect(handleOpenFolder(missing.deps, { projectId: 'p1' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'PROJECT_PATH_UNAVAILABLE' },
+    });
+    expect(missing.openFolder).not.toHaveBeenCalled();
+  });
+
+  it('falha do sistema ao abrir vira UNKNOWN, sem repassar o texto cru', async () => {
+    const { deps: d } = deps({ problem: 'erro interno do sistema' });
+    const result = await handleOpenFolder(d, { projectId: 'p1' });
+    expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN' } });
+    expect(JSON.stringify(result)).not.toContain('erro interno');
+  });
+});
+
+describe('handleSetGroup', () => {
+  it('recusa entrada fora do contrato, sem chamar a aplicação', () => {
+    expect(handleSetGroup(neverCalledLifecycle, { projectId: 'p1', group: 5 })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    expect(handleSetGroup(neverCalledLifecycle, {})).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+  });
+});
+
 describe('registerProjectHandlers', () => {
   it('registra os canais de projetos, inclusive arquivar, desarquivar, remover e listar arquivados', () => {
     const { registry, channels } = fakeRegistry();
@@ -207,6 +277,7 @@ describe('registerProjectHandlers', () => {
       services: neverCalled,
       lifecycle: neverCalledLifecycle,
       chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
     });
 
     expect(channels()).toEqual(
@@ -217,6 +288,8 @@ describe('registerProjectHandlers', () => {
         CHANNELS.projectsList,
         CHANNELS.projectsListArchived,
         CHANNELS.projectsRemove,
+        CHANNELS.projectsOpenFolder,
+        CHANNELS.projectsSetGroup,
         CHANNELS.projectsUnarchive,
       ].sort(),
     );
@@ -229,6 +302,7 @@ describe('registerProjectHandlers', () => {
       services: neverCalled,
       lifecycle: lifecycleWith({ archive }),
       chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
     });
 
     await expect(call(CHANNELS.projectsArchive, trusted, { projectId: 'p1' })).resolves.toEqual({
@@ -245,6 +319,7 @@ describe('registerProjectHandlers', () => {
       services: neverCalled,
       lifecycle: lifecycleWith({ listArchived: () => [archived] }),
       chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
     });
 
     await expect(call(CHANNELS.projectsListArchived, trusted)).resolves.toEqual({
@@ -282,6 +357,7 @@ describe('registerProjectHandlers', () => {
       services,
       lifecycle: neverCalledLifecycle,
       chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
     });
 
     await expect(
@@ -300,6 +376,7 @@ describe('registerProjectHandlers', () => {
       services: neverCalled,
       lifecycle: neverCalledLifecycle,
       chooseDirectory,
+      openFolder: () => Promise.resolve(''),
     });
 
     for (const channel of channels()) {

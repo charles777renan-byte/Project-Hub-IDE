@@ -84,6 +84,8 @@ describe('App', () => {
     await user.tab();
     expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
     await user.tab();
+    expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
+    await user.tab();
     expect(screen.getByRole('link', { name: 'Início' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('link', { name: 'Projetos' })).toHaveFocus();
@@ -141,7 +143,7 @@ describe('barra superior', () => {
     },
   );
 
-  it('não leva a navegação principal, que fica no topo da barra lateral, acima dos workspaces', () => {
+  it('não leva a navegação principal, que fica na barra lateral, acima dos espaços', () => {
     render(
       <MemoryRouter>
         <App />
@@ -152,8 +154,8 @@ describe('barra superior', () => {
     const sidebar = navigation.closest('.sidebar');
     expect(sidebar).not.toBeNull();
     expect(sidebar?.closest('.app-side')).not.toBeNull();
-    // A navegação é o primeiro item da barra, antes das seções.
-    expect(sidebar?.firstElementChild).toBe(navigation);
+    // A navegação fica dentro da barra, antes dos espaços.
+    expect(sidebar?.contains(navigation)).toBe(true);
     expect(screen.getAllByRole('navigation', { name: 'Principal' })).toHaveLength(1);
   });
 

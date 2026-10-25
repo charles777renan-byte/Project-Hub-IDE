@@ -1,41 +1,51 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
-import type { MissionDto, ProjectSummary, TerminalSummary } from '@project-hub/contracts';
-import { formatTime, statusLabel, type MissionStatus } from '../mission-text';
+import type { LayoutNode, ProjectSummary, TerminalSummary } from '@project-hub/contracts';
+import { formatTime, needsAttention, statusIcon, statusLabel } from '../mission-text';
+import { notify } from '../notify';
+import { colorOf } from '../project-color';
 import { missionPath, projectPath, ROUTE_PATHS, workspacePath } from '../routes';
-import { markOfMission, markOfTerminal, type MarkKind } from '../state-mark';
+import { barLevels, useActivity } from '../sidebar-activity';
 import { useTerminals } from '../terminals-data';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
-import { EmptyState } from './EmptyState';
-import { ChevronRight, ICON_PROPS, Inbox, Search } from './Icon';
+import { ChevronRight, Clock, ICON_PROPS, Search } from './Icon';
 import { MainNav } from './MainNav';
 import { ProviderIcon } from './ProviderIcon';
-import { StateMark } from './StateMark';
 import { StatusChip } from './StatusChip';
-
-/** Estados de missão que entram na seção Em andamento: as que rodam e as que esperam. */
-const IN_PROGRESS: readonly MissionStatus[] = [
-  'running',
-  'waiting_approval',
-  'waiting_input',
-  'review',
-  'planned',
-  'queued',
-];
 
 /** Quantos agentes de um projeto aparecem como ícones ao lado do nome, antes do "+N". */
 const AVATAR_LIMIT = 3;
 
+const VIEW_KEY = 'project-hub:sidebar-view';
+const NO_GROUP = 'Sem grupo';
+
+type View = 'list' | 'grid';
+
 /** O que a pessoa pediu para mostrar no workspace; o workspace lê isto em `location.state`. */
 type ShowTerminal = (projectId: string, terminalId: string) => void;
 
+function readView(): View {
+  try {
+    return window.localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+function saveView(view: View): void {
+  try {
+    window.localStorage.setItem(VIEW_KEY, view);
+  } catch {
+    // Sem armazenamento, a escolha vale só até fechar a janela.
+  }
+}
+
 /**
- * Barra lateral: a busca e a navegação principal no topo, o aviso das sessões que esperam a pessoa, a
- * seção Workspaces (cada projeto com os agentes abertos, em cartões) e a seção Em andamento (as missões
- * que rodam ou esperam, de todos os projetos). Ocupa toda a coluna que a recebe, e cada seção rola sozinha.
- * O projeto atual, que dá destino ao botão Nova missão, vem de `currentProjectId` ou, sem ele, da rota. O
- * App monta a barra fora de `<Routes>`, onde `useParams` devolve vazio; `useMatch` lê a rota de qualquer lugar.
- * `onSearch` abre a paleta de comandos; sem ele, a busca não aparece.
+ * Barra lateral: a busca, o aviso do que espera a pessoa e a navegação principal no topo; os espaços (os
+ * projetos, em lista com os agentes em cartões, ou em grade; agrupados quando a pessoa criou grupos); e, no
+ * rodapé, os botões de novo projeto e nova missão. Ocupa toda a coluna que a recebe, e a lista de espaços rola
+ * sozinha. O projeto atual, que dá destino ao botão Nova missão, vem de `currentProjectId` ou, sem ele, da
+ * rota. `onSearch` abre a paleta de comandos; sem ele, a busca não aparece.
  */
 export function Sidebar({
   currentProjectId,
@@ -54,8 +64,10 @@ export function Sidebar({
     workspaceMatch?.params.projectId ??
     projectMatch?.params.projectId;
   const data = useSidebarData();
-  const { terminals, error: terminalsError } = useTerminals();
+  const { terminals, error: terminalsError, reload } = useTerminals();
+  const activity = useActivity(terminals);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [view, setView] = useState<View>(readView);
   const ids = useId();
 
   const showTerminal: ShowTerminal = (targetProjectId, terminalId) => {
@@ -68,67 +80,88 @@ export function Sidebar({
       return next;
     });
   };
+  const changeView = (next: View) => {
+    setView(next);
+    saveView(next);
+  };
 
   return (
     <aside aria-label="Projetos e missões" className="sidebar">
-      <MainNav />
+      <TopoLines />
       {onSearch === undefined ? null : <SearchButton onSearch={onSearch} />}
-      <AttentionStrip terminals={terminals} onShowTerminal={showTerminal} />
+      <AttentionStrip
+        data={data}
+        terminals={terminals}
+        onShowTerminal={showTerminal}
+        onShowMission={(targetProjectId, missionId) =>
+          navigate(missionPath(targetProjectId, missionId))
+        }
+      />
+      <MainNav />
 
-      <section aria-labelledby={`${ids}-workspaces`} className="sidebar__section">
-        <p id={`${ids}-workspaces`} className="sidebar__title">
-          Workspaces
-        </p>
+      <section aria-labelledby={`${ids}-espacos`} className="sidebar__section sidebar__spaces">
+        <div className="sidebar__label">
+          <p id={`${ids}-espacos`} className="sidebar__title">
+            Espaços
+          </p>
+          <ViewToggle view={view} onChange={changeView} />
+        </div>
         <div className="sidebar__scroll">
           {terminalsError === null ? null : (
             <p role="status" className="muted">
               Não foi possível ler as sessões.
             </p>
           )}
-          <WorkspaceItems
+          <Spaces
             data={data}
             terminals={terminals}
+            activity={activity}
+            view={view}
             currentId={workspaceMatch?.params.projectId}
             expanded={expanded}
             onToggle={toggle}
             onShowTerminal={showTerminal}
+            onReload={reload}
             idPrefix={ids}
           />
         </div>
+      </section>
+
+      <div className="sidebar__foot">
         <button
           type="button"
           className="sidebar__action"
           onClick={() => navigate(ROUTE_PATHS.projects)}
         >
-          + Novo projeto
+          + Projeto
         </button>
-      </section>
-
-      {data.status === 'ready' ? (
-        <section aria-labelledby={`${ids}-andamento`} className="sidebar__section">
-          <p id={`${ids}-andamento`} className="sidebar__title">
-            Em andamento
-          </p>
-          <div className="sidebar__scroll">
-            <RunningItems
-              data={data}
-              terminals={terminals}
-              currentMissionId={missionMatch?.params.missionId}
-              onShowTerminal={showTerminal}
-            />
-          </div>
-          {projectId === undefined ? null : (
-            <button
-              type="button"
-              className="sidebar__action"
-              onClick={() => navigate(projectPath(projectId))}
-            >
-              + Nova missão
-            </button>
-          )}
-        </section>
-      ) : null}
+        <button
+          type="button"
+          className="sidebar__action sidebar__action--primary"
+          onClick={() =>
+            projectId === undefined
+              ? navigate(ROUTE_PATHS.projects)
+              : navigate(projectPath(projectId), { state: { newMission: true } })
+          }
+        >
+          + Nova missão
+        </button>
+      </div>
     </aside>
+  );
+}
+
+/** Linhas de relevo, só decoração, no canto de cima da barra. */
+function TopoLines() {
+  return (
+    <div className="sidebar__topo" aria-hidden="true">
+      <svg viewBox="0 0 260 200" fill="none" stroke="currentColor" strokeWidth="1">
+        <path d="M10 120C40 60 100 40 150 70s60 50 100 20" opacity=".55" />
+        <path d="M20 140C55 85 105 68 150 94s58 44 96 18" opacity=".45" />
+        <path d="M32 160C64 112 108 96 150 118s55 38 92 16" opacity=".35" />
+        <path d="M46 180C74 140 112 126 150 142s50 32 86 14" opacity=".25" />
+      </svg>
+    </div>
   );
 }
 
@@ -148,60 +181,90 @@ function SearchButton({ onSearch }: { onSearch: () => void }) {
   );
 }
 
-/**
- * Aviso das sessões que esperam a pessoa: a primeira aparece com o botão Ir, e o total ao lado do rótulo.
- * Sem nenhuma esperando, a seção nem existe. Pede ação, por isso fica acima dos projetos.
- */
-function AttentionStrip({
-  terminals,
-  onShowTerminal,
-}: {
-  terminals: readonly TerminalSummary[];
-  onShowTerminal: ShowTerminal;
-}) {
-  const waiting = terminals.filter((terminal) => terminal.state === 'waiting');
-  const first = waiting[0];
-  if (first === undefined) return null;
-  const total = waiting.length > 1 ? ` · ${waiting.length}` : '';
+/** Troca entre a lista e a grade dos espaços. A escolha fica guardada neste computador. */
+function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => void }) {
   return (
-    <section aria-label="Precisa de você" className="sidebar__attention state-attention">
-      <p className="sidebar__attention-tag state-attention-tag">Precisa de você{total}</p>
-      <div className="sidebar__attention-row">
-        <span className="sidebar__attention-ico" aria-hidden="true">
-          <ProviderIcon provider={first.provider} size={14} />
-        </span>
-        <span className="sidebar__attention-text">
-          <b title={first.title}>{first.title}</b>
-          <small>{first.projectName}</small>
-        </span>
-        <button
-          type="button"
-          className="sidebar__attention-go state-attention-go"
-          aria-label={`Ir para ${first.title}`}
-          onClick={() => onShowTerminal(first.projectId, first.id)}
-        >
-          Ir
-        </button>
-      </div>
-    </section>
+    <div role="group" aria-label="Modo de exibição" className="sidebar__seg">
+      <button type="button" aria-pressed={view === 'list'} onClick={() => onChange('list')}>
+        Lista
+      </button>
+      <button type="button" aria-pressed={view === 'grid'} onClick={() => onChange('grid')}>
+        Grade
+      </button>
+    </div>
   );
 }
 
+type AttentionItem = {
+  key: string;
+  title: string;
+  detail: string;
+  icon: ReactNode;
+  go: () => void;
+};
+
 /**
- * Marca do projeto na lista: `waiting` se alguma sessão ou missão dele espera a pessoa, `active` se algo
- * roda, senão `disconnected`. O que espera pesa mais que o que roda, porque pede uma ação.
+ * Aviso do que espera a pessoa: sessões em espera e missões que pedem decisão (plano, aprovação, resposta,
+ * revisão). O primeiro aparece com o botão Ir, e o total vai ao lado do rótulo. Sem nada esperando, a seção nem
+ * existe. Pede ação, por isso fica logo no topo.
  */
-function projectMark(
-  sessions: readonly TerminalSummary[],
-  missions: readonly MissionDto[],
-): MarkKind {
-  const kinds = [
-    ...sessions.map((session) => markOfTerminal(session.state)),
-    ...missions.map((mission) => markOfMission(mission.status)),
-  ];
-  if (kinds.includes('waiting')) return 'waiting';
-  if (kinds.includes('active')) return 'active';
-  return 'disconnected';
+function AttentionStrip({
+  data,
+  terminals,
+  onShowTerminal,
+  onShowMission,
+}: {
+  data: SidebarData;
+  terminals: readonly TerminalSummary[];
+  onShowTerminal: ShowTerminal;
+  onShowMission: (projectId: string, missionId: string) => void;
+}) {
+  const waiting = terminals.filter((terminal) => terminal.state === 'waiting');
+  const covered = new Set(waiting.flatMap((terminal) => terminal.missionId ?? []));
+  const items: AttentionItem[] = waiting.map((terminal) => ({
+    key: `t-${terminal.id}`,
+    title: terminal.title,
+    detail: terminal.projectName,
+    icon: <ProviderIcon provider={terminal.provider} size={14} />,
+    go: () => onShowTerminal(terminal.projectId, terminal.id),
+  }));
+  if (data.status === 'ready') {
+    for (const project of data.projects) {
+      for (const mission of data.missionsByProject[project.id] ?? []) {
+        if (!needsAttention(mission.status) || covered.has(mission.id)) continue;
+        const Glyph = statusIcon(mission.status) ?? Clock;
+        items.push({
+          key: `m-${mission.id}`,
+          title: mission.title,
+          detail: `${project.name} · ${statusLabel(mission.status)}`,
+          icon: <Glyph {...ICON_PROPS} size={14} />,
+          go: () => onShowMission(project.id, mission.id),
+        });
+      }
+    }
+  }
+  const first = items[0];
+  if (first === undefined) return null;
+  return (
+    <section aria-label="Precisa de você" className="sidebar__attention state-attention">
+      <p className="sidebar__attention-tag state-attention-tag">Precisa de você · {items.length}</p>
+      <span className="sidebar__attention-ico" aria-hidden="true">
+        {first.icon}
+      </span>
+      <span className="sidebar__attention-text">
+        <b title={first.title}>{first.title}</b>
+        <small>{first.detail}</small>
+      </span>
+      <button
+        type="button"
+        className="sidebar__attention-go state-attention-go"
+        aria-label={`Ir para ${first.title}`}
+        onClick={first.go}
+      >
+        Ir
+      </button>
+    </section>
+  );
 }
 
 function groupByProject(terminals: readonly TerminalSummary[]): Map<string, TerminalSummary[]> {
@@ -237,28 +300,25 @@ function Avatars({ sessions }: { sessions: readonly TerminalSummary[] }) {
   );
 }
 
-/**
- * Lista de projetos, cada um um link para o workspace dele, com os ícones dos agentes, a marca agregada, o
- * botão que expande os cartões das sessões e, no projeto sem Git, o chip "sem Git". Só o projeto da rota do
- * workspace leva `aria-current`: o link aponta para a página atual apenas ali. Nomes entram como texto.
- */
-function WorkspaceItems({
-  data,
-  terminals,
-  currentId,
-  expanded,
-  onToggle,
-  onShowTerminal,
-  idPrefix,
-}: {
+type SpacesProps = {
   data: SidebarData;
   terminals: readonly TerminalSummary[];
+  activity: ReadonlyMap<string, readonly number[]>;
+  view: View;
   currentId?: string | undefined;
   expanded: ReadonlySet<string>;
   onToggle: (projectId: string) => void;
   onShowTerminal: ShowTerminal;
+  onReload: () => Promise<void>;
   idPrefix: string;
-}) {
+};
+
+/**
+ * Os projetos, em lista ou em grade. Com algum projeto num grupo, a lista ganha um cabeçalho por grupo (com a
+ * cor, o nome e quantos há), em ordem alfabética, e os sem grupo vêm por último. Sem grupos, a lista é uma só.
+ */
+function Spaces(props: SpacesProps) {
+  const { data, view, terminals } = props;
   if (data.status === 'loading') return <p className="muted">Carregando…</p>;
   if (data.status === 'error') {
     return (
@@ -270,47 +330,131 @@ function WorkspaceItems({
   if (data.projects.length === 0) return <p className="muted">Nenhum projeto ainda.</p>;
 
   const sessionsByProject = groupByProject(terminals);
+  const hasGroups = data.projects.some((project) => project.group !== undefined);
+  const buckets = new Map<string, ProjectSummary[]>();
+  for (const project of data.projects) {
+    const name = project.group ?? NO_GROUP;
+    buckets.set(name, [...(buckets.get(name) ?? []), project]);
+  }
+  const names = [...buckets.keys()].sort((a, b) =>
+    a === NO_GROUP ? 1 : b === NO_GROUP ? -1 : a.localeCompare(b, 'pt-BR'),
+  );
+
+  const renderProjects = (projects: readonly ProjectSummary[]) =>
+    view === 'grid' ? (
+      <ul className="sidebar__grid">
+        {projects.map((project) => (
+          <ProjectTile
+            key={project.id}
+            project={project}
+            sessions={sessionsByProject.get(project.id) ?? []}
+            isCurrent={project.id === props.currentId}
+          />
+        ))}
+      </ul>
+    ) : (
+      <ul className="sidebar__list">
+        {projects.map((project) => (
+          <ProjectRow
+            key={project.id}
+            project={project}
+            sessions={sessionsByProject.get(project.id) ?? []}
+            activity={props.activity}
+            isCurrent={project.id === props.currentId}
+            isOpen={props.expanded.has(project.id)}
+            onToggle={() => props.onToggle(project.id)}
+            onShowTerminal={props.onShowTerminal}
+            onReload={props.onReload}
+            listId={`${props.idPrefix}-sessoes-${project.id}`}
+          />
+        ))}
+      </ul>
+    );
+
+  if (!hasGroups) return renderProjects(data.projects);
   return (
-    <ul className="sidebar__list">
-      {data.projects.map((project) => (
-        <WorkspaceItem
-          key={project.id}
-          project={project}
-          sessions={sessionsByProject.get(project.id) ?? []}
-          missions={data.missionsByProject[project.id] ?? []}
-          isCurrent={project.id === currentId}
-          isOpen={expanded.has(project.id)}
-          onToggle={() => onToggle(project.id)}
-          onShowTerminal={onShowTerminal}
-          listId={`${idPrefix}-sessoes-${project.id}`}
-        />
-      ))}
-    </ul>
+    <>
+      {names.map((name) => {
+        const projects = buckets.get(name) ?? [];
+        return (
+          <section key={name} aria-label={`Grupo ${name}`} className="sidebar__group">
+            <p className="sidebar__ghead">
+              <i
+                aria-hidden="true"
+                className={`group-bar group-bar--${name === NO_GROUP ? 'muted' : colorOf(name)}`}
+              />
+              {name}
+              <span>{projects.length}</span>
+            </p>
+            {renderProjects(projects)}
+          </section>
+        );
+      })}
+    </>
   );
 }
 
-function WorkspaceItem({
+/** A marca de cor do projeto, na lista e na grade. Decorativa. */
+function Swatch({ project }: { project: ProjectSummary }) {
+  return <span aria-hidden="true" className={`swatch swatch--${colorOf(project.id)}`} />;
+}
+
+/** O projeto na grade: um bloco com a cor, o nome e os agentes. Leva ao workspace. */
+function ProjectTile({
   project,
   sessions,
-  missions,
+  isCurrent,
+}: {
+  project: ProjectSummary;
+  sessions: readonly TerminalSummary[];
+  isCurrent: boolean;
+}) {
+  return (
+    <li className="sidebar__tile">
+      <Link
+        to={workspacePath(project.id)}
+        className="sidebar__link"
+        aria-current={isCurrent ? 'page' : undefined}
+      >
+        <Swatch project={project} />
+        <span className="sidebar__name" title={project.name}>
+          {project.name}
+        </span>
+        <Avatars sessions={sessions} />
+      </Link>
+    </li>
+  );
+}
+
+/**
+ * Linha de um projeto na lista: o botão que expande os cartões, a cor, o nome (um link para o workspace), os
+ * ícones dos agentes e, no projeto sem Git, o chip "sem Git". Só o projeto da rota do workspace leva
+ * `aria-current`. Nomes entram como texto.
+ */
+function ProjectRow({
+  project,
+  sessions,
+  activity,
   isCurrent,
   isOpen,
   onToggle,
   onShowTerminal,
+  onReload,
   listId,
 }: {
   project: ProjectSummary;
   sessions: readonly TerminalSummary[];
-  missions: readonly MissionDto[];
+  activity: ReadonlyMap<string, readonly number[]>;
   isCurrent: boolean;
   isOpen: boolean;
   onToggle: () => void;
   onShowTerminal: ShowTerminal;
+  onReload: () => Promise<void>;
   listId: string;
 }) {
-  const details = sessionDetails(sessions);
+  const details = sessionDetails(sessions, project);
   return (
-    <li className="sidebar__item">
+    <li className={isOpen ? 'sidebar__item sidebar__item--open' : 'sidebar__item'}>
       <div className="sidebar__row">
         <button
           type="button"
@@ -329,12 +473,12 @@ function WorkspaceItem({
           className="sidebar__link"
           aria-current={isCurrent ? 'page' : undefined}
         >
+          <Swatch project={project} />
           <span className="sidebar__name" title={project.name}>
             {project.name}
           </span>
         </Link>
         <Avatars sessions={sessions} />
-        <StateMark kind={projectMark(sessions, missions)} />
         {project.repositoryKind === 'git' ? null : <StatusChip label="sem Git" tone="muted" />}
       </div>
       {isOpen ? (
@@ -347,7 +491,13 @@ function WorkspaceItem({
                 key={session.id}
                 session={session}
                 detail={details[index] ?? ''}
+                levels={
+                  session.outputBytes === undefined
+                    ? undefined
+                    : barLevels(activity.get(session.id))
+                }
                 onShowTerminal={() => onShowTerminal(project.id, session.id)}
+                onClose={() => void closeSession(project.id, session.id, onReload)}
               />
             ))
           )}
@@ -357,46 +507,98 @@ function WorkspaceItem({
   );
 }
 
+/** A folha do layout que mostra o terminal, ou `undefined`. */
+function findLeaf(node: LayoutNode | null, terminalId: string): { id: string } | undefined {
+  if (node === null) return undefined;
+  if (node.type === 'leaf') return node.terminalId === terminalId ? { id: node.id } : undefined;
+  return findLeaf(node.first, terminalId) ?? findLeaf(node.second, terminalId);
+}
+
+/**
+ * Fecha uma sessão pelo cartão, sem confirmar: acha o painel dela no workspace do projeto e o remove, como o
+ * botão de fechar do painel. A lista de terminais é lida de novo no fim. A sessão de missão não passa por aqui.
+ */
+async function closeSession(
+  projectId: string,
+  terminalId: string,
+  onReload: () => Promise<void>,
+): Promise<void> {
+  try {
+    const list = await window.projectHub.workspaces.list();
+    if (!list.ok) {
+      notify.error(list.error.message);
+      return;
+    }
+    const workspace = list.data.find((candidate) => candidate.projectId === projectId);
+    const leaf = workspace === undefined ? undefined : findLeaf(workspace.layout, terminalId);
+    if (workspace === undefined || leaf === undefined) {
+      notify.error('Não achei o painel desta sessão.');
+      return;
+    }
+    const removed = await window.projectHub.workspaces.removePane(workspace.id, leaf.id);
+    if (!removed.ok) notify.error(removed.error.message);
+  } catch {
+    notify.error('Não foi possível fechar a sessão.');
+  }
+  await onReload();
+}
+
 /**
  * O detalhe de cada sessão do projeto, na ordem da lista, calculado numa passada só. Quando o mesmo título se
  * repete no projeto, o número da posição entra junto, para os cartões não serem iguais.
  */
-function sessionDetails(sessions: readonly TerminalSummary[]): string[] {
+function sessionDetails(sessions: readonly TerminalSummary[], project: ProjectSummary): string[] {
   const titles = new Map<string, number>();
   for (const session of sessions) titles.set(session.title, (titles.get(session.title) ?? 0) + 1);
   const seen = new Map<string, number>();
   return sessions.map((session) => {
-    const base = baseDetail(session);
+    const base = baseDetail(session, project);
     if ((titles.get(session.title) ?? 0) < 2) return base;
     const position = (seen.get(session.title) ?? 0) + 1;
     seen.set(session.title, position);
-    return `${base} ${position}`;
+    return `${base} · ${position}`;
   });
 }
 
-/** O detalhe de uma sessão sem contar repetição: a pasta do worktree, "missão", "recuperada" ou "avulsa". */
-function baseDetail(session: TerminalSummary): string {
-  if (session.worktreeName !== undefined) return session.worktreeName;
+/**
+ * O detalhe de uma sessão sem contar repetição: a missão com a pasta do worktree, "recuperada" ou o projeto
+ * com a branch padrão (sem Git, só o projeto).
+ */
+function baseDetail(session: TerminalSummary, project: ProjectSummary): string {
+  if (session.worktreeName !== undefined) return `missão · ${session.worktreeName}`;
   if (session.kind === 'agent') return 'missão';
-  return session.origin === 'recovered' ? 'recuperada' : 'avulsa';
+  const where =
+    project.defaultBranch === undefined
+      ? project.name
+      : `${project.name} · ${project.defaultBranch}`;
+  return session.origin === 'recovered' ? `recuperada · ${where}` : where;
 }
 
 /**
  * Cartão de uma sessão aberta: trilho colorido pelo estado, o ícone do programa, o título e o detalhe, e à
- * direita o estado em texto e, quando a sessão tem hora de início, a hora: "há N min" na primeira hora e o
- * horário depois, como nas linhas do tempo. Clicar leva ao workspace do projeto, pedindo para mostrar esse
- * terminal.
+ * direita a hora e o gráfico de atividade. Clicar leva ao workspace do projeto, pedindo para mostrar esse
+ * terminal. Com o mouse ou o foco no cartão, aparecem Abrir e Fechar (a sessão de missão não fecha por aqui).
  */
 function SessionCard({
   session,
   detail,
+  levels,
   onShowTerminal,
+  onClose,
 }: {
   session: TerminalSummary;
   detail: string;
+  levels: readonly number[] | undefined;
   onShowTerminal: () => void;
+  onClose: () => void;
 }) {
   const time = session.startedAt === undefined ? null : formatTime(session.startedAt);
+  const stateText =
+    session.state === 'waiting'
+      ? 'aguardando você'
+      : session.state === 'running'
+        ? 'rodando'
+        : 'encerrada';
   return (
     <li className="sidebar__session">
       <button
@@ -414,88 +616,32 @@ function SessionCard({
           <small>{detail}</small>
         </span>
         <span className="sidebar__card-side">
-          <StateMark kind={markOfTerminal(session.state)} withLabel />
+          <span className="state-mark__sr">{stateText}</span>
           {time === null ? null : <time dateTime={session.startedAt}>{time}</time>}
+          {levels === undefined ? null : (
+            <span className={`activity activity--${session.state}`} aria-hidden="true">
+              {levels.map((level, index) => (
+                <i key={index} className={`activity__bar activity__bar--${level}`} />
+              ))}
+            </span>
+          )}
         </span>
       </button>
+      <span className="sidebar__card-actions">
+        <button type="button" aria-label={`Abrir ${session.title}`} onClick={onShowTerminal}>
+          Abrir
+        </button>
+        {session.missionId === undefined ? (
+          <button
+            type="button"
+            className="sidebar__card-close"
+            aria-label={`Fechar ${session.title}`}
+            onClick={onClose}
+          >
+            Fechar
+          </button>
+        ) : null}
+      </span>
     </li>
-  );
-}
-
-/** O terminal de uma missão: o que ainda roda ou espera vale mais que o já encerrado. */
-function terminalByMission(terminals: readonly TerminalSummary[]): Map<string, TerminalSummary> {
-  const byMission = new Map<string, TerminalSummary>();
-  for (const terminal of terminals) {
-    if (terminal.missionId === undefined) continue;
-    const known = byMission.get(terminal.missionId);
-    if (known === undefined || (known.state === 'exited' && terminal.state !== 'exited')) {
-      byMission.set(terminal.missionId, terminal);
-    }
-  }
-  return byMission;
-}
-
-/**
- * Missões que rodam ou esperam, de todos os projetos, na ordem dos projetos. A que tem terminal de
- * agente abre esse terminal no workspace do projeto dela; a que não tem leva à página da missão. O estado
- * aparece como marca com texto, e a situação por extenso fica no `title` da linha de estado.
- */
-function RunningItems({
-  data,
-  terminals,
-  currentMissionId,
-  onShowTerminal,
-}: {
-  data: SidebarData;
-  terminals: readonly TerminalSummary[];
-  currentMissionId?: string | undefined;
-  onShowTerminal: ShowTerminal;
-}) {
-  const terminalOf = terminalByMission(terminals);
-  const items = data.projects.flatMap((project) =>
-    (data.missionsByProject[project.id] ?? [])
-      .filter((mission) => IN_PROGRESS.includes(mission.status))
-      .map((mission) => ({ project, mission })),
-  );
-  if (items.length === 0) return <EmptyState icon={Inbox} title="Nada em andamento." />;
-
-  return (
-    <ul className="sidebar__list">
-      {items.map(({ project, mission }) => {
-        const terminal = terminalOf.get(mission.id);
-        const name = (
-          <span className="sidebar__name" title={mission.title}>
-            {mission.title}
-          </span>
-        );
-        return (
-          <li key={mission.id} className="sidebar__item">
-            {terminal === undefined ? (
-              <Link
-                to={missionPath(project.id, mission.id)}
-                className="sidebar__link"
-                aria-current={mission.id === currentMissionId ? 'page' : undefined}
-              >
-                {name}
-              </Link>
-            ) : (
-              <button
-                type="button"
-                className="sidebar__link"
-                onClick={() => onShowTerminal(project.id, terminal.id)}
-              >
-                {name}
-              </button>
-            )}
-            <span className="sidebar__meta" title={statusLabel(mission.status)}>
-              <StateMark kind={markOfMission(mission.status)} withLabel />
-              <span className="sidebar__project" title={project.name}>
-                {project.name}
-              </span>
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }

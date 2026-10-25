@@ -160,6 +160,7 @@ describe('tipos públicos', () => {
       repositoryKind: 'git' | 'none';
       available: boolean;
       defaultBranch?: string | undefined;
+      group?: string | undefined;
     }>();
   });
 

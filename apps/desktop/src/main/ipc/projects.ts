@@ -5,6 +5,7 @@ import {
   listArchivedProjects,
   listProjects,
   removeProject,
+  setProjectGroup,
   toProjectSummary,
   unarchiveProject,
   type AddProjectDeps,
@@ -14,6 +15,7 @@ import {
   addProjectInputSchema,
   CHANNELS,
   projectIdInputSchema,
+  setProjectGroupInputSchema,
   type AppResult,
   type ProjectSummary,
 } from '@project-hub/contracts';
@@ -26,6 +28,8 @@ export type ProjectsIpcDeps = {
   lifecycle: ProjectLifecycleDeps;
   /** Seletor de pasta, aberto sobre a janela de quem chamou. Devolve null se a pessoa cancelar. */
   chooseDirectory: (sender: WebContents) => Promise<string | null>;
+  /** Abre a pasta no gerenciador de arquivos. Devolve o texto do erro, ou vazio quando abriu (como `shell.openPath`). */
+  openFolder: (path: string) => Promise<string>;
 };
 
 const INVALID_PROJECT = 'Informe o projeto.';
@@ -67,6 +71,33 @@ export function handleProjectLifecycle(
   return action(deps, input.data);
 }
 
+/**
+ * Abre a pasta do projeto no gerenciador de arquivos. O caminho vem do registro, pelo id: nenhum caminho do
+ * renderer chega ao sistema. Pasta que sumiu é recusada com o código do contrato.
+ */
+export async function handleOpenFolder(
+  deps: ProjectsIpcDeps,
+  payload: unknown,
+): Promise<AppResult<undefined>> {
+  const input = projectIdInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
+  const project = deps.services.repo.get(input.data.projectId);
+  if (project === undefined) return failure('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
+  if (!(await deps.services.fs.isDirectory(project.path))) {
+    return failure('PROJECT_PATH_UNAVAILABLE', 'A pasta do projeto não está disponível.');
+  }
+  const problem = await deps.openFolder(project.path);
+  if (problem !== '') return failure('UNKNOWN', 'Não foi possível abrir a pasta.');
+  return { ok: true, data: undefined };
+}
+
+/** Põe o projeto num grupo da barra lateral. A entrada é conferida aqui (R28); o nome do grupo, na aplicação. */
+export function handleSetGroup(deps: ProjectLifecycleDeps, payload: unknown): AppResult<undefined> {
+  const input = setProjectGroupInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
+  return setProjectGroup(deps, input.data);
+}
+
 export async function handleChooseDirectory(
   chooseDirectory: () => Promise<string | null>,
 ): Promise<AppResult<{ path: string } | null>> {
@@ -100,5 +131,11 @@ export function registerProjectHandlers(
   );
   registerTrustedHandler(registry, CHANNELS.projectsRemove, isTrusted, (_event, payload) =>
     Promise.resolve(handleProjectLifecycle(removeProject, deps.lifecycle, payload)),
+  );
+  registerTrustedHandler(registry, CHANNELS.projectsSetGroup, isTrusted, (_event, payload) =>
+    Promise.resolve(handleSetGroup(deps.lifecycle, payload)),
+  );
+  registerTrustedHandler(registry, CHANNELS.projectsOpenFolder, isTrusted, (_event, payload) =>
+    handleOpenFolder(deps, payload),
   );
 }

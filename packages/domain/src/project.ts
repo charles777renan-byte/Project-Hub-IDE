@@ -17,6 +17,8 @@ export type ProjectRecord = {
   archivedAt?: string;
   /** Remoção lógica: o registro continua no banco, mas sai da listagem. */
   removedAt?: string;
+  /** Grupo escolhido pela pessoa (Trabalho, Pessoal...), para agrupar a barra lateral. Sem grupo, ausente. */
+  groupName?: string;
 };
 
 /** Dados que o usuário informa ao adicionar um projeto. O restante é preenchido pelo banco. */

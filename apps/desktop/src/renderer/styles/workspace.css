@@ -319,6 +319,7 @@
  */
 .sidebar {
   --sidebar-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -339,21 +340,27 @@
 }
 
 .main-nav__list {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.main-nav__list li {
+  flex: 1;
+}
+
 .main-nav a {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  padding: 0.375rem var(--space-2);
-  border-radius: 6px;
+  padding: 0.4375rem var(--space-2);
+  border-radius: 9px;
+  background: var(--surface-2);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: 0.78rem;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -368,10 +375,10 @@
   outline-offset: -2px;
 }
 
-/* Item ativo: fundo --line e barra lima de 3px à esquerda (por sombra interna, que não muda o tamanho). */
+/* Item ativo: fundo --line e traço lima embaixo (por sombra interna, que não muda o tamanho). */
 .main-nav a[aria-current='page'] {
   background: var(--line);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
   color: var(--text);
   font-weight: 700;
 }
@@ -530,19 +537,45 @@
 }
 
 /*
- * Lateral v2 (components/Sidebar.tsx): busca, aviso, ícones dos agentes por projeto e cartões das sessões. Aqui
- * só layout e cores neutras: as cores de estado vêm das classes state-* de app.css (a seção de chrome do
+ * Lateral v3 (components/Sidebar.tsx): busca, aviso, navegação, espaços (lista ou grade, em grupos) e rodapé. Aqui
+ * só layout e cores neutras: as cores de estado, de projeto e de grupo vêm de app.css (a seção de chrome do
  * workspace só leva cores neutras, ver contrast.test.ts). Este arquivo carrega depois de app.css, então estas
- * regras não declaram cor onde a classe de estado precisa valer.
+ * regras não declaram cor onde a classe de cor precisa valer.
  */
+.sidebar > *:not(.sidebar__topo) {
+  position: relative;
+}
+
+/* Linhas de relevo no canto de cima, só decoração. */
+.sidebar__topo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 170px;
+  overflow: hidden;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  pointer-events: none;
+}
+
+.sidebar__topo svg {
+  position: absolute;
+  top: -30px;
+  right: -40px;
+  width: 260px;
+  height: 200px;
+  color: var(--muted);
+  opacity: 0.5;
+}
+
 .sidebar__search {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 0.4375rem var(--space-2);
+  padding: 0.5rem var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--surface-2);
   color: var(--muted);
   font: inherit;
@@ -576,32 +609,29 @@
 /* Sem cor de borda nem de fundo: quem pinta o aviso é .state-attention (app.css), que carrega antes. */
 .sidebar__attention {
   display: grid;
-  gap: 4px;
-  padding: 8px 9px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--space-2);
+  padding: 9px 10px;
   border-width: 1px;
   border-style: solid;
   border-radius: 12px;
 }
 
 .sidebar__attention-tag {
-  margin: 0;
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
   font-family: var(--font-mono);
   font-size: 0.625rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-}
-
-.sidebar__attention-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
 }
 
 .sidebar__attention-ico {
   display: grid;
-  flex: none;
+  grid-column: 1;
+  grid-row: 2;
   place-items: center;
   width: 24px;
   height: 24px;
@@ -611,7 +641,8 @@
 
 .sidebar__attention-text {
   display: flex;
-  flex: 1;
+  grid-column: 2;
+  grid-row: 2;
   flex-direction: column;
   min-width: 0;
 }
@@ -633,14 +664,118 @@
 }
 
 .sidebar__attention-go {
-  flex: none;
-  padding: 4px 10px;
+  grid-column: 3;
+  grid-row: 2;
+  padding: 5px 10px;
   border: 0;
   border-radius: 7px;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Espaços: o título com a troca Lista/Grade, e a lista que ocupa o que sobra da coluna. */
+.sidebar__spaces {
+  flex: 1 1 auto;
+}
+
+.sidebar__spaces .sidebar__scroll {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+}
+
+.sidebar__label {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sidebar__seg {
+  display: flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.sidebar__seg button {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.625rem;
+  cursor: pointer;
+}
+
+.sidebar__seg button[aria-pressed='true'] {
+  background: var(--line);
+  color: var(--text);
+}
+
+/* Grupos: o cabeçalho com a barra de cor, o nome e a contagem. */
+.sidebar__group {
+  display: grid;
+  gap: 3px;
+}
+
+.sidebar__ghead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 6px var(--space-2) 2px;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.sidebar__ghead span {
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.group-bar {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.swatch {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 4px;
+}
+
+.sidebar__item--open > .sidebar__row {
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+
+/* Grade: dois projetos por linha, cada um num bloco. */
+.sidebar__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__tile .sidebar__link {
+  flex-wrap: wrap;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
 }
 
 /* Um ícone por sessão, sobrepostos; o anel do estado (cor) vem de .state-ring em app.css. */
@@ -687,8 +822,9 @@
   flex: none;
 }
 
-/* Cada sessão é um cartão: o trilho de estado (state-rail, em app.css), o programa, o título e o detalhe, e à direita o estado e a hora. */
+/* Cada sessão é um cartão: o trilho de estado (state-rail, em app.css), o programa, o título e o detalhe, e à direita a hora e a atividade. */
 .sidebar__session {
+  position: relative;
   display: block;
   min-width: 0;
 }
@@ -696,15 +832,15 @@
 .sidebar__card {
   position: relative;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 2px var(--space-2);
+  gap: 1px var(--space-2);
   width: 100%;
-  margin-bottom: 4px;
-  padding: 7px 8px 7px 10px;
+  margin-bottom: 5px;
+  padding: 8px 9px 8px 12px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 11px;
   background: var(--surface-2);
   color: var(--text);
   font: inherit;
@@ -724,9 +860,9 @@
   display: grid;
   grid-row: 1 / span 2;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   background: var(--surface);
 }
 
@@ -756,13 +892,109 @@
   grid-row: 1 / span 2;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
+  gap: 3px;
 }
 
 .sidebar__card time {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.625rem;
+}
+
+/* Gráfico de atividade: sete barras, de 1 a 6 de altura. A cor segue o estado (app.css). */
+.activity {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+
+.activity__bar {
+  display: block;
+  width: 3px;
+  border-radius: 1px;
+}
+
+.activity__bar--1 {
+  height: 2px;
+}
+
+.activity__bar--2 {
+  height: 4px;
+}
+
+.activity__bar--3 {
+  height: 6px;
+}
+
+.activity__bar--4 {
+  height: 8px;
+}
+
+.activity__bar--5 {
+  height: 10px;
+}
+
+.activity__bar--6 {
+  height: 12px;
+}
+
+/* Abrir e Fechar: aparecem com o mouse sobre o cartão ou o foco dentro dele, por cima da hora e do gráfico. */
+.sidebar__card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 4px;
+}
+
+.sidebar__session:hover .sidebar__card-actions,
+.sidebar__session:focus-within .sidebar__card-actions {
+  display: flex;
+}
+
+.sidebar__session:hover .sidebar__card-side,
+.sidebar__session:focus-within .sidebar__card-side {
+  opacity: 0.15;
+}
+
+.sidebar__card-actions button {
+  padding: 3px 8px;
+  border: 1px solid var(--field-line);
+  border-radius: 6px;
+  background: var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+/* Rodapé: novo projeto e nova missão, lado a lado. */
+.sidebar__foot {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.sidebar__foot .sidebar__action {
+  flex: 1;
+  justify-content: center;
+  width: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.75rem;
+}
+
+.sidebar__foot .sidebar__action--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
 }
 
 /*

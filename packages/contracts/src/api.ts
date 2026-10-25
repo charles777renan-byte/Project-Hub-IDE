@@ -30,6 +30,10 @@ export type ProjectHubApi = {
     chooseDirectory(): Promise<AppResult<{ path: string } | null>>;
     /** Cadastra a pasta. O processo principal revalida o caminho (R66). */
     add(input: AddProjectInput): Promise<AppResult<ProjectSummary>>;
+    /** Abre a pasta do projeto no gerenciador de arquivos. O processo principal acha o caminho pelo id. */
+    openFolder(projectId: string): Promise<AppResult<void>>;
+    /** Põe o projeto num grupo da barra lateral, ou o tira (`null`). */
+    setGroup(projectId: string, group: string | null): Promise<AppResult<void>>;
     /** Projetos arquivados, com a disponibilidade da pasta. */
     listArchived(): Promise<AppResult<ProjectSummary[]>>;
     /** Arquiva o projeto: sai da lista, e a pasta, o Git e as missões ficam como estão. */

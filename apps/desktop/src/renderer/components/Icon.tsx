@@ -15,6 +15,7 @@ export {
   Copy,
   Eye,
   FolderGit2,
+  FolderOpen,
   House,
   Inbox,
   LoaderCircle,
