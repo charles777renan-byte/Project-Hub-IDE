@@ -352,6 +352,21 @@ describe('selos de estado em pílula', () => {
     expect(rule.get('--tone')).toBe(tone);
   });
 
+  it('com ícone, o ícone toma o lugar do ponto e herda a cor do tom', () => {
+    expect(ruleDeclarations(appCss, '.chip--icon::before').get('display')).toBe('none');
+    expect(ruleDeclarations(appCss, '.chip__icon').get('flex')).toBe('none');
+    // O ícone usa `currentColor` (lucide) e o tamanho vem do atributo `size`: nada de cor fixa nem de
+    // atributo style, que a CSP bloquearia.
+    expect(ruleDeclarations(appCss, '.chip__icon').has('color')).toBe(false);
+  });
+
+  it('o botão "Copiar caminho" alinha o ícone ao texto com um espaço de token', () => {
+    const rule = ruleDeclarations(appCss, '.mission-meta__copy');
+    expect(rule.get('display')).toBe('inline-flex');
+    expect(rule.get('align-items')).toBe('center');
+    expect(rule.get('gap')).toBe('var(--space-1)');
+  });
+
   it('o selo não tem hover: é informação, não controle', () => {
     expect(appCss).not.toMatch(/\.chip[^{]*:hover/);
     expect(workspaceCss).not.toMatch(/\.state-mark[^{]*:hover/);

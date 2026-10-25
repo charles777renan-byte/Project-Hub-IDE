@@ -240,18 +240,19 @@ describe('open', () => {
   });
 
   it('layout guardado com milhares de níveis vira workspace vazio, sem lançar erro', async () => {
-    let deep: unknown = { type: 'leaf', id: 'fundo', provider: 'shell', terminalId: null };
-    for (let n = 0; n < 5000; n += 1) {
-      deep = {
-        type: 'split',
-        id: `s${n}`,
-        direction: 'row',
-        first: deep,
-        second: { type: 'leaf', id: `f${n}`, provider: 'shell', terminalId: null },
-        ratio: 0.5,
-      };
+    // O JSON é montado como texto: `JSON.stringify` de 5000 níveis estoura a pilha no Node 24 (o do CI), e o
+    // teste quer exercitar o serviço, não o limite de pilha do `stringify`. A ordem das chaves é a de sempre.
+    const depth = 5000;
+    const leaf = (id: string) =>
+      JSON.stringify({ type: 'leaf', id, provider: 'shell', terminalId: null });
+    let opening = '';
+    let closing = '';
+    for (let n = 0; n < depth; n += 1) {
+      opening = `{"type":"split","id":"s${n}","direction":"row","first":` + opening;
+      closing += `,"second":${leaf(`f${n}`)},"ratio":0.5}`;
     }
-    const { service, rows } = setup({ records: [record({ layout: JSON.stringify(deep) })] });
+    const deepLayout = opening + leaf('fundo') + closing;
+    const { service, rows } = setup({ records: [record({ layout: deepLayout })] });
 
     const result = await service.open('p1');
 

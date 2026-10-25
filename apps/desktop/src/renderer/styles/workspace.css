@@ -741,15 +741,48 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  font-weight: 500;
   text-overflow: ellipsis;
 }
 
+.pane[data-active='true'] .pane__title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Etiqueta da origem ("nova" ou "recuperada"): uma pílula discreta, sem contorno. */
 .pane__tag {
   flex: none;
-  padding: 0 var(--space-1);
-  border: 1px solid var(--line);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--line);
+  color: var(--muted);
   font-size: 11px;
-  line-height: 16px;
+  line-height: 18px;
+}
+
+/* Fechar o painel é um X sem texto: a área é de 24px e o passe do mouse só clareia o fundo. */
+.pane__actions .pane__close {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  line-height: 0;
+}
+
+.pane__actions .pane__close:hover:not(:disabled) {
+  background: var(--line);
+  color: var(--text);
+}
+
+.pane__close svg {
+  display: block;
+  flex: none;
 }
 
 .pane__actions {
@@ -919,16 +952,24 @@
   min-height: 0;
 }
 
+/*
+ * Barra fina no topo do workspace (workspace/WorkspaceToolbar.tsx): um botão "Abrir terminal" e, abaixo dele, o
+ * menu dos programas. O menu tem a superfície e a sombra do menu de projetos da barra superior (.topbar__menu-list).
+ */
 .workspace__toolbar {
+  position: relative;
   display: flex;
   flex: none;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.workspace__toolbar:focus {
+  outline: none;
 }
 
 .workspace__open {

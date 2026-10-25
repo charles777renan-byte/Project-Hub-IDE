@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
-import { ConfirmButton } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
 import { ICON_PROPS, SquareTerminal, X } from '../components/Icon';
@@ -45,7 +44,13 @@ function CloseButton({
 }) {
   return (
     <Hint label={hint}>
-      <button type="button" aria-label="Fechar painel" disabled={disabled} onClick={onClick}>
+      <button
+        type="button"
+        className="pane__close"
+        aria-label="Fechar painel"
+        disabled={disabled}
+        onClick={onClick}
+      >
         <X {...ICON_PROPS} />
       </button>
     </Hint>
@@ -138,13 +143,10 @@ export function PaneView(props: PaneViewProps) {
           </span>
           <span className="pane__actions">
             {terminal.missionId === undefined ? (
-              <ConfirmButton
-                label="Fechar painel"
-                question="Fechar o painel? O processo será finalizado."
-                confirmLabel="Fechar painel"
-                hint="Fecha o painel e finaliza o processo"
+              <CloseButton
                 disabled={busy}
-                onConfirm={props.onClose}
+                onClick={props.onClose}
+                hint="Fecha o painel e finaliza o processo"
               />
             ) : (
               <>

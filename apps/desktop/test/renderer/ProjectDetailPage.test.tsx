@@ -111,6 +111,11 @@ describe('ProjectDetailPage: cabeçalho e aba Missões', () => {
     expect(cards[0]).toHaveClass('mission-card--attention');
     expect(cards[1]).not.toHaveClass('mission-card--attention');
     expect(within(cards[1]!).getByText('Em execução')).toBeInTheDocument();
+    // Cada selo leva o ícone do estado; o texto continua sendo o que o leitor de tela lê.
+    expect(within(cards[1]!).getByText('Em execução').querySelector('svg')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
   });
 
   it('o caminho do cabeçalho ganha um ponto de quebra depois de cada separador', async () => {

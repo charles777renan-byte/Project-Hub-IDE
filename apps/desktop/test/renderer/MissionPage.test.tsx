@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AppResult,
@@ -8,6 +8,7 @@ import type {
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Link, MemoryRouter, Route, Routes } from 'react-router';
+import { App } from '../../src/renderer/App';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { notify } from '../../src/renderer/notify';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
@@ -110,6 +111,11 @@ function renderPage() {
   );
 }
 
+/** Abre o menu "Mais ações" do resumo, onde ficam Pausar, Cancelar missão e Excluir missão. */
+async function openActionsMenu(user = userEvent.setup()) {
+  await user.click(await screen.findByRole('button', { name: 'Mais ações' }));
+}
+
 afterEach(() => {
   notify.clear();
   Reflect.deleteProperty(window, 'projectHub');
@@ -136,6 +142,24 @@ describe('MissionPage: cabeçalho', () => {
     expect(within(summary).getByText('worktree ainda não criado')).toBeInTheDocument();
     // Sem worktree, não há caminho para copiar.
     expect(within(summary).queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
+  });
+
+  it('o selo da situação leva o ícone do estado, que o leitor de tela ignora', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }));
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
+    const chip = within(summary).getByText('Aguarda sua aprovação');
+    expect(chip.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('"Copiar caminho" tem um ícone decorativo e o nome acessível continua o mesmo', async () => {
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    renderPage();
+
+    const button = await screen.findByRole('button', { name: 'Copiar caminho' });
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(button).toHaveTextContent(/^Copiar caminho$/);
   });
 
   it('com worktree, mostra só o nome curto da pasta, e o caminho inteiro fica no título', async () => {
@@ -187,8 +211,11 @@ describe('MissionPage: cabeçalho', () => {
     renderPage();
 
     await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
-    expect(screen.queryByRole('button', { name: 'Pausar' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancelar missão' })).not.toBeInTheDocument();
+    await openActionsMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Pausar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Cancelar missão' })).not.toBeInTheDocument();
+    // Só a ação de excluir sobrou: o menu aberto não está vazio.
+    expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
   });
 
   it('missão em andamento não oferece Excluir missão', async () => {
@@ -196,7 +223,9 @@ describe('MissionPage: cabeçalho', () => {
     renderPage();
 
     await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
-    expect(screen.queryByRole('button', { name: 'Excluir missão' })).not.toBeInTheDocument();
+    await openActionsMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Excluir missão' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).toBeInTheDocument();
   });
 
   it('missão encerrada: Excluir missão pede confirmação, apaga e volta ao projeto', async () => {
@@ -206,8 +235,12 @@ describe('MissionPage: cabeçalho', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Excluir missão' }));
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    // A pergunta fica de pé depois que o menu fecha, com o foco no Voltar (a escolha segura).
     expect(screen.getByRole('group', { name: /Excluir esta missão/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Excluir missão' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
     expect(api.missions.delete).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Excluir' }));
@@ -231,7 +264,8 @@ describe('MissionPage: cabeçalho', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Excluir missão' }));
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
     await user.click(screen.getByRole('button', { name: 'Excluir' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -239,6 +273,87 @@ describe('MissionPage: cabeçalho', () => {
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Ajustar login' })).toBeInTheDocument();
     expect(screen.queryByText('Página do projeto')).not.toBeInTheDocument();
+  });
+
+  it('falha ao excluir: a pergunta some e o menu volta, com a missão ainda na tela', async () => {
+    const { api } = installApi(viewOf({ status: 'failed' }));
+    api.missions.delete.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+        message: 'O worktree tem alterações não salvas.',
+        retryable: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('group', { name: /Excluir esta missão/ })).not.toBeInTheDocument();
+    // Dá para tentar de novo: o menu voltou e ainda oferece Excluir missão.
+    await openActionsMenu(user);
+    expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
+  });
+
+  it('falha ao excluir: o foco volta ao botão Mais ações', async () => {
+    const { api } = installApi(viewOf({ status: 'failed' }));
+    api.missions.delete.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'WORKTREE_HAS_UNSAVED_CHANGES', message: 'Falhou.', retryable: false },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    await screen.findByRole('alert');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mais ações' })).toHaveFocus());
+  });
+
+  it('Voltar desfaz o pedido de exclusão: nada é apagado e o foco volta ao menu', async () => {
+    const { api } = installApi(viewOf({ status: 'succeeded' }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(screen.queryByRole('group', { name: /Excluir esta missão/ })).not.toBeInTheDocument();
+    expect(api.missions.delete).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mais ações' })).toHaveFocus());
+  });
+
+  it('a pergunta de exclusão aberta não sobrevive a uma nova tentativa nem volta sozinha quando a missão falha de novo', async () => {
+    const hub = installApi(viewOf({ status: 'failed' }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    expect(screen.getByRole('group', { name: /Excluir esta missão/ })).toBeInTheDocument();
+
+    // A pessoa tenta de novo: a missão volta a rodar e o menu reaparece, sem a pergunta.
+    hub.setView(viewOf({ status: 'running' }));
+    hub.emit({ eventType: 'mission.status_changed', payload: { from: 'failed', to: 'running' } });
+    await openActionsMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Pausar' })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /Excluir esta missão/ })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    // Falha de novo: a pergunta antiga não volta, e o foco não pula para o "Voltar".
+    hub.setView(viewOf({ status: 'failed' }));
+    hub.emit({ eventType: 'mission.status_changed', payload: { from: 'running', to: 'failed' } });
+    await screen.findByRole('button', { name: 'Tentar de novo' });
+    expect(screen.queryByRole('group', { name: /Excluir esta missão/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Voltar' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mais ações' })).toBeInTheDocument();
   });
 });
 
@@ -611,16 +726,24 @@ describe('MissionPage: resumo', () => {
     installApi(viewOf({ status: 'running' }));
     const { unmount } = renderPage();
 
+    // As três ações moram no menu "Mais ações": soltas no resumo não aparecem mais.
     const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
-    expect(within(summary).getByRole('button', { name: 'Pausar' })).toBeInTheDocument();
-    expect(within(summary).getByRole('button', { name: 'Cancelar missão' })).toBeInTheDocument();
+    expect(within(summary).queryByRole('button', { name: 'Pausar' })).toBeNull();
+    expect(within(summary).queryByRole('button', { name: 'Cancelar missão' })).toBeNull();
+    await openActionsMenu();
+    expect(screen.getByRole('menuitem', { name: 'Pausar' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Excluir missão' })).toBeNull();
     unmount();
 
     installApi(viewOf({ status: 'succeeded' }));
     renderPage();
     const ended = await screen.findByRole('region', { name: 'Resumo da missão' });
-    expect(within(ended).getByRole('button', { name: 'Excluir missão' })).toBeInTheDocument();
-    expect(within(ended).queryByRole('button', { name: 'Cancelar missão' })).toBeNull();
+    expect(within(ended).queryByRole('button', { name: 'Excluir missão' })).toBeNull();
+    await openActionsMenu();
+    expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Cancelar missão' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Pausar' })).toBeNull();
   });
 
   it('a ação principal chama a mesma API de antes, com a mesma missão', async () => {
@@ -776,9 +899,10 @@ describe('MissionPage: resumo de conclusão', () => {
     expect(within(block).getByText('Git: alterações sem commit')).toBeInTheDocument();
     const indicators = within(summary).getByRole('list', { name: 'Indicadores da missão' });
     expect(within(indicators).getByText('14 de 14 passaram')).toBeInTheDocument();
-    // Sem ação principal: só Excluir missão.
+    // Sem ação principal: só Excluir missão, no menu "Mais ações".
     expect(summary.querySelectorAll('.mission-summary__primary')).toHaveLength(0);
-    expect(within(summary).getByRole('button', { name: 'Excluir missão' })).toBeInTheDocument();
+    await openActionsMenu();
+    expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
   });
 
   it.each(['running', 'failed', 'cancelled', 'planned'] as const)(
@@ -1027,7 +1151,12 @@ describe('MissionPage: plano', () => {
       expect(alert).toHaveTextContent(message);
       if (code !== 'PROJECT_WITHOUT_GIT') expect(alert).not.toHaveTextContent('Inicialize o Git');
       expect(screen.queryByText('Mensagem técnica.')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeEnabled();
+      await openActionsMenu();
+      // O Radix marca o item desabilitado com aria-disabled, não com o atributo `disabled`.
+      expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).not.toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
       expect(screen.getByText('Plano aprovado, aguardando início')).toBeInTheDocument();
     },
   );
@@ -1196,7 +1325,8 @@ describe('MissionPage: pausa, retomada e nova tentativa (R180, R181)', () => {
     const hub = installApi(viewOf({ status: 'running' }));
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Pausar' }));
+    await openActionsMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Pausar' }));
 
     await waitFor(() => expect(hub.api.missions.pause).toHaveBeenCalledWith('m1'));
     expect(hub.api.missions.get.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -1208,9 +1338,10 @@ describe('MissionPage: pausa, retomada e nova tentativa (R180, R181)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Retomar' }));
 
-    expect(screen.queryByRole('button', { name: 'Pausar' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeInTheDocument();
     await waitFor(() => expect(hub.api.missions.resume).toHaveBeenCalledWith('m1'));
+    await openActionsMenu();
+    expect(screen.queryByRole('menuitem', { name: 'Pausar' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).toBeInTheDocument();
   });
 
   it.each(['failed', 'cancelled'] as const)(
@@ -1388,7 +1519,8 @@ describe('MissionPage: foco da decisão (R182)', () => {
     const answer = await screen.findByLabelText('Qual o nome do arquivo?');
     await userEvent.type(answer, 'notas');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar missão' }));
+    await openActionsMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Cancelar missão' }));
 
     await waitFor(() => expect(hub.api.missions.cancel).toHaveBeenCalledWith('m1'));
     expect(screen.getByLabelText('Qual o nome do arquivo?')).toHaveValue('notas');
@@ -1405,8 +1537,9 @@ describe('MissionPage: controles sem espera de chamadas longas (R183)', () => {
     hub.setView(viewOf({ status: 'running' }));
     hub.emit({ eventType: 'mission.status_changed', payload: { from: 'queued', to: 'running' } });
 
-    const pause = await screen.findByRole('button', { name: 'Pausar' });
-    expect(pause).toBeEnabled();
+    await openActionsMenu();
+    const pause = await screen.findByRole('menuitem', { name: 'Pausar' });
+    expect(pause).not.toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(pause);
 
     await waitFor(() => expect(hub.api.missions.pause).toHaveBeenCalledWith('m1'));
@@ -1419,6 +1552,71 @@ describe('MissionPage: controles sem espera de chamadas longas (R183)', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Iniciar missão' }));
 
-    expect(screen.getByRole('button', { name: 'Cancelar missão' })).toBeEnabled();
+    await openActionsMenu();
+    expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('com uma pausa em curso, as ações do menu ficam desabilitadas até ela terminar', async () => {
+    const hub = installApi(viewOf({ status: 'running' }));
+    hub.api.missions.pause.mockImplementation(() => new Promise<never>(() => undefined));
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Pausar' }));
+    await waitFor(() => expect(hub.api.missions.pause).toHaveBeenCalledWith('m1'));
+
+    await openActionsMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Pausar' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+});
+
+// Ctrl+K vem do App, então o caso monta o App inteiro na rota da missão. Nesta montagem o clique não leva o
+// foco ao campo (o separador da barra lateral fica focado no jsdom; a causa não foi investigada a fundo),
+// então o teste põe o foco direto e segue com teclas de verdade.
+describe('MissionPage: Ctrl+K sobre a resposta ao agente', () => {
+  it('a paleta abre e fecha com Escape sem apagar o rascunho, e o foco volta ao campo', async () => {
+    installApi(
+      viewOf(
+        { status: 'waiting_input' },
+        {
+          events: [
+            eventOf({
+              eventType: 'input.requested',
+              payload: { request: { id: 'entrada', prompt: 'Qual o nome do arquivo?' } },
+            }),
+          ],
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <App />
+      </MemoryRouter>,
+    );
+    await openTab('Conversa');
+    const campo = await screen.findByLabelText('Qual o nome do arquivo?');
+    act(() => campo.focus());
+    await user.keyboard('rascunho');
+    expect(campo).toHaveValue('rascunho');
+
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.getByRole('combobox')).toHaveFocus();
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(campo).toHaveValue('rascunho');
+    expect(campo).toHaveFocus();
   });
 });

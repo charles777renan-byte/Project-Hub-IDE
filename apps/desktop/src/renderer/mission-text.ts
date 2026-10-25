@@ -1,4 +1,17 @@
 import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
+import { differenceInMinutes, format, isSameDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import {
+  CircleAlert,
+  CircleCheck,
+  CirclePause,
+  CircleQuestionMark,
+  CircleSlash,
+  Clock,
+  LoaderCircle,
+  ShieldQuestionMark,
+  type LucideIcon,
+} from './components/Icon';
 
 /**
  * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda a
@@ -20,6 +33,25 @@ const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
   succeeded: { label: 'Concluída', tone: 'lime' },
   failed: { label: 'Falhou', tone: 'red' },
   cancelled: { label: 'Cancelada', tone: 'muted' },
+};
+
+/**
+ * O ícone de cada estado da missão, num ponto só (o selo `StatusChip` recebe pela prop `icon`). Relógio
+ * para o que espera o início, círculo com interrogação para o que espera uma resposta, escudo com
+ * interrogação para a aprovação, círculo girando para o que roda. O rascunho fica sem ícone: o selo
+ * mantém o ponto de sempre. O ícone é decorativo; o rótulo do estado continua sendo a fonte de verdade.
+ */
+const STATUS_ICON: Record<MissionStatus, LucideIcon | undefined> = {
+  draft: undefined,
+  planned: Clock,
+  queued: Clock,
+  running: LoaderCircle,
+  waiting_approval: ShieldQuestionMark,
+  waiting_input: CircleQuestionMark,
+  paused: CirclePause,
+  succeeded: CircleCheck,
+  failed: CircleAlert,
+  cancelled: CircleSlash,
 };
 
 /** Estados que encerram a missão: não têm mais ação nem cancelamento. */
@@ -65,6 +97,10 @@ export function statusLabel(status: MissionStatus): string {
 
 export function statusTone(status: MissionStatus): Tone {
   return STATUS[status].tone;
+}
+
+export function statusIcon(status: MissionStatus): LucideIcon | undefined {
+  return STATUS_ICON[status];
 }
 
 export function stepStatus(status: MissionStepDto['status']): { label: string; tone: Tone } {
@@ -511,11 +547,22 @@ export function terminalEntries(events: readonly MissionEventDto[]): TerminalEnt
     });
 }
 
-/** Hora de um evento no fuso local: horas, minutos e segundos. */
+/**
+ * Horário de um evento, no fuso local. Regras, nesta ordem: menos de 1 minuto, "agora"; menos de
+ * 1 hora, "há N min"; no mesmo dia, "HH:mm"; qualquer outra data, "dd/MM HH:mm". Passada 1 hora o
+ * texto nunca vira horas relativas ("há 40 h"): a data e a hora dizem mais e não envelhecem.
+ *
+ * Um horário um pouco à frente do relógio (diferença entre máquinas) conta como "agora". Um texto que
+ * não é data volta como veio, para a tela não quebrar.
+ */
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+
+  const now = new Date();
+  const minutes = differenceInMinutes(now, date);
+  if (Math.abs(minutes) < 1) return 'agora';
+  if (minutes >= 1 && minutes < 60) return `há ${minutes} min`;
+  if (isSameDay(date, now)) return format(date, 'HH:mm', { locale: ptBR });
+  return format(date, 'dd/MM HH:mm', { locale: ptBR });
 }

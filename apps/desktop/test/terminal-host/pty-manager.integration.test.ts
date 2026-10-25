@@ -35,6 +35,21 @@ async function waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<vo
   }
 }
 
+/**
+ * O PowerShell mostra o prompt antes de o PSReadLine começar a ler o teclado, e o que se digita nesse intervalo
+ * se perde (no CI isso acontece quase sempre). Reenvia um comando de prova até a resposta chegar: depois
+ * disso, a entrada do teste vale.
+ */
+async function waitForInput(id: string, timeoutMs = 20_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!(manager.output(id) ?? '').includes('pronto-2')) {
+    if (Date.now() > deadline) throw new Error('o shell não passou a ler a entrada a tempo');
+    manager.write(id, 'Write-Output "pronto-$(1+1)"\r');
+    const until = Date.now() + 1_000;
+    while (Date.now() < until && !(manager.output(id) ?? '').includes('pronto-2')) await sleep(50);
+  }
+}
+
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -59,6 +74,7 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
     const id = randomUUID();
     openShell(id);
     await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+    await waitForInput(id);
 
     manager.write(id, 'Write-Output "ola-$(1+1)"\r');
 
@@ -69,6 +85,7 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
     const id = randomUUID();
     openShell(id);
     await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+    await waitForInput(id);
     const exits: number[] = [];
     manager.onExit(id, (exit) => exits.push(exit.exitCode));
 
@@ -82,6 +99,7 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
     const id = randomUUID();
     openShell(id);
     await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+    await waitForInput(id);
     let live = '';
     const stop = manager.subscribe(id, (data) => {
       live += data;
@@ -101,6 +119,7 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
     const id = randomUUID();
     openShell(id);
     await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+    await waitForInput(id);
 
     manager.write(id, `Write-Output ('x' * 500)\r`);
     await waitFor(() => (manager.output(id) ?? '').includes('x'.repeat(50)));
@@ -135,6 +154,7 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
       const id = randomUUID();
       openShell(id);
       await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+      await waitForInput(id);
 
       manager.write(
         id,
@@ -157,6 +177,7 @@ describe.skipIf(!onWindows)('PtyManager com shell real', () => {
     const id = randomUUID();
     openShell(id);
     await waitFor(() => (manager.output(id) ?? '').includes('PS '));
+    await waitForInput(id);
     manager.write(id, 'exit\r');
     await waitFor(() => !manager.has(id));
 

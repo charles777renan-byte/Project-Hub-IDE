@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import type { MissionEventDto } from '@project-hub/contracts';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Timeline } from '../../src/renderer/components/Timeline';
 import { describeEvent, lastInputPrompt } from '../../src/renderer/mission-text';
 
@@ -53,6 +53,38 @@ describe('Timeline', () => {
 
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
     expect(document.querySelector('img')).toBeNull();
+  });
+});
+
+describe('Timeline, horário de cada evento', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-21T15:00:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('mostra o horário relativo ou a data, e mantém o valor original no atributo dateTime', () => {
+    render(
+      <Timeline
+        events={[
+          event({ id: 'a', createdAt: '2026-10-19T14:02:00', payload: { content: 'Antigo.' } }),
+          event({ id: 'b', createdAt: '2026-10-21T14:55:00', payload: { content: 'Recente.' } }),
+        ]}
+      />,
+    );
+
+    const rows = screen.getAllByRole('listitem');
+    const antigo = rows.find((row) => row.textContent?.includes('Antigo.'))?.querySelector('time');
+    const recente = rows
+      .find((row) => row.textContent?.includes('Recente.'))
+      ?.querySelector('time');
+    expect(antigo).toHaveTextContent('19/10 14:02');
+    expect(antigo).toHaveAttribute('dateTime', '2026-10-19T14:02:00');
+    expect(recente).toHaveTextContent('há 5 min');
+    expect(recente).toHaveAttribute('dateTime', '2026-10-21T14:55:00');
   });
 });
 
