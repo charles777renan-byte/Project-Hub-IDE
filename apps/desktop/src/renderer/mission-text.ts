@@ -3,6 +3,7 @@ import {
   CircleAlert,
   CircleCheck,
   CirclePause,
+  CircleQuestionMark,
   CircleSlash,
   Clock,
   LoaderCircle,
@@ -34,9 +35,9 @@ const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
 
 /**
  * O ícone de cada estado da missão, num ponto só (o selo `StatusChip` recebe pela prop `icon`). Relógio
- * para o que espera o início ou uma resposta, escudo com interrogação para a aprovação, círculo girando
- * para o que roda. O rascunho fica sem ícone: o selo mantém o ponto de sempre. O ícone é decorativo; o
- * rótulo do estado continua sendo a fonte de verdade.
+ * para o que espera o início, círculo com interrogação para o que espera uma resposta, escudo com
+ * interrogação para a aprovação, círculo girando para o que roda. O rascunho fica sem ícone: o selo
+ * mantém o ponto de sempre. O ícone é decorativo; o rótulo do estado continua sendo a fonte de verdade.
  */
 const STATUS_ICON: Record<MissionStatus, LucideIcon | undefined> = {
   draft: undefined,
@@ -44,7 +45,7 @@ const STATUS_ICON: Record<MissionStatus, LucideIcon | undefined> = {
   queued: Clock,
   running: LoaderCircle,
   waiting_approval: ShieldQuestionMark,
-  waiting_input: Clock,
+  waiting_input: CircleQuestionMark,
   paused: CirclePause,
   succeeded: CircleCheck,
   failed: CircleAlert,

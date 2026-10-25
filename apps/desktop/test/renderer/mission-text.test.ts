@@ -40,7 +40,8 @@ describe('tom dos estados da missão', () => {
 
 /**
  * O ícone de cada estado da missão, num ponto só. O estado `draft` fica sem ícone (o selo mantém o ponto);
- * os estados que esperam a pessoa ou o início dividem o relógio, e o que pede a aprovação tem o escudo.
+ * os que esperam o início dividem o relógio, o que espera uma resposta tem o círculo com interrogação, e
+ * o que pede a aprovação tem o escudo.
  */
 describe('ícone dos estados da missão', () => {
   const expected: Record<MissionStatus, string | undefined> = {
@@ -49,7 +50,7 @@ describe('ícone dos estados da missão', () => {
     queued: 'Clock',
     running: 'LoaderCircle',
     waiting_approval: 'ShieldQuestionMark',
-    waiting_input: 'Clock',
+    waiting_input: 'CircleQuestionMark',
     paused: 'CirclePause',
     succeeded: 'CircleCheck',
     failed: 'CircleAlert',
@@ -64,6 +65,8 @@ describe('ícone dos estados da missão', () => {
         expect(icon).toBeUndefined();
         return;
       }
+      // Um nome que o Icon.tsx não exporta daria `undefined` dos dois lados e passaria à toa.
+      expect(Icons[name as keyof typeof Icons]).toBeDefined();
       expect(icon).toBe(Icons[name as keyof typeof Icons]);
     },
   );

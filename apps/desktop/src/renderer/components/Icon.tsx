@@ -8,6 +8,7 @@ export {
   CircleAlert,
   CircleCheck,
   CirclePause,
+  CircleQuestionMark,
   CircleSlash,
   Clock,
   Copy,
