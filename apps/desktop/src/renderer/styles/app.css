@@ -255,6 +255,15 @@ button:disabled {
   background: currentcolor;
 }
 
+/* Com ícone (StatusChip com `icon`), o ícone toma o lugar do ponto; o ícone herda a cor do tom. */
+.chip--icon::before {
+  display: none;
+}
+
+.chip__icon {
+  flex: none;
+}
+
 .chip--lime,
 .state-mark--active,
 .state-mark--done {
@@ -660,6 +669,9 @@ button:disabled {
 }
 
 .mission-meta__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: 0.125rem var(--space-2);
   font-family: var(--font-sans);
   font-size: 0.75rem;

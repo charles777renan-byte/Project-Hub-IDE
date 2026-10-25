@@ -5,6 +5,7 @@ import {
   MISSION_TEXT,
   isEnded,
   primaryActionOf,
+  statusIcon,
   statusLabel,
   statusTone,
   verificationSummary,
@@ -14,6 +15,7 @@ import {
 import { notify } from '../../notify';
 import { projectPath } from '../../routes';
 import { ConfirmInline } from '../ConfirmButton';
+import { Copy, ICON_PROPS } from '../Icon';
 import { MenuAcoes, type AcaoMenu } from '../MenuAcoes';
 import { StatusChip } from '../StatusChip';
 import type { DiffSummary } from './DiffPanel';
@@ -135,6 +137,7 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
         {worktreeName(path)}
       </span>
       <button type="button" className="mission-meta__copy" onClick={() => void copyPath(path)}>
+        <Copy {...ICON_PROPS} />
         Copiar caminho
       </button>
       <span aria-live="polite" className="mission-meta__feedback">
@@ -292,7 +295,11 @@ export function MissionSummary({
           </p>
           <h1>{mission.title}</h1>
           <div className="mission-meta">
-            <StatusChip label={statusLabel(mission.status)} tone={tone} />
+            <StatusChip
+              label={statusLabel(mission.status)}
+              tone={tone}
+              icon={statusIcon(mission.status)}
+            />
             <span className="mission-meta__item">branch {project.defaultBranch ?? 'sem Git'}</span>
             <WorktreeMeta path={mission.worktreePath} />
           </div>

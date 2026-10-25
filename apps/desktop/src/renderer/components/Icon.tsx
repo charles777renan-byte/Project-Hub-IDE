@@ -7,13 +7,20 @@ export {
   ChevronRight,
   CircleAlert,
   CircleCheck,
+  CirclePause,
+  CircleSlash,
+  Clock,
+  Copy,
   FolderGit2,
   House,
   Inbox,
+  LoaderCircle,
   Plus,
+  ShieldQuestionMark,
   SquareTerminal,
   X,
 } from 'lucide-react';
+export type { LucideIcon } from 'lucide-react';
 
 /** Propriedades comuns dos ícones: 14px, traço 2, escondidos de leitores de tela. */
 export const ICON_PROPS = { size: 14, strokeWidth: 2, 'aria-hidden': true } as const;

@@ -143,6 +143,24 @@ describe('MissionPage: cabeçalho', () => {
     expect(within(summary).queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
   });
 
+  it('o selo da situação leva o ícone do estado, que o leitor de tela ignora', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }));
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
+    const chip = within(summary).getByText('Aguarda sua aprovação');
+    expect(chip.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('"Copiar caminho" tem um ícone decorativo e o nome acessível continua o mesmo', async () => {
+    installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    renderPage();
+
+    const button = await screen.findByRole('button', { name: 'Copiar caminho' });
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(button).toHaveTextContent(/^Copiar caminho$/);
+  });
+
   it('com worktree, mostra só o nome curto da pasta, e o caminho inteiro fica no título', async () => {
     installApi(
       viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1-ajustar-login' }),
