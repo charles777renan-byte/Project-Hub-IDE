@@ -25,6 +25,7 @@ const MISSION_MARKS: Record<MissionStatus, MarkKind> = {
   waiting_approval: 'waiting',
   waiting_input: 'waiting',
   paused: 'disconnected',
+  review: 'waiting',
   succeeded: 'done',
   failed: 'error',
   cancelled: 'disconnected',

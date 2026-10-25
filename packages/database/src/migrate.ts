@@ -91,6 +91,19 @@ export function migrateDatabase(
     backupFile(db, options.backupPath ?? defaultBackupPath(db.$client.name));
   }
 
-  migrate(db, { migrationsFolder: MIGRATIONS_FOLDER, migrationsTable: MIGRATIONS_TABLE });
+  // Trocar a CHECK de uma tabela exige recriá-la (DROP TABLE + RENAME). Com as chaves estrangeiras ligadas,
+  // o DROP apagaria em cascata as filhas (etapas, critérios, execuções). O PRAGMA não tem efeito dentro de
+  // transação, e o Drizzle abre a sua dentro de `migrate`, então as chaves são desligadas antes e ligadas
+  // de volta depois, com a checagem de integridade.
+  db.$client.pragma('foreign_keys = OFF');
+  try {
+    migrate(db, { migrationsFolder: MIGRATIONS_FOLDER, migrationsTable: MIGRATIONS_TABLE });
+    const violations = db.$client.pragma('foreign_key_check') as unknown[];
+    if (violations.length > 0) {
+      throw new Error('A migração deixou chaves estrangeiras quebradas.');
+    }
+  } finally {
+    db.$client.pragma('foreign_keys = ON');
+  }
   return { applied: pending.map((entry) => entry.tag), alreadyUpToDate: false };
 }

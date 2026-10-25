@@ -18,6 +18,7 @@ const IN_PROGRESS: readonly MissionStatus[] = [
   'running',
   'waiting_approval',
   'waiting_input',
+  'review',
   'planned',
   'queued',
 ];

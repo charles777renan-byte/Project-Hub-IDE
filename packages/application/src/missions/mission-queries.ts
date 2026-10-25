@@ -96,13 +96,14 @@ function isCount(value: unknown): value is number {
  * quantos arquivos o worktree tinha alterados e o estado do Git na hora da conclusão; sem ele (missão
  * anterior a este registro, ou Git que falhou ao ler), não há resumo, e nada é inventado. A frase vem
  * do `session.completed` da mesma tentativa, e a verificação é a última `verification.completed` dela.
- * Missão que não está `succeeded` nunca tem resumo, mesmo com eventos de uma tentativa anterior.
+ * Missão que não está em `review` ou `succeeded` nunca tem resumo, mesmo com eventos de uma tentativa
+ * anterior. O resumo aparece já na revisão, para a pessoa decidir com ele à vista.
  */
 export function deriveConclusion(
   mission: Pick<Mission, 'status'>,
   events: readonly MissionEvent[],
 ): MissionConclusionDto | undefined {
-  if (mission.status !== 'succeeded') return undefined;
+  if (mission.status !== 'review' && mission.status !== 'succeeded') return undefined;
   const concluded = [...events]
     .reverse()
     .find((event) => event.eventType === 'execution.concluded');

@@ -81,6 +81,13 @@ export interface Orchestrator {
   provideInput(input: { missionId: string; text: string }): Promise<AppResult<void>>;
   /** Nova tentativa: `failed` ou `cancelled` -> `queued`, e a execução anterior fica como está. */
   retryMission(missionId: string): Promise<AppResult<Execution>>;
+  /** Aprova a conclusão: `review` -> `succeeded`. */
+  approveReview(missionId: string): Promise<AppResult<void>>;
+  /**
+   * Pede ajustes: `review` -> `queued` e inicia uma nova tentativa no mesmo worktree, com o pedido no
+   * prompt. O texto é obrigatório.
+   */
+  requestChanges(input: { missionId: string; feedback: string }): Promise<AppResult<Execution>>;
 }
 
 const MISSION_NOT_FOUND = 'A missão não foi encontrada.';
@@ -424,7 +431,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   function endRun(
     run: ActiveRun,
     executionId: string,
-    outcome: { status: 'succeeded' | 'failed'; exitReason: ExitReason; actor: AuditActor },
+    outcome: {
+      status: 'succeeded' | 'failed';
+      exitReason: ExitReason;
+      actor: AuditActor;
+      /** Estado da missão ao terminar. Padrão: o mesmo da execução. */
+      missionStatus?: MissionStatus;
+    },
     beforeEnd?: () => void,
   ): void {
     repo.transaction(() => {
@@ -436,7 +449,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         finishedAt: at,
       });
       expirePendingApprovals(repo, executionId, at);
-      moveMission(repo, run.missionId, outcome.status, {
+      moveMission(repo, run.missionId, outcome.missionStatus ?? outcome.status, {
         actor: outcome.actor,
         at,
         changes: { finishedAt: at },
@@ -588,7 +601,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         endRun(
           run,
           executionId,
-          { status: 'succeeded', exitReason: 'completed', actor: 'agent' },
+          // O agente terminou a tentativa, mas quem conclui a missão é a pessoa (revisão).
+          { status: 'succeeded', exitReason: 'completed', actor: 'agent', missionStatus: 'review' },
           () => {
             recordEvent(executionId, event);
             if (summary === undefined) return;
@@ -739,6 +753,19 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * Início: confere o estado e o Git, prepara o workspace, abre o agente e abre a tentativa. Cada
    * falha antes de `running` deixa a missão em `queued`, para uma nova tentativa de início.
    */
+  /**
+   * O prompt da tentativa: o objetivo e, quando a revisão pediu ajustes, o último pedido. A auditoria
+   * guarda cada pedido; só o mais recente entra, porque é o que a tentativa precisa atender.
+   */
+  function promptFor(mission: Mission): string {
+    const request = [...repo.listAudit(mission.id)]
+      .reverse()
+      .find((event) => event.eventType === 'review.changes_requested');
+    const feedback = request?.payload['feedback'];
+    if (typeof feedback !== 'string' || feedback.trim() === '') return mission.objective;
+    return `${mission.objective}\n\nAjustes pedidos na revisão:\n${feedback.trim()}`;
+  }
+
   async function launch(
     run: ActiveRun,
     mission: Mission,
@@ -762,7 +789,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     let session: AgentSession;
     try {
       session = await agent.start(
-        { cwd: workspace.cwd, prompt: mission.objective },
+        { cwd: workspace.cwd, prompt: promptFor(mission) },
         run.controller.signal,
       );
     } catch (error) {
@@ -1216,6 +1243,68 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return { ok: true, data: undefined };
   }
 
+  /** `review` -> `succeeded`: a pessoa aprova a conclusão do agente. */
+  async function approveReview(missionId: string): Promise<AppResult<void>> {
+    const mission = repo.getMission(missionId);
+    if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+    if (mission.status !== 'review') {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'Só uma missão aguardando revisão pode ser aprovada.',
+      );
+    }
+    repo.transaction(() => {
+      const at = now();
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: missionId,
+        eventType: 'review.approved',
+        severity: 'info',
+        actor: 'user',
+        payload: {},
+        createdAt: at,
+      });
+      moveMission(repo, missionId, 'succeeded', { actor: 'user', at });
+    });
+    return { ok: true, data: undefined };
+  }
+
+  /**
+   * `review` -> `queued`, e a nova tentativa começa logo (ou entra na fila, se não há vaga). O pedido fica
+   * na auditoria e vai no prompt. Texto vazio é recusado antes de qualquer mudança.
+   */
+  async function requestChanges(input: {
+    missionId: string;
+    feedback: string;
+  }): Promise<AppResult<Execution>> {
+    const mission = repo.getMission(input.missionId);
+    if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+    if (mission.status !== 'review') {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'Só uma missão aguardando revisão pode receber pedido de ajuste.',
+      );
+    }
+    const feedback = input.feedback.trim();
+    if (feedback === '') {
+      return failure('VALIDATION_FAILED', 'Escreva o que precisa ser ajustado.');
+    }
+    repo.transaction(() => {
+      const at = now();
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: input.missionId,
+        eventType: 'review.changes_requested',
+        severity: 'info',
+        actor: 'user',
+        payload: { feedback },
+        createdAt: at,
+      });
+      moveMission(repo, input.missionId, 'queued', { actor: 'user', at });
+    });
+    return startMission(input.missionId);
+  }
+
   // A recuperação das execuções abertas roda ao criar o orquestrador. Cada chamada pública espera por ela,
   // para não mexer numa execução que ainda está sendo reanexada ou fechada.
   const ready: Promise<void> = recoverAll().catch((error: unknown) => {
@@ -1238,5 +1327,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     decideApproval: gated(decideApproval),
     provideInput: gated(provideInput),
     retryMission: gated(retryMission),
+    approveReview: gated(approveReview),
+    requestChanges: gated(requestChanges),
   };
 }

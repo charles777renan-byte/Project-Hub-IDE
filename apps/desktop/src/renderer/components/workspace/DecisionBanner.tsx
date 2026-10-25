@@ -11,11 +11,14 @@ import { MISSION_TEXT, lastInputPrompt } from '../../mission-text';
 export function DecisionBanner({ view, onOpen }: { view: MissionViewDto; onOpen: () => void }) {
   const { mission, pendingApprovals, events } = view;
   const waitingInput = mission.status === 'waiting_input';
-  if (pendingApprovals.length === 0 && !waitingInput) return null;
+  const reviewing = mission.status === 'review';
+  if (pendingApprovals.length === 0 && !waitingInput && !reviewing) return null;
 
   return (
     <section aria-labelledby="decision-banner-title" className="decision-banner">
-      <h2 id="decision-banner-title" className="decision-banner__title">Aguardando você</h2>
+      <h2 id="decision-banner-title" className="decision-banner__title">
+        Aguardando você
+      </h2>
       <ul className="decision-banner__items">
         {pendingApprovals.map((approval) => (
           <li key={approval.id}>
@@ -27,6 +30,12 @@ export function DecisionBanner({ view, onOpen }: { view: MissionViewDto; onOpen:
           <li>
             <span className="decision-banner__kind">Resposta</span>
             <span>{lastInputPrompt(events) ?? 'O agente aguarda a sua resposta.'}</span>
+          </li>
+        ) : null}
+        {reviewing ? (
+          <li>
+            <span className="decision-banner__kind">Revisão</span>
+            <span>A conclusão do agente espera a sua revisão.</span>
           </li>
         ) : null}
       </ul>
