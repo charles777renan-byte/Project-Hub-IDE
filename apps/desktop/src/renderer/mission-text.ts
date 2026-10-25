@@ -1,4 +1,6 @@
 import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
+import { differenceInMinutes, format, isSameDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   CircleAlert,
   CircleCheck,
@@ -545,11 +547,22 @@ export function terminalEntries(events: readonly MissionEventDto[]): TerminalEnt
     });
 }
 
-/** Hora de um evento no fuso local: horas, minutos e segundos. */
+/**
+ * Horário de um evento, no fuso local. Regras, nesta ordem: menos de 1 minuto, "agora"; menos de
+ * 1 hora, "há N min"; no mesmo dia, "HH:mm"; qualquer outra data, "dd/MM HH:mm". Passada 1 hora o
+ * texto nunca vira horas relativas ("há 40 h"): a data e a hora dizem mais e não envelhecem.
+ *
+ * Um horário um pouco à frente do relógio (diferença entre máquinas) conta como "agora". Um texto que
+ * não é data volta como veio, para a tela não quebrar.
+ */
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+
+  const now = new Date();
+  const minutes = differenceInMinutes(now, date);
+  if (Math.abs(minutes) < 1) return 'agora';
+  if (minutes >= 1 && minutes < 60) return `há ${minutes} min`;
+  if (isSameDay(date, now)) return format(date, 'HH:mm', { locale: ptBR });
+  return format(date, 'dd/MM HH:mm', { locale: ptBR });
 }
