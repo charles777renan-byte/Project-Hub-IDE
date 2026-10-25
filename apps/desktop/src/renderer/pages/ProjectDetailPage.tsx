@@ -70,6 +70,9 @@ export function ProjectDetailPage() {
   const [editingGroup, setEditingGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [editingNickname, setEditingNickname] = useState(false);
+  const [nickname, setNickname] = useState('');
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
   const location = useLocation();
 
   const load = useCallback(async () => {
@@ -189,21 +192,44 @@ export function ProjectDetailPage() {
 
   const { project, missions, groups } = state;
 
-  /** Grava o grupo do projeto (ou o tira, com `null`), avisa a barra lateral e lê o projeto de novo. */
-  async function saveGroup(value: string | null) {
-    setGroupError(null);
+  /**
+   * Grava um campo do projeto (grupo ou apelido). Com sucesso, fecha o formulário, avisa a barra lateral e
+   * lê o projeto de novo; com falha, a mensagem vai para o formulário e ele continua aberto.
+   */
+  async function saveField(
+    save: () => Promise<AppResult<unknown>>,
+    setError: (message: string | null) => void,
+    close: () => void,
+  ) {
+    setError(null);
     try {
-      const result = await window.projectHub.projects.setGroup(projectId, value);
+      const result = await save();
       if (!result.ok) {
-        setGroupError(result.error.message);
+        setError(result.error.message);
         return;
       }
-      setEditingGroup(false);
+      close();
       window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
       await load();
     } catch {
-      setGroupError(GENERIC_ERROR);
+      setError(GENERIC_ERROR);
     }
+  }
+  /** Grava o grupo do projeto (ou o tira, com `null`). */
+  function saveGroup(value: string | null) {
+    return saveField(
+      () => window.projectHub.projects.setGroup(projectId, value),
+      setGroupError,
+      () => setEditingGroup(false),
+    );
+  }
+  /** Grava o apelido do projeto (ou o remove, com `null`). */
+  function saveNickname(value: string | null) {
+    return saveField(
+      () => window.projectHub.projects.setNickname(projectId, value),
+      setNicknameError,
+      () => setEditingNickname(false),
+    );
   }
   function startCreating() {
     setTab('missions');
@@ -218,7 +244,7 @@ export function ProjectDetailPage() {
           <p className="eyebrow">
             {project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}
           </p>
-          <h1>{project.name}</h1>
+          <h1 title={project.name}>{project.nickname ?? project.name}</h1>
           <div className="project-head__meta">
             <span className="branch-chip">Branch: {project.defaultBranch ?? 'sem Git'}</span>
             {project.group === undefined ? null : (
@@ -241,6 +267,14 @@ export function ProjectDetailPage() {
                   setGroupName(project.group ?? '');
                   setGroupError(null);
                   setEditingGroup(true);
+                },
+              },
+              {
+                rotulo: 'Definir apelido…',
+                onSelecionar: () => {
+                  setNickname(project.nickname ?? '');
+                  setNicknameError(null);
+                  setEditingNickname(true);
                 },
               },
               {
@@ -296,6 +330,41 @@ export function ProjectDetailPage() {
           {groupError === null ? null : (
             <span role="alert" className="page-alert">
               {groupError}
+            </span>
+          )}
+        </form>
+      ) : null}
+      {editingNickname ? (
+        <form
+          aria-label="Apelido do projeto"
+          className="confirm-inline"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveNickname(nickname);
+          }}
+        >
+          <label htmlFor="project-nickname">Apelido</label>
+          <input
+            id="project-nickname"
+            value={nickname}
+            maxLength={24}
+            placeholder="ex.: Re_Zero"
+            onChange={(event) => setNickname(event.target.value)}
+          />
+          <button type="submit" className="btn-primary">
+            Salvar
+          </button>
+          {project.nickname === undefined ? null : (
+            <button type="button" onClick={() => void saveNickname(null)}>
+              Remover apelido
+            </button>
+          )}
+          <button type="button" onClick={() => setEditingNickname(false)}>
+            Cancelar
+          </button>
+          {nicknameError === null ? null : (
+            <span role="alert" className="page-alert">
+              {nicknameError}
             </span>
           )}
         </form>

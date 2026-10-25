@@ -1,3 +1,4 @@
+import type { ActivityDay } from './activity';
 import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
@@ -34,6 +35,8 @@ export type ProjectHubApi = {
     openFolder(projectId: string): Promise<AppResult<void>>;
     /** Põe o projeto num grupo da barra lateral, ou o tira (`null`). */
     setGroup(projectId: string, group: string | null): Promise<AppResult<void>>;
+    /** Dá um apelido ao projeto (até 24 caracteres), ou o tira (`null`). */
+    setNickname(projectId: string, nickname: string | null): Promise<AppResult<void>>;
     /** Projetos arquivados, com a disponibilidade da pasta. */
     listArchived(): Promise<AppResult<ProjectSummary[]>>;
     /** Arquiva o projeto: sai da lista, e a pasta, o Git e as missões ficam como estão. */
@@ -121,6 +124,10 @@ export type ProjectHubApi = {
   providers: {
     /** Os programas que um painel abre, e os que faltam no computador com o motivo. */
     list(): Promise<AppResult<ProviderInfo[]>>;
+  };
+  activity: {
+    /** Eventos de missão por dia local nos últimos 90 dias. Dias sem evento não vêm na lista. */
+    daily(): Promise<AppResult<ActivityDay[]>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

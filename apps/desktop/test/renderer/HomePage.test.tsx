@@ -2,19 +2,21 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import type {
+  ActivityDay,
   AppResult,
   ApprovalDto,
   MissionDto,
   MissionViewDto,
   ProjectHubApi,
   ProjectSummary,
+  WorkspaceDto,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from '../../src/renderer/pages/HomePage';
 import { missionPath, projectPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
 /**
- * Painel do Início (Tarefa 8b do plano da interface): quatro painéis alimentados pela carga
+ * Início em painéis de dados: blocos novos (saudação, chamada, projetos, atividade, contadores) e os três painéis alimentados pela carga
  * compartilhada da visão geral. A API do preload é falsa; cada teste monta projetos, missões e as
  * leituras de `missions.get`.
  */
@@ -65,10 +67,33 @@ type Setup = {
   missions?: Record<string, MissionDto[]>;
   /** Resposta de `missions.get` por missão; `undefined` devolve a aprovação da missão. */
   get?: (missionId: string) => AppResult<MissionViewDto> | 'pending' | undefined;
+  /** Resposta de `activity.daily`; sem ela, a consulta devolve banco vazio. */
+  activity?: AppResult<ActivityDay[]>;
+  workspaces?: WorkspaceDto[];
+  /** Resposta de `terminals.list`; sem ela, a lista vem vazia. */
+  terminalsResult?: AppResult<never[]>;
 };
 
-function installApi({ projects = [], missions = {}, get }: Setup) {
+function installApi({
+  projects = [],
+  missions = {},
+  get,
+  activity,
+  workspaces = [],
+  terminalsResult,
+}: Setup) {
   const api = {
+    activity: {
+      daily: vi.fn(() =>
+        Promise.resolve<AppResult<ActivityDay[]>>(activity ?? { ok: true, data: [] }),
+      ),
+    },
+    workspaces: {
+      list: vi.fn(() => Promise.resolve<AppResult<WorkspaceDto[]>>({ ok: true, data: workspaces })),
+    },
+    terminals: {
+      list: vi.fn(() => Promise.resolve(terminalsResult ?? { ok: true, data: [] })),
+    },
     projects: {
       list: vi.fn(() =>
         Promise.resolve<AppResult<ProjectSummary[]>>(
@@ -226,18 +251,30 @@ describe('HomePage', () => {
 
     renderHome();
 
-    expect(
-      await within(panel('Projetos recentes')).findByText(
-        'Não foi possível carregar os projetos. Tente de novo.',
-      ),
-    ).toBeInTheDocument();
+    // A mensagem vem da carga compartilhada (a mesma da barra lateral).
+    expect(await within(panel('Projetos recentes')).findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar os projetos.',
+    );
   });
 
-  it('+ Nova missão leva para a rota de projetos', async () => {
+  it('com a leitura de terminais em erro, os cartões não afirmam que não há sessão', async () => {
+    installApi({
+      projects: [project('p1')],
+      terminalsResult: { ok: false, error: { code: 'UNKNOWN', message: 'x', retryable: true } },
+    });
+
+    renderHome();
+
+    const recent = panel('Projetos recentes');
+    expect(await within(recent).findByText('Sessões indisponíveis')).toBeInTheDocument();
+    expect(within(recent).queryByText('nenhuma sessão')).not.toBeInTheDocument();
+  });
+
+  it('Começar → leva para a rota de projetos', async () => {
     installApi({ projects: [project('p1')] });
     renderHome();
 
-    await userEvent.click(screen.getByRole('button', { name: '+ Nova missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Começar →' }));
 
     await waitFor(() =>
       expect(screen.getByTestId('where')).toHaveTextContent(ROUTE_PATHS.projects),
@@ -252,5 +289,143 @@ describe('HomePage', () => {
     await screen.findByText('Nenhuma missão falhou.');
     expect(panel('Falharam')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/travad/i);
+  });
+  it('monta as faixas na ordem: cabeçalho, chamada, projetos, atividade, uso dos agentes e as três listas', async () => {
+    installApi({ projects: [project('p1')] });
+
+    renderHome();
+
+    await screen.findByText('Nada espera por você');
+    const order = [
+      screen.getByRole('heading', { level: 1, name: 'Início' }),
+      screen.getByRole('region', { name: 'Nova missão' }),
+      panel('Projetos recentes'),
+      panel('Atividade'),
+      panel('Uso dos agentes'),
+      panel('Aguardando você'),
+      panel('Missões em execução'),
+      panel('Falharam'),
+    ];
+    for (let index = 1; index < order.length; index += 1) {
+      const previous = order[index - 1] as HTMLElement;
+      const current = order[index] as HTMLElement;
+      expect(
+        previous.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `bloco ${index}`,
+      ).toBeTruthy();
+    }
+  });
+
+  it('os contadores usam os números da visão geral', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: {
+        p1: [
+          mission('m1', 'p1', 'running'),
+          mission('m2', 'p1', 'failed'),
+          mission('m5', 'p1', 'failed'),
+          mission('m3', 'p1', 'waiting_approval'),
+        ],
+      },
+    });
+
+    renderHome();
+
+    await screen.findByText('Aprovar m3');
+    const tiles = document.querySelector('.stat-pills') as HTMLElement;
+    await waitFor(() => {
+      expect(within(tiles).getByText('Executando').nextElementSibling).toHaveTextContent('1');
+      expect(within(tiles).getByText('Aguardando você').nextElementSibling).toHaveTextContent('1');
+      expect(within(tiles).getByText('Falharam').nextElementSibling).toHaveTextContent('2');
+    });
+  });
+
+  it('projeto com workspace mostra o há X, e o sem workspace não', async () => {
+    installApi({
+      projects: [project('p1'), project('p2')],
+      workspaces: [
+        {
+          id: 'w1',
+          projectId: 'p1',
+          layout: null,
+          position: 0,
+          lastActiveAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+        } as unknown as WorkspaceDto,
+      ],
+    });
+
+    renderHome();
+
+    const recent = panel('Projetos recentes');
+    expect(await within(recent).findByText('nenhuma sessão · há 3 h')).toBeInTheDocument();
+    expect(within(recent).getAllByText(/há /)).toHaveLength(1);
+  });
+
+  it('com a atividade em falha, o bloco mostra a mensagem e o resto da tela segue', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m1', 'p1', 'running')] },
+      activity: { ok: false, error: { code: 'UNKNOWN', message: 'x', retryable: true } },
+    });
+
+    renderHome();
+
+    expect(
+      await within(panel('Atividade')).findByText('Não foi possível carregar a atividade.'),
+    ).toBeInTheDocument();
+    expect(await within(panel('Missões em execução')).findByText('Missão m1')).toBeInTheDocument();
+    expect(within(panel('Projetos recentes')).getByText('Projeto p1')).toBeInTheDocument();
+  });
+
+  it('as pílulas de contadores ficam no cabeçalho, com o número de falhas em destaque', async () => {
+    installApi({ projects: [project('p1')], missions: { p1: [mission('m2', 'p1', 'failed')] } });
+
+    renderHome();
+
+    await screen.findByText('Missão m2', { selector: 'a' });
+    const head = document.querySelector('.home-head') as HTMLElement;
+    const pills = head.querySelector('.stat-pills') as HTMLElement;
+    expect(pills).not.toBeNull();
+    for (const label of ['Executando', 'Aguardando você', 'Falharam']) {
+      expect(within(pills).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(pills).getByText('Falharam').nextElementSibling).toHaveTextContent('1');
+    expect(pills.querySelectorAll('.stat-pill--danger')).toHaveLength(1);
+    expect(head.querySelector('h1')).toHaveTextContent('Início');
+  });
+
+  it('Uso dos agentes é só o estado vazio honesto, sem números nem barras', async () => {
+    installApi({ projects: [project('p1')] });
+
+    renderHome();
+
+    const usage = panel('Uso dos agentes');
+    expect(
+      within(usage).getByText('Em breve: limites de uso do Claude Code e do Codex.'),
+    ).toBeInTheDocument();
+    expect(usage.textContent).not.toMatch(/\d/);
+    expect(usage.querySelector('progress, meter, [role="progressbar"]')).toBeNull();
+  });
+
+  it('as listas de missões mostram a contagem ao lado do título', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m1', 'p1', 'running'), mission('m2', 'p1', 'failed')] },
+    });
+
+    renderHome();
+
+    await screen.findByText('Missão m1');
+    const running = panel('Missões em execução');
+    expect(running.querySelector('.home-column__count')).toHaveTextContent('1');
+  });
+
+  it('sem projeto, não desenha grade de projetos', async () => {
+    installApi({});
+
+    renderHome();
+
+    await screen.findByText('Nada espera por você');
+    expect(document.querySelector('.recent-projects__grid')).toBeNull();
   });
 });

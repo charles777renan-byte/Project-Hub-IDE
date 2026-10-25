@@ -12,3 +12,7 @@ export {
   type WorkspaceRecord,
   type WorkspaceRepository,
 } from './repositories/workspace-repository';
+export {
+  countAuditEventsByLocalDay,
+  type AuditDayCount,
+} from './repositories/audit-repository';

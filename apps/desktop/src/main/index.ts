@@ -24,6 +24,7 @@ import {
   resolveWorktreesRoot,
 } from './composition';
 import { createClaudeAgent, createTerminalBackend } from './claude-agent';
+import { registerActivityHandlers } from './ipc/activity';
 import { registerTerminalHandlers } from './ipc/terminals';
 import { registerWorkspaceHandlers } from './ipc/workspaces';
 import { createProviderRegistry } from './providers';
@@ -220,6 +221,10 @@ app
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
+    registerActivityHandlers(ipcMain, isTrustedSender, {
+      ...services.activityDeps,
+      now: () => new Date(),
+    });
     const providers = createProviderRegistry({
       env: process.env,
       platform: process.platform,

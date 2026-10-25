@@ -50,6 +50,13 @@
       "when": 1792949591437,
       "tag": "0006_grupo_do_projeto",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792967351296,
+      "tag": "0007_apelido_do_projeto",
+      "breakpoints": true
     }
   ]
 }

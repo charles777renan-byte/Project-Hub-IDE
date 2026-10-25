@@ -464,9 +464,10 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees e aprovações, sem envio genérico', () => {
+  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
+      'activity',
       'approvals',
       'missions',
       'ping',
@@ -485,6 +486,7 @@ describe('buildProjectHubApi', () => {
       'openFolder',
       'remove',
       'setGroup',
+      'setNickname',
       'unarchive',
     ]);
     expect(Object.keys(api.missions).sort()).toEqual([
@@ -506,6 +508,7 @@ describe('buildProjectHubApi', () => {
       'subscribe',
     ]);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
+    expect(Object.keys(api.activity)).toEqual(['daily']);
     expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);
     expect(Object.keys(api.workspaces).sort()).toEqual([
       'addPane',
@@ -908,6 +911,39 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
       ok: false,
       error: { code: 'WORKTREE_HAS_UNSAVED_CHANGES', details: { files: ['a.ts'] } },
     });
+  });
+
+  it('activity.daily chama só o canal de atividade, sem entrada, e confere a resposta', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({
+        ok: true,
+        data: [{ date: '2026-10-24', count: 3, interno: 'não passa' }],
+      });
+    }, noEvents);
+
+    const result = await api.activity.daily();
+
+    expect(calls).toEqual([[CHANNELS.activityDaily, undefined]]);
+    expect(result).toEqual({ ok: true, data: [{ date: '2026-10-24', count: 3 }] });
+  });
+
+  it('activity.daily recusa uma resposta fora do contrato', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const api = buildProjectHubApi(
+      () => Promise.resolve({ ok: true, data: [{ date: 'ontem', count: -2 }] }),
+      noEvents,
+    );
+
+    try {
+      expect(await api.activity.daily()).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('worktrees.list recusa uma lista fora do contrato', async () => {

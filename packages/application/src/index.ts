@@ -6,6 +6,7 @@ export {
   unarchiveProject,
   type ProjectLifecycleDeps,
   setProjectGroup,
+  setProjectNickname,
 } from './projects/project-lifecycle';
 export { listProjects, toProjectSummary, type ListProjectsDeps } from './projects/list-projects';
 export { normalizePath, type Platform } from './projects/normalize-path';

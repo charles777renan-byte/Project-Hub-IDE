@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./layout-limits": "./src/layout-limits.ts",
+    "./activity-window": "./src/activity-window.ts",
     "./layout-arrange": "./src/layout-arrange.ts"
   },
   "scripts": {
