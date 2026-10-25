@@ -38,6 +38,7 @@ function canvas(name: string, kind: ContextKind, loseContext?: () => void): HTML
         : null,
   };
   Object.defineProperty(element, 'getContext', {
+    configurable: true,
     value: (type: string) => (type === 'webgl2' && kind === 'webgl' ? gl : null),
   });
   return element;
@@ -141,15 +142,36 @@ describe('attachWebglRenderer', () => {
     expect(fake.log).toEqual(['dispose']);
   });
 
-  it('um contexto que não deixa ser solto (já perdido, sem extensão) não faz o soltar lançar', () => {
+  it('tenta soltar o contexto do canvas capturado mesmo quando o loseContext lança, e o soltar não lança', () => {
+    // O contexto já foi perdido (ou o navegador recusa): a tentativa acontece, depois do dispose, e o erro não sobe.
     const { term } = setup({
       loseContext: () => {
+        fake.log.push('loseContext:webgl');
         throw new Error('contexto já perdido');
       },
     });
     const release = attachWebglRenderer(term);
 
     expect(() => release()).not.toThrow();
+
+    expect(fake.log).toEqual(['dispose', 'loseContext:webgl']);
+    // Soltar de novo não tenta de novo.
+    release();
+    expect(fake.log).toEqual(['dispose', 'loseContext:webgl']);
+  });
+
+  it('com o contexto já perdido (sem extensão para soltar), pede o contexto do canvas capturado e segue', () => {
+    const { term, screen } = setup();
+    const release = attachWebglRenderer(term);
+    // O canvas do addon, já adotado: depois da perda o navegador não devolve mais a extensão.
+    const owned = screen.querySelector<HTMLCanvasElement>('canvas:nth-of-type(2)');
+    expect(owned).not.toBeNull();
+    const asked = vi.fn(() => ({ getExtension: () => null }));
+    Object.defineProperty(owned as HTMLCanvasElement, 'getContext', { value: asked });
+
+    expect(() => release()).not.toThrow();
+
+    expect(asked).toHaveBeenCalledWith('webgl2');
     expect(fake.log).toEqual(['dispose']);
   });
 
