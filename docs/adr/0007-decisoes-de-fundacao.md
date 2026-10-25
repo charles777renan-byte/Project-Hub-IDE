@@ -449,3 +449,15 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Falha:** a resposta com erro, ou a exceção, de um projeto entra em `failedProjects` e não zera a contagem dos outros. Se a própria lista de projetos falha numa releitura, a tela mantém a última contagem, em vez de mostrar zero por engano.
 - **Forma:** `.overview-counters` é uma linha flex, e cada `.overview-counter` tem um ponto de 8px no `::before`: lima para executando e violeta para aguarda você. O contêiner é `aria-live="polite"`. A ligação em `App` e `main.tsx` fica para a integração das tarefas.
 - **Antes da primeira leitura (revisão de 2026-10-20):** `Overview` ganhou `loaded`, que é `false` até a primeira leitura chegar. Enquanto isso, o contador mostra "—" em vez de zero, porque zero pareceria um dado. A mudança é aditiva: `running`, `waiting`, `items` e `failedProjects` continuam como estavam.
+
+### 2026-10-25, migração com chaves estrangeiras desligadas
+
+- **Decisão:** `migrateDatabase` desliga `foreign_keys` antes de rodar as migrações do Drizzle, confere `foreign_key_check` ao fim e religa `foreign_keys` no `finally`. Se a checagem achar violação, lança erro.
+- **Por quê:** a migração 0005 recria a tabela `missions` para trocar a CHECK do estado. Com `foreign_keys` ligado, o `DROP TABLE` apagaria em cascata etapas, critérios, tentativas, aprovações e auditoria. Um `PRAGMA` dentro do SQL da migração não tem efeito, porque o Drizzle já abriu a transação. O teste `packages/database/test/migrate-review.integration.test.ts` monta um banco com filhas e confere que elas sobrevivem.
+- **Consequência:** toda migração que recria tabela pai passa por esse caminho e precisa de teste com filhas.
+
+### 2026-10-25, zod em devDependencies e modo jitless
+
+- **Decisão:** `zod` fica em `devDependencies` de `apps/desktop`, e o renderer chama `z.config({ jitless: true })` antes do primeiro schema.
+- **Por quê:** o electron-vite deixa de fora do bundle só o que está em `dependencies`. Com o `zod` lá, o preload construído passava a ter `require("zod")`, e o preload com sandbox só pode pedir `electron`: a API `window.projectHub` deixava de existir. Além disso, o zod compila schemas com `new Function`, que a CSP (sem `unsafe-eval`) bloqueia.
+- **Consequência:** dependência usada pelo preload ou pelo processo principal vai para `devDependencies`. Só módulo nativo fica em `dependencies`.

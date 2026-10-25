@@ -542,7 +542,7 @@
  * workspace só leva cores neutras, ver contrast.test.ts). Este arquivo carrega depois de app.css, então estas
  * regras não declaram cor onde a classe de cor precisa valer.
  */
-.sidebar > *:not(.sidebar__topo) {
+.sidebar > *:not(.sidebar__topo, .sidebar__sr) {
   position: relative;
 }
 
@@ -1019,7 +1019,9 @@
   font-size: 0.75rem;
 }
 
-.state-mark__sr {
+/* Texto só para leitor de tela; a região "Precisa de você" da barra lateral é um desses. */
+.state-mark__sr,
+.sidebar__sr {
   position: absolute;
   width: 1px;
   height: 1px;

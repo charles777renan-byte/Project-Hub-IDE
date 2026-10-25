@@ -25,6 +25,8 @@ export const terminalSummarySchema = z.object({
   startedAt: z.string().optional(),
   /** Total de bytes que o terminal já produziu: a barra lateral compara leituras para desenhar a atividade recente. */
   outputBytes: z.number().int().nonnegative().optional(),
+  /** Arquivos com alteração na pasta da sessão (o worktree, na missão). Sem Git nessa pasta, não vem. */
+  changedFiles: z.number().int().nonnegative().optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 

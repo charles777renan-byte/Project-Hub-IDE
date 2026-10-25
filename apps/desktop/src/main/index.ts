@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { CHANNELS, type MissionEventDto, type TerminalEvent } from '@project-hub/contracts';
+import { getStatus } from '@project-hub/git-adapter';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   app,
@@ -230,6 +231,11 @@ app
       sessions: services.terminalDeps.sessions,
       providers,
       publish: publishTerminalEvent,
+      countChanges: (folder) =>
+        getStatus(folder).then(
+          (status) => status.changedFiles,
+          () => undefined,
+        ),
       env: process.env,
       newId: randomUUID,
       now: () => new Date().toISOString(),
