@@ -10,6 +10,8 @@ export type ProjectSummary = {
   defaultBranch?: string | undefined;
   /** Grupo da barra lateral (Trabalho, Pessoal...), quando a pessoa escolheu um. */
   group?: string | undefined;
+  /** Apelido curto, mostrado no lugar do nome da pasta, quando a pessoa escolheu um. */
+  nickname?: string | undefined;
 };
 
 /** Schema de `ProjectSummary`, para conferir a resposta que vem do processo principal. */
@@ -21,6 +23,7 @@ export const projectSummarySchema: z.ZodType<ProjectSummary> = z.object({
   available: z.boolean(),
   defaultBranch: z.string().optional(),
   group: z.string().optional(),
+  nickname: z.string().optional(),
 });
 
 /** Entrada de `projects:add:v1`: o caminho da pasta do projeto. */
@@ -43,3 +46,11 @@ export const setProjectGroupInputSchema = z.object({
 });
 
 export type SetProjectGroupInput = z.infer<typeof setProjectGroupInputSchema>;
+
+/** Entrada de `projects:set-nickname:v1`. `nickname` nulo ou vazio tira o apelido (limite de 24 caracteres após aparar). */
+export const setProjectNicknameInputSchema = z.object({
+  projectId: z.string().min(1),
+  nickname: z.string().trim().max(24).nullable(),
+});
+
+export type SetProjectNicknameInput = z.infer<typeof setProjectNicknameInputSchema>;

@@ -486,7 +486,7 @@ function ProjectRow({
         >
           <Swatch project={project} />
           <span className="sidebar__name" title={project.name}>
-            {project.name}
+            {project.nickname ?? project.name}
           </span>
         </Link>
         <Avatars sessions={sessions} />

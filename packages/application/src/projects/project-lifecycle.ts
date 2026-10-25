@@ -116,3 +116,23 @@ export function setProjectGroup(
   deps.repo.setGroup(input.projectId, group === '' ? null : group, deps.now());
   return { ok: true, data: undefined };
 }
+
+const NICKNAME_MAX_LENGTH = 24;
+
+/**
+ * Dá um apelido curto ao projeto (ou o tira, com `null` ou texto vazio). O texto é aparado e tem no máximo 24
+ * caracteres. Só mexe em projeto que aparece na lista.
+ */
+export function setProjectNickname(
+  deps: Pick<ProjectLifecycleDeps, 'repo' | 'now'>,
+  input: { projectId: string; nickname: string | null },
+): AppResult<undefined> {
+  const project = listedProject(deps as ProjectLifecycleDeps, input.projectId);
+  if (project === undefined) return failure('PROJECT_NOT_FOUND', NOT_FOUND);
+  const nickname = input.nickname === null ? '' : input.nickname.trim();
+  if (nickname.length > NICKNAME_MAX_LENGTH) {
+    return failure('VALIDATION_FAILED', 'O apelido pode ter até 24 caracteres.');
+  }
+  deps.repo.setNickname(input.projectId, nickname === '' ? null : nickname, deps.now());
+  return { ok: true, data: undefined };
+}

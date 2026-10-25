@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AuditEvent, NewAuditEvent } from '@project-hub/domain';
-import { eq, max } from 'drizzle-orm';
+import { eq, gte, max, sql } from 'drizzle-orm';
 import type { AppDatabase } from '../client';
 import { auditEvents } from '../schema';
 
@@ -39,4 +39,24 @@ export function appendAuditEvent(db: AppDatabase, event: NewAuditEvent): AuditEv
     })
     .run();
   return record;
+}
+
+/** Eventos de auditoria de um dia local: `date` é `AAAA-MM-DD` no fuso do computador. */
+export type AuditDayCount = { date: string; count: number };
+
+/**
+ * Conta os eventos de auditoria por dia local, a partir de `sinceIso` (inclusive). O dia é o do
+ * fuso do computador (`date(created_at, 'localtime')`) e não o do UTC: um evento às 23h30 locais
+ * fica no dia em que a pessoa o viu. O agrupamento roda no banco, então nenhum evento vai para a
+ * memória. Os dias sem evento não são devolvidos; quem consome preenche.
+ */
+export function countAuditEventsByLocalDay(db: AppDatabase, sinceIso: string): AuditDayCount[] {
+  const day = sql<string>`date(${auditEvents.createdAt}, 'localtime')`;
+  return db
+    .select({ date: day, count: sql<number>`count(*)`.mapWith(Number) })
+    .from(auditEvents)
+    .where(gte(auditEvents.createdAt, sinceIso))
+    .groupBy(day)
+    .orderBy(day)
+    .all();
 }

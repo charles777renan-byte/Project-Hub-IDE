@@ -94,6 +94,7 @@ test.describe('renderer isolado', () => {
 
     expect(surface).not.toBeNull();
     expect(surface?.root).toEqual([
+      'activity',
       'approvals',
       'missions',
       'ping',
