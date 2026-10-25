@@ -79,6 +79,7 @@ describe('migrateDatabase', () => {
         '0004_workspaces_e_sessoes',
         '0005_revisao_da_missao',
         '0006_grupo_do_projeto',
+        '0007_apelido_do_projeto',
       ],
       alreadyUpToDate: false,
     });
@@ -114,6 +115,7 @@ describe('migrateDatabase', () => {
       '0004_workspaces_e_sessoes',
       '0005_revisao_da_missao',
       '0006_grupo_do_projeto',
+      '0007_apelido_do_projeto',
     ]);
     expect(existsSync(backupPath)).toBe(true);
     // O backup tem o estado de antes da migração: a tabela antiga e nenhuma projects.

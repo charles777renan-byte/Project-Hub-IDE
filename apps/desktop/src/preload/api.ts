@@ -3,6 +3,7 @@ import {
   missionEventDtoSchema,
   terminalEventSchema,
   responseSchemas,
+  type ActivityDay,
   type AddProjectInput,
   type AppResult,
   type CreateMissionInput,
@@ -88,6 +89,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       openFolder: (projectId: string) => call<void>(CHANNELS.projectsOpenFolder, { projectId }),
       setGroup: (projectId: string, group: string | null) =>
         call<void>(CHANNELS.projectsSetGroup, { projectId, group }),
+      setNickname: (projectId: string, nickname: string | null) =>
+        call<void>(CHANNELS.projectsSetNickname, { projectId, nickname }),
     },
     missions: {
       create: (input: CreateMissionInput) => call<MissionDto>(CHANNELS.missionsCreate, input),
@@ -164,6 +167,9 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     worktrees: {
       list: (projectId: string) => call<WorktreeDto[]>(CHANNELS.worktreesList, { projectId }),
       remove: (missionId: string) => call<void>(CHANNELS.worktreesRemove, { missionId }),
+    },
+    activity: {
+      daily: () => call<ActivityDay[]>(CHANNELS.activityDaily),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

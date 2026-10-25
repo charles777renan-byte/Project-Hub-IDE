@@ -13,6 +13,7 @@ import {
   handleOpenFolder,
   handleProjectLifecycle,
   handleSetGroup,
+  handleSetNickname,
   registerProjectHandlers,
 } from '../src/main/ipc/projects';
 import { registerTrustedHandler, type IpcRegistry } from '../src/main/ipc/trusted-handler';
@@ -270,6 +271,30 @@ describe('handleSetGroup', () => {
   });
 });
 
+describe('handleSetNickname', () => {
+  it('recusa entrada fora do contrato, sem chamar a aplicação', () => {
+    expect(handleSetNickname(neverCalledLifecycle, { projectId: 'p1', nickname: 5 })).toMatchObject(
+      {
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      },
+    );
+    expect(handleSetNickname(neverCalledLifecycle, {})).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+  });
+
+  it('apelido com mais de 24 caracteres volta com a mensagem do limite', () => {
+    expect(
+      handleSetNickname(neverCalledLifecycle, { projectId: 'p1', nickname: 'x'.repeat(25) }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'O apelido pode ter até 24 caracteres.' },
+    });
+  });
+});
+
 describe('registerProjectHandlers', () => {
   it('registra os canais de projetos, inclusive arquivar, desarquivar, remover e listar arquivados', () => {
     const { registry, channels } = fakeRegistry();
@@ -290,6 +315,7 @@ describe('registerProjectHandlers', () => {
         CHANNELS.projectsRemove,
         CHANNELS.projectsOpenFolder,
         CHANNELS.projectsSetGroup,
+        CHANNELS.projectsSetNickname,
         CHANNELS.projectsUnarchive,
       ].sort(),
     );

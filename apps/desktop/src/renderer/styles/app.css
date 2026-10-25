@@ -1673,55 +1673,6 @@ button:disabled {
   font-size: 0.75rem;
 }
 
-/* Início (pages/HomePage.tsx): título e ação no topo, e os quatro painéis em grade de duas colunas. */
-.home {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.home__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.home__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.home__grid > .panel {
-  max-height: 28rem;
-}
-
-.home-list,
-.home-approvals {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.home-approvals li {
-  display: grid;
-  gap: var(--space-1);
-  overflow-wrap: anywhere;
-}
-
-.home-approvals__mission {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
-@media (max-width: 999px) {
-  .home__grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* Abas Visão geral e Repositório do projeto (Tarefa 9). */
 .project-counts {
   display: flex;

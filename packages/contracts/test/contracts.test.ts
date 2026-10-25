@@ -7,6 +7,7 @@ import {
   ERROR_CODES,
   responseSchemas,
   setProjectGroupInputSchema,
+  setProjectNicknameInputSchema,
   type AppError,
   type AppResult,
   type ErrorCode,
@@ -52,6 +53,30 @@ describe('setProjectGroupInputSchema', () => {
   });
 });
 
+describe('setProjectNicknameInputSchema', () => {
+  it('aceita apelido de 24 caracteres, contando depois de aparar os espaços', () => {
+    const parsed = setProjectNicknameInputSchema.safeParse({
+      projectId: 'p1',
+      nickname: `  ${'x'.repeat(24)}  `,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.nickname).toBe('x'.repeat(24));
+  });
+
+  it('recusa apelido com mais de 24 caracteres', () => {
+    expect(
+      setProjectNicknameInputSchema.safeParse({ projectId: 'p1', nickname: 'x'.repeat(25) })
+        .success,
+    ).toBe(false);
+  });
+
+  it('aceita nulo, que tira o apelido', () => {
+    expect(
+      setProjectNicknameInputSchema.safeParse({ projectId: 'p1', nickname: null }).success,
+    ).toBe(true);
+  });
+});
+
 describe('CHANNELS', () => {
   // As tarefas seguintes acrescentam canais, então o teste confere presença, não igualdade.
   it('inclui os canais da seção 13.4 e da Tarefa 2', () => {
@@ -79,6 +104,10 @@ describe('CHANNELS', () => {
         'providers:list:v1',
       ]),
     );
+  });
+
+  it('inclui o canal de atividade, só de leitura', () => {
+    expect(Object.values(CHANNELS)).toContain('activity:daily:v1');
   });
 
   it('todo canal tem versão no nome e nenhum se repete', () => {
@@ -183,6 +212,7 @@ describe('tipos públicos', () => {
       available: boolean;
       defaultBranch?: string | undefined;
       group?: string | undefined;
+      nickname?: string | undefined;
     }>();
   });
 

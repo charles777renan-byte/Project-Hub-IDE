@@ -6,6 +6,7 @@ import {
   listProjects,
   removeProject,
   setProjectGroup,
+  setProjectNickname,
   toProjectSummary,
   unarchiveProject,
   type AddProjectDeps,
@@ -16,6 +17,7 @@ import {
   CHANNELS,
   projectIdInputSchema,
   setProjectGroupInputSchema,
+  setProjectNicknameInputSchema,
   type AppResult,
   type ProjectSummary,
 } from '@project-hub/contracts';
@@ -98,6 +100,22 @@ export function handleSetGroup(deps: ProjectLifecycleDeps, payload: unknown): Ap
   return setProjectGroup(deps, input.data);
 }
 
+/** Dá um apelido ao projeto. A entrada é conferida aqui (R28); o limite e a existência do projeto, na aplicação. */
+export function handleSetNickname(
+  deps: ProjectLifecycleDeps,
+  payload: unknown,
+): AppResult<undefined> {
+  const input = setProjectNicknameInputSchema.safeParse(payload);
+  if (!input.success) {
+    const tooLong = input.error.issues.some((issue) => issue.code === 'too_big');
+    return failure(
+      'VALIDATION_FAILED',
+      tooLong ? 'O apelido pode ter até 24 caracteres.' : INVALID_PROJECT,
+    );
+  }
+  return setProjectNickname(deps, input.data);
+}
+
 export async function handleChooseDirectory(
   chooseDirectory: () => Promise<string | null>,
 ): Promise<AppResult<{ path: string } | null>> {
@@ -134,6 +152,9 @@ export function registerProjectHandlers(
   );
   registerTrustedHandler(registry, CHANNELS.projectsSetGroup, isTrusted, (_event, payload) =>
     Promise.resolve(handleSetGroup(deps.lifecycle, payload)),
+  );
+  registerTrustedHandler(registry, CHANNELS.projectsSetNickname, isTrusted, (_event, payload) =>
+    Promise.resolve(handleSetNickname(deps.lifecycle, payload)),
   );
   registerTrustedHandler(registry, CHANNELS.projectsOpenFolder, isTrusted, (_event, payload) =>
     handleOpenFolder(deps, payload),

@@ -246,3 +246,20 @@ describe('grupo do projeto', () => {
     expect(repo.get('p1')?.groupName).toBeUndefined();
   });
 });
+
+describe('apelido do projeto', () => {
+  it('guarda o apelido, devolve no registro e tira com null', () => {
+    repo.insert(hub);
+    expect(repo.get('p1')?.nickname).toBeUndefined();
+
+    repo.setNickname('p1', 'Hub', '2026-10-25T10:00:00.000Z');
+    expect(repo.get('p1')).toMatchObject({
+      nickname: 'Hub',
+      updatedAt: '2026-10-25T10:00:00.000Z',
+    });
+    expect(repo.list()[0]?.nickname).toBe('Hub');
+
+    repo.setNickname('p1', null, '2026-10-25T11:00:00.000Z');
+    expect(repo.get('p1')?.nickname).toBeUndefined();
+  });
+});

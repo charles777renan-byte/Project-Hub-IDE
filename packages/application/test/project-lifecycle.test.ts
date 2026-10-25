@@ -6,6 +6,7 @@ import {
   listArchivedProjects,
   removeProject,
   setProjectGroup,
+  setProjectNickname,
   unarchiveProject,
   type ProjectLifecycleDeps,
 } from '../src/projects/project-lifecycle';
@@ -252,5 +253,54 @@ describe('setProjectGroup', () => {
       error: { code: 'PROJECT_NOT_FOUND' },
     });
     expect(repo.get('p1')?.groupName).toBeUndefined();
+  });
+});
+
+describe('setProjectNickname', () => {
+  it('dá o apelido ao projeto, com o texto aparado, e o resumo traz o apelido', async () => {
+    const { deps, repo, fs } = harness();
+
+    expect(setProjectNickname(deps, { projectId: 'p1', nickname: '  Hub  ' })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+
+    expect(repo.get('p1')).toMatchObject({ nickname: 'Hub', updatedAt: NOW });
+    const listed = await listProjects({ repo, fs });
+    expect(listed).toMatchObject({ ok: true, data: [{ id: 'p1', nickname: 'Hub' }] });
+  });
+
+  it('aceita 24 caracteres e recusa 25', () => {
+    const { deps, repo } = harness();
+
+    expect(setProjectNickname(deps, { projectId: 'p1', nickname: 'x'.repeat(24) })).toMatchObject({
+      ok: true,
+    });
+    expect(setProjectNickname(deps, { projectId: 'p1', nickname: 'y'.repeat(25) })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'O apelido pode ter até 24 caracteres.' },
+    });
+    expect(repo.get('p1')?.nickname).toBe('x'.repeat(24));
+  });
+
+  it('null ou texto vazio remove o apelido', () => {
+    const { deps, repo } = harness();
+    setProjectNickname(deps, { projectId: 'p1', nickname: 'Hub' });
+
+    setProjectNickname(deps, { projectId: 'p1', nickname: '   ' });
+
+    expect(repo.get('p1')?.nickname).toBeUndefined();
+    setProjectNickname(deps, { projectId: 'p1', nickname: 'Hub' });
+    setProjectNickname(deps, { projectId: 'p1', nickname: null });
+    expect(repo.get('p1')?.nickname).toBeUndefined();
+  });
+
+  it('recusa projeto que não está na lista', () => {
+    const { deps } = harness();
+
+    expect(setProjectNickname(deps, { projectId: 'nao-existe', nickname: 'Hub' })).toMatchObject({
+      ok: false,
+      error: { code: 'PROJECT_NOT_FOUND' },
+    });
   });
 });
