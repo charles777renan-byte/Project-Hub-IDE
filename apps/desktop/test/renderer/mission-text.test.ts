@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import * as Icons from '../../src/renderer/components/Icon';
 import type { MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
   missionTabCounts,
   primaryActionOf,
+  statusIcon,
   statusTone,
   stepStatus,
   verificationOutcome,
@@ -34,6 +36,37 @@ describe('tom dos estados da missão', () => {
   it.each(Object.entries(expected) as [MissionStatus, string][])('%s é %s', (status, tone) => {
     expect(statusTone(status)).toBe(tone);
   });
+});
+
+/**
+ * O ícone de cada estado da missão, num ponto só. O estado `draft` fica sem ícone (o selo mantém o ponto);
+ * os estados que esperam a pessoa ou o início dividem o relógio, e o que pede a aprovação tem o escudo.
+ */
+describe('ícone dos estados da missão', () => {
+  const expected: Record<MissionStatus, string | undefined> = {
+    draft: undefined,
+    planned: 'Clock',
+    queued: 'Clock',
+    running: 'LoaderCircle',
+    waiting_approval: 'ShieldQuestionMark',
+    waiting_input: 'Clock',
+    paused: 'CirclePause',
+    succeeded: 'CircleCheck',
+    failed: 'CircleAlert',
+    cancelled: 'CircleSlash',
+  };
+
+  it.each(Object.entries(expected) as [MissionStatus, string | undefined][])(
+    '%s usa %s',
+    (status, name) => {
+      const icon = statusIcon(status);
+      if (name === undefined) {
+        expect(icon).toBeUndefined();
+        return;
+      }
+      expect(icon).toBe(Icons[name as keyof typeof Icons]);
+    },
+  );
 });
 
 describe('resultado de uma verificação', () => {

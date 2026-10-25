@@ -1,4 +1,14 @@
 import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
+import {
+  CircleAlert,
+  CircleCheck,
+  CirclePause,
+  CircleSlash,
+  Clock,
+  LoaderCircle,
+  ShieldQuestionMark,
+  type LucideIcon,
+} from './components/Icon';
 
 /**
  * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda a
@@ -20,6 +30,25 @@ const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
   succeeded: { label: 'Concluída', tone: 'lime' },
   failed: { label: 'Falhou', tone: 'red' },
   cancelled: { label: 'Cancelada', tone: 'muted' },
+};
+
+/**
+ * O ícone de cada estado da missão, num ponto só (o selo `StatusChip` recebe pela prop `icon`). Relógio
+ * para o que espera o início ou uma resposta, escudo com interrogação para a aprovação, círculo girando
+ * para o que roda. O rascunho fica sem ícone: o selo mantém o ponto de sempre. O ícone é decorativo; o
+ * rótulo do estado continua sendo a fonte de verdade.
+ */
+const STATUS_ICON: Record<MissionStatus, LucideIcon | undefined> = {
+  draft: undefined,
+  planned: Clock,
+  queued: Clock,
+  running: LoaderCircle,
+  waiting_approval: ShieldQuestionMark,
+  waiting_input: Clock,
+  paused: CirclePause,
+  succeeded: CircleCheck,
+  failed: CircleAlert,
+  cancelled: CircleSlash,
 };
 
 /** Estados que encerram a missão: não têm mais ação nem cancelamento. */
@@ -65,6 +94,10 @@ export function statusLabel(status: MissionStatus): string {
 
 export function statusTone(status: MissionStatus): Tone {
   return STATUS[status].tone;
+}
+
+export function statusIcon(status: MissionStatus): LucideIcon | undefined {
+  return STATUS_ICON[status];
 }
 
 export function stepStatus(status: MissionStepDto['status']): { label: string; tone: Tone } {
