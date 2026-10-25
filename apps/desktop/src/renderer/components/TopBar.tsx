@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { NavLink, useLocation, useMatch, useNavigate } from 'react-router';
 import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
+import markUrl from '../assets/simbolo.png';
 import { ROUTE_PATHS, workspacePath } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useOpenWorkspaces } from '../workspaces-data';
@@ -66,7 +67,7 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
   return (
     <header className="topbar">
       <p className="topbar__brand">
-        <span aria-hidden="true" className="topbar__mark" />
+        <img src={markUrl} alt="" aria-hidden="true" className="topbar__mark" />
         Project Hub
       </p>
       {workspaces.length === 0 ? null : (

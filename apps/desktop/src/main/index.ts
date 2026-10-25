@@ -136,6 +136,7 @@ function createMainWindow(): void {
     show: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: TITLE_BAR_OVERLAY,
+    icon: join(app.getAppPath(), 'build', 'icon.ico'),
     webPreferences: buildWebPreferences(preloadPath),
   });
   mainWindow = win;
