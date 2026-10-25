@@ -100,13 +100,11 @@ describe('casca do app', () => {
     expect(ruleDeclarations(workspaceCss, '.topbar').get('background')).toBe('var(--bg)');
   });
 
-  it('a marca leva o símbolo em duas metades, nas cores do texto', () => {
-    expect(ruleDeclarations(workspaceCss, '.topbar__mark::before').get('background')).toBe(
-      'var(--text)',
-    );
-    expect(ruleDeclarations(workspaceCss, '.topbar__mark::after').get('background')).toBe(
-      'var(--muted)',
-    );
+  it('a marca é a imagem do símbolo, em 22 px, sem cor própria na barra', () => {
+    const mark = ruleDeclarations(workspaceCss, '.topbar__mark');
+    expect(mark.get('width')).toBe('22px');
+    expect(mark.get('height')).toBe('22px');
+    expect(mark.has('background')).toBe(false);
   });
 
   it('o anel de foco da barra e da navegação fica por dentro, que a rolagem cortaria', () => {

@@ -61,26 +61,12 @@
   text-transform: uppercase;
 }
 
+/* O símbolo é uma imagem (renderer/assets/simbolo.png), com as cores dele: a barra não pinta a marca. */
 .topbar__mark {
-  display: flex;
-  width: 18px;
-  height: 18px;
-  overflow: hidden;
-  border-radius: 5px;
-}
-
-.topbar__mark::before,
-.topbar__mark::after {
-  content: '';
-  flex: 1;
-}
-
-.topbar__mark::before {
-  background: var(--text);
-}
-
-.topbar__mark::after {
-  background: var(--muted);
+  display: block;
+  flex: none;
+  width: 22px;
+  height: 22px;
 }
 
 /* As abas rolam de lado se não couberem, sem empurrar o resto da barra. */
