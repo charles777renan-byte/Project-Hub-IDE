@@ -206,7 +206,8 @@ type AttentionItem = {
 /**
  * Aviso do que espera a pessoa: sessões em espera e missões que pedem decisão (plano, aprovação, resposta,
  * revisão). O primeiro aparece com o botão Ir, e o total vai ao lado do rótulo. Sem nada esperando, a seção nem
- * existe. Pede ação, por isso fica logo no topo.
+ * existe. Pede ação, por isso fica logo no topo. A região de anúncio para leitor de tela fica sempre montada:
+ * uma região que nasce com o conteúdo não é anunciada.
  */
 function AttentionStrip({
   data,
@@ -244,26 +245,36 @@ function AttentionStrip({
     }
   }
   const first = items[0];
-  if (first === undefined) return null;
+  const announcement = (
+    <p aria-live="polite" className="sidebar__sr">
+      {first === undefined ? '' : `Precisa de você: ${items.length}. Primeiro: ${first.title}.`}
+    </p>
+  );
+  if (first === undefined) return announcement;
   return (
-    <section aria-label="Precisa de você" className="sidebar__attention state-attention">
-      <p className="sidebar__attention-tag state-attention-tag">Precisa de você · {items.length}</p>
-      <span className="sidebar__attention-ico" aria-hidden="true">
-        {first.icon}
-      </span>
-      <span className="sidebar__attention-text">
-        <b title={first.title}>{first.title}</b>
-        <small>{first.detail}</small>
-      </span>
-      <button
-        type="button"
-        className="sidebar__attention-go state-attention-go"
-        aria-label={`Ir para ${first.title}`}
-        onClick={first.go}
-      >
-        Ir
-      </button>
-    </section>
+    <>
+      {announcement}
+      <section aria-label="Precisa de você" className="sidebar__attention state-attention">
+        <p className="sidebar__attention-tag state-attention-tag">
+          Precisa de você · {items.length}
+        </p>
+        <span className="sidebar__attention-ico" aria-hidden="true">
+          {first.icon}
+        </span>
+        <span className="sidebar__attention-text">
+          <b title={first.title}>{first.title}</b>
+          <small>{first.detail}</small>
+        </span>
+        <button
+          type="button"
+          className="sidebar__attention-go state-attention-go"
+          aria-label={`Ir para ${first.title}`}
+          onClick={first.go}
+        >
+          Ir
+        </button>
+      </section>
+    </>
   );
 }
 
@@ -561,10 +572,19 @@ function sessionDetails(sessions: readonly TerminalSummary[], project: ProjectSu
 }
 
 /**
- * O detalhe de uma sessão sem contar repetição: a missão com a pasta do worktree, "recuperada" ou o projeto
- * com a branch padrão (sem Git, só o projeto).
+ * O detalhe de uma sessão sem contar repetição: onde ela está e, quando há alteração, quantos arquivos mudaram.
  */
 function baseDetail(session: TerminalSummary, project: ProjectSummary): string {
+  const where = placeDetail(session, project);
+  const changes = changesDetail(session.changedFiles);
+  return changes === undefined ? where : `${where} · ${changes}`;
+}
+
+/**
+ * Onde a sessão está: a missão com a pasta do worktree, "recuperada" ou o projeto com a branch padrão (sem Git,
+ * só o projeto).
+ */
+function placeDetail(session: TerminalSummary, project: ProjectSummary): string {
   if (session.worktreeName !== undefined) return `missão · ${session.worktreeName}`;
   if (session.kind === 'agent') return 'missão';
   const where =
@@ -572,6 +592,12 @@ function baseDetail(session: TerminalSummary, project: ProjectSummary): string {
       ? project.name
       : `${project.name} · ${project.defaultBranch}`;
   return session.origin === 'recovered' ? `recuperada · ${where}` : where;
+}
+
+/** "1 arquivo alterado" ou "N arquivos alterados". Sem alteração, ou sem contagem, não há o que mostrar. */
+function changesDetail(count: number | undefined): string | undefined {
+  if (count === undefined || count === 0) return undefined;
+  return count === 1 ? '1 arquivo alterado' : `${count} arquivos alterados`;
 }
 
 /**

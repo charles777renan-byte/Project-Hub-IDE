@@ -33,10 +33,13 @@ export const projectIdInputSchema = z.object({ projectId: z.string().min(1) });
 
 export type ProjectIdInput = z.infer<typeof projectIdInputSchema>;
 
-/** Entrada de `projects:set-group:v1`. `group` nulo ou vazio tira o projeto do grupo. */
+/**
+ * Entrada de `projects:set-group:v1`. `group` nulo ou vazio tira o projeto do grupo. O limite de 40 caracteres
+ * (depois de aparar os espaços) é o mesmo da aplicação e do campo da página do projeto.
+ */
 export const setProjectGroupInputSchema = z.object({
   projectId: z.string().min(1),
-  group: z.string().max(80).nullable(),
+  group: z.string().trim().max(40).nullable(),
 });
 
 export type SetProjectGroupInput = z.infer<typeof setProjectGroupInputSchema>;
