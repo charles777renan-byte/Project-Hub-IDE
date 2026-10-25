@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `group_name` text;

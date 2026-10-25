@@ -103,9 +103,13 @@ export function createTerminalHostPort(options: TerminalHostPortOptions): Termin
     async snapshot(id: string): Promise<TerminalSnapshot | undefined> {
       try {
         const data = await call({ type: 'terminal.snapshot', terminalId: id });
-        if (data['alive'] === true) return { alive: true };
+        const bytes = data['outputBytes'];
+        const outputBytes = typeof bytes === 'number' && bytes >= 0 ? { outputBytes: bytes } : {};
+        if (data['alive'] === true) return { alive: true, ...outputBytes };
         const exit = data['exit'];
-        return isExit(exit) ? { alive: false, exit } : { alive: false };
+        return isExit(exit)
+          ? { alive: false, exit, ...outputBytes }
+          : { alive: false, ...outputBytes };
       } catch (error) {
         if (error instanceof TerminalPortError && error.code === 'TERMINAL_NOT_FOUND')
           return undefined;

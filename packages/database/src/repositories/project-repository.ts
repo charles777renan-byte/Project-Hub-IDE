@@ -15,6 +15,8 @@ export interface ProjectRepository {
   archive(id: string, archivedAt: string): void;
   /** Tira o projeto do arquivo e atualiza a data; o resto do registro fica como está. */
   unarchive(id: string, updatedAt: string): void;
+  /** Põe o projeto num grupo da barra lateral, ou o tira (`null`). */
+  setGroup(id: string, groupName: string | null, updatedAt: string): void;
   markRemoved(id: string, removedAt: string): void;
   /**
    * Desfaz a remoção lógica (e o arquivamento): o mesmo registro volta à lista, sem inserir outro. A
@@ -47,6 +49,7 @@ function toRecord(row: ProjectRow): ProjectRecord {
   if (row.lastOpenedAt !== null) record.lastOpenedAt = row.lastOpenedAt;
   if (row.archivedAt !== null) record.archivedAt = row.archivedAt;
   if (row.removedAt !== null) record.removedAt = row.removedAt;
+  if (row.groupName !== null) record.groupName = row.groupName;
   return record;
 }
 
@@ -111,6 +114,10 @@ export function createProjectRepository(db: AppDatabase): ProjectRepository {
 
     unarchive(id, updatedAt) {
       db.update(projects).set({ archivedAt: null, updatedAt }).where(eq(projects.id, id)).run();
+    },
+
+    setGroup(id, groupName, updatedAt) {
+      db.update(projects).set({ groupName, updatedAt }).where(eq(projects.id, id)).run();
     },
 
     markRemoved(id, removedAt) {

@@ -249,7 +249,7 @@ test('Missão criada pelo formulário: sem violação de CSP e com foco visível
   await page.getByRole('main').getByRole('link', { name: projectName }).click();
   await expect(page.getByText('Branch: main')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Criar missão' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
   const form = page.getByRole('form', { name: 'Nova missão' });
   // O formulário aberto também é uma tela: o foco passa por campos, caixa e botões.
   await form.getByLabel('Título').fill(MISSION.title);

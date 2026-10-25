@@ -57,7 +57,10 @@ export class TerminalCommands {
       case 'terminal.snapshot': {
         this.requireExisting(request.terminalId);
         const exit = this.manager.exitOf(request.terminalId);
-        return exit === undefined ? { alive: true } : { alive: false, exit };
+        const outputBytes = this.manager.outputBytesOf(request.terminalId) ?? 0;
+        return exit === undefined
+          ? { alive: true, outputBytes }
+          : { alive: false, exit, outputBytes };
       }
       case 'terminal.subscribe':
         this.subscribe(request.terminalId, sink);

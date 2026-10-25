@@ -229,3 +229,20 @@ describe('ProjectRepository', () => {
     expect(repo.get('p1')).not.toHaveProperty('removedAt');
   });
 });
+
+describe('grupo do projeto', () => {
+  it('guarda o grupo, devolve no registro e tira com null', () => {
+    repo.insert(hub);
+    expect(repo.get('p1')?.groupName).toBeUndefined();
+
+    repo.setGroup('p1', 'Trabalho', '2026-10-25T10:00:00.000Z');
+    expect(repo.get('p1')).toMatchObject({
+      groupName: 'Trabalho',
+      updatedAt: '2026-10-25T10:00:00.000Z',
+    });
+    expect(repo.list()[0]?.groupName).toBe('Trabalho');
+
+    repo.setGroup('p1', null, '2026-10-25T11:00:00.000Z');
+    expect(repo.get('p1')?.groupName).toBeUndefined();
+  });
+});

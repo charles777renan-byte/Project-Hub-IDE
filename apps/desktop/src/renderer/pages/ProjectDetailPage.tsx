@@ -1,32 +1,54 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { AppResult, MissionDto, ProjectSummary } from '@project-hub/contracts';
-import { ConfirmButton } from '../components/ConfirmButton';
+import { MenuAcoes } from '../components/MenuAcoes';
 import { MissionCard } from '../components/MissionCard';
 import { MissionForm, type MissionFormValues } from '../components/MissionForm';
-import { PathText } from '../components/PathText';
+import { ProjectFolder } from '../components/ProjectFolder';
+import { StatusChip } from '../components/StatusChip';
 import { Tabs, type TabItem } from '../components/Tabs';
 import { WorktreesTab } from '../components/WorktreesTab';
-import { needsAttention } from '../mission-text';
+import {
+  formatTime,
+  needsAttention,
+  requiredActionOf,
+  situationOf,
+  statusIcon,
+  statusLabel,
+  statusTone,
+} from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { missionPath, ROUTE_PATHS } from '../routes';
 
 type ProjectTab = 'overview' | 'missions' | 'repository' | 'worktrees' | 'settings';
 
-/** Abas do projeto (seção 10.5). Configurações e permissões ainda não tem conteúdo. */
-const TABS: readonly TabItem<ProjectTab>[] = [
-  { id: 'overview', label: 'Visão geral' },
-  { id: 'missions', label: 'Missões' },
-  { id: 'repository', label: 'Repositório' },
-  { id: 'worktrees', label: 'Worktrees' },
-  { id: 'settings', label: 'Configurações e permissões' },
-];
+/** Abas do projeto (seção 10.5). Configurações ainda não tem conteúdo. A aba Missões mostra quantas há. */
+function tabsOf(missionCount: number): readonly TabItem<ProjectTab>[] {
+  return [
+    { id: 'overview', label: 'Visão geral' },
+    {
+      id: 'missions',
+      label: 'Missões',
+      ...(missionCount === 0
+        ? {}
+        : {
+            count: {
+              value: String(missionCount),
+              label: missionCount === 1 ? '1 missão' : `${missionCount} missões`,
+            },
+          }),
+    },
+    { id: 'repository', label: 'Repositório' },
+    { id: 'worktrees', label: 'Worktrees' },
+    { id: 'settings', label: 'Configurações' },
+  ];
+}
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; project: ProjectSummary; missions: MissionDto[] }
+  | { status: 'ready'; project: ProjectSummary; missions: MissionDto[]; groups: string[] }
   | { status: 'error'; message: string };
 
 /**
@@ -43,7 +65,12 @@ export function ProjectDetailPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [editingGroup, setEditingGroup] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const location = useLocation();
 
   const load = useCallback(async () => {
     try {
@@ -60,7 +87,14 @@ export function ProjectDetailPage() {
       const missions = await window.projectHub.missions.list(projectId);
       setState(
         missions.ok
-          ? { status: 'ready', project, missions: missions.data }
+          ? {
+              status: 'ready',
+              project,
+              missions: missions.data,
+              groups: [...new Set(projects.data.flatMap((item) => item.group ?? []))].sort((a, b) =>
+                a.localeCompare(b, 'pt-BR'),
+              ),
+            }
           : { status: 'error', message: missions.error.message },
       );
     } catch {
@@ -71,6 +105,15 @@ export function ProjectDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // O botão + Nova missão da lateral chega aqui pedindo o formulário aberto (`state.newMission`).
+  useEffect(() => {
+    const requested = (location.state as { newMission?: boolean } | null)?.newMission === true;
+    if (!requested) return;
+    setTab('missions');
+    setCreating(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   // A lista mostra a situação de cada missão: qualquer evento de missão pede a lista de novo.
   useEffect(() => window.projectHub.missions.subscribe(() => void load()), [load]);
@@ -144,39 +187,152 @@ export function ProjectDetailPage() {
     );
   }
 
-  const { project, missions } = state;
+  const { project, missions, groups } = state;
+
+  /** Grava o grupo do projeto (ou o tira, com `null`), avisa a barra lateral e lê o projeto de novo. */
+  async function saveGroup(value: string | null) {
+    setGroupError(null);
+    try {
+      const result = await window.projectHub.projects.setGroup(projectId, value);
+      if (!result.ok) {
+        setGroupError(result.error.message);
+        return;
+      }
+      setEditingGroup(false);
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+      await load();
+    } catch {
+      setGroupError(GENERIC_ERROR);
+    }
+  }
+  function startCreating() {
+    setTab('missions');
+    setNotice(null);
+    setCreating(true);
+  }
+
   return (
     <>
-      <p className="eyebrow">{project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}</p>
-      <h1>{project.name}</h1>
-      <p className="project-path">
-        <PathText path={project.path} />
-      </p>
-      <p className="mission-meta">Branch: {project.defaultBranch ?? 'sem Git'}</p>
-      <div className="inline-actions">
-        <button
-          type="button"
-          disabled={leaving}
-          onClick={() => void leaveList(() => window.projectHub.projects.archive(projectId))}
+      <header className="project-head">
+        <div className="project-head__main">
+          <p className="eyebrow">
+            {project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}
+          </p>
+          <h1>{project.name}</h1>
+          <div className="project-head__meta">
+            <span className="branch-chip">Branch: {project.defaultBranch ?? 'sem Git'}</span>
+            {project.group === undefined ? null : (
+              <span className="branch-chip">Grupo: {project.group}</span>
+            )}
+          </div>
+        </div>
+        <div className="project-head__actions">
+          {creating ? null : (
+            <button type="button" className="btn-primary" onClick={startCreating}>
+              Nova missão
+            </button>
+          )}
+          <MenuAcoes
+            rotulo="Mais ações"
+            acoes={[
+              {
+                rotulo: 'Mover para grupo…',
+                onSelecionar: () => {
+                  setGroupName(project.group ?? '');
+                  setGroupError(null);
+                  setEditingGroup(true);
+                },
+              },
+              {
+                rotulo: 'Arquivar projeto',
+                desabilitada: leaving,
+                onSelecionar: () =>
+                  void leaveList(() => window.projectHub.projects.archive(projectId)),
+              },
+              {
+                rotulo: 'Remover da lista',
+                perigosa: true,
+                desabilitada: leaving,
+                onSelecionar: () => setConfirmingRemove(true),
+              },
+            ]}
+          />
+        </div>
+      </header>
+      {editingGroup ? (
+        <form
+          aria-label="Grupo do projeto"
+          className="confirm-inline"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveGroup(groupName);
+          }}
         >
-          Arquivar projeto
-        </button>
-        <ConfirmButton
-          label="Remover da lista"
-          question="Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão, e cadastrar a pasta de novo traz tudo de volta."
-          confirmLabel="Remover"
-          disabled={leaving}
-          onConfirm={() => void leaveList(() => window.projectHub.projects.remove(projectId))}
-        />
-      </div>
+          <label htmlFor="project-group">Grupo</label>
+          <input
+            id="project-group"
+            list="project-groups"
+            value={groupName}
+            maxLength={40}
+            placeholder="Trabalho, Pessoal…"
+            onChange={(event) => setGroupName(event.target.value)}
+          />
+          <datalist id="project-groups">
+            {groups.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+          <button type="submit" className="btn-primary">
+            Salvar
+          </button>
+          {project.group === undefined ? null : (
+            <button type="button" onClick={() => void saveGroup(null)}>
+              Tirar do grupo
+            </button>
+          )}
+          <button type="button" onClick={() => setEditingGroup(false)}>
+            Cancelar
+          </button>
+          {groupError === null ? null : (
+            <span role="alert" className="page-alert">
+              {groupError}
+            </span>
+          )}
+        </form>
+      ) : null}
+      {confirmingRemove ? (
+        <div role="group" aria-label="Confirmar remoção" className="confirm-inline">
+          <span>
+            Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão, e cadastrar a
+            pasta de novo traz tudo de volta.
+          </span>
+          <button
+            type="button"
+            disabled={leaving}
+            onClick={() => void leaveList(() => window.projectHub.projects.remove(projectId))}
+          >
+            Remover
+          </button>
+          <button type="button" onClick={() => setConfirmingRemove(false)}>
+            Cancelar
+          </button>
+        </div>
+      ) : null}
       {lifecycleError === null ? null : (
         <p role="alert" className="page-alert">
           {lifecycleError}
         </p>
       )}
 
-      <div className="workspace-panel">
-        <Tabs label="Seções do projeto" tabs={TABS} active={tab} onChange={setTab} />
+      <div className="project-page">
+        <div className="project-tabs">
+          <Tabs
+            label="Seções do projeto"
+            tabs={tabsOf(missions.length)}
+            active={tab}
+            onChange={setTab}
+          />
+        </div>
         <div role="tabpanel" id="tab-panel" aria-labelledby={`tab-${tab}`}>
           {tab === 'missions' ? (
             <>
@@ -197,21 +353,17 @@ export function ProjectDetailPage() {
                   projectHasGit={project.repositoryKind === 'git'}
                 />
               ) : (
-                <p>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => {
-                      setNotice(null);
-                      setCreating(true);
-                    }}
-                  >
-                    Criar missão
-                  </button>
-                </p>
+                <div className="missions-toolbar">
+                  <h2 className="missions-toolbar__title">Missões</h2>
+                  {missions.length === 0 ? null : (
+                    <p className="missions-toolbar__count">{toolbarCount(missions)}</p>
+                  )}
+                </div>
               )}
               {missions.length === 0 ? (
-                <p className="empty">Nenhuma missão ainda. Crie a primeira.</p>
+                creating ? null : (
+                  <FirstMission />
+                )
               ) : (
                 <ul className="card-list" aria-label="Missões do projeto">
                   {missions.map((mission) => (
@@ -223,9 +375,9 @@ export function ProjectDetailPage() {
               )}
             </>
           ) : tab === 'overview' ? (
-            <MissionCounts missions={missions} />
+            <Overview project={project} missions={missions} onSeeAll={() => setTab('missions')} />
           ) : tab === 'repository' ? (
-            <RepositoryInfo project={project} />
+            <RepositoryCard project={project} />
           ) : tab === 'worktrees' ? (
             <WorktreesTab projectId={projectId} />
           ) : (
@@ -237,39 +389,152 @@ export function ProjectDetailPage() {
   );
 }
 
-/** Aba Visão geral (R217): contagens das missões do projeto por situação, com a lista já carregada. */
-function MissionCounts({ missions }: { missions: MissionDto[] }) {
-  const counts: readonly { label: string; value: number }[] = [
-    { label: 'Total', value: missions.length },
-    { label: 'Em execução', value: missions.filter((m) => m.status === 'running').length },
-    { label: 'Aguardando você', value: missions.filter((m) => needsAttention(m.status)).length },
-    { label: 'Concluídas', value: missions.filter((m) => m.status === 'succeeded').length },
-    { label: 'Falharam', value: missions.filter((m) => m.status === 'failed').length },
-  ];
+/** Texto da barra da aba: quantas missões há e quantas esperam a pessoa. */
+function toolbarCount(missions: readonly MissionDto[]): string {
+  const total = missions.length === 1 ? '1 missão' : `${missions.length} missões`;
+  const waiting = missions.filter((m) => needsAttention(m.status)).length;
+  return waiting === 0 ? total : `${total} · ${waiting} aguarda você`;
+}
+
+/** Convite do projeto sem missões: o que é uma missão e os três passos. */
+function FirstMission() {
   return (
-    <ul className="project-counts" aria-label="Missões por situação">
-      {counts.map((count) => (
-        <li key={count.label}>
-          <span className="project-counts__value">{count.value}</span>
-          <span className="project-counts__label">{count.label}</span>
-        </li>
-      ))}
-    </ul>
+    <section className="missions-empty" aria-label="Primeira missão">
+      <p className="missions-empty__title">Comece sua primeira missão</p>
+      <p className="missions-empty__hint">
+        Uma missão é um objetivo que o agente cumpre num worktree próprio, longe da pasta do
+        projeto. Use o botão Nova missão, no alto da página.
+      </p>
+      <ol className="missions-empty__steps">
+        <li>Descreva o objetivo e os critérios de aceite.</li>
+        <li>Revise o plano e aprove.</li>
+        <li>Acompanhe, revise o resultado e conclua.</li>
+      </ol>
+    </section>
   );
 }
 
-/** Aba Repositório (R217): tipo, branch padrão e pasta do projeto. */
-function RepositoryInfo({ project }: { project: ProjectSummary }) {
+/** Uma linha de missão da Visão geral: título que leva ao workspace, a frase e o selo da situação. */
+function MissionRow({
+  mission,
+  projectId,
+  detail,
+}: {
+  mission: MissionDto;
+  projectId: string;
+  detail: string;
+}) {
   return (
-    <dl className="project-facts">
-      <dt>Tipo</dt>
-      <dd>{project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}</dd>
-      <dt>Branch padrão</dt>
-      <dd>{project.defaultBranch ?? 'sem Git'}</dd>
-      <dt>Pasta</dt>
-      <dd className="project-path">
-        <PathText path={project.path} />
-      </dd>
-    </dl>
+    <li className="mission-row">
+      <div className="mission-row__text">
+        <Link to={missionPath(projectId, mission.id)}>{mission.title}</Link>
+        <p>{detail}</p>
+      </div>
+      <StatusChip
+        label={statusLabel(mission.status)}
+        tone={statusTone(mission.status)}
+        icon={statusIcon(mission.status)}
+      />
+    </li>
+  );
+}
+
+/**
+ * Visão geral: os contadores, o que espera a pessoa, as missões recentes e o cartão do repositório. Projeto
+ * sem missões mostra o convite no lugar das listas.
+ */
+function Overview({
+  project,
+  missions,
+  onSeeAll,
+}: {
+  project: ProjectSummary;
+  missions: readonly MissionDto[];
+  onSeeAll: () => void;
+}) {
+  const waiting = missions.filter((m) => needsAttention(m.status));
+  const recent = [...missions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 5);
+  const counts: readonly { label: string; value: number }[] = [
+    { label: 'Missões', value: missions.length },
+    { label: 'Em execução', value: missions.filter((m) => m.status === 'running').length },
+    { label: 'Aguardam você', value: waiting.length },
+    { label: 'Concluídas', value: missions.filter((m) => m.status === 'succeeded').length },
+  ];
+  return (
+    <>
+      <ul className="project-counts" aria-label="Missões por situação">
+        {counts.map((count) => (
+          <li key={count.label}>
+            <span className="project-counts__value">{count.value}</span>
+            <span className="project-counts__label">{count.label}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="project-grid">
+        <div className="project-grid__main">
+          {missions.length === 0 ? (
+            <FirstMission />
+          ) : (
+            <>
+              {waiting.length === 0 ? null : (
+                <section className="panel-card panel-card--attention" aria-label="Precisa de você">
+                  <h2 className="panel-card__title">Precisa de você</h2>
+                  <ul className="mission-rows">
+                    {waiting.map((mission) => (
+                      <MissionRow
+                        key={mission.id}
+                        mission={mission}
+                        projectId={project.id}
+                        detail={requiredActionOf(mission.status) ?? situationOf(mission.status)}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )}
+              <section className="panel-card" aria-label="Missões recentes">
+                <div className="panel-card__head">
+                  <h2 className="panel-card__title">Missões recentes</h2>
+                  <button type="button" className="link-button" onClick={onSeeAll}>
+                    Ver todas
+                  </button>
+                </div>
+                <ul className="mission-rows">
+                  {recent.map((mission) => (
+                    <MissionRow
+                      key={mission.id}
+                      mission={mission}
+                      projectId={project.id}
+                      detail={`Atualizada ${formatTime(mission.updatedAt)}`}
+                    />
+                  ))}
+                </ul>
+              </section>
+            </>
+          )}
+        </div>
+        <div className="project-grid__side">
+          <RepositoryCard project={project} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Cartão do repositório: tipo, branch padrão e a pasta (nome, abrir e copiar o caminho). */
+function RepositoryCard({ project }: { project: ProjectSummary }) {
+  return (
+    <section className="panel-card" aria-label="Repositório">
+      <h2 className="panel-card__title">Repositório</h2>
+      <dl className="project-facts">
+        <dt>Tipo</dt>
+        <dd>{project.repositoryKind === 'git' ? 'Repositório Git' : 'Sem Git'}</dd>
+        <dt>Branch padrão</dt>
+        <dd>{project.defaultBranch ?? 'sem Git'}</dd>
+        <dt>Pasta</dt>
+        <dd>
+          <ProjectFolder projectId={project.id} path={project.path} />
+        </dd>
+      </dl>
+    </section>
   );
 }

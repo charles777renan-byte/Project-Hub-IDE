@@ -23,6 +23,8 @@ export const terminalSummarySchema = z.object({
   worktreeName: z.string().optional(),
   /** Quando a sessão foi aberta (ISO). Só as sessões avulsas têm; a de missão mostra a missão, não a hora. */
   startedAt: z.string().optional(),
+  /** Total de bytes que o terminal já produziu: a barra lateral compara leituras para desenhar a atividade recente. */
+  outputBytes: z.number().int().nonnegative().optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 

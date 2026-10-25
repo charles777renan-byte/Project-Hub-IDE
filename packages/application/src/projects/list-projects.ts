@@ -17,6 +17,7 @@ export function toProjectSummary(project: ProjectRecord, available: boolean): Pr
     available,
   };
   if (project.defaultBranch !== undefined) summary.defaultBranch = project.defaultBranch;
+  if (project.groupName !== undefined) summary.group = project.groupName;
   return summary;
 }
 

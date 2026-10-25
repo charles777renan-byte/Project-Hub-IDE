@@ -14,9 +14,11 @@ test('o documento não rola e o anel de foco da navegação não é cortado', as
   }));
   expect(scroll.scrollHeight).toBeLessThanOrEqual(scroll.innerHeight);
 
-  // A barra superior vem antes da navegação: o primeiro Tab cai no botão de abrir workspace.
+  // A barra superior vem antes da lateral: o primeiro Tab cai no botão de abrir workspace, e a busca vem antes da navegação.
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Abrir workspace' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: /Buscar projeto ou agente/ })).toBeFocused();
   await page.keyboard.press('Tab');
   const link = page.getByRole('navigation', { name: 'Principal' }).getByRole('link', {
     name: 'Início',

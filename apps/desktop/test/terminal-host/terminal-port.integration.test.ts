@@ -136,7 +136,10 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
       await port.write(id, 'Write-Output "porta-$(3+3)"\r');
 
       await waitFor(() => seen.output.includes('porta-6'));
-      await expect(port.snapshot(id)).resolves.toEqual({ alive: true });
+      await expect(port.snapshot(id)).resolves.toMatchObject({
+        alive: true,
+        outputBytes: expect.any(Number),
+      });
     },
     SHELL_TEST_TIMEOUT_MS,
   );
@@ -180,9 +183,10 @@ describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
 
       await waitFor(() => seen.exits.length === 1);
       expect(seen.exits[0]?.exitCode).toEqual(expect.any(Number));
-      await expect(port.snapshot(id)).resolves.toEqual({
+      await expect(port.snapshot(id)).resolves.toMatchObject({
         alive: false,
         exit: seen.exits[0],
+        outputBytes: expect.any(Number),
       });
     },
     SHELL_TEST_TIMEOUT_MS,

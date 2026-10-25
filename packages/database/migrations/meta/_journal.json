@@ -43,6 +43,13 @@
       "when": 1792941602225,
       "tag": "0005_revisao_da_missao",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792949591437,
+      "tag": "0006_grupo_do_projeto",
+      "breakpoints": true
     }
   ]
 }

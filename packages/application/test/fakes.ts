@@ -45,6 +45,14 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       delete unarchived.archivedAt;
       byId.set(id, unarchived);
     },
+    setGroup(id, groupName, updatedAt) {
+      const record = byId.get(id);
+      if (record === undefined) return;
+      const grouped: ProjectRecord = { ...record, updatedAt };
+      if (groupName === null) delete grouped.groupName;
+      else grouped.groupName = groupName;
+      byId.set(id, grouped);
+    },
     markRemoved(id, removedAt) {
       const record = byId.get(id);
       if (record !== undefined) byId.set(id, { ...record, removedAt, updatedAt: removedAt });
