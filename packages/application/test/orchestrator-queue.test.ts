@@ -278,7 +278,7 @@ describe('reanexação ao abrir o app', () => {
     h.agent.lives
       .get('sessao-viva')
       ?.push({ type: 'session.completed', result: { summary: 'ok' } });
-    await waitFor(() => h.repo.getMission('m1')?.status === 'succeeded');
+    await waitFor(() => h.repo.getMission('m1')?.status === 'review');
     expect(h.repo.getExecution('exec-1')?.status).toBe('succeeded');
     expect(h.agent.starts).toHaveLength(0);
   });

@@ -170,7 +170,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     if (focusRequest === 0) return;
     const status = decisionStatusRef.current;
     const target =
-      status === 'waiting_approval'
+      status === 'waiting_approval' || status === 'review'
         ? decisionRef.current
         : status === 'waiting_input'
           ? answerRef.current
@@ -306,6 +306,10 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
               }
               onDecide={(approvalId, decision) =>
                 void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+              }
+              onApprove={() => void run(() => window.projectHub.missions.approveReview(missionId))}
+              onRequestChanges={(text) =>
+                run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
               }
               decisionRef={decisionRef}
               answerRef={answerRef}

@@ -204,16 +204,25 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await expect(card.getByText('O roteiro simulado pediu aprovação.')).toBeVisible();
   await card.getByRole('button', { name: 'Aprovar', exact: true }).click();
 
-  // 5. A missão fica concluída, e a linha do tempo da Conversa mostra o fim da sessão
-  // (`session.completed`).
+  // 5. O agente terminou: a linha do tempo mostra o fim da sessão (`session.completed`), e a missão
+  // espera a revisão da pessoa, sem virar concluída sozinha.
+  const timeline = page.getByRole('list', { name: 'Eventos da missão' });
+  await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
+  await expect(
+    page.getByRole('main').getByText('Aguarda sua revisão', { exact: true }),
+  ).toBeVisible();
+  await expect(timeline.getByText('Situação: Aguarda sua revisão.')).toBeVisible();
+  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
+
+  // 6. A pessoa aprova a conclusão: a missão fica concluída e o banner some.
+  const review = page.getByRole('region', { name: 'Revisão da conclusão' });
+  await review.getByRole('button', { name: 'Aprovar conclusão' }).click();
   await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
   // A Conversa é a aba de abertura da página da missão, e o banner some com a decisão tomada.
   await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
-  const timeline = page.getByRole('list', { name: 'Eventos da missão' });
-  await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
+  await expect(timeline.getByText('Conclusão aprovada por você.')).toBeVisible();
   await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
-  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
   // A aba Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
   await page.getByRole('tab', { name: 'Diff' }).click();
   const changes = page.getByRole('list', { name: 'Arquivos alterados' });
@@ -223,7 +232,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   const eventsBeforeRestart = await timelineOf(page);
   expect(eventsBeforeRestart.length).toBeGreaterThan(5);
 
-  // 6. Reinicia o aplicativo com a mesma pasta de dados: a missão e os eventos continuam listados.
+  // 7. Reinicia o aplicativo com a mesma pasta de dados: a missão e os eventos continuam listados.
   await launched.close();
   launched = await launchApp();
   page = launched.page;

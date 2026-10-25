@@ -84,6 +84,10 @@ async function succeeded() {
     decision: 'approved',
   });
   expect(decided).toEqual({ ok: true, data: undefined });
+  expect(services.missions.queryDeps.repo.getMission(mission.missionId)?.status).toBe('review');
+  await handleMissionAction(services.missions.orchestrator, 'approveReview', {
+    missionId: mission.missionId,
+  });
   expect(services.missions.queryDeps.repo.getMission(mission.missionId)?.status).toBe('succeeded');
   // O agente simulado gravou o arquivo de demonstração: o worktree só fica limpo sem ele.
   rmSync(join(mission.worktreePath, 'project-hub-demo.md'), { force: true });

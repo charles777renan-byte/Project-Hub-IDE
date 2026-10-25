@@ -347,7 +347,8 @@ export function MissionSummary({
           </li>
         ))}
       </ul>
-      {mission.status === 'succeeded' && conclusion !== undefined ? (
+      {(mission.status === 'review' || mission.status === 'succeeded') &&
+      conclusion !== undefined ? (
         <ConclusionSummary conclusion={conclusion} />
       ) : null}
     </section>

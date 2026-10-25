@@ -113,6 +113,17 @@ describe('missão de ponta a ponta, com banco, Git e agente simulado', () => {
     });
     expect(decided).toEqual({ ok: true, data: undefined });
 
+    // O agente terminou, e a conclusão espera a revisão da pessoa antes de virar concluída.
+    const reviewing = await handleGetMission(services.missions.queryDeps, { missionId });
+    if (!reviewing.ok) throw new Error('a visão deveria existir');
+    expect(reviewing.data.mission.status).toBe('review');
+    expect(
+      await handleMissionAction(services.missions.orchestrator, 'approveReview', { missionId }),
+    ).toEqual({
+      ok: true,
+      data: undefined,
+    });
+
     const done = await handleGetMission(services.missions.queryDeps, { missionId });
     if (!done.ok) throw new Error('a visão deveria existir');
     expect(done.data.mission.status).toBe('succeeded');
