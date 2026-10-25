@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AppResult,
@@ -8,6 +8,7 @@ import type {
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Link, MemoryRouter, Route, Routes } from 'react-router';
+import { App } from '../../src/renderer/App';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { notify } from '../../src/renderer/notify';
 import { MissionPage } from '../../src/renderer/pages/MissionPage';
@@ -1577,5 +1578,45 @@ describe('MissionPage: controles sem espera de chamadas longas (R183)', () => {
       'aria-disabled',
       'true',
     );
+  });
+});
+
+// Ctrl+K vem do App, então o caso monta o App inteiro na rota da missão. Nesta montagem o clique não leva o
+// foco ao campo (o separador da barra lateral fica focado no jsdom; a causa não foi investigada a fundo),
+// então o teste põe o foco direto e segue com teclas de verdade.
+describe('MissionPage: Ctrl+K sobre a resposta ao agente', () => {
+  it('a paleta abre e fecha com Escape sem apagar o rascunho, e o foco volta ao campo', async () => {
+    installApi(
+      viewOf(
+        { status: 'waiting_input' },
+        {
+          events: [
+            eventOf({
+              eventType: 'input.requested',
+              payload: { request: { id: 'entrada', prompt: 'Qual o nome do arquivo?' } },
+            }),
+          ],
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <App />
+      </MemoryRouter>,
+    );
+    await openTab('Conversa');
+    const campo = await screen.findByLabelText('Qual o nome do arquivo?');
+    act(() => campo.focus());
+    await user.keyboard('rascunho');
+    expect(campo).toHaveValue('rascunho');
+
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.getByRole('combobox')).toHaveFocus();
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(campo).toHaveValue('rascunho');
+    expect(campo).toHaveFocus();
   });
 });
