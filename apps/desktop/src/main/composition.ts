@@ -15,11 +15,13 @@ import {
   type MissionQueryDeps,
   type Orchestrator,
   type Platform,
+  type ProfileDeps,
   type ProjectLifecycleDeps,
   type RemoveWorktreeDeps,
 } from '@project-hub/application';
 import {
   countAuditEventsByLocalDay,
+  createAppSettingsRepository,
   createMissionRepository,
   createProjectRepository,
   createTerminalSessionRepository,
@@ -68,6 +70,8 @@ export type AppServices = AddProjectDeps & {
   workspaceDeps: { repo: WorkspaceRepository; projects: ProjectRepository };
   /** Atividade da tela Início: eventos de auditoria por dia local (só leitura). */
   activityDeps: { countByLocalDay(sinceIso: string): ActivityDay[] };
+  /** Perfil local: o nome da saudação, guardado nas configurações do banco. */
+  profileDeps: ProfileDeps;
   close(): void;
 };
 
@@ -205,6 +209,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     terminalDeps: { repo, projects, sessions: createTerminalSessionRepository(db) },
     workspaceDeps: { repo: createWorkspaceRepository(db), projects },
     activityDeps: { countByLocalDay: (sinceIso) => countAuditEventsByLocalDay(db, sinceIso) },
+    profileDeps: { settings: createAppSettingsRepository(db), now },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },

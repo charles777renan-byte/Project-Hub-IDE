@@ -1,16 +1,38 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { NavLink, useLocation, useMatch, useNavigate } from 'react-router';
 import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
 import markUrl from '../assets/simbolo.png';
 import { ROUTE_PATHS, workspacePath } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
-import { useOpenWorkspaces } from '../workspaces-data';
+import { previewDrop, stepId, type DropPreview, type TabSlot } from '../workspace-order';
+import { showWorkspaceOrder, useOpenWorkspaces } from '../workspaces-data';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import { Hint } from './Hint';
 import { ICON_PROPS, Plus, X } from './Icon';
 
 /** Nome mostrado na aba quando o projeto dela ainda não chegou na lista (ou saiu dela). */
 const UNKNOWN_PROJECT = 'Projeto';
+
+/** O arrasto de uma aba: quanto ela andou, a prévia que vale agora e se já foi solta (`settling`: desliza ao lugar). */
+type TabDrag = { id: string; x: number; preview: DropPreview; settling: boolean };
+
+/** Quanto o ponteiro anda antes de o gesto virar arrasto: abaixo disso é um clique. */
+const DRAG_THRESHOLD = 4;
+
+/** Duração do deslize de uma aba, igual a `--dur` em tokens.css. */
+const SETTLE_MS = 180;
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 /**
  * Barra superior de 36px, que é também a barra de título da janela (TITLE_BAR_OVERLAY em window.ts):
@@ -25,10 +47,42 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
   const { projects } = useSidebarData();
   const { workspaces, status: loadStatus, message } = useOpenWorkspaces();
   const [problem, setProblem] = useState<string | null>(null);
+  // Ordenar as abas com o ponteiro (sem o arrasto nativo do navegador, que traz o ícone e a imagem do sistema).
+  // `press` é o gesto em curso, lido pela lógica sem esperar a tela; `drag` só desenha a aba que acompanha o
+  // ponteiro e as que abrem espaço. `measured` guarda os lugares de antes do arrasto (`origin` leva o ponteiro
+  // para a mesma medida): o destino sai deles, não das abas em movimento. `settling` tira a transição no
+  // quadro em que a ordem nova entra, para as abas não saltarem. `focusAfterMove` guarda a aba que volta a ter
+  // o foco depois de mover pelo teclado.
+  const [drag, setDrag] = useState<TabDrag | null>(null);
+  const [settling, setSettling] = useState(false);
+  const press = useRef<{
+    id: string;
+    startX: number;
+    moving: boolean;
+    cancelled: boolean;
+    current: TabDrag | null;
+  } | null>(null);
+  const measured = useRef<{ origin: number; slots: TabSlot[] } | null>(null);
+  // Soltar um arrasto gera um clique no link: ele não pode navegar.
+  const suppressClick = useRef(false);
+  const settleTimer = useRef<number | undefined>(undefined);
+  const [announce, setAnnounce] = useState('');
+  const tabs = useRef<HTMLElement>(null);
+  const focusAfterMove = useRef<string | null>(null);
+  // A esquerda de cada aba antes da troca de ordem, para elas deslizarem até o lugar novo.
+  const slideFrom = useRef<Map<string, number> | null>(null);
 
   const names = new Map(projects.map((project) => [project.id, project.name]));
   const nameOf = (workspace: WorkspaceDto) => names.get(workspace.projectId) ?? UNKNOWN_PROJECT;
   const currentProjectId = workspaceMatch?.params.projectId;
+  const ids = workspaces.map((workspace) => workspace.id);
+
+  /** Avisa o leitor de tela da posição nova da aba movida. */
+  function announceMove(id: string, order: string[]) {
+    const workspace = workspaces.find((item) => item.id === id);
+    const name = workspace === undefined ? UNKNOWN_PROJECT : nameOf(workspace);
+    setAnnounce(`${name}: posição ${order.indexOf(id) + 1} de ${order.length}.`);
+  }
 
   async function closeWorkspace(workspace: WorkspaceDto) {
     setProblem(null);
@@ -60,6 +114,159 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
     void navigate(workspacePath(projectId));
   }
 
+  /** Cada aba com o seu `li`, lida do DOM na ordem em que aparecem. */
+  function tabItems(): { id: string; item: HTMLElement }[] {
+    const found: { id: string; item: HTMLElement }[] = [];
+    for (const link of tabs.current?.querySelectorAll('[data-workspace-id]') ?? []) {
+      const id = link.getAttribute('data-workspace-id');
+      const item = link.closest('li');
+      if (id !== null && item !== null) found.push({ id, item });
+    }
+    return found;
+  }
+
+  function rememberTabPositions() {
+    slideFrom.current = new Map(
+      tabItems().map(({ id, item }) => [id, item.getBoundingClientRect().left]),
+    );
+  }
+
+  /** O ponteiro desceu na aba `id`: o gesto começa, e só vira arrasto depois de andar o limiar. */
+  function pressTab(event: ReactPointerEvent<HTMLElement>, id: string) {
+    if (event.button !== 0 || drag !== null) return;
+    press.current = { id, startX: event.clientX, moving: false, cancelled: false, current: null };
+    // Com o ponteiro capturado, os movimentos chegam ao link mesmo fora dele, e o cursor é o dele.
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveTab(event: ReactPointerEvent<HTMLElement>) {
+    const gesture = press.current;
+    if (gesture === null || gesture.cancelled) return;
+    const dx = event.clientX - gesture.startX;
+    if (!gesture.moving) {
+      const nav = tabs.current;
+      if (Math.abs(dx) < DRAG_THRESHOLD || nav === null) return;
+      gesture.moving = true;
+      const origin = nav.getBoundingClientRect().left - nav.scrollLeft;
+      measured.current = {
+        origin,
+        slots: tabItems().map(({ id, item }) => {
+          const box = item.getBoundingClientRect();
+          return { id, left: box.left - origin, width: box.width };
+        }),
+      };
+    }
+    const slots = measured.current?.slots ?? [];
+    const own = slots.find((slot) => slot.id === gesture.id);
+    const first = slots[0];
+    const last = slots[slots.length - 1];
+    if (own === undefined || first === undefined || last === undefined) return;
+    // A aba acompanha o ponteiro sem sair do espaço das abas. O destino sai das bordas dela.
+    const x = Math.min(
+      Math.max(dx, first.left - own.left),
+      last.left + last.width - (own.left + own.width),
+    );
+    const preview = previewDrop(slots, gesture.id, own.left + x);
+    gesture.current = { id: gesture.id, x, preview, settling: false };
+    setDrag(gesture.current);
+  }
+
+  /** O ponteiro subiu (ou o sistema cancelou o gesto). Um gesto que não passou do limiar é só um clique. */
+  function releaseTab(cancel: boolean) {
+    const gesture = press.current;
+    press.current = null;
+    if (gesture === null || !gesture.moving) return;
+    suppressClick.current = true;
+    window.setTimeout(() => {
+      suppressClick.current = false;
+    }, 0);
+    if (!gesture.cancelled && gesture.current !== null) settleDrag(gesture.current, cancel);
+  }
+
+  /** Esc durante o arrasto: a aba volta ao lugar e nada é gravado. */
+  function cancelTab() {
+    const gesture = press.current;
+    if (gesture === null || !gesture.moving || gesture.cancelled || gesture.current === null)
+      return;
+    gesture.cancelled = true;
+    settleDrag(gesture.current, true);
+  }
+
+  /**
+   * A aba solta desliza até o espaço que abriu e, ao chegar, a ordem é gravada. `cancel` desliza de volta ao lugar
+   * de antes e não grava. Sem movimento (pedido do sistema), grava na hora.
+   */
+  function settleDrag(from: TabDrag, cancel: boolean) {
+    const order = cancel ? ids : from.preview.order;
+    setDrag({
+      id: from.id,
+      x: cancel ? 0 : (from.preview.shifts.get(from.id) ?? 0),
+      preview: cancel ? { order: ids, shifts: new Map() } : from.preview,
+      settling: true,
+    });
+    const finish = () => {
+      measured.current = null;
+      setDrag(null);
+      if (order.some((id, index) => id !== ids[index])) {
+        setSettling(true);
+        requestAnimationFrame(() => setSettling(false));
+        announceMove(from.id, order);
+        void moveTabs(order, false);
+      }
+    };
+    if (prefersReducedMotion()) finish();
+    else settleTimer.current = window.setTimeout(finish, SETTLE_MS);
+  }
+
+  /**
+   * Põe as abas na ordem dada: a tela muda na hora e o processo principal grava. Se ele recusa, a lista volta
+   * com a mensagem. Em qualquer caso, a lista é lida de novo, para trazer a posição gravada.
+   */
+  async function moveTabs(order: string[], slide = true) {
+    setProblem(null);
+    // Soltar com o mouse não desliza: as abas já estão nos lugares novos pela prévia do arrasto.
+    if (slide) rememberTabPositions();
+    showWorkspaceOrder(order);
+    try {
+      const result = await window.projectHub.workspaces.reorder(order);
+      if (!result.ok) throw new Error(result.error.message);
+    } catch {
+      setProblem('Não foi possível mudar a ordem das abas.');
+    }
+    window.dispatchEvent(new Event(WORKSPACES_CHANGED_EVENT));
+  }
+
+  // Depois da troca de ordem, cada aba desliza do lugar antigo até o novo (a animação sai se a pessoa pede menos movimento).
+  useLayoutEffect(() => {
+    const before = slideFrom.current;
+    if (before === null) return;
+    slideFrom.current = null;
+    for (const { id, item } of tabItems()) {
+      const from = before.get(id);
+      if (from === undefined) continue;
+      const shift = from - item.getBoundingClientRect().left;
+      if (shift === 0 || prefersReducedMotion()) continue;
+      item.animate([{ transform: `translateX(${shift}px)` }, { transform: 'translateX(0)' }], {
+        duration: 180,
+        easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
+      });
+    }
+  }, [workspaces]);
+
+  // Um deslize em andamento não grava depois de a barra sair da tela.
+  useEffect(() => () => window.clearTimeout(settleTimer.current), []);
+
+  // Mover pelo teclado tira o foco da aba (o nó muda de lugar): ela recebe o foco de volta depois da troca.
+  useEffect(() => {
+    const id = focusAfterMove.current;
+    if (id === null) return;
+    focusAfterMove.current = null;
+    const link = Array.from(tabs.current?.querySelectorAll('[data-workspace-id]') ?? []).find(
+      (element) => element.getAttribute('data-workspace-id') === id,
+    );
+    if (link instanceof HTMLElement) link.focus();
+  }, [workspaces]);
+
   // Um erro de abrir ou fechar vale mais que o da carga; o da carga some na próxima carga que der certo.
   const notice = problem ?? (loadStatus === 'error' ? (message ?? null) : null);
   const openIds = new Set(workspaces.map((workspace) => workspace.projectId));
@@ -71,17 +278,57 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
         Project Hub
       </p>
       {workspaces.length === 0 ? null : (
-        <nav aria-label="Workspaces abertos" className="topbar__tabs">
-          <ul className="topbar__tab-list">
+        <nav aria-label="Workspaces abertos" className="topbar__tabs" ref={tabs}>
+          <ul
+            className={
+              settling ? 'topbar__tab-list topbar__tab-list--settling' : 'topbar__tab-list'
+            }
+          >
             {workspaces.map((workspace) => {
               const name = nameOf(workspace);
+              const dragged = drag?.id === workspace.id ? drag : null;
+              const shift = dragged?.x ?? drag?.preview.shifts.get(workspace.id) ?? 0;
+              const classes = ['topbar__tab'];
+              if (dragged !== null) classes.push('topbar__tab--dragging');
+              if (dragged?.settling === true) classes.push('topbar__tab--dropping');
               return (
-                <li key={workspace.id} className="topbar__tab">
-                  {/* O NavLink marca a aba da rota atual com aria-current="page". */}
+                <li
+                  key={workspace.id}
+                  className={classes.join(' ')}
+                  style={shift === 0 ? undefined : { transform: `translateX(${shift}px)` }}
+                >
+                  {/* O NavLink marca a aba da rota atual com aria-current="page". Arrasta-se pelo link (eventos de ponteiro, não o arrasto nativo); Alt com as setas move pelo teclado. */}
                   <NavLink
                     to={workspacePath(workspace.projectId)}
                     className="topbar__tab-link"
                     title={name}
+                    data-workspace-id={workspace.id}
+                    draggable={false}
+                    onPointerDown={(event) => pressTab(event, workspace.id)}
+                    onPointerMove={moveTab}
+                    onPointerUp={() => releaseTab(false)}
+                    onPointerCancel={() => releaseTab(true)}
+                    onClick={(event) => {
+                      if (suppressClick.current) event.preventDefault();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        cancelTab();
+                        return;
+                      }
+                      if (
+                        !event.altKey ||
+                        (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+                      ) {
+                        return;
+                      }
+                      event.preventDefault();
+                      const order = stepId(ids, workspace.id, event.key === 'ArrowLeft' ? -1 : 1);
+                      if (order === null) return;
+                      focusAfterMove.current = workspace.id;
+                      announceMove(workspace.id, order);
+                      void moveTabs(order);
+                    }}
                   >
                     {name}
                   </NavLink>
@@ -106,6 +353,9 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
         onOpen={(projectId) => void openProject(projectId)}
         onAddProject={() => void navigate(ROUTE_PATHS.projects)}
       />
+      <p role="status" className="visually-hidden">
+        {announce}
+      </p>
       {notice === null ? null : (
         <p role="alert" className="topbar__error" title={notice}>
           {notice}

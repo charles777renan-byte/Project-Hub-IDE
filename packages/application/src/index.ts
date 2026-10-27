@@ -34,6 +34,7 @@ export {
 } from './missions/mission-queries';
 export { deleteMission, type DeleteMissionDeps } from './missions/delete-mission';
 export { recoverInterruptedExecutions } from './missions/startup-recovery';
+export { DISPLAY_NAME_KEY, getProfile, setDisplayName, type ProfileDeps } from './profile/profile';
 export type {
   ApprovalChanges,
   DiffPort,
@@ -43,6 +44,7 @@ export type {
   MissionChanges,
   MissionRepository,
   ProjectRepository,
+  SettingsRepository,
   TerminalErrorCode,
   TerminalExit,
   TerminalOpenInput,

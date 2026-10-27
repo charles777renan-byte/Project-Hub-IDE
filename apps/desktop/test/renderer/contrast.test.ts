@@ -278,15 +278,12 @@ describe('cores do chrome do workspace', () => {
     }
   });
 
-  it('a pílula ativa (gradiente field-line -> line) tem texto --text legível nas duas pontas', () => {
-    // O gradiente #3a3570 -> #2a2656 usa só tokens existentes; se eles mudarem, o par sai da lista.
-    expect(tokens.get('--field-line')).toBe('#3a3570');
-    expect(tokens.get('--line')).toBe('#2a2656');
-    for (const stop of ['--field-line', '--line']) {
-      expect(
-        contrastRatio(tokens.get('--text') ?? '', tokens.get(stop) ?? ''),
-      ).toBeGreaterThanOrEqual(MIN_CONTRAST);
-    }
+  it('a aba ativa sobre --bg tem texto --text legível, e o anel --muted passa de 3:1', () => {
+    // A aba ativa usa o fundo da página (--bg). O anel de 1px em --muted é a marca do estado além do peso
+    // do texto, e precisa de 3:1 sobre o fundo (WCAG 1.4.11).
+    const background = tokens.get('--bg') ?? '';
+    expect(contrastRatio(tokens.get('--text') ?? '', background)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(contrastRatio(tokens.get('--muted') ?? '', background)).toBeGreaterThanOrEqual(3);
   });
 
   it('o lima (--accent) só aparece no traço do item ativo da navegação, na barra do link atual e no botão principal do rodapé da lateral', () => {

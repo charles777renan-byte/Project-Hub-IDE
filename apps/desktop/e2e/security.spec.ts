@@ -98,6 +98,7 @@ test.describe('renderer isolado', () => {
       'approvals',
       'missions',
       'ping',
+      'profile',
       'projects',
       'providers',
       'terminals',

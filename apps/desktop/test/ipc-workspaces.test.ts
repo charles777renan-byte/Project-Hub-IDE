@@ -62,6 +62,7 @@ function setup() {
     endSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     addPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     removePane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
+    reorder: vi.fn(() => Promise.resolve(ok)),
   };
   const providers = { list: vi.fn(() => PROVIDERS) };
   const fake = fakeRegistry();
@@ -78,6 +79,7 @@ const CALLS: [string, unknown, keyof WorkspaceService][] = [
   [CHANNELS.workspacesEndSession, { workspaceId: 'w1', leafId: 'l1' }, 'endSession'],
   [CHANNELS.workspacesAddPane, { workspaceId: 'w1', provider: 'shell' }, 'addPane'],
   [CHANNELS.workspacesRemovePane, { workspaceId: 'w1', leafId: 'l1' }, 'removePane'],
+  [CHANNELS.workspacesReorder, { workspaceIds: ['w1', 'w2'] }, 'reorder'],
 ];
 
 describe('canais de workspaces e provedores', () => {
@@ -154,6 +156,14 @@ describe('canais de workspaces e provedores', () => {
     [CHANNELS.workspacesAddPane, { provider: 'shell' }, 'Informe o workspace e o programa.'],
     [CHANNELS.workspacesRemovePane, { workspaceId: 'w1' }, 'Informe o painel.'],
     [CHANNELS.workspacesRemovePane, { workspaceId: 'w1', leafId: '' }, 'Informe o painel.'],
+    [CHANNELS.workspacesReorder, undefined, 'Informe a nova ordem dos workspaces.'],
+    [CHANNELS.workspacesReorder, { workspaceIds: [] }, 'Informe a nova ordem dos workspaces.'],
+    [CHANNELS.workspacesReorder, { workspaceIds: 'w1' }, 'Informe a nova ordem dos workspaces.'],
+    [
+      CHANNELS.workspacesReorder,
+      { workspaceIds: ['w1', 'w1'] },
+      'Informe a nova ordem dos workspaces.',
+    ],
     [CHANNELS.workspacesSaveLayout, { workspaceId: 'w1' }, 'O layout não é válido.'],
     [CHANNELS.workspacesSaveLayout, { layout }, 'O layout não é válido.'],
     [

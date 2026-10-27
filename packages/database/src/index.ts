@@ -1,5 +1,9 @@
 export { openDatabase, type AppDatabase } from './client';
 export { migrateDatabase, type MigrationReport } from './migrate';
+export {
+  createAppSettingsRepository,
+  type AppSettingsRepository,
+} from './repositories/app-settings-repository';
 export { createMissionRepository, type MissionRepository } from './repositories/mission-repository';
 export { createProjectRepository, type ProjectRepository } from './repositories/project-repository';
 export {
@@ -12,7 +16,4 @@ export {
   type WorkspaceRecord,
   type WorkspaceRepository,
 } from './repositories/workspace-repository';
-export {
-  countAuditEventsByLocalDay,
-  type AuditDayCount,
-} from './repositories/audit-repository';
+export { countAuditEventsByLocalDay, type AuditDayCount } from './repositories/audit-repository';
