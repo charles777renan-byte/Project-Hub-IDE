@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
-import { ICON_PROPS, SquareTerminal, X } from '../components/Icon';
+import { ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
 import { StateMark } from '../components/StateMark';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
@@ -30,7 +30,29 @@ export type PaneViewProps = {
   onDetach(): void;
   /** Fechar o painel: tira a folha do layout e encerra a sessão dela (a sessão de missão só sai do painel). */
   onClose(): void;
+  /** Mostrar só este painel (modo "um painel por vez"), ou, se `maximized`, voltar à grade. Duplo clique no cabeçalho faz o mesmo. */
+  onMaximize?(): void;
+  maximized?: boolean;
 };
+
+/** Botão só de ícone que maximiza o painel ou o devolve à grade; o nome acessível diz o efeito. */
+function MaximizeButton({ maximized, onClick }: { maximized: boolean; onClick(): void }) {
+  const label = maximized ? 'Voltar à grade' : 'Maximizar painel';
+  const Glyph = maximized ? Minimize2 : Maximize2;
+  return (
+    <Hint label={label}>
+      <button
+        type="button"
+        className="pane__maximize"
+        aria-label={label}
+        aria-pressed={maximized}
+        onClick={onClick}
+      >
+        <Glyph {...ICON_PROPS} />
+      </button>
+    </Hint>
+  );
+}
 
 /** Botão só de ícone que fecha o painel; o nome acessível é o texto, a dica descreve o efeito. */
 function CloseButton({
@@ -62,6 +84,10 @@ export function PaneView(props: PaneViewProps) {
   const { leaf, terminal, provider, projectName, active, busy, error } = props;
   const focusTerminal = props.focusTerminal === true;
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
+  const maximize =
+    props.onMaximize === undefined ? null : (
+      <MaximizeButton maximized={props.maximized === true} onClick={props.onMaximize} />
+    );
 
   // Sem terminal para receber o foco (lançador), o foco pedido vai para o próprio painel.
   const section = useRef<HTMLElement>(null);
@@ -77,6 +103,7 @@ export function PaneView(props: PaneViewProps) {
         <div className="pane__head">
           <span className="pane__title">{label}</span>
           <span className="pane__actions">
+            {maximize}
             <CloseButton disabled={busy} onClick={props.onClose} hint="Fecha o painel" />
           </span>
         </div>
@@ -118,6 +145,7 @@ export function PaneView(props: PaneViewProps) {
                   Iniciar de novo
                 </button>
               )}
+              {maximize}
               <CloseButton disabled={busy} onClick={props.onClose} hint="Fecha o painel" />
             </span>
           </div>
@@ -142,6 +170,7 @@ export function PaneView(props: PaneViewProps) {
             {terminal.origin === 'recovered' ? 'recuperada' : 'nova'}
           </span>
           <span className="pane__actions">
+            {maximize}
             {terminal.missionId === undefined ? (
               <CloseButton
                 disabled={busy}
@@ -186,6 +215,12 @@ export function PaneView(props: PaneViewProps) {
       tabIndex={-1}
       onPointerDown={props.onPointerActivate ?? props.onActivate}
       onFocus={props.onActivate}
+      onDoubleClick={(event) => {
+        // Duplo clique no cabeçalho (fora dos botões) maximiza, ou devolve à grade.
+        const target = event.target as HTMLElement;
+        if (target.closest('.pane__head') === null || target.closest('button') !== null) return;
+        props.onMaximize?.();
+      }}
     >
       {content}
     </section>

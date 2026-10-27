@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
@@ -10,9 +10,11 @@ import { notify } from '../notify';
 import { ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
+import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
 import { leavesOf } from '../workspace/layout-model';
+import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useWorkspace } from '../workspace/use-workspace';
 import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
 
@@ -61,6 +63,8 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   // Abrir um painel é um pedido por vez: a ref barra o segundo clique antes de o estado chegar.
   const [opening, setOpening] = useState(false);
   const openingRef = useRef(false);
+  // Modo "um painel por vez": só na tela, não muda o layout guardado (a arrumação automática segue valendo na grade).
+  const [soloOn, setSoloOn] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +129,20 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
           () => crypto.randomUUID(),
         );
 
+  // O painel mostrado sozinho é sempre o ativo (assim um painel novo, o pedido da barra lateral e o fechamento
+  // seguem o que o hook já decide); sem o ativo na lista, vale o primeiro. `undefined` na grade.
+  const shownLeaves = leavesOf(shown);
+  const soloLeaf = soloOn
+    ? (shownLeaves.find((leaf) => leaf.id === workspace.activeLeafId) ?? shownLeaves[0])
+    : undefined;
+
+  /** Liga o modo mostrando o painel `leafId`, que vira o ativo, com o foco no terminal dele. */
+  const showSolo = (leafId: string) => {
+    setSoloOn(true);
+    workspace.activateWithFocus(leafId);
+  };
+  const toggleSolo = () => setSoloOn(soloLeaf === undefined);
+
   const run = async (leafId: string, action: (id: string) => Promise<string | null>) => {
     setBusy((previous) => new Set(previous).add(leafId));
     setErrors((previous) => {
@@ -162,6 +180,11 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
   // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
   // O painel some na hora, sem esperar o processo principal. Se o pedido falhar, ele volta e o erro aparece nele.
   const closePane = (leafId: string) => {
+    // No modo de um painel, o vizinho vira o ativo antes de fechar: é ele que passa a aparecer.
+    if (soloLeaf?.id === leafId) {
+      const next = neighbourOf(shownLeaves, leafId);
+      if (next !== null) workspace.activate(next);
+    }
     setClosing((previous) => new Set(previous).add(leafId));
     void run(leafId, workspace.removePane).finally(() =>
       setClosing((previous) => {
@@ -170,6 +193,16 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
         return next;
       }),
     );
+  };
+
+  // Ctrl+Alt com as setas troca de aba. Vale na captura, antes do xterm: dentro do terminal o xterm tomaria a tecla.
+  const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (soloLeaf === undefined || !event.ctrlKey || !event.altKey) return;
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next = stepSolo(shownLeaves, soloLeaf.id, event.key === 'ArrowLeft' ? -1 : 1);
+    if (next !== null) showSolo(next);
   };
 
   const renderLeaf = (leaf: LayoutLeaf) => {
@@ -211,21 +244,44 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
         onStart={() => void run(leaf.id, workspace.startSession)}
         onDetach={() => workspace.detach(leaf.id)}
         onClose={() => void closePane(leaf.id)}
+        maximized={soloLeaf?.id === leaf.id}
+        onMaximize={() => (soloLeaf?.id === leaf.id ? setSoloOn(false) : showSolo(leaf.id))}
       />
     );
   };
 
   return (
-    <div className="workspace">
+    <div className="workspace" onKeyDownCapture={onKeyDownCapture}>
       <WorkspaceToolbar
         providers={providers}
         busy={opening}
         limitReached={leavesOf(layout).length >= LAYOUT_LIMITS.maxLeaves}
         focusToken={toolbarFocus}
+        soloMode={soloLeaf !== undefined}
+        canSolo={shownLeaves.length > 0}
+        onToggleSolo={toggleSolo}
         onOpen={(provider) => void openPane(provider)}
       />
       <div className="workspace__area">
-        {shown === null ? (
+        {soloLeaf !== undefined ? (
+          <div className="workspace__solo">
+            <PaneTabs
+              leaves={shownLeaves}
+              activeId={soloLeaf.id}
+              terminals={terminals}
+              providers={providers}
+              onSelect={showSolo}
+              onGrid={() => setSoloOn(false)}
+            />
+            <div
+              role="tabpanel"
+              aria-labelledby={paneTabId(soloLeaf.id)}
+              className="workspace__solo-pane"
+            >
+              {renderLeaf(soloLeaf)}
+            </div>
+          </div>
+        ) : shown === null ? (
           <div className="workspace__empty">
             <TopographicBackground />
             <EmptyState
