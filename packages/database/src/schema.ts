@@ -229,6 +229,13 @@ export const terminalSessions = sqliteTable('terminal_sessions', {
   closedAt: text('closed_at'),
 });
 
+/** Configurações do app, em pares chave e texto (seção 9.4). Hoje guarda só o nome da saudação do perfil local. */
+export const appSettings = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const schema = {
   projects,
   missions,
@@ -239,4 +246,5 @@ export const schema = {
   auditEvents,
   workspaces,
   terminalSessions,
+  appSettings,
 };

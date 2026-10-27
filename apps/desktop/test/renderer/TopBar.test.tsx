@@ -1,6 +1,19 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ProjectHubApi, ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
+import type {
+  AppResult,
+  ProjectHubApi,
+  ProjectSummary,
+  WorkspaceDto,
+} from '@project-hub/contracts';
 import { Link, MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -59,6 +72,14 @@ function installApi(fixture: Partial<Fixture> = {}) {
     close: vi.fn((workspaceId: string) => {
       state.workspaces = state.workspaces.filter((item) => item.id !== workspaceId);
       return ok(undefined);
+    }),
+    /** Põe os abertos na ordem dada e troca a posição, como o processo principal gravaria. */
+    reorder: vi.fn((order: string[]): Promise<AppResult<void>> => {
+      state.workspaces = order.flatMap((id, index) => {
+        const found = state.workspaces.find((item) => item.id === id);
+        return found === undefined ? [] : [{ ...found, position: index }];
+      });
+      return Promise.resolve({ ok: true, data: undefined });
     }),
   };
   window.projectHub = {
@@ -484,5 +505,282 @@ describe('falha ao carregar os workspaces', () => {
     await screen.findByRole('link', { name: 'Beta' });
     expect(workspaces.list).toHaveBeenCalledTimes(2);
     expect(where()).toBe('/projects');
+  });
+});
+
+describe('ordenar as abas', () => {
+  const animate = vi.fn();
+
+  beforeEach(() => {
+    // O jsdom devolve caixas zeradas: cada aba tem 100px e fica depois da anterior, pela posição do `li`.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const li = this.closest('li');
+      const left = li === null ? 0 : Array.from(li.parentElement?.children ?? []).indexOf(li) * 100;
+      return {
+        left,
+        right: left + 100,
+        width: 100,
+        top: 0,
+        bottom: 20,
+        x: left,
+        y: 0,
+        height: 20,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+    // O jsdom não tem animações, captura de ponteiro nem `matchMedia`.
+    animate.mockClear();
+    Object.defineProperty(HTMLElement.prototype, 'animate', { value: animate, configurable: true });
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      value: vi.fn(),
+      configurable: true,
+    });
+    Object.defineProperty(window, 'matchMedia', {
+      value: () => ({ matches: false }),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+    Reflect.deleteProperty(HTMLElement.prototype, 'setPointerCapture');
+    Reflect.deleteProperty(window, 'matchMedia');
+  });
+
+  /** Três abas, Alfa, Beta e Gama, com os workspaces w1, w2 e w3 nessa ordem. */
+  async function threeTabs() {
+    const api = installApi({
+      projects: [project('p1', 'Alfa'), project('p2', 'Beta'), project('p3', 'Gama')],
+      workspaces: [
+        workspace('w1', 'p1'),
+        workspace('w2', 'p2', { position: 1 }),
+        workspace('w3', 'p3', { position: 2 }),
+      ],
+    });
+    renderBar('/projects');
+    await screen.findByRole('link', { name: 'Gama' });
+    return api;
+  }
+
+  const tab = (name: string) => screen.getByRole('link', { name });
+  const item = (name: string) => tab(name).closest<HTMLElement>('li') as HTMLElement;
+  const tabNames = () =>
+    within(screen.getByRole('navigation', { name: 'Workspaces abertos' }))
+      .getAllByRole('link')
+      .map((link) => link.textContent);
+
+  type PointerType = 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel';
+
+  /** Um evento de ponteiro do mouse na coordenada `x`. O jsdom nem sempre copia esses campos, então vão à mão. */
+  function pointer(type: PointerType, name: string, x: number) {
+    const event = createEvent[type](tab(name));
+    Object.defineProperty(event, 'clientX', { value: x });
+    Object.defineProperty(event, 'button', { value: 0 });
+    Object.defineProperty(event, 'pointerId', { value: 1 });
+    fireEvent(tab(name), event);
+  }
+
+  /** Pega a aba em `from`, anda até `to` e solta. */
+  function dragTab(name: string, from: number, to: number) {
+    pointer('pointerDown', name, from);
+    pointer('pointerMove', name, to);
+    pointer('pointerUp', name, to);
+  }
+
+  it('arrastar uma aba para o início grava a ordem nova e mostra na tela', async () => {
+    const api = await threeTabs();
+
+    dragTab('Gama', 250, 0);
+
+    await waitFor(() => expect(api.workspaces.reorder).toHaveBeenCalledWith(['w3', 'w1', 'w2']));
+    await waitFor(() => expect(tabNames()).toEqual(['Gama', 'Alfa', 'Beta']));
+  });
+
+  it('passar do meio de uma aba põe a arrastada depois dela', async () => {
+    const api = await threeTabs();
+
+    dragTab('Alfa', 50, 160);
+
+    await waitFor(() => expect(api.workspaces.reorder).toHaveBeenCalledWith(['w2', 'w1', 'w3']));
+    await waitFor(() => expect(tabNames()).toEqual(['Beta', 'Alfa', 'Gama']));
+  });
+
+  it('um gesto curto é um clique: não arrasta nem grava, e a aba navega', async () => {
+    const api = await threeTabs();
+
+    dragTab('Gama', 250, 252);
+    expect(item('Gama')).not.toHaveClass('topbar__tab--dragging');
+    await userEvent.click(tab('Gama'));
+
+    expect(api.workspaces.reorder).not.toHaveBeenCalled();
+    expect(tab('Gama')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('enquanto arrasta, a aba segue o ponteiro, as vizinhas abrem o espaço e tudo volta ao fim', async () => {
+    const api = await threeTabs();
+    pointer('pointerDown', 'Gama', 250);
+    pointer('pointerMove', 'Gama', 0);
+
+    expect(item('Gama')).toHaveClass('topbar__tab--dragging');
+    expect(item('Gama').style.transform).toBe('translateX(-200px)');
+    expect(item('Alfa').style.transform).toBe('translateX(100px)');
+    expect(item('Beta').style.transform).toBe('translateX(100px)');
+
+    // Com a aba de volta ao lugar dela, ninguém anda.
+    pointer('pointerMove', 'Gama', 250);
+    expect(item('Alfa').style.transform).toBe('');
+    expect(item('Gama').style.transform).toBe('');
+
+    pointer('pointerUp', 'Gama', 250);
+    await waitFor(() => expect(item('Gama')).not.toHaveClass('topbar__tab--dragging'));
+    expect(api.workspaces.reorder).not.toHaveBeenCalled();
+    expect(tabNames()).toEqual(['Alfa', 'Beta', 'Gama']);
+  });
+
+  it('ao soltar, a aba desliza até o espaço aberto e só então grava', async () => {
+    const api = await threeTabs();
+    pointer('pointerDown', 'Gama', 250);
+    pointer('pointerMove', 'Gama', 0);
+    pointer('pointerUp', 'Gama', 0);
+
+    expect(item('Gama')).toHaveClass('topbar__tab--dragging', 'topbar__tab--dropping');
+    expect(item('Gama').style.transform).toBe('translateX(-200px)');
+    expect(api.workspaces.reorder).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(api.workspaces.reorder).toHaveBeenCalledWith(['w3', 'w1', 'w2']));
+  });
+
+  it('Esc durante o arrasto devolve a aba ao lugar e não grava', async () => {
+    const api = await threeTabs();
+    pointer('pointerDown', 'Gama', 250);
+    pointer('pointerMove', 'Gama', 0);
+    // Apertar o mouse numa aba já a foca; o `fireEvent` não faz isso.
+    tab('Gama').focus();
+
+    await userEvent.keyboard('{Escape}');
+    // O gesto ainda não acabou, mas já não mexe nas abas.
+    pointer('pointerMove', 'Gama', 120);
+    pointer('pointerUp', 'Gama', 120);
+
+    await waitFor(() => expect(item('Gama')).not.toHaveClass('topbar__tab--dragging'));
+    expect(api.workspaces.reorder).not.toHaveBeenCalled();
+    expect(tabNames()).toEqual(['Alfa', 'Beta', 'Gama']);
+  });
+
+  it('um gesto cancelado pelo sistema não grava', async () => {
+    const api = await threeTabs();
+    pointer('pointerDown', 'Gama', 250);
+    pointer('pointerMove', 'Gama', 0);
+    pointer('pointerCancel', 'Gama', 0);
+
+    await waitFor(() => expect(item('Gama')).not.toHaveClass('topbar__tab--dragging'));
+    expect(api.workspaces.reorder).not.toHaveBeenCalled();
+  });
+
+  it('o clique que vem de soltar um arrasto não navega', async () => {
+    await threeTabs();
+
+    dragTab('Gama', 250, 0);
+    fireEvent.click(tab('Gama'));
+
+    expect(tab('Gama')).not.toHaveAttribute('aria-current', 'page');
+  });
+
+  it('o link da aba não usa o arrasto nativo do navegador', async () => {
+    await threeTabs();
+
+    expect(tab('Gama')).toHaveAttribute('draggable', 'false');
+  });
+
+  it('com o sistema pedindo menos movimento, solta e grava na hora, sem deslizar', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      value: () => ({ matches: true }),
+      configurable: true,
+    });
+    const api = await threeTabs();
+
+    dragTab('Gama', 250, 0);
+
+    expect(api.workspaces.reorder).toHaveBeenCalledWith(['w3', 'w1', 'w2']);
+    await waitFor(() => expect(tabNames()).toEqual(['Gama', 'Alfa', 'Beta']));
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it('soltar com o mouse não desliza de novo: as abas já estão nos lugares novos', async () => {
+    await threeTabs();
+
+    dragTab('Gama', 250, 0);
+
+    await waitFor(() => expect(tabNames()).toEqual(['Gama', 'Alfa', 'Beta']));
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it('pelo teclado, cada aba desliza do lugar antigo até o novo', async () => {
+    await threeTabs();
+    tab('Gama').focus();
+
+    await userEvent.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+
+    await waitFor(() => expect(tabNames()).toEqual(['Alfa', 'Gama', 'Beta']));
+    // Gama anda uma posição para a esquerda, e Beta uma para a direita.
+    const shifts = animate.mock.calls.map(
+      ([frames]) => (frames as { transform: string }[])[0]?.transform,
+    );
+    expect(shifts.sort()).toEqual(['translateX(-100px)', 'translateX(100px)']);
+  });
+
+  it('pelo teclado, sem movimento pedido pelo sistema, nada desliza', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      value: () => ({ matches: true }),
+      configurable: true,
+    });
+    await threeTabs();
+    tab('Gama').focus();
+
+    await userEvent.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+
+    await waitFor(() => expect(tabNames()).toEqual(['Alfa', 'Gama', 'Beta']));
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it('Alt com a seta move a aba um lugar, devolve o foco para ela e avisa a posição', async () => {
+    const api = await threeTabs();
+    tab('Beta').focus();
+
+    await userEvent.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+
+    await waitFor(() => expect(api.workspaces.reorder).toHaveBeenCalledWith(['w2', 'w1', 'w3']));
+    await waitFor(() => expect(tabNames()).toEqual(['Beta', 'Alfa', 'Gama']));
+    expect(document.activeElement).toBe(tab('Beta'));
+    expect(screen.getByRole('status')).toHaveTextContent('Beta: posição 1 de 3.');
+  });
+
+  it('Alt com a seta na ponta não grava nada', async () => {
+    const api = await threeTabs();
+    tab('Alfa').focus();
+
+    await userEvent.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+
+    expect(api.workspaces.reorder).not.toHaveBeenCalled();
+    expect(tabNames()).toEqual(['Alfa', 'Beta', 'Gama']);
+  });
+
+  it('se o processo principal recusa a ordem, a lista volta e a barra avisa', async () => {
+    const api = await threeTabs();
+    api.workspaces.reorder.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'UNKNOWN', message: 'falha', retryable: true },
+    });
+    tab('Beta').focus();
+
+    await userEvent.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível mudar a ordem das abas.',
+    );
+    await waitFor(() => expect(tabNames()).toEqual(['Alfa', 'Beta', 'Gama']));
   });
 });

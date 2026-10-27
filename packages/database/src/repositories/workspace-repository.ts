@@ -26,6 +26,11 @@ export interface WorkspaceRepository {
   /** Marca como aberto, na posição dada (só muda a posição se estava fechado) e atualiza `lastActiveAt`. */
   open(id: string, position: number, at: string): void;
   close(id: string, at: string): void;
+  /**
+   * Põe os workspaces na ordem dada: a posição de cada um é o índice dele na lista. Tudo numa transação, para a
+   * ordem nunca ficar pela metade. Os ids fora da lista não mudam.
+   */
+  reorder(ids: readonly string[], at: string): void;
 }
 
 type WorkspaceRow = typeof workspaces.$inferSelect;
@@ -99,6 +104,14 @@ export function createWorkspaceRepository(db: AppDatabase): WorkspaceRepository 
         .set({ isOpen: false, updatedAt: at })
         .where(eq(workspaces.id, id))
         .run();
+    },
+
+    reorder(ids, at) {
+      db.transaction((tx) => {
+        ids.forEach((id, position) => {
+          tx.update(workspaces).set({ position, updatedAt: at }).where(eq(workspaces.id, id)).run();
+        });
+      });
     },
   };
 }
