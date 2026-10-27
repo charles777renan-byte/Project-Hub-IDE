@@ -15,6 +15,7 @@ import {
   type MissionEventDto,
   type MissionPlanDto,
   type MissionViewDto,
+  type ProfileDto,
   type ProjectHubApi,
   type ProjectSummary,
   type ProviderId,
@@ -160,6 +161,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<WorkspaceDto>(CHANNELS.workspacesAddPane, { workspaceId, provider }),
       removePane: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesRemovePane, { workspaceId, leafId }),
+      reorder: (workspaceIds: string[]) => call<void>(CHANNELS.workspacesReorder, { workspaceIds }),
     },
     providers: {
       list: () => call<ProviderInfo[]>(CHANNELS.providersList),
@@ -170,6 +172,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     },
     activity: {
       daily: () => call<ActivityDay[]>(CHANNELS.activityDaily),
+    },
+    profile: {
+      get: () => call<ProfileDto>(CHANNELS.profileGet),
+      setDisplayName: (name: string | null) => call<void>(CHANNELS.profileSetDisplayName, { name }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

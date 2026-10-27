@@ -39,12 +39,15 @@ export type WorkspaceService = {
   addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
   /** Encerra a sessão do painel (menos a de missão) e tira o painel; os que sobram se reorganizam. */
   removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
+  /** Põe os workspaces abertos na ordem dada. A lista precisa ter todos os abertos, uma vez cada. */
+  reorder(workspaceIds: string[]): Promise<AppResult<undefined>>;
 };
 
 const OK: AppResult<undefined> = { ok: true, data: undefined };
 const NO_WORKSPACE = 'O workspace não foi encontrado.';
 const NO_PANE = 'O painel não foi encontrado.';
 const INVALID_LAYOUT = 'O layout não é válido.';
+const NOT_THE_OPEN_ONES = 'A ordem não bate com os workspaces abertos.';
 
 /**
  * O layout, se o valor vale (`null` vale: é o workspace vazio); `undefined` é inválido. O zod desce a árvore por recursão: uma árvore de milhares de níveis
@@ -304,5 +307,20 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     addPane: (workspaceId, provider) => serial(() => addPane(workspaceId, provider)),
 
     removePane: (workspaceId, leafId) => serial(() => removePane(workspaceId, leafId)),
+
+    reorder(workspaceIds) {
+      return serial(() => {
+        // A lista de quem chega precisa ser, sem tirar nem pôr nada, a dos abertos no banco.
+        const open = repo.listOpen().map((record) => record.id);
+        const once = new Set(workspaceIds).size === workspaceIds.length;
+        const same =
+          once &&
+          open.length === workspaceIds.length &&
+          workspaceIds.every((id) => open.includes(id));
+        if (!same) return Promise.resolve(failure('VALIDATION_FAILED', NOT_THE_OPEN_ONES));
+        repo.reorder(workspaceIds, now());
+        return Promise.resolve(OK);
+      });
+    },
   };
 }

@@ -25,6 +25,7 @@ import {
 } from './composition';
 import { createClaudeAgent, createTerminalBackend } from './claude-agent';
 import { registerActivityHandlers } from './ipc/activity';
+import { registerProfileHandlers } from './ipc/profile';
 import { registerTerminalHandlers } from './ipc/terminals';
 import { registerWorkspaceHandlers } from './ipc/workspaces';
 import { createProviderRegistry } from './providers';
@@ -225,6 +226,7 @@ app
       ...services.activityDeps,
       now: () => new Date(),
     });
+    registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     const providers = createProviderRegistry({
       env: process.env,
       platform: process.platform,

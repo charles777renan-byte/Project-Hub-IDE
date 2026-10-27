@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { activityDailyResponseSchema } from './activity';
 import { CHANNELS } from './channels';
+import { profileDtoSchema } from './profile';
 import { projectSummarySchema } from './project';
 import {
   MISSION_STATUS_VALUES,
@@ -50,6 +51,7 @@ export const responseSchemas = {
   [CHANNELS.workspacesEndSession]: appResultSchema(workspaceDtoSchema),
   [CHANNELS.workspacesAddPane]: appResultSchema(workspaceDtoSchema),
   [CHANNELS.workspacesRemovePane]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.workspacesReorder]: appResultSchema(z.undefined()),
   [CHANNELS.providersList]: appResultSchema(z.array(providerInfoSchema)),
   [CHANNELS.projectsList]: appResultSchema(z.array(projectSummarySchema)),
   [CHANNELS.projectsAdd]: appResultSchema(projectSummarySchema),
@@ -80,4 +82,6 @@ export const responseSchemas = {
   [CHANNELS.worktreesList]: appResultSchema(z.array(worktreeDtoSchema)),
   [CHANNELS.worktreesRemove]: appResultSchema(z.undefined()),
   [CHANNELS.activityDaily]: appResultSchema(activityDailyResponseSchema),
+  [CHANNELS.profileGet]: appResultSchema(profileDtoSchema),
+  [CHANNELS.profileSetDisplayName]: appResultSchema(z.undefined()),
 } as const;

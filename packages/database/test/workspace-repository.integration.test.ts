@@ -37,7 +37,7 @@ beforeEach(() => {
   db = openDatabase(dbFile);
   migrateDatabase(db, { filePath: dbFile });
   const projects = createProjectRepository(db);
-  for (const id of ['p1', 'p2', 'p3']) {
+  for (const id of ['p1', 'p2', 'p3', 'p4']) {
     projects.insert({
       id,
       name: `Projeto ${id}`,
@@ -141,6 +141,22 @@ describe('WorkspaceRepository', () => {
 
     expect(repo.listOpen()).toEqual([]);
     expect(repo.get('w-p1')).toMatchObject({ isOpen: false });
+  });
+
+  it('reorder põe a posição igual ao índice, e listOpen e nextPosition seguem a nova ordem', () => {
+    repo.insert(workspace('p1', { position: 0 }));
+    repo.insert(workspace('p2', { position: 1 }));
+    repo.insert(workspace('p3', { position: 2 }));
+    repo.insert(workspace('p4', { position: 3, isOpen: false }));
+
+    repo.reorder(['w-p3', 'w-p1', 'w-p2'], '2026-10-22T12:00:00Z');
+
+    expect(repo.listOpen().map((item) => item.id)).toEqual(['w-p3', 'w-p1', 'w-p2']);
+    expect(repo.get('w-p3')).toMatchObject({ position: 0, updatedAt: '2026-10-22T12:00:00Z' });
+    expect(repo.get('w-p2')).toMatchObject({ position: 2 });
+    // O fechado não entra na troca e a próxima posição vem depois dos abertos.
+    expect(repo.get('w-p4')).toMatchObject({ position: 3, isOpen: false });
+    expect(repo.nextPosition()).toBe(3);
   });
 
   it('updateLayout troca o texto e a data de atualização', () => {

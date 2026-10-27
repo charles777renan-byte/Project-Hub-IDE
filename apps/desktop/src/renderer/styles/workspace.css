@@ -71,6 +71,7 @@
 
 /* As abas rolam de lado se não couberem, sem empurrar o resto da barra. */
 .topbar__tabs {
+  align-self: stretch;
   min-width: 0;
   overflow-x: auto;
   /* A barra fina de rolagem do Chromium ocuparia altura e criaria rolagem vertical. */
@@ -80,19 +81,24 @@
 
 .topbar__tab-list {
   display: flex;
+  height: 100%;
   gap: 2px;
   margin: 0;
-  padding: 0;
+  /* Folga nas pontas: a barra de quem arrasta para antes da primeira ou depois da última cabe nela. */
+  padding: 0 4px;
   list-style: none;
 }
 
-/* A aba é o link do projeto e o botão de fechar, num fundo só. */
+/*
+ * A aba é o link do projeto e o botão de fechar, num fundo só. Formato A (abas de navegador): ocupa a altura
+ * da barra e tem cantos só em cima. A ativa tem o fundo da página e cobre a linha de baixo da barra.
+ */
 .topbar__tab {
   display: flex;
   flex: none;
   align-items: center;
-  height: 28px;
-  border-radius: var(--radius-pill);
+  height: 100%;
+  border-radius: var(--radius) var(--radius) 0 0;
   -webkit-app-region: no-drag;
 }
 
@@ -100,11 +106,56 @@
   background: var(--topbar-hover);
 }
 
-/* Aba ativa: pílula em gradiente (#3a3570 -> #2a2656 = --field-line -> --line), texto --text. */
+/*
+ * Ordenar, com eventos de ponteiro (TopBar.tsx; o arrasto nativo mostraria o ícone e a imagem do sistema). Ao
+ * arrastar, a aba acompanha o ponteiro sem transição, levantada sobre as outras, e as vizinhas deslizam para
+ * abrir o espaço onde ela vai cair (o deslocamento vem de `transform`). Ao soltar, a aba desliza até o espaço
+ * (`--dropping`). Depois, a ordem nova entra sem transição (`--settling`): as abas já estão onde vão ficar, e
+ * animar de novo as faria saltar. Pelo teclado, o deslize é feito em TopBar.tsx.
+ */
+.topbar__tab {
+  position: relative;
+  transition: transform var(--dur) var(--ease);
+}
+
+.topbar__tab-list .topbar__tab.topbar__tab--dragging {
+  z-index: 2;
+  background: var(--surface-2);
+  box-shadow:
+    inset 1px 0 0 var(--muted),
+    inset -1px 0 0 var(--muted),
+    inset 0 1px 0 var(--muted);
+  transition: none;
+}
+
+.topbar__tab-list .topbar__tab.topbar__tab--dragging.topbar__tab--dropping {
+  transition: transform var(--dur) var(--ease);
+}
+
+.topbar__tab-list--settling .topbar__tab {
+  transition: none;
+}
+
+
+.topbar__tab--drop-before::before {
+  left: -3px;
+}
+
+.topbar__tab--drop-after::after {
+  right: -3px;
+}
+
+/*
+ * Aba ativa: o fundo é o da página (--bg), e a linha de baixo da barra some por baixo dela. O anel de 1px em
+ * --muted (mais de 3:1 sobre --bg) fica nos lados e no topo, além do peso 700 do link: o estado não depende
+ * só do preenchimento.
+ */
 .topbar__tab:has(> a[aria-current='page']) {
-  background: linear-gradient(135deg, var(--field-line), var(--line));
-  /* Anel de 1px em --muted (mais de 3:1 sobre --bg), além do peso 700 do link: o estado não depende só do preenchimento. */
-  box-shadow: inset 0 0 0 1px var(--muted);
+  background: var(--bg);
+  box-shadow:
+    inset 1px 0 0 var(--muted),
+    inset -1px 0 0 var(--muted),
+    inset 0 1px 0 var(--muted);
 }
 
 .topbar__tab-link {
@@ -120,7 +171,14 @@
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: grab;
+  user-select: none;
   -webkit-app-region: no-drag;
+}
+
+/* Com o ponteiro capturado pelo link, o cursor é o dele: mão fechada durante o arrasto. */
+.topbar__tab--dragging .topbar__tab-link {
+  cursor: grabbing;
 }
 
 .topbar__tab-link:hover,
@@ -1037,6 +1095,11 @@
 @media (prefers-reduced-motion: reduce) {
   .state-mark--active .state-mark__glyph {
     animation: none;
+  }
+
+  .topbar__tab,
+  .topbar__tab-list .topbar__tab.topbar__tab--dragging.topbar__tab--dropping {
+    transition: none;
   }
 }
 
