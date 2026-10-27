@@ -8,6 +8,7 @@ import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
 import { DecisionBanner } from '../components/workspace/DecisionBanner';
 import { DiffPanel, type DiffSummary } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
+import { MissionFlow } from '../components/workspace/MissionFlow';
 import { MissionSummary } from '../components/workspace/MissionSummary';
 import { MissionTerminal } from '../components/workspace/MissionTerminal';
 import { TestsPanel } from '../components/workspace/TestsPanel';
@@ -270,6 +271,15 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
         onCancel={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
         onDelete={() => void removeMission(project.id)}
+      />
+
+      <MissionFlow
+        mission={mission}
+        steps={steps}
+        executions={state.view.executions}
+        events={events}
+        diff={diffSummary}
+        conclusion={conclusion}
       />
 
       {/* A região fica montada o tempo todo: só assim o leitor de tela anuncia o banner quando ele entra. */}

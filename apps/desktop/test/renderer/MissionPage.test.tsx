@@ -1653,3 +1653,73 @@ describe('MissionPage: Ctrl+K sobre a resposta ao agente', () => {
     expect(campo).toHaveFocus();
   });
 });
+
+describe('MissionPage: fluxo da missão', () => {
+  const steps = (screen: typeof import('@testing-library/react').screen) =>
+    within(screen.getByRole('list', { name: 'Fluxo da missão' })).getAllByRole('listitem');
+
+  it('mostra as cinco etapas, e a em curso leva aria-current', async () => {
+    installApi(viewOf({ status: 'planned' }));
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Fluxo da missão' });
+    const items = steps(screen);
+
+    expect(items.map((item) => item.querySelector('strong')?.textContent)).toEqual([
+      'Objetivo',
+      'Plano',
+      'Execução',
+      'Verificação',
+      'Revisão',
+    ]);
+    const current = items.filter((item) => item.getAttribute('aria-current') === 'step');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toHaveTextContent('Plano');
+    expect(current[0]).toHaveTextContent('Aguardando sua aprovação');
+  });
+
+  it('em revisão, a Revisão é a etapa em curso e a execução está concluída', async () => {
+    installApi(
+      viewOf(
+        { status: 'review' },
+        { executions: [{ id: 'e1', missionId: 'm1', attempt: 1, status: 'succeeded' }] },
+      ),
+    );
+    renderPage();
+
+    await screen.findByRole('list', { name: 'Fluxo da missão' });
+    const items = steps(screen);
+
+    expect(items[2]).toHaveTextContent('Tentativa 1 · Concluída');
+    expect(items[4]).toHaveAttribute('aria-current', 'step');
+    expect(items[4]).toHaveTextContent('Aguardando sua aprovação');
+  });
+
+  it('o fluxo segue na tela ao trocar de aba', async () => {
+    installApi(
+      viewOf(
+        { status: 'running' },
+        { executions: [{ id: 'e1', missionId: 'm1', attempt: 1, status: 'running' }] },
+      ),
+    );
+    renderPage();
+    await screen.findByRole('list', { name: 'Fluxo da missão' });
+
+    await userEvent.click(screen.getByRole('tab', { name: /Logs/ }));
+
+    expect(screen.getByRole('list', { name: 'Fluxo da missão' })).toBeVisible();
+    expect(steps(screen)[2]).toHaveTextContent('Tentativa 1 · Em andamento');
+  });
+
+  it('a etapa muda quando um evento da missão chega', async () => {
+    const ctl = installApi(viewOf({ status: 'running' }));
+    renderPage();
+    await screen.findByRole('list', { name: 'Fluxo da missão' });
+    expect(steps(screen)[2]).toHaveAttribute('aria-current', 'step');
+
+    ctl.setView(viewOf({ status: 'review' }));
+    ctl.emit({ eventType: 'mission.status_changed' });
+
+    await waitFor(() => expect(steps(screen)[4]).toHaveAttribute('aria-current', 'step'));
+  });
+});
