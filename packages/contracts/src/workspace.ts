@@ -124,6 +124,20 @@ export const openWorkspaceInputSchema = z.object({ projectId: idSchema });
 
 export const workspaceIdInputSchema = z.object({ workspaceId: idSchema });
 
+/**
+ * Entrada de `workspaces:reorder:v1`: a ordem nova dos workspaces abertos, cada um uma vez. A lista precisa
+ * ter todos os abertos; a aplicação confere isso contra o banco.
+ */
+export const reorderWorkspacesInputSchema = z.object({
+  workspaceIds: z
+    .array(idSchema)
+    .min(1)
+    .max(200)
+    .refine((ids) => new Set(ids).size === ids.length, 'Um workspace aparece mais de uma vez.'),
+});
+
+export type ReorderWorkspacesInput = z.infer<typeof reorderWorkspacesInputSchema>;
+
 export const saveLayoutInputSchema = z.object({
   workspaceId: idSchema,
   layout: workspaceLayoutSchema,

@@ -41,6 +41,16 @@ export interface ProjectRepository {
   ): void;
 }
 
+/**
+ * Porta das configurações do app (`app_settings`): texto por chave. O repositório do banco a satisfaz por
+ * tipagem estrutural.
+ */
+export interface SettingsRepository {
+  get(key: string): string | undefined;
+  set(key: string, value: string, updatedAt: string): void;
+  remove(key: string): void;
+}
+
 /** Diz se a pasta é um repositório Git. A implementação real é `createGitDetector`, em `@project-hub/git-adapter`. */
 export interface GitDetector {
   detect(path: string): Promise<{ kind: 'git' | 'none'; defaultBranch?: string }>;

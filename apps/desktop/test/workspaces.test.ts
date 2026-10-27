@@ -61,6 +61,12 @@ function memoryRepo(initial: WorkspaceRecord[] = []) {
       const row = rows.get(id);
       if (row !== undefined) rows.set(id, { ...row, isOpen: false, updatedAt: at });
     },
+    reorder: (ids, at) => {
+      ids.forEach((id, position) => {
+        const row = rows.get(id);
+        if (row !== undefined) rows.set(id, { ...row, position, updatedAt: at });
+      });
+    },
   };
   return { repo, rows, updateLayout };
 }
@@ -864,6 +870,63 @@ describe('removePane', () => {
     expect(terminals.closeSession).not.toHaveBeenCalled();
     if (!result.ok) throw new Error('esperava sucesso');
     expect(leavesOf(result.data.layout).map((l) => l.id)).toEqual(['b', 'c']);
+  });
+});
+
+describe('reorder', () => {
+  /** Três abertos (w1, w2 e w3, nessa ordem) e um fechado (w4, na posição 3). */
+  function threeOpen() {
+    const layout = JSON.stringify(pair(null, null));
+    return setup({
+      records: [
+        record({ id: 'w1', projectId: 'p1', layout, position: 0 }),
+        record({ id: 'w2', projectId: 'p2', layout, position: 1 }),
+        record({ id: 'w3', projectId: 'p3', layout, position: 2 }),
+        record({ id: 'w4', projectId: 'p4', layout, position: 3, isOpen: false }),
+      ],
+    });
+  }
+
+  it('põe os abertos na ordem dada, e a lista segue essa ordem', async () => {
+    const { service, rows } = threeOpen();
+
+    expect(await service.reorder(['w3', 'w1', 'w2'])).toEqual({ ok: true, data: undefined });
+
+    const listed = await service.list();
+    if (!listed.ok) throw new Error('esperava sucesso');
+    expect(listed.data.map((w) => w.id)).toEqual(['w3', 'w1', 'w2']);
+    expect(listed.data.map((w) => w.position)).toEqual([0, 1, 2]);
+    expect(rows.get('w4')?.position).toBe(3);
+  });
+
+  it('recusa uma lista com um aberto a menos, um fechado, um desconhecido ou um repetido, sem mudar nada', async () => {
+    const { service, rows } = threeOpen();
+    const before = ['w1', 'w2', 'w3', 'w4'].map((id) => rows.get(id)?.position);
+
+    for (const ids of [
+      ['w1', 'w2'],
+      ['w1', 'w2', 'w3', 'w4'],
+      ['w1', 'w2', 'w9'],
+      ['w1', 'w1', 'w2'],
+      ['w1', 'w2', 'w3', 'w3'],
+    ]) {
+      expect(await service.reorder(ids)).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    }
+    expect(['w1', 'w2', 'w3', 'w4'].map((id) => rows.get(id)?.position)).toEqual(before);
+  });
+
+  it('um workspace fechado e reaberto depois da troca entra no fim da ordem', async () => {
+    const { service } = threeOpen();
+    await service.reorder(['w3', 'w1', 'w2']);
+    await service.close('w1');
+    expect(await service.open('p1')).toMatchObject({ ok: true, data: { id: 'w1' } });
+
+    const listed = await service.list();
+    if (!listed.ok) throw new Error('esperava sucesso');
+    expect(listed.data.map((w) => w.id)).toEqual(['w3', 'w2', 'w1']);
   });
 });
 

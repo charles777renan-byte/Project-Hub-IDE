@@ -1,4 +1,5 @@
 import type { ActivityDay } from './activity';
+import type { ProfileDto } from './profile';
 import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
@@ -120,6 +121,8 @@ export type ProjectHubApi = {
     addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
     /** Encerra a sessão do painel (a de missão segue) e o tira do layout. Devolve o workspace inteiro. */
     removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
+    /** Põe os workspaces abertos na ordem das abas. A lista precisa ter todos os abertos, uma vez cada. */
+    reorder(workspaceIds: string[]): Promise<AppResult<void>>;
   };
   providers: {
     /** Os programas que um painel abre, e os que faltam no computador com o motivo. */
@@ -128,6 +131,12 @@ export type ProjectHubApi = {
   activity: {
     /** Eventos de missão por dia local nos últimos 90 dias. Dias sem evento não vêm na lista. */
     daily(): Promise<AppResult<ActivityDay[]>>;
+  };
+  profile: {
+    /** O nome da saudação, ou `null` quando a pessoa não informou um. */
+    get(): Promise<AppResult<ProfileDto>>;
+    /** Guarda o nome (até 40 caracteres, depois de aparar). `null` ou vazio tira o nome. */
+    setDisplayName(name: string | null): Promise<AppResult<void>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

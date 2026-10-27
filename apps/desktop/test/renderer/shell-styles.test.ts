@@ -56,17 +56,15 @@ describe('casca do app', () => {
     expect(tabs.get('min-width')).toBe('0');
   });
 
-  // Atualizado na identidade visual (Tarefa 6): a aba ativa deixa de ser um retângulo --field-line e vira
-  // pílula em gradiente #3a3570 -> #2a2656 (= --field-line -> --line, sem hex em workspace.css) com texto
-  // --text; a inativa fica transparente com --muted; nada de lima nem de cor por tipo.
-  it('a aba é uma pílula: a ativa em gradiente field-line para line, a inativa transparente', () => {
-    expect(ruleDeclarations(workspaceCss, '.topbar__tab').get('border-radius')).toBe(
-      'var(--radius-pill)',
-    );
+  // Formato A (abas de navegador, escolhido pela pessoa em 2026-10-26): a aba ocupa a altura da barra, com
+  // cantos só em cima; a ativa tem o fundo da página (--bg) e cobre a linha de baixo; a inativa fica
+  // transparente com --muted; nada de lima nem de cor por tipo.
+  it('a aba é de navegador: cantos só em cima e a ativa com o fundo da página', () => {
+    const tab = ruleDeclarations(workspaceCss, '.topbar__tab');
+    expect(tab.get('border-radius')).toBe('var(--radius) var(--radius) 0 0');
+    expect(tab.get('height')).toBe('100%');
     const active = ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])");
-    expect(active.get('background')).toBe(
-      'linear-gradient(135deg, var(--field-line), var(--line))',
-    );
+    expect(active.get('background')).toBe('var(--bg)');
     expect(ruleDeclarations(workspaceCss, '.topbar__tab').get('background')).toBeUndefined();
     expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('color')).toBe('var(--muted)');
     expect(
@@ -210,14 +208,48 @@ describe('ícones da barra superior e da barra lateral', () => {
 describe('barra superior: pistas da aba ativa e do botão +', () => {
   const workspaceCss = readCss('workspace.css');
 
-  it('a aba ativa do workspace tem anel de 1px em --muted, e o link arredonda o foco', () => {
-    expect(
-      ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])").get(
-        'box-shadow',
-      ),
-    ).toBe('inset 0 0 0 1px var(--muted)');
+  it('a aba ativa tem anel de 1px em --muted nos lados e no topo, e o link arredonda o foco', () => {
+    const shadow = ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])").get(
+      'box-shadow',
+    );
+    expect(shadow?.replace(/\s+/g, ' ')).toBe(
+      'inset 1px 0 0 var(--muted), inset -1px 0 0 var(--muted), inset 0 1px 0 var(--muted)',
+    );
     expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('border-radius')).toBe(
       'var(--radius-pill)',
+    );
+  });
+
+  const DRAGGING = '.topbar__tab-list .topbar__tab.topbar__tab--dragging';
+
+  it('ordenar: as vizinhas deslizam, a arrastada segue o ponteiro sem transição e desliza ao soltar', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar__tab').get('transition')).toBe(
+      'transform var(--dur) var(--ease)',
+    );
+    const dragging = ruleDeclarations(workspaceCss, DRAGGING);
+    expect(dragging.get('transition')).toBe('none');
+    expect(dragging.get('background')).toBe('var(--surface-2)');
+    expect(dragging.get('z-index')).toBe('2');
+    expect(
+      ruleDeclarations(workspaceCss, `${DRAGGING}.topbar__tab--dropping`).get('transition'),
+    ).toBe('transform var(--dur) var(--ease)');
+    expect(
+      ruleDeclarations(workspaceCss, '.topbar__tab-list--settling .topbar__tab').get('transition'),
+    ).toBe('none');
+  });
+
+  it('ordenar: o cursor é de mão fechada durante o arrasto, e o texto da aba não seleciona', () => {
+    expect(
+      ruleDeclarations(workspaceCss, '.topbar__tab--dragging .topbar__tab-link').get('cursor'),
+    ).toBe('grabbing');
+    expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('user-select')).toBe('none');
+  });
+
+  it('ordenar: sem movimento pedido pelo sistema, nenhuma transição das abas', () => {
+    const reduced = mediaBlock(workspaceCss, '(prefers-reduced-motion: reduce)');
+    expect(ruleDeclarations(reduced, '.topbar__tab').get('transition')).toBe('none');
+    expect(ruleDeclarations(reduced, `${DRAGGING}.topbar__tab--dropping`).get('transition')).toBe(
+      'none',
     );
   });
 

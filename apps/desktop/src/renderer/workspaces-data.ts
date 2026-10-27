@@ -87,3 +87,15 @@ function subscribe(listener: () => void): () => void {
 export function useOpenWorkspaces(): OpenWorkspaces {
   return useSyncExternalStore(subscribe, () => state);
 }
+
+/**
+ * Mostra os workspaces abertos na ordem dada antes de o processo principal confirmar. A carga que já estava em
+ * voo conta como mais antiga e não desfaz a ordem; a confirmação (um `WORKSPACES_CHANGED_EVENT`) traz a posição
+ * gravada.
+ */
+export function showWorkspaceOrder(ids: readonly string[]): void {
+  const byId = new Map(state.workspaces.map((workspace) => [workspace.id, workspace] as const));
+  const workspaces = ids.flatMap((id) => byId.get(id) ?? []);
+  shown = ++started;
+  publish({ ...state, workspaces });
+}

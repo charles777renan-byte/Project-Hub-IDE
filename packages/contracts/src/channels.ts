@@ -58,8 +58,13 @@ export const CHANNELS = {
   workspacesAddPane: 'workspaces:add-pane:v1',
   /** Encerra a sessão do painel e o tira do layout, num pedido só. */
   workspacesRemovePane: 'workspaces:remove-pane:v1',
+  /** Põe os workspaces abertos na ordem das abas. Recebe a lista inteira dos abertos, cada um uma vez. */
+  workspacesReorder: 'workspaces:reorder:v1',
   /** Programas que os painéis sabem abrir, com a disponibilidade de cada um. */
   providersList: 'providers:list:v1',
   /** Eventos de missão por dia local nos últimos 90 dias, para o painel de atividade. Só leitura. */
   activityDaily: 'activity:daily:v1',
+  /** Perfil local: o nome da saudação do Início. Só leitura. */
+  profileGet: 'profile:get:v1',
+  profileSetDisplayName: 'profile:set-display-name:v1',
 } as const;

@@ -4,6 +4,7 @@ import {
   addPaneInputSchema,
   openWorkspaceInputSchema,
   paneInputSchema,
+  reorderWorkspacesInputSchema,
   saveLayoutInputSchema,
   workspaceIdInputSchema,
   type AppResult,
@@ -71,6 +72,13 @@ export function registerWorkspaceHandlers(
     return input.success
       ? service.addPane(input.data.workspaceId, input.data.provider)
       : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o workspace e o programa.'));
+  });
+
+  reg(CHANNELS.workspacesReorder, (payload) => {
+    const input = reorderWorkspacesInputSchema.safeParse(payload);
+    return input.success
+      ? service.reorder(input.data.workspaceIds)
+      : Promise.resolve(failure('VALIDATION_FAILED', 'Informe a nova ordem dos workspaces.'));
   });
 
   reg(CHANNELS.providersList, () => Promise.resolve({ ok: true, data: providers.list() }));
