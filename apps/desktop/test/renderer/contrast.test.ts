@@ -526,7 +526,7 @@ describe('cores do Início (home.css)', () => {
  * Aba Progresso (progress.css): só tokens de tokens.css, sem cor literal, sem animação. O estado nunca
  * vai só na cor (ícone e texto acompanham), mas o preenchimento das barras ainda precisa de 3:1 sobre o
  * cartão e sobre a linha expandida (WCAG 1.4.11): concluída em --muted, em andamento em --blue, falhou em
- * --danger; pendente é só contorno em --field-line. Os textos em --warn e --danger passam de 4,5:1 sobre
+ * --danger; pendente é só contorno em --muted. Os textos em --warn e --danger passam de 4,5:1 sobre
  * o cartão. O lima (--accent) fica de fora.
  */
 describe('cores da aba Progresso (progress.css)', () => {
