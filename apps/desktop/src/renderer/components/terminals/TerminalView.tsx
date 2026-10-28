@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { useEffect, useRef } from 'react';
 import { registerTerminalForE2e } from './e2e-hook';
 import { EXIT_HINT } from './exit-hint';
+import { attachTerminalStream } from './terminal-stream';
 import { attachWebglRenderer } from './webgl-renderer';
 
 /** Cores do terminal: as mesmas do app (tokens.css). O xterm recebe valores, não variáveis de CSS. */
@@ -55,11 +56,11 @@ export function fitTerminal(
   const screen = host.querySelector<HTMLElement>('.xterm-screen');
   if (screen === null || term.cols < 1 || term.rows < 1) return undefined;
   if (host.clientWidth < MIN_FIT_WIDTH || host.clientHeight < MIN_FIT_HEIGHT) return undefined;
-  const cellWidth = screen.clientWidth / term.cols;
-  const cellHeight = screen.clientHeight / term.rows;
-  if (!(cellWidth > 0) || !(cellHeight > 0)) return undefined;
-  const cols = Math.max(2, Math.floor(host.clientWidth / cellWidth));
-  const rows = Math.max(1, Math.floor(host.clientHeight / cellHeight));
+  if (!(screen.clientWidth > 0) || !(screen.clientHeight > 0)) return undefined;
+  // Multiplica antes de dividir: `área / (tela / colunas)` perde precisão (1402 / (1402 / 219) dá 218,99999999999997)
+  // e, em escala fracionária, o ajuste alternava entre duas larguras sem parar.
+  const cols = Math.max(2, Math.floor((host.clientWidth * term.cols) / screen.clientWidth));
+  const rows = Math.max(1, Math.floor((host.clientHeight * term.rows) / screen.clientHeight));
   if (cols === term.cols && rows === term.rows) return undefined;
   term.resize(cols, rows);
   return { cols, rows };
@@ -160,8 +161,8 @@ export function TerminalView({
       return false;
     });
 
-    const stopEvents = api.onEvent((event) => {
-      if (event.terminalId !== terminalId) return;
+    // A assinatura é contada por terminal (terminal-stream.ts): o mesmo terminal em outra visão não a duplica nem a solta.
+    const stream = attachTerminalStream(terminalId, (event) => {
       if (event.type === 'data') term.write(event.data);
       else if (event.type === 'restart') term.reset();
       else term.write(`\r\n[processo encerrado, código ${event.exitCode}]\r\n`);
@@ -174,15 +175,14 @@ export function TerminalView({
     // A tela do xterm muda de tamanho quando ele mede a célula (depois de o terminal aparecer): é o aviso para ajustar.
     const screen = host.querySelector('.xterm-screen');
     if (screen !== null) observer.observe(screen);
-    void api.subscribe(terminalId).then(refit);
+    void stream.ready.then(refit);
 
     return () => {
       disposed = true;
       if (retryFrame !== undefined) window.cancelAnimationFrame(retryFrame);
       observer.disconnect();
       typing.dispose();
-      stopEvents();
-      void api.unsubscribe(terminalId);
+      stream.detach();
       termRef.current = null;
       unregisterForE2e();
       releaseWebgl();
