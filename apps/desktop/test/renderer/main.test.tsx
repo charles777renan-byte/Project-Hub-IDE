@@ -17,11 +17,11 @@ describe('main.tsx', () => {
       await import('../../src/renderer/main');
     });
 
-    await userEvent.click(screen.getByRole('link', { name: 'Projetos' }));
+    await userEvent.click(screen.getByRole('link', { name: /executando/ }));
 
-    expect(window.location.hash).toBe('#/projects');
+    expect(window.location.hash).toBe('#/?estado=running');
     expect(window.location.pathname).toBe('/');
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
   });
 
   it('monta a barra de status e não passa mais os contadores à barra superior', async () => {

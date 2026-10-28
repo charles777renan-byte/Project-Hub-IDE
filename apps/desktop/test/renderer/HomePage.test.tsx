@@ -177,9 +177,7 @@ describe('HomePage', () => {
     expect(
       screen.getByText('Nenhum projeto ainda. Adicione um projeto para começar.'),
     ).toBeInTheDocument();
-    expect(
-      within(panel('Projetos recentes')).getByRole('link', { name: /projetos/i }),
-    ).toHaveAttribute('href', ROUTE_PATHS.projects);
+    expect(within(panel('Projetos recentes')).queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('enquanto as aprovações não carregam, Aguardando você mostra Carregando e não o vazio', async () => {
@@ -270,15 +268,14 @@ describe('HomePage', () => {
     expect(within(recent).queryByText('nenhuma sessão')).not.toBeInTheDocument();
   });
 
-  it('Começar → leva para a rota de projetos', async () => {
+  it('Começar → fica no Início, que não tem mais lista de projetos para onde ir', async () => {
     installApi({ projects: [project('p1')] });
     renderHome();
 
     await userEvent.click(screen.getByRole('button', { name: 'Começar →' }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('where')).toHaveTextContent(ROUTE_PATHS.projects),
-    );
+    expect(screen.queryByTestId('where')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Começar →' })).toBeInTheDocument();
   });
 
   it('tem o painel Falharam e nenhum texto com travad', async () => {

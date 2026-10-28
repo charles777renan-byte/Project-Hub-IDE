@@ -105,16 +105,13 @@ describe('casca do app', () => {
     expect(mark.has('background')).toBe(false);
   });
 
-  it('o anel de foco da barra e da navegação fica por dentro, que a rolagem cortaria', () => {
+  it('o anel de foco da barra superior fica por dentro, que a rolagem cortaria', () => {
     expect(ruleDeclarations(workspaceCss, '.topbar a:focus-visible').get('outline-offset')).toBe(
       '-2px',
     );
     expect(
       ruleDeclarations(workspaceCss, '.topbar button:focus-visible').get('outline-offset'),
     ).toBe('-2px');
-    expect(ruleDeclarations(workspaceCss, '.main-nav a:focus-visible').get('outline-offset')).toBe(
-      '-2px',
-    );
     expect(ruleDeclarations(readCss('app.css'), ':focus-visible').get('outline')).toBe(
       '2px solid var(--focus)',
     );
@@ -133,13 +130,25 @@ describe('casca do app', () => {
     );
   });
 
-  // Atualizado na identidade visual (Tarefa 5): o item ativo troca o fundo --field-line por --line e ganha
-  // a barra lima de 3px à esquerda (--accent, o papel "estado ativo"); nunca magenta.
-  it('o item ativo da navegação principal tem fundo --line e traço lima de 2px embaixo', () => {
-    const active = ruleDeclarations(workspaceCss, ".main-nav a[aria-current='page']");
+  // O item ativo do explorador (o projeto da rota) leva fundo --line e a barra lima de 3px à esquerda
+  // (--accent, o papel "estado ativo"); nunca magenta.
+  it('o projeto da rota atual tem fundo --line e barra lima de 3px à esquerda', () => {
+    const active = ruleDeclarations(workspaceCss, ".sidebar__link[aria-current='page']");
     expect(active.get('background')).toBe('var(--line)');
     expect(active.get('color')).toBe('var(--text)');
-    expect(active.get('box-shadow')).toBe('inset 0 -2px 0 var(--accent)');
+    expect(active.get('box-shadow')).toBe('inset 3px 0 0 var(--accent)');
+  });
+
+  it('a seção Arquivados fica parada no fim da lateral, e a lista dela rola sozinha', () => {
+    const section = ruleDeclarations(workspaceCss, '.sidebar__archived');
+    expect(section.get('flex')).toBe('none');
+    expect(section.get('border-top')).toBeDefined();
+    expect(ruleDeclarations(workspaceCss, '.sidebar__archived-list').get('overflow-y')).toBe(
+      'auto',
+    );
+    expect(
+      ruleDeclarations(workspaceCss, '.sidebar__archived-list').get('max-height'),
+    ).toBeDefined();
   });
 
   it('a coluna lateral não encolhe e a barra de projetos enche o que sobra dela', () => {
@@ -286,7 +295,6 @@ describe('barra lateral', () => {
     // A barra rola como último recurso, numa janela baixa demais para as duas seções.
     expect(sidebar.get('overflow-y')).toBe('auto');
     expect(sidebar.get('overflow-x')).toBe('hidden');
-    expect(ruleDeclarations(workspaceCss, '.main-nav').get('flex')).toBe('none');
   });
 
   it('cada seção rola sozinha, com o título e a ação parados', () => {

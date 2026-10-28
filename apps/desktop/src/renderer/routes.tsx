@@ -1,13 +1,14 @@
-import { Route, Routes } from 'react-router';
+import { Navigate, Route, Routes } from 'react-router';
 import { HomePage } from './pages/HomePage';
 import { MissionPage } from './pages/MissionPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
-import { ProjectsPage } from './pages/ProjectsPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 
 /**
  * Caminhos das rotas. No aplicativo (HashRouter) eles aparecem no endereço depois do `#`. Os
  * parâmetros são `:projectId` e `:missionId`; `projectPath`, `missionPath` e `workspacePath` montam os endereços.
+ * `projects` é a rota antiga da lista de projetos, que não existe mais como página: ela só redireciona ao Início,
+ * para endereços guardados não caírem em tela vazia. Nenhum link do app aponta para ela.
  */
 export const ROUTE_PATHS = {
   home: '/',
@@ -32,17 +33,11 @@ export function missionPath(projectId: string, missionId: string): string {
   return `${projectPath(projectId)}/missions/${encodeURIComponent(missionId)}`;
 }
 
-/** Links da navegação principal, na ordem em que aparecem na tela. */
-export const NAV_ITEMS = [
-  { to: ROUTE_PATHS.home, label: 'Início' },
-  { to: ROUTE_PATHS.projects, label: 'Projetos' },
-] as const;
-
 export function AppRoutes() {
   return (
     <Routes>
       <Route path={ROUTE_PATHS.home} element={<HomePage />} />
-      <Route path={ROUTE_PATHS.projects} element={<ProjectsPage />} />
+      <Route path={ROUTE_PATHS.projects} element={<Navigate to={ROUTE_PATHS.home} replace />} />
       <Route path={ROUTE_PATHS.projectDetail} element={<ProjectDetailPage />} />
       <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
       <Route path={ROUTE_PATHS.workspace} element={<WorkspacePage />} />

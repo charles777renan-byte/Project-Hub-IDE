@@ -288,12 +288,8 @@ describe('cores do chrome do workspace', () => {
     expect(contrastRatio(tokens.get('--muted') ?? '', background)).toBeGreaterThanOrEqual(3);
   });
 
-  it('o lima (--accent) só aparece no traço do item ativo da navegação, na barra do link atual e no botão principal do rodapé da lateral', () => {
-    const allowed = [
-      ".main-nav a[aria-current='page']",
-      ".sidebar__link[aria-current='page']",
-      '.sidebar__foot .sidebar__action--primary',
-    ];
+  it('o lima (--accent) só aparece na barra do link atual da lateral', () => {
+    const allowed = [".sidebar__link[aria-current='page']"];
     const rules = [...workspaceCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
     const using = rules.filter(([, , body = '']) => body.includes('var(--accent)'));
     expect(using.length).toBeGreaterThan(0);
@@ -303,13 +299,8 @@ describe('cores do chrome do workspace', () => {
         list.every((item) => allowed.includes(item)),
         selectors.trim(),
       ).toBe(true);
-      // O traço de 2px embaixo da navegação, a barra de 3px do link atual, ou o fundo do botão principal.
-      const pattern = selectors.includes('.main-nav')
-        ? /box-shadow:\s*inset 0 -2px 0 var\(--accent\)/
-        : selectors.includes('--primary')
-          ? /background:\s*var\(--accent\)/
-          : /box-shadow:\s*inset 3px 0 0 var\(--accent\)/;
-      expect(body, selectors.trim()).toMatch(pattern);
+      // A barra de 3px do link atual.
+      expect(body, selectors.trim()).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--accent\)/);
     }
   });
 

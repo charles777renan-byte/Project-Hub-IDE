@@ -1,112 +1,94 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectHubApi } from '@project-hub/contracts';
 import { App } from '../../src/renderer/App';
 
-/** O link da navegação principal (a barra lateral): "Início" também é a aba fixa da barra superior. */
-function mainLink(name: string): HTMLElement {
-  return within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', { name });
+/** A aba fixa Início da barra superior. */
+function homeTab(): HTMLElement {
+  const header = document.querySelector<HTMLElement>('header.topbar');
+  expect(header).not.toBeNull();
+  return within(header as HTMLElement).getByRole('link', { name: 'Início' });
 }
 
 // O aplicativo usa HashRouter (o renderer roda de file:// em produção). Os testes usam
 // MemoryRouter, que não depende do endereço da janela.
 describe('App', () => {
-  it('mostra navegação com Início e Projetos', () => {
+  it('a lateral não tem navegação principal: Início é a aba fixa da barra superior', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    expect(mainLink('Início')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Projetos' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Principal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Projetos' })).not.toBeInTheDocument();
+    expect(homeTab()).toBeInTheDocument();
   });
 
-  it('abre a página de Projetos ao clicar', async () => {
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
-    await userEvent.click(screen.getByRole('link', { name: 'Projetos' }));
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument();
-  });
-
-  it('abre em Início e marca esse link como a página atual', () => {
+  it('abre em Início e marca essa aba como a página atual', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
-    expect(mainLink('Início')).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Projetos' })).not.toHaveAttribute('aria-current');
+    expect(homeTab()).toHaveAttribute('aria-current', 'page');
   });
 
-  it('passa a marcar Projetos como a página atual depois do clique', async () => {
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
-    await userEvent.click(screen.getByRole('link', { name: 'Projetos' }));
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveAttribute('aria-current', 'page');
-    expect(mainLink('Início')).not.toHaveAttribute('aria-current');
-    expect(screen.queryByRole('heading', { name: 'Início' })).not.toBeInTheDocument();
-  });
-
-  it('abre direto em Projetos quando a rota é /projects', () => {
+  it('a rota antiga /projects cai em Início', () => {
     render(
       <MemoryRouter initialEntries={['/projects']}>
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Projetos' })).not.toBeInTheDocument();
+    expect(homeTab()).toHaveAttribute('aria-current', 'page');
   });
 
-  it('agrupa os links numa navegação com nome e deixa o conteúdo em main', () => {
+  it('deixa o conteúdo em main', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    const navigation = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(navigation).getAllByRole('link')).toHaveLength(2);
     expect(within(screen.getByRole('main')).getByRole('heading', { name: 'Início' })).toBeVisible();
   });
 
-  it('chega aos controles com Tab, na ordem da tela, e abre a página com Enter', async () => {
+  it('chega aos controles com Tab, na ordem da tela, e aciona Adicionar projeto com Enter', async () => {
+    const chooseDirectory = vi.fn(() => Promise.resolve({ ok: true, data: null }));
+    window.projectHub = { projects: { chooseDirectory } } as unknown as ProjectHubApi;
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    try {
+      render(
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>,
+      );
 
-    // A barra superior vem antes da navegação: primeiro a aba fixa Início, depois o botão de abrir workspace.
-    await user.tab();
-    const topBar = document.querySelector('header.topbar') as HTMLElement;
-    expect(within(topBar).getByRole('link', { name: 'Início' })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
-    await user.tab();
-    expect(mainLink('Início')).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveFocus();
+      // A barra superior vem antes da lateral: primeiro a aba fixa Início, depois o botão de abrir workspace.
+      await user.tab();
+      expect(homeTab()).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toHaveFocus();
 
-    await user.keyboard('{Enter}');
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument();
-    // O foco continua no link que a pessoa acionou.
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(chooseDirectory).toHaveBeenCalledTimes(1);
+      // O foco continua no botão que a pessoa acionou.
+      expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toHaveFocus();
+    } finally {
+      Reflect.deleteProperty(window, 'projectHub');
+    }
   });
 });
 
 // Barra superior (Tarefa 6 do plano do workspace multiagente): marca, abas dos workspaces, botão de
-// abrir e o espaço à direita para os contadores. A navegação principal fica na coluna lateral.
+// abrir e o espaço à direita para os contadores.
 describe('barra superior', () => {
   // Os painéis (<header> do Panel) também contam como banner no testing-library; a barra do app é achada pela classe.
   function topBar(): HTMLElement {
@@ -151,20 +133,16 @@ describe('barra superior', () => {
     },
   );
 
-  it('não leva a navegação principal, que fica na barra lateral, acima dos espaços', () => {
+  it('a barra lateral não leva navegação principal, só a busca e o explorador de projetos', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    const navigation = screen.getByRole('navigation', { name: 'Principal' });
-    expect(topBar().contains(navigation)).toBe(false);
-    const sidebar = navigation.closest('.sidebar');
-    expect(sidebar).not.toBeNull();
-    expect(sidebar?.closest('.app-side')).not.toBeNull();
-    // A navegação fica dentro da barra, antes dos espaços.
-    expect(sidebar?.contains(navigation)).toBe(true);
-    expect(screen.getAllByRole('navigation', { name: 'Principal' })).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'Principal' })).not.toBeInTheDocument();
+    const sidebar = screen.getByRole('complementary', { name: 'Projetos e missões' });
+    expect(sidebar.closest('.app-side')).not.toBeNull();
+    expect(topBar().contains(sidebar)).toBe(false);
   });
 
   it('a divisória da barra lateral tem nome', () => {
@@ -230,39 +208,6 @@ describe('barra superior', () => {
   });
 });
 
-// A página de Projetos chama a API do preload ao abrir. Aqui ela responde com lista vazia; o
-// comportamento da página está em ProjectsPage.test.tsx.
-describe('página de Projetos', () => {
-  beforeEach(() => {
-    window.projectHub = {
-      ping: () => Promise.resolve({ ok: true, data: 'pong' }),
-      projects: {
-        list: () => Promise.resolve({ ok: true, data: [] }),
-        listArchived: () => Promise.resolve({ ok: true, data: [] }),
-        chooseDirectory: () => Promise.resolve({ ok: true, data: null }),
-        add: () => Promise.reject(new Error('add não é chamado nesta página')),
-      },
-    } as unknown as ProjectHubApi;
-  });
-
-  afterEach(() => {
-    Reflect.deleteProperty(window, 'projectHub');
-  });
-
-  it('mostra o botão Adicionar projeto habilitado, ao lado do título', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects']}>
-        <App />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toBeEnabled();
-    expect(
-      await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.'),
-    ).toBeInTheDocument();
-  });
-});
-
 // Paleta de comandos (Ctrl+K, components/PaletaComandos.tsx). O atalho fica no App, então vale em qualquer tela.
 describe('paleta de comandos (Ctrl+K)', () => {
   it('Ctrl+K abre a paleta com o foco na busca', async () => {
@@ -291,16 +236,52 @@ describe('paleta de comandos (Ctrl+K)', () => {
   });
 
   it('escolher uma ação leva à tela e fecha a paleta', async () => {
+    window.projectHub = {
+      projects: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        listArchived: () => Promise.resolve({ ok: true, data: [] }),
+      },
+      missions: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        subscribe: () => () => undefined,
+      },
+      workspaces: { list: () => Promise.resolve({ ok: true, data: [] }) },
+    } as unknown as ProjectHubApi;
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
-    await user.keyboard('{Control>}k{/Control}');
-    await user.type(screen.getByRole('combobox'), 'Ir para Projetos{Enter}');
-    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).toBeNull();
+    try {
+      // Sem o projeto p1, a rota do workspace mostra só o aviso e o link de volta ao Início.
+      render(
+        <MemoryRouter initialEntries={['/workspaces/p1']}>
+          <App />
+        </MemoryRouter>,
+      );
+      await screen.findByText('O projeto não foi encontrado.');
+      await user.keyboard('{Control>}k{/Control}');
+      await user.type(screen.getByRole('combobox'), 'Ir para Início{Enter}');
+      expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
+      expect(screen.queryByRole('combobox')).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, 'projectHub');
+    }
+  });
+
+  it('a ação Adicionar projeto abre o seletor de pasta e fecha a paleta', async () => {
+    const chooseDirectory = vi.fn(() => Promise.resolve({ ok: true, data: null }));
+    window.projectHub = { projects: { chooseDirectory } } as unknown as ProjectHubApi;
+    const user = userEvent.setup();
+    try {
+      render(
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>,
+      );
+      await user.keyboard('{Control>}k{/Control}');
+      await user.type(screen.getByRole('combobox'), 'Adicionar projeto{Enter}');
+      expect(chooseDirectory).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('combobox')).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, 'projectHub');
+    }
   });
 
   it('dentro do terminal, Ctrl+K segue para o programa e não abre a paleta', async () => {

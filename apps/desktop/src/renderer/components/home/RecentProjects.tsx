@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import type { ProjectSummary, TerminalSummary, WorkspaceDto } from '@project-hub/contracts';
 import { colorOf } from '../../project-color';
-import { projectPath, ROUTE_PATHS } from '../../routes';
+import { projectPath } from '../../routes';
 import { PanelEmpty } from '../Panel';
 
 /** Quantos projetos o bloco mostra. */
@@ -96,12 +96,7 @@ export function RecentProjects({
       </div>
     );
   } else if (projects.length === 0) {
-    body = (
-      <PanelEmpty>
-        Nenhum projeto ainda. Adicione um projeto para começar.{' '}
-        <Link to={ROUTE_PATHS.projects}>Ir para Projetos</Link>
-      </PanelEmpty>
-    );
+    body = <PanelEmpty>Nenhum projeto ainda. Adicione um projeto para começar.</PanelEmpty>;
   } else {
     body = (
       <ul className="recent-projects__grid">

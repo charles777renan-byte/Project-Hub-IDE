@@ -172,7 +172,7 @@ export function ProjectDetailPage() {
       return;
     }
     window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
-    navigate(ROUTE_PATHS.projects);
+    navigate(ROUTE_PATHS.home);
   }
 
   if (state.status === 'loading') {

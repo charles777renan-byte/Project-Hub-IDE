@@ -2,9 +2,8 @@ import { useNavigate } from 'react-router';
 import { ROUTE_PATHS } from '../../routes';
 
 /**
- * Chamada principal do Início: "Nova missão". A missão nasce dentro de um projeto, então o botão leva
- * para a lista de Projetos, onde a pessoa escolhe em qual. O ícone e o botão são os únicos destaques
- * em lima da tela.
+ * Chamada principal do Início: "Nova missão". A lista de Projetos não é mais uma página, então o botão volta ao
+ * Início (a missão nasce na aba do projeto). O ícone e o botão são os únicos destaques em lima da tela.
  */
 export function CallToAction() {
   const navigate = useNavigate();
@@ -22,7 +21,7 @@ export function CallToAction() {
       <button
         type="button"
         className="btn-primary home-cta__button"
-        onClick={() => navigate(ROUTE_PATHS.projects)}
+        onClick={() => navigate(ROUTE_PATHS.home)}
       >
         Começar →
       </button>

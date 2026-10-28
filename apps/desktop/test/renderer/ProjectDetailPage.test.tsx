@@ -71,7 +71,7 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path={ROUTE_PATHS.projects} element={<p>Lista de projetos</p>} />
+        <Route path={ROUTE_PATHS.home} element={<p>Página inicial</p>} />
         <Route path={ROUTE_PATHS.projectDetail} element={<ProjectDetailPage />} />
         <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
       </Routes>
@@ -334,7 +334,7 @@ describe('ProjectDetailPage: criar missão', () => {
 });
 
 describe('ProjectDetailPage: arquivar e remover', () => {
-  it('Arquivar projeto arquiva, avisa a barra lateral e volta à lista de projetos', async () => {
+  it('Arquivar projeto arquiva, avisa a barra lateral e volta ao Início', async () => {
     const api = installApi([]);
     const avisos = vi.fn();
     window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
@@ -345,7 +345,7 @@ describe('ProjectDetailPage: arquivar e remover', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Arquivar projeto' }));
 
     expect(api.projects.archive).toHaveBeenCalledWith('p1');
-    expect(await screen.findByText('Lista de projetos')).toBeInTheDocument();
+    expect(await screen.findByText('Página inicial')).toBeInTheDocument();
     expect(avisos).toHaveBeenCalled();
     window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
   });
@@ -362,7 +362,7 @@ describe('ProjectDetailPage: arquivar e remover', () => {
     await user.click(screen.getByRole('button', { name: 'Remover' }));
 
     expect(api.projects.remove).toHaveBeenCalledWith('p1');
-    expect(await screen.findByText('Lista de projetos')).toBeInTheDocument();
+    expect(await screen.findByText('Página inicial')).toBeInTheDocument();
   });
 
   it('falha ao arquivar mostra a mensagem da API e o projeto segue na tela', async () => {
@@ -386,7 +386,7 @@ describe('ProjectDetailPage: arquivar e remover', () => {
       'Há missões ativas ou aguardando início',
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Project Hub' })).toBeInTheDocument();
-    expect(screen.queryByText('Lista de projetos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Página inicial')).not.toBeInTheDocument();
   });
 });
 

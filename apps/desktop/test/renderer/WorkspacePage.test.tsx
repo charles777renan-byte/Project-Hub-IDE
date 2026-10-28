@@ -99,7 +99,7 @@ function tree() {
       <Probe />
       <Routes>
         <Route path={ROUTE_PATHS.workspace} element={<WorkspacePage />} />
-        <Route path="/projects" element={<p>lista de projetos</p>} />
+        <Route path="/" element={<p>página inicial</p>} />
       </Routes>
     </>
   );
@@ -406,10 +406,10 @@ describe('WorkspacePage', () => {
     expect(screen.queryByText('A sessão terminou.')).not.toBeInTheDocument();
   });
 
-  it('projeto inexistente mostra a mensagem com link para a lista', async () => {
+  it('projeto inexistente mostra a mensagem com link para o Início', async () => {
     renderAt(undefined, 'outro');
     expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /projetos/i })).toHaveAttribute('href', '/projects');
+    expect(screen.getByRole('link', { name: /início/i })).toHaveAttribute('href', '/');
   });
 
   describe('abrir e fechar painéis (revisão final)', () => {

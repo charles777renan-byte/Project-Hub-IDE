@@ -21,6 +21,7 @@ import {
   resetRestoreForTests,
   TopBar,
 } from '../../src/renderer/components/TopBar';
+import { ADD_PROJECT_REQUEST_EVENT } from '../../src/renderer/projects-events';
 import { workspacePath } from '../../src/renderer/routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
@@ -363,12 +364,19 @@ describe('menu Abrir workspace', () => {
     );
   });
 
-  it('Adicionar projeto… leva para a página de Projetos', async () => {
+  it('Adicionar projeto… pede à lateral que abra o seletor de pasta, sem trocar de tela', async () => {
     installApi({ projects: [project('p1', 'Alfa')] });
     renderBar('/');
-    await openMenu();
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Adicionar projeto…' }));
-    expect(where()).toBe('/projects');
+    const pedido = vi.fn();
+    window.addEventListener(ADD_PROJECT_REQUEST_EVENT, pedido);
+    try {
+      await openMenu();
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Adicionar projeto…' }));
+    } finally {
+      window.removeEventListener(ADD_PROJECT_REQUEST_EVENT, pedido);
+    }
+    expect(pedido).toHaveBeenCalledTimes(1);
+    expect(where()).toBe('/');
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
