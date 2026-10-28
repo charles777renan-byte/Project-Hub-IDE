@@ -22,6 +22,8 @@ export {
   LoaderCircle,
   Maximize2,
   Minimize2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   ShieldQuestionMark,

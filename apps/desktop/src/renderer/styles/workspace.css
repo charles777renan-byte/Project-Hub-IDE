@@ -47,6 +47,27 @@
 }
 
 /* Marca: o símbolo em duas metades e o nome em caixa alta. */
+.topbar__sidebar-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.topbar__sidebar-toggle:hover:not(:disabled) {
+  background: var(--topbar-hover);
+  color: var(--text);
+}
+
 .topbar__brand {
   display: flex;
   flex: none;
@@ -346,6 +367,14 @@
 .app-body > .pane-tree__separator[aria-orientation='vertical'] {
   width: 8px;
   background: transparent;
+}
+
+/*
+ * Com a lateral recolhida não sobra nada desenhado na borda: a divisória (8px, invisível até o mouse passar) faz o
+ * papel do respiro da esquerda, e o botão da barra superior e o Ctrl+B trazem a lateral de volta.
+ */
+.app-body--side-collapsed {
+  padding-left: 0;
 }
 
 .app-body > .pane-tree__separator[aria-orientation='vertical']:hover,

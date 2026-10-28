@@ -120,6 +120,7 @@ describe('buildPaletteItems', () => {
     expect(items.map((item) => item.rotulo)).toEqual([
       'Ir para Início',
       'Alterar meu nome',
+      'Mostrar ou ocultar a barra lateral',
       'Adicionar projeto',
     ]);
   });

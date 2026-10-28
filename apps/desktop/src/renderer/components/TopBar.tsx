@@ -16,7 +16,7 @@ import { previewDrop, stepId, type DropPreview, type TabSlot } from '../workspac
 import { showWorkspaceOrder, useOpenWorkspaces } from '../workspaces-data';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import { Hint } from './Hint';
-import { ICON_PROPS, Plus, X } from './Icon';
+import { ICON_PROPS, PanelLeftClose, PanelLeftOpen, Plus, X } from './Icon';
 
 /** Nome mostrado na aba quando o projeto dela ainda não chegou na lista (ou saiu dela). */
 const UNKNOWN_PROJECT = 'Projeto';
@@ -41,7 +41,15 @@ function prefersReducedMotion(): boolean {
  * move a janela; abas, botão e menu ficam fora da área de arrastar (workspace.css). Os nomes dos projetos entram sempre como
  * texto.
  */
-export function TopBar() {
+export function TopBar({
+  sidebarCollapsed = false,
+  onToggleSidebar,
+}: {
+  /** A barra lateral está recolhida: o botão passa a mostrá-la. */
+  sidebarCollapsed?: boolean;
+  /** Esconde ou mostra a barra lateral. Sem ela, a barra não tem o botão. */
+  onToggleSidebar?: () => void;
+} = {}) {
   const navigate = useNavigate();
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
   const { projects } = useSidebarData();
@@ -273,6 +281,27 @@ export function TopBar() {
 
   return (
     <header className="topbar">
+      {onToggleSidebar === undefined ? null : (
+        <Hint
+          label={
+            sidebarCollapsed ? 'Mostrar barra lateral (Ctrl+B)' : 'Ocultar barra lateral (Ctrl+B)'
+          }
+        >
+          <button
+            type="button"
+            className="topbar__sidebar-toggle"
+            aria-label={sidebarCollapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'}
+            aria-expanded={!sidebarCollapsed}
+            onClick={onToggleSidebar}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen {...ICON_PROPS} />
+            ) : (
+              <PanelLeftClose {...ICON_PROPS} />
+            )}
+          </button>
+        </Hint>
+      )}
       <p className="topbar__brand">
         <img src={markUrl} alt="" aria-hidden="true" className="topbar__mark" />
         Project Hub

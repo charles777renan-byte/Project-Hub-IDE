@@ -3,6 +3,7 @@ import type { ItemComando } from './components/PaletaComandos';
 import type { SidebarData } from './overview-data';
 import { ADD_PROJECT_REQUEST_EVENT } from './projects-events';
 import { EDIT_NAME_PARAM, missionPath, projectPath, ROUTE_PATHS } from './routes';
+import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 
 /**
  * Itens da paleta de comandos (Ctrl+K), a partir da barra lateral: cada projeto, cada missão e as ações (Ir
@@ -46,6 +47,12 @@ export function buildPaletteItems(sidebar: SidebarData, navigate: NavigateFuncti
       rotulo: 'Alterar meu nome',
       grupo: 'Ações',
       executar: () => navigate(`${ROUTE_PATHS.home}?${EDIT_NAME_PARAM}=1`),
+    },
+    {
+      id: 'acao:alternar-lateral',
+      rotulo: 'Mostrar ou ocultar a barra lateral',
+      grupo: 'Ações',
+      executar: () => window.dispatchEvent(new Event(TOGGLE_SIDEBAR_EVENT)),
     },
     {
       id: 'acao:adicionar-projeto',
