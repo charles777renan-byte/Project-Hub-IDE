@@ -7,7 +7,7 @@
  *
  * Cores com papel (o estado nunca vai só na cor: ícone e texto acompanham):
  * - preenchimento: concluída em --muted, em andamento em --blue, falhou em --danger; pendente é só
- *   contorno em --field-line;
+ *   contorno fino em --muted (3:1 sobre o cartão, WCAG 1.4.11), oco para se distinguir do cheio;
  * - borda do cartão da missão: precisa de você em --warn, falhou em --danger, o resto em --line;
  * - texto só em --text, --muted, --warn e --danger. O lima (--accent) fica de fora.
  *
@@ -296,7 +296,7 @@
 
 /* Pendente: só contorno. */
 .progress-seg--pending {
-  border: 1px solid var(--field-line);
+  border: 1px solid var(--muted);
   background: transparent;
 }
 
@@ -396,7 +396,7 @@
 .progress-bar {
   rx: 2px;
   fill: transparent;
-  stroke: var(--field-line);
+  stroke: var(--muted);
 }
 
 .progress-bar--succeeded {

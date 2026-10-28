@@ -153,6 +153,7 @@ describe('fontes locais', () => {
       'statusbar.css',
       'project.css',
       'mission.css',
+      'progress.css',
       'workspace.css',
     ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
@@ -428,7 +429,7 @@ describe('forma da aba Progresso (progress.css)', () => {
     expect(rule('.progress-seg--running').get('background')).toBe('var(--blue)');
     expect(rule('.progress-seg--failed').get('background')).toBe('var(--danger)');
     const pending = rule('.progress-seg--pending');
-    expect(pending.get('border')).toBe('1px solid var(--field-line)');
+    expect(pending.get('border')).toBe('1px solid var(--muted)');
     expect(pending.get('background')).toBe('transparent');
   });
 
