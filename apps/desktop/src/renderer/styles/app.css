@@ -1275,13 +1275,14 @@ button:disabled {
 
 /* Selo de pílula (.chip, com a cor do estado em .chip--lime e .chip--violet); aqui só o não quebrar. */
 .overview-counter {
+  text-decoration: none;
   white-space: nowrap;
 }
 
 /*
- * Uso do computador e "Parar todos" no cabeçalho (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
+ * Uso do computador e "Parar todos" na barra de status (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
  * discreto em --muted. Em janela estreita ele some primeiro, para os contadores não perderem lugar. A pergunta
- * de "Parar todos" cabe na altura da barra: botões baixos, sem quebra de linha.
+ * de "Parar todos" cabe na altura da barra (as regras dela estão em statusbar.css).
  */
 .system-usage {
   display: flex;
@@ -1295,19 +1296,6 @@ button:disabled {
   .system-usage {
     display: none;
   }
-}
-
-.topbar__status .confirm-inline {
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-.topbar__status .btn-danger,
-.topbar__status .confirm-inline button {
-  height: 24px;
-  padding: 0 var(--space-2);
-  font-size: 0.6875rem;
-  line-height: 22px;
 }
 
 /*

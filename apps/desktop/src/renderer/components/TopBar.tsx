@@ -5,7 +5,6 @@ import {
   useState,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from 'react';
 import { NavLink, useLocation, useMatch, useNavigate } from 'react-router';
 import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
@@ -36,12 +35,12 @@ function prefersReducedMotion(): boolean {
 
 /**
  * Barra superior de 36px, que é também a barra de título da janela (TITLE_BAR_OVERLAY em window.ts):
- * a marca, as abas dos workspaces abertos, o botão que abre outro workspace e, à direita, o que vier
- * em `status` (os contadores da visão geral). Arrastar pelo fundo move a janela; abas, botão, menu e
- * contadores ficam fora da área de arrastar (workspace.css). Os nomes dos projetos entram sempre como
+ * a marca, a aba fixa Início (link para `/`, sempre a primeira, sem botão de fechar e fora da
+ * reordenação), as abas dos workspaces abertos e o botão que abre outro workspace. Arrastar pelo fundo
+ * move a janela; abas, botão e menu ficam fora da área de arrastar (workspace.css). Os nomes dos projetos entram sempre como
  * texto.
  */
-export function TopBar({ status }: { status?: ReactNode } = {}) {
+export function TopBar() {
   const navigate = useNavigate();
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
   const { projects } = useSidebarData();
@@ -277,6 +276,12 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
         <img src={markUrl} alt="" aria-hidden="true" className="topbar__mark" />
         Project Hub
       </p>
+      {/* A aba fixa: o NavLink marca a rota `/` com aria-current="page" (`end`, para não valer em todas). */}
+      <div className="topbar__tab topbar__home">
+        <NavLink to={ROUTE_PATHS.home} end className="topbar__tab-link">
+          Início
+        </NavLink>
+      </div>
       {workspaces.length === 0 ? null : (
         <nav aria-label="Workspaces abertos" className="topbar__tabs" ref={tabs}>
           <ul
@@ -360,9 +365,6 @@ export function TopBar({ status }: { status?: ReactNode } = {}) {
         <p role="alert" className="topbar__error" title={notice}>
           {notice}
         </p>
-      )}
-      {status === undefined || status === null ? null : (
-        <div className="topbar__status">{status}</div>
       )}
     </header>
   );

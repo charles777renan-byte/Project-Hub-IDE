@@ -24,6 +24,17 @@ describe('main.tsx', () => {
     expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument();
   });
 
+  it('monta a barra de status e não passa mais os contadores à barra superior', async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    await act(async () => {
+      await import('../../src/renderer/main');
+    });
+
+    const footer = screen.getByRole('contentinfo', { name: 'Barra de status' });
+    expect(footer).toHaveTextContent('executando');
+    expect(document.querySelector('header.topbar')).not.toHaveTextContent('executando');
+  });
+
   it('falha com mensagem clara quando o index.html não tem a div #root', async () => {
     // Captura o erro à mão: o matcher rejects.toThrow(texto) não reportava o erro correto neste
     // ambiente (jsdom), embora a mensagem estivesse certa.

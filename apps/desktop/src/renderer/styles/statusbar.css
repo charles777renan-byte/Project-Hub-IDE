@@ -1,0 +1,65 @@
+/*
+ * Barra de status (components/StatusBar.tsx): o rodapé da janela, de 24px, abaixo do corpo. Uma linha só, em
+ * fonte pequena, que trunca com reticências em janela estreita e nunca rola de lado. Só tokens de cor
+ * (--bg, --line, --muted e --text). Ligado antes de workspace.css no index.html.
+ */
+.statusbar {
+  display: flex;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-3);
+  height: 24px;
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+/* O projeto e a branch da aba ativa: é o que cede primeiro, com reticências. */
+.statusbar__project {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusbar .overview-counters {
+  flex: none;
+}
+
+/* O uso do computador e "Parar todos" ficam no canto direito. */
+.statusbar__end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+/* O anel de foco fica por dentro: a barra corta o que passa da borda. */
+.statusbar a:focus-visible,
+.statusbar button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* "Parar todos" e a pergunta cabem na altura da barra: botões baixos, sem quebra de linha. */
+.statusbar .confirm-inline {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.statusbar .btn-danger,
+.statusbar .confirm-inline button {
+  height: 20px;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  line-height: 18px;
+}

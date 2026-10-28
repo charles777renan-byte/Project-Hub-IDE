@@ -2,9 +2,6 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router';
 import { App } from './App';
-import { OverviewCounters } from './components/OverviewCounters';
-import { StopAll } from './components/StopAll';
-import { SystemUsage } from './components/SystemUsage';
 import { Toaster } from './components/Toaster';
 
 // Os estilos não são importados aqui: o index.html liga os arquivos CSS por <link> (ver o comentário
@@ -18,15 +15,7 @@ if (container === null) {
 createRoot(container).render(
   <StrictMode>
     <HashRouter>
-      <App
-        headerStatus={
-          <>
-            <SystemUsage />
-            <OverviewCounters />
-            <StopAll />
-          </>
-        }
-      />
+      <App />
     </HashRouter>
     <Toaster />
   </StrictMode>,
