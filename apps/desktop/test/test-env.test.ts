@@ -4,6 +4,7 @@ import {
   applicationEnvironment,
   resolveDatabaseFile,
   resolveDirectoryChooser,
+  resolvePlannerCommand,
   resolveWorktreesRoot,
 } from '../src/main/composition';
 
@@ -131,5 +132,45 @@ describe('ambiente do aplicativo empacotado (R193)', () => {
     const env = applicationEnvironment(testEnvironment, true);
 
     expect(resolveWorktreesRoot(env, '/home/ana')).toBe('/raiz-dos-worktrees');
+  });
+});
+
+describe('comando do planejador nos testes (APP_PLANNER_COMMAND)', () => {
+  it('com PROJECT_HUB_ENV=test e comando preenchido, o comando de teste vale', () => {
+    expect(
+      resolvePlannerCommand(
+        { PROJECT_HUB_ENV: 'test', APP_PLANNER_COMMAND: '/falso/claude' },
+        '/real/claude',
+      ),
+    ).toBe('/falso/claude');
+  });
+
+  it('sem PROJECT_HUB_ENV=test, o comando de teste é ignorado', () => {
+    expect(resolvePlannerCommand({ APP_PLANNER_COMMAND: '/falso' }, '/real/claude')).toBe(
+      '/real/claude',
+    );
+    expect(
+      resolvePlannerCommand(
+        { PROJECT_HUB_ENV: 'production', APP_PLANNER_COMMAND: '/falso' },
+        '/real/claude',
+      ),
+    ).toBe('/real/claude');
+  });
+
+  it('comando vazio ou ausente, mesmo em teste, deixa o comando padrão', () => {
+    expect(
+      resolvePlannerCommand({ PROJECT_HUB_ENV: 'test', APP_PLANNER_COMMAND: '' }, '/real/claude'),
+    ).toBe('/real/claude');
+    expect(resolvePlannerCommand({ PROJECT_HUB_ENV: 'test' }, '/real/claude')).toBe('/real/claude');
+  });
+
+  it('empacotado, APP_PLANNER_COMMAND some junto com PROJECT_HUB_ENV (R193)', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', APP_PLANNER_COMMAND: '/falso' },
+      true,
+    );
+
+    expect(env).toEqual({});
+    expect(resolvePlannerCommand(env, '/real/claude')).toBe('/real/claude');
   });
 });

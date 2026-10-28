@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { MissionEventDto } from '@project-hub/contracts';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { failure, type PlannedTask, type Planner } from '@project-hub/application';
+import type { AppResult, MissionEventDto } from '@project-hub/contracts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppServices, platformOf, type AppServices } from '../src/main/composition';
 import { handleAddProject } from '../src/main/ipc/projects';
 import {
@@ -41,8 +42,9 @@ function gitRepo(path: string): void {
   ]);
 }
 
-function openServices(): AppServices {
+function openServices(planner?: Planner): AppServices {
   return createAppServices({
+    ...(planner === undefined ? {} : { planner }),
     dbFile: join(dir, 'database', 'project-hub.sqlite'),
     platform: platformOf(process.platform),
     worktreesRoot: join(dir, 'worktrees'),
@@ -300,5 +302,116 @@ describe('missão de ponta a ponta, com banco, Git e agente simulado', () => {
     expect(services.missions.queryDeps.repo.getMission(missionId)).toBeUndefined();
     expect(services.missions.queryDeps.repo.listSteps(missionId)).toEqual([]);
     expect(services.missions.queryDeps.repo.listAudit(missionId)).toEqual([]);
+  });
+});
+
+type PlannerInput = Parameters<Planner['plan']>[0];
+
+describe('planejador ligado na composição, com banco real', () => {
+  const tasks: PlannedTask[] = [
+    { title: 'Ler o código', description: 'Entender o fluxo', role: 'docs', dependsOn: [] },
+    { title: 'Implementar', description: 'Escrever a mudança', role: 'backend', dependsOn: [1] },
+  ];
+
+  function fakePlanner(
+    respond: (input: PlannerInput) => Promise<AppResult<PlannedTask[]>>,
+  ): Planner & { calls: PlannerInput[] } {
+    const calls: PlannerInput[] = [];
+    return {
+      calls,
+      plan: (input) => {
+        calls.push(input);
+        return respond(input);
+      },
+    };
+  }
+
+  async function newMission(): Promise<string> {
+    const created = await handleCreateMission(services.missions.createDeps, newMissionInput());
+    if (!created.ok) throw new Error('a criação deveria dar certo');
+    return created.data.id;
+  }
+
+  it('planMission usa o planejador entregue às opções, grava as tarefas e approvePlan leva a queued', async () => {
+    const planner = fakePlanner(() => Promise.resolve({ ok: true, data: tasks }));
+    services.close();
+    services = openServices(planner);
+    const missionId = await newMission();
+
+    const plan = await handleMissionAction(services.missions.orchestrator, 'plan', {
+      missionId,
+      instruction: 'priorize os testes',
+    });
+
+    expect(plan).toMatchObject({
+      ok: true,
+      data: {
+        steps: [
+          { position: 1, title: 'Ler o código', role: 'docs' },
+          { position: 2, title: 'Implementar', role: 'backend' },
+        ],
+      },
+    });
+    expect(planner.calls).toHaveLength(1);
+    expect(planner.calls[0]).toMatchObject({
+      objective: 'Gravar um arquivo no worktree',
+      criteria: ['Arquivo criado'],
+      instruction: 'priorize os testes',
+      cwd: repoPath,
+    });
+    const repo = services.missions.queryDeps.repo;
+    expect(repo.getMission(missionId)?.status).toBe('planned');
+    expect(repo.listSteps(missionId).map((step) => step.title)).toEqual([
+      'Ler o código',
+      'Implementar',
+    ]);
+
+    expect(
+      await handleMissionAction(services.missions.orchestrator, 'approvePlan', { missionId }),
+    ).toEqual({ ok: true, data: undefined });
+    expect(repo.getMission(missionId)?.status).toBe('queued');
+  });
+
+  it('pasta do projeto que sumiu: PROJECT_PATH_UNAVAILABLE e o planejador não roda (fs ligado)', async () => {
+    const planner = fakePlanner(() => Promise.resolve({ ok: true, data: tasks }));
+    services.close();
+    services = openServices(planner);
+    const missionId = await newMission();
+    rmSync(repoPath, { recursive: true, force: true });
+
+    const plan = await handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+
+    expect(plan).toMatchObject({ ok: false, error: { code: 'PROJECT_PATH_UNAVAILABLE' } });
+    expect(planner.calls).toHaveLength(0);
+  });
+
+  it('close aborta o planejamento em andamento antes de fechar o banco, sem tocar no banco fechado', async () => {
+    let seen: AbortSignal | undefined;
+    const planner = fakePlanner(
+      (input) =>
+        new Promise((resolve) => {
+          seen = input.signal;
+          input.signal.addEventListener(
+            'abort',
+            () => resolve(failure('AGENT_UNAVAILABLE', 'O planejamento foi cancelado.')),
+            { once: true },
+          );
+        }),
+    );
+    services.close();
+    services = openServices(planner);
+    const missionId = await newMission();
+
+    const pending = handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+    await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+    expect(seen?.aborted).toBe(false);
+    services.close();
+
+    expect(seen?.aborted).toBe(true);
+    await expect(pending).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'AGENT_UNAVAILABLE' },
+    });
+    // O afterEach fecha de novo: fechar duas vezes não pode falhar.
   });
 });

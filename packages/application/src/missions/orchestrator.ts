@@ -120,6 +120,11 @@ export interface Orchestrator {
    * prompt. O texto é obrigatório.
    */
   requestChanges(input: { missionId: string; feedback: string }): Promise<AppResult<Execution>>;
+  /**
+   * Fechamento do app: aborta o planejamento em andamento e mais nada. O planejador devolve uma falha, e a
+   * missão fica no estado em que estava. Pode ser chamado mais de uma vez.
+   */
+  dispose(): void;
 }
 
 const MISSION_NOT_FOUND = 'A missão não foi encontrada.';
@@ -130,6 +135,7 @@ const OPEN_EXECUTION_STATUSES: readonly Execution['status'][] = ['queued', 'runn
 /** Missão que já acabou: uma execução aberta nela não é reanexada. */
 const ENDED_MISSION: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
 const CANCEL_REASON = 'Cancelado pelo usuário.';
+const CANCELLED_PLANNING = 'O planejamento foi cancelado.';
 const REJECTED_REASON = 'Ação protegida recusada pelo usuário.';
 
 /**
@@ -176,7 +182,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const planner = deps.planner;
   /** Missões cujo plano está sendo gerado agora: o planejador roda uma vez por missão. */
   const planning = new Set<string>();
-  /** Sinal repassado ao planejador. O orquestrador ainda não tem fechamento, então nada o aborta. */
+  /** Sinal repassado ao planejador. Só `dispose` o aborta. */
   const plannerAbort = new AbortController();
   /** Uma execução por missão no máximo: a que está em curso ou a que está começando. */
   const active = new Map<string, ActiveRun>();
@@ -1451,6 +1457,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         signal: plannerAbort.signal,
       });
 
+      // `dispose` (o app fechando): o banco pode já estar fechado, então nada é lido nem gravado.
+      if (plannerAbort.signal.aborted) {
+        return proposed.ok ? failure('AGENT_UNAVAILABLE', CANCELLED_PLANNING) : proposed;
+      }
       const current = repo.getMission(missionId);
       if (current === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
       if (current.status !== 'draft' && current.status !== 'planned') {
@@ -1630,5 +1640,6 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     retryMission: gated(retryMission),
     approveReview: gated(approveReview),
     requestChanges: gated(requestChanges),
+    dispose: () => plannerAbort.abort(),
   };
 }
