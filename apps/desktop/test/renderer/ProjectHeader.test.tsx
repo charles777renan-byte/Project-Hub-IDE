@@ -122,7 +122,7 @@ describe('ProjectHeader: uma linha', () => {
       within(tabs)
         .getAllByRole('tab')
         .map((tab) => tab.textContent),
-    ).toEqual(['Terminais', 'Missões', 'Worktrees', 'Configurações']);
+    ).toEqual(['Terminais', 'Missões', 'Progresso', 'Worktrees', 'Configurações']);
     expect(within(tabs).getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -167,6 +167,16 @@ describe('ProjectHeader: uma linha', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Worktrees' }));
 
     expect(current).toMatchObject({ search: '?visao=worktrees', type: 'REPLACE' });
+  });
+
+  it('escolher Progresso troca ?visao= por progresso, substituindo a entrada do histórico', async () => {
+    installApi();
+    renderAt('/workspaces/p1');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Progresso' }));
+
+    expect(current).toMatchObject({ search: '?visao=progresso', type: 'REPLACE' });
+    expect(screen.getByRole('tab', { name: 'Progresso' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('?nova-missao=1 sem ?visao= deixa Missões como a visão ativa', () => {

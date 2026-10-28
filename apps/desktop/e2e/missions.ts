@@ -14,7 +14,7 @@ export type MissionForm = {
 };
 
 /** As visões da aba do projeto, pelo nome da aba. */
-export type ProjectViewName = 'Terminais' | 'Missões' | 'Worktrees' | 'Configurações';
+export type ProjectViewName = 'Terminais' | 'Missões' | 'Progresso' | 'Worktrees' | 'Configurações';
 
 /** A barra lateral. */
 export function sidebarOf(page: Page): Locator {
