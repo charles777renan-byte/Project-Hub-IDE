@@ -4,6 +4,7 @@ import { expect, test } from './fixtures';
 import {
   addGitProject,
   createMission,
+  decisionBlock,
   openProject,
   orchestrate,
   statusBarOf,
@@ -82,6 +83,13 @@ test('a barra de status mostra os contadores, e clicar num deles filtra o Iníci
   await missions.getByRole('button', { name: 'Limpar filtro' }).click();
   await expect(page).toHaveURL(/#\/$/);
   await expect(missions.getByRole('link', { name: MISSION.title })).toBeVisible();
+
+  // Abrir a missão já planejada traz o bloco "Sua decisão" à vista, sem rolar, e o cabeçalho do projeto não
+  // repete os controles da missão (só sobra o Mais ações dela).
+  await missions.getByRole('link', { name: MISSION.title }).click();
+  await expect(decisionBlock(page)).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Nova missão' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mais ações' })).toHaveCount(1);
 });
 
 /** Id do projeto na rota do workspace aberto (`#/workspaces/<id>...`). */

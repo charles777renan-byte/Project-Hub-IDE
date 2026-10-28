@@ -98,9 +98,20 @@ test('capturas: Início, Terminais, Missões, Nova missão, missão planejada e 
   await page.waitForTimeout(400);
   await shoot(page, '3-projeto-missoes');
 
+  // Reabrir a missão planejada: o bloco "Sua decisão" já vem à vista, sem rolar.
+  await page.getByRole('link', { name: MISSION.title, exact: true }).click();
+  await expect(decisionBlock(page)).toBeInViewport();
+  await page.waitForTimeout(400);
+  await shoot(page, '5c-missao-reaberta');
+
   // Início, com a missão na lista e o contador "aguarda você" aceso.
   await page.getByRole('link', { name: 'Início', exact: true }).click();
-  await expect(page.getByRole('link', { name: MISSION.title, exact: true })).toBeVisible();
+  // A missão aparece na lista do Início e no aviso "Precisa de você": a lista é a região Missões.
+  await expect(
+    page
+      .getByRole('region', { name: 'Missões' })
+      .getByRole('link', { name: MISSION.title, exact: true }),
+  ).toBeVisible();
   await page.waitForTimeout(800);
   await shoot(page, '1-inicio');
 });
