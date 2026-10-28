@@ -25,16 +25,8 @@ function renderSummary(status: MissionViewDto['mission']['status'], conclusion?:
           updatedAt: '2026-10-20T09:00:00.000Z',
         }}
         project={{ id: 'p1', name: 'app', path: 'C:\\app', defaultBranch: 'main' }}
-        events={[]}
-        diff={undefined}
-        busy={false}
         controlBusy={false}
-        onGeneratePlan={noop}
-        onApprovePlan={noop}
-        onStart={noop}
         onPause={noop}
-        onResume={noop}
-        onRetry={noop}
         onCancel={noop}
         onDelete={noop}
         {...(conclusion === undefined ? {} : { conclusion })}
@@ -68,15 +60,13 @@ describe('MissionSummary: resumo de conclusão', () => {
     expect(screen.queryByText('Git: alterações sem commit')).not.toBeInTheDocument();
   });
 
-  it('verificação e arquivos ficam nos indicadores, sem se repetir no bloco', () => {
+  it('o bloco não repete verificação nem arquivos, e o cabeçalho não tem os indicadores', () => {
     renderSummary('succeeded', CONCLUSION);
 
     const block = screen.getByRole('region', BLOCK);
     expect(within(block).queryByText(/Verificação/)).not.toBeInTheDocument();
     expect(within(block).queryByText(/arquivo/)).not.toBeInTheDocument();
-    const indicators = screen.getByRole('list', { name: 'Indicadores da missão' });
-    expect(within(indicators).getByText('Verificação')).toBeInTheDocument();
-    expect(within(indicators).getByText('Arquivos alterados')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Indicadores da missão' })).not.toBeInTheDocument();
   });
 
   it('o texto vindo do agente entra como texto, não como HTML', () => {
@@ -92,7 +82,12 @@ describe('MissionSummary: resumo de conclusão', () => {
     renderSummary('succeeded', CONCLUSION);
 
     const summary = screen.getByRole('region', { name: 'Resumo da missão' });
-    expect(summary.querySelectorAll('.mission-summary__primary')).toHaveLength(0);
+    // O único botão do cabeçalho é o "Mais ações" (e o do caminho do worktree, que esta missão não tem).
+    expect(
+      within(summary)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Mais ações']);
     await user.click(within(summary).getByRole('button', { name: 'Mais ações' }));
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
     expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
@@ -114,15 +109,13 @@ describe('MissionSummary: resumo de conclusão', () => {
     expect(screen.queryByRole('region', BLOCK)).not.toBeInTheDocument();
   });
 
-  it('o bloco fica dentro do resumo, depois dos indicadores', () => {
+  it('o bloco fica dentro do resumo, depois do título', () => {
     renderSummary('succeeded', CONCLUSION);
 
     const summary = screen.getByRole('region', { name: 'Resumo da missão' });
     const block = within(summary).getByRole('region', BLOCK);
-    const indicators = within(summary).getByRole('list', { name: 'Indicadores da missão' });
-    expect(
-      indicators.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const title = within(summary).getByRole('heading', { level: 1 });
+    expect(title.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('o bloco é uma caixa discreta: borda da linha, raio do painel e o fundo da página', () => {
@@ -132,7 +125,9 @@ describe('MissionSummary: resumo de conclusão', () => {
     expect(block.get('border-radius')).toBe('var(--radius-panel)');
     expect(block.get('background')).toBe('var(--bg)');
     // A frase não herda a margem dos parágrafos da página.
-    expect(ruleDeclarations(css, '.mission-summary .conclusion__summary').get('margin')).toBe('0');
+    expect(
+      ruleDeclarations(readCss('mission.css'), '.mission-head .conclusion__summary').get('margin'),
+    ).toBe('0');
     expect(ruleDeclarations(css, '.conclusion__facts').get('color')).toBe('var(--muted)');
   });
 });

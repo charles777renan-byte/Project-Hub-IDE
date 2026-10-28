@@ -33,13 +33,16 @@ type Pending = 'archive' | 'remove';
 export function ProjectHeader({
   project,
   onNewMission,
+  missionOpen = false,
 }: {
   project: ProjectSummary;
   onNewMission: () => void;
+  /** Com uma missão aberta no centro, a visão ativa é Missões, e escolhê-la de novo volta à lista. */
+  missionOpen?: boolean;
 }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const view = parseProjectView(params.get(VIEW_PARAM));
+  const view = missionOpen ? 'missoes' : parseProjectView(params.get(VIEW_PARAM));
   const [pending, setPending] = useState<Pending | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,9 @@ export function ProjectHeader({
           active={view}
           panelId={projectPanelId}
           onChange={(next) => navigate(projectViewPath(project.id, next))}
+          {...(missionOpen
+            ? { onReselect: (next: ProjectView) => navigate(projectViewPath(project.id, next)) }
+            : {})}
         />
         <div className="project-header__actions">
           <button type="button" className="btn-primary" onClick={onNewMission}>

@@ -1,6 +1,5 @@
 /*
- * Aba Plano: a tabela de tarefas (TAREFA, AGENTE, STATUS), as ações de edição de cada tarefa e o pedido de
- * um novo plano. Ligado por <link> no index.html, depois do home.css e antes do workspace.css; só usa
+ * Tarefas da missão: a tabela (TAREFA, AGENTE, STATUS) e as ações de edição de cada tarefa. Ligado por <link> no index.html, depois do home.css e antes do workspace.css; só usa
  * tokens de tokens.css, sem cor literal, sem estilo escrito em texto (CSP) e sem animação. O nome do
  * programa é texto, e a cor só o reforça: o laranja (--orange) é o papel do Claude. O lima fica fora: é só
  * da ação principal.
@@ -155,33 +154,9 @@ select.plan-agent {
   color: var(--muted);
 }
 
-/* Convite para revisar, a instrução do novo plano e o botão Planejar de novo, abaixo da tabela. */
-.plan-review {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-2);
-}
-
-.plan-review__instruction {
-  width: 100%;
-  max-width: 40rem;
-}
-
-.plan-review__replan {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-}
-
-/* O aviso de cota fica ao lado do botão que a gasta (Orquestrar e Planejar de novo). */
+/* O aviso de cota fica ao lado do botão que a gasta (Orquestrar). */
 .plan-quota {
   margin: 0;
   color: var(--muted);
   font-size: var(--text-sm);
-}
-
-/* No resumo da missão, o aviso divide a linha com o botão e quebra em duas linhas se faltar espaço. */
-.mission-summary__quota {
-  max-width: 16rem;
 }

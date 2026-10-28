@@ -11,6 +11,7 @@ import type {
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectMissions } from '../../src/renderer/components/project/ProjectMissions';
+import { ROUTE_PATHS } from '../../src/renderer/routes';
 
 /**
  * Visão Missões da aba do projeto: a lista com progresso (reaproveita o quadro do Início), o estado vazio com
@@ -101,7 +102,7 @@ function renderMissions(
           path="/workspaces/:projectId"
           element={<ProjectMissions projectId="p1" project={shownProject ?? undefined} />}
         />
-        <Route path="/projects/:projectId/missions/:missionId" element={<p>Missão aberta</p>} />
+        <Route path={ROUTE_PATHS.missionDetail} element={<p>Missão aberta</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -126,7 +127,7 @@ describe('ProjectMissions: lista', () => {
     renderMissions();
 
     const link = await screen.findByRole('link', { name: 'Ajustar login' });
-    expect(link).toHaveAttribute('href', '/projects/p1/missions/m1');
+    expect(link).toHaveAttribute('href', '/workspaces/p1/missoes/m1');
     expect(
       await screen.findByRole('progressbar', {
         name: 'Progresso de Ajustar login: 1 de 2 tarefas',
@@ -274,7 +275,7 @@ describe('ProjectMissions: criar missão', () => {
     });
     expect(api.missions.plan).not.toHaveBeenCalled();
     expect(await screen.findByText('Missão aberta')).toBeInTheDocument();
-    expect(current.pathname).toBe('/projects/p1/missions/nova');
+    expect(current.pathname).toBe('/workspaces/p1/missoes/nova');
   });
 
   it('"Só criar, sem abrir" fica na lista, avisa e pede a lista de novo', async () => {

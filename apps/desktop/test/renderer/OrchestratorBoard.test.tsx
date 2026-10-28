@@ -47,9 +47,68 @@ describe('OrchestratorBoard', () => {
     const cards = roleCards();
     expect(cards).toHaveLength(2);
     expect(within(cards[0] as HTMLElement).getByText('Frontend')).toBeInTheDocument();
-    expect(within(cards[0] as HTMLElement).getByText('1 tarefa')).toBeInTheDocument();
     expect(within(cards[1] as HTMLElement).getByText('Backend')).toBeInTheDocument();
-    expect(within(cards[1] as HTMLElement).getByText('2 tarefas')).toBeInTheDocument();
+  });
+
+  it('cada cartão de papel tem a linha que descreve o papel', () => {
+    render(
+      <OrchestratorBoard
+        steps={[
+          stepOf('a', 1, 'frontend'),
+          stepOf('b', 2, 'backend'),
+          stepOf('c', 3, 'database'),
+          stepOf('d', 4, 'docs'),
+          stepOf('e', 5, 'qa'),
+          stepOf('f', 6, 'general'),
+        ]}
+      />,
+    );
+
+    const lines = roleCards().map((card) => card.querySelector('.orchestrator-board__description'));
+    expect(lines.map((line) => line?.textContent)).toEqual([
+      'Interface e componentes',
+      'APIs e lógica do sistema',
+      'Modelagem e consultas',
+      'README e guias de uso',
+      'Testes e verificação',
+      'Tarefas gerais',
+    ]);
+  });
+
+  it('o cartão Frontend diz "Interface e componentes" e mostra o programa ao lado do nome', () => {
+    render(<OrchestratorBoard steps={[stepOf('a', 1, 'frontend')]} />);
+
+    const [card] = roleCards();
+    const head = (card as HTMLElement).querySelector('.orchestrator-board__head');
+    expect(head).toHaveTextContent('FrontendClaude');
+    expect(within(card as HTMLElement).getByText('Interface e componentes')).toBeInTheDocument();
+  });
+
+  describe('integração e entrega', () => {
+    function deliveryOf(statuses: MissionStepDto['status'][]): string {
+      const { unmount } = render(
+        <OrchestratorBoard
+          steps={statuses.map((status, index) => stepOf(`t${index}`, index + 1, 'backend', status))}
+        />,
+      );
+      const card = document.querySelector('.orchestrator-board__delivery');
+      const text = card?.querySelector('.orchestrator-board__status')?.textContent;
+      unmount();
+      return text ?? '';
+    }
+
+    it('sem tarefa concluída, diz "aguardando tarefas"', () => {
+      expect(deliveryOf(['pending', 'pending'])).toBe('aguardando tarefas');
+      expect(deliveryOf(['running', 'pending'])).toBe('aguardando tarefas');
+    });
+
+    it('com todas as tarefas concluídas, diz "tarefas concluídas"', () => {
+      expect(deliveryOf(['succeeded', 'succeeded'])).toBe('tarefas concluídas');
+    });
+
+    it('com uma tarefa que falhou, diz que a entrega está bloqueada', () => {
+      expect(deliveryOf(['succeeded', 'failed'])).toBe('bloqueada: uma tarefa falhou');
+    });
   });
 
   it('ordena os cartões pela posição da primeira tarefa de cada papel', () => {
@@ -163,7 +222,6 @@ describe('PlanPanel com o quadro do orquestrador', () => {
         busy={false}
         planning={false}
         onEditStep={vi.fn()}
-        onRequestNewPlan={vi.fn()}
       />,
     );
   }

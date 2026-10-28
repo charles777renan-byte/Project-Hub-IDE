@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 import type {
   AppError,
   AppResult,
@@ -9,16 +9,16 @@ import type {
 } from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
 import { PlanPanel } from '../components/PlanPanel';
-import { Tabs, type TabCount, type TabItem } from '../components/Tabs';
+import { ChangedFiles } from '../components/mission/ChangedFiles';
+import { DecisionBlock } from '../components/mission/DecisionBlock';
+import { MissionBottomPanel, type MissionTab } from '../components/mission/MissionBottomPanel';
 import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
-import { DecisionBanner } from '../components/workspace/DecisionBanner';
 import { DiffPanel, type DiffSummary } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
-import { MissionFlow } from '../components/workspace/MissionFlow';
 import { MissionSummary } from '../components/workspace/MissionSummary';
 import { MissionTerminal } from '../components/workspace/MissionTerminal';
 import { TestsPanel } from '../components/workspace/TestsPanel';
-import { missionTabCounts, needsDecisionInConversation, verifiedCriteria } from '../mission-text';
+import { needsDecisionInConversation, verifiedCriteria } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
 
@@ -44,64 +44,43 @@ const WORKTREE_START_MESSAGES: ReadonlyMap<ErrorCode, string> = new Map<ErrorCod
   ],
 ]);
 
-/** As abas da missão, na ordem em que aparecem. A Conversa é a aba de abertura. */
-type MissionTab = 'conversation' | 'plan' | 'diff' | 'tests' | 'terminal' | 'logs';
-
-/**
- * As abas com a contagem de cada uma, quando ela diz algo: etapas no Plano, arquivos alterados no Diff
- * e testes que passaram em Testes (`missionTabCounts`). A classe `tab--<id>` é só um gancho, sem cor.
- */
-function missionTabs(counts: ReturnType<typeof missionTabCounts>): TabItem<MissionTab>[] {
-  const withCount = (item: TabItem<MissionTab>, count: TabCount | undefined) =>
-    count === undefined ? item : { ...item, count };
-  return [
-    { id: 'conversation', label: 'Conversa' },
-    withCount({ id: 'plan', label: 'Plano' }, counts.plan),
-    withCount({ id: 'diff', label: 'Diff' }, counts.diff),
-    withCount({ id: 'tests', label: 'Testes' }, counts.tests),
-    { id: 'terminal', label: 'Terminal' },
-    { id: 'logs', label: 'Logs' },
-  ];
-}
-
-const tabPanelId = (id: MissionTab) => `mission-panel-${id}`;
-
 type ViewState =
   | { status: 'loading' }
   | { status: 'ready'; view: MissionViewDto }
   | { status: 'error'; message: string };
 
 /**
- * Rota da missão. O workspace é remontado a cada missão (a chave é o `missionId`), para a aba aberta, o
- * resumo do Diff, o pedido de foco e a visão carregada não passarem de uma missão para a outra.
+ * A missão aberta no centro da aba do projeto (`/workspaces/:projectId/missoes/:missionId`). O workspace é
+ * remontado a cada missão (a chave é o `missionId`), para a aba aberta, o resumo do Diff, o pedido de foco
+ * e a visão carregada não passarem de uma missão para a outra.
  */
-export function MissionPage() {
-  const { missionId = '' } = useParams();
+export function MissionPage({ missionId }: { missionId: string }) {
   return <MissionWorkspace key={missionId} missionId={missionId} />;
 }
 
 /**
- * Workspace de uma missão (seção 10.7, R168): o resumo fixo no topo (título, situação, ação principal e
- * indicadores), o banner "Aguardando você" quando há decisão pendente, e seis abas (Conversa, Plano,
- * Diff, Testes, Terminal e Logs), cada uma com a própria rolagem. A visão vem do processo principal e é
- * buscada de novo a cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois
- * de uma mais nova, não substitui a tela.
+ * Workspace de uma missão (seção 10.7, R168), no formato do protótipo: o cabeçalho (título, objetivo,
+ * situação e Mais ações), o quadro do orquestrador com a tabela de tarefas, os arquivos alterados e o
+ * bloco "Sua decisão" rolam em cima; embaixo, o painel redimensionável com as abas Conversa, Diff,
+ * Testes, Terminal e Logs, cada uma com a própria rolagem. A visão vem do processo principal e é buscada
+ * de novo a cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma mais
+ * nova, não substitui a tela.
  *
  * Os painéis das abas ficam montados o tempo todo (os de fora ficam escondidos), então a resposta
  * digitada na Conversa não se perde quando a pessoa olha outra aba. Quando a missão espera a decisão
  * (R182), o foco vai para o lugar da decisão, mas só quando a pessoa já está na Conversa: em outra aba,
- * nada troca e nada toma o foco, e o banner avisa.
+ * nada troca e nada toma o foco, e o aviso do bloco "Sua decisão" avisa.
  */
 function MissionWorkspace({ missionId }: { missionId: string }) {
   const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
-  /** Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima da grade. */
+  /** Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima do plano. */
   const [reloadError, setReloadError] = useState<string | null>(null);
   /** Chamadas longas (início, decisão, resposta, nova tentativa e planejamento). Não bloqueiam os controles. */
   const [busy, setBusy] = useState(false);
-  /** O planejamento (Orquestrar e Planejar de novo) leva até alguns minutos e muda o rótulo do botão. */
+  /** O planejamento (Orquestrar) leva até alguns minutos e muda o rótulo do botão. */
   const [planning, setPlanning] = useState(false);
-  /** Falha de uma edição das tarefas do plano: aparece no painel do Plano, não na página toda. */
+  /** Falha de uma edição das tarefas do plano: aparece junto das tarefas, não na página toda. */
   const [planEditError, setPlanEditError] = useState<string | null>(null);
   /** Pausar, retomar e cancelar: cada uma só cobre a própria chamada, e vale com a longa em curso. */
   const [controlBusy, setControlBusy] = useState(false);
@@ -109,7 +88,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const [tab, setTab] = useState<MissionTab>('conversation');
   /** Contagem dos pedidos de foco na decisão: cada pedido muda a aba e, depois dela pintada, o foco. */
   const [focusRequest, setFocusRequest] = useState(0);
-  /** Quantos arquivos o Diff leu, para o resumo. `undefined` até a primeira leitura. */
+  /** Quantos arquivos o Diff leu, para a contagem da aba. `undefined` até a primeira leitura. */
   const [diffSummary, setDiffSummary] = useState<DiffSummary | undefined>(undefined);
   const conversationRef = useRef<HTMLDivElement>(null);
   const decisionRef = useRef<HTMLElement>(null);
@@ -164,7 +143,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     decisionStatusRef.current = decisionStatus;
   });
   const requestFocus = useCallback(() => setFocusRequest((count) => count + 1), []);
-  /** Pedido da pessoa (banner): leva à Conversa, onde ficam os controles da decisão, e pede o foco. */
+  /** Pedido da pessoa (aviso da decisão): leva à Conversa, onde ficam os controles da decisão, e pede o foco. */
   const openDecision = useCallback(() => {
     setTab('conversation');
     requestFocus();
@@ -172,7 +151,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
 
   /**
    * Quando a missão passa a esperar a decisão da pessoa, o foco vai para o lugar dela (R182), mas só se
-   * ela já está na Conversa. Em outra aba nada troca e nada toma o foco: o banner avisa.
+   * ela já está na Conversa. Em outra aba nada troca e nada toma o foco: o aviso do bloco "Sua decisão" avisa.
    */
   useEffect(() => {
     if (needsDecision && tabRef.current === 'conversation') requestFocus();
@@ -221,8 +200,8 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   /** Chamada longa: início, decisão, resposta, nova tentativa e planejamento. */
   const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
   /**
-   * Planeja a missão (Orquestrar e Planejar de novo). Gasta a cota do Claude, então só roda num clique.
-   * Sem instrução, a chamada leva só o id da missão. A falha fica na página, visível em qualquer aba.
+   * Planeja a missão (Orquestrar). Gasta a cota do Claude, então só roda num clique. Sem instrução, a
+   * chamada leva só o id da missão. A falha fica na página, visível em qualquer aba.
    */
   const runPlan = (instruction = '') => {
     // Um segundo clique com o planejamento (ou uma edição) em curso é ignorado: duas mudanças no mesmo plano.
@@ -271,8 +250,9 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const runControl = (action: () => Promise<AppResult<unknown>>) => execute(action, setControlBusy);
 
   /**
-   * Exclui a missão encerrada e volta ao projeto. Fora do `execute`: quando dá certo, não há visão para
-   * recarregar, então a página só troca de rota. Falha fica na tela, e a visão é buscada de novo.
+   * Exclui a missão encerrada e volta à lista de missões do projeto. Fora do `execute`: quando dá certo,
+   * não há visão para recarregar, então a página só troca de rota. Falha fica na tela, e a visão é buscada
+   * de novo.
    */
   async function removeMission(projectId: string) {
     setControlBusy(true);
@@ -305,41 +285,18 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
 
   const { mission, project, events, steps, conclusion } = state.view;
   const hasWorktree = mission.worktreePath !== undefined;
-  return (
-    <div className="mission-workspace">
+
+  const main = (
+    <>
       <MissionSummary
         mission={mission}
         project={project}
-        events={events}
-        diff={diffSummary}
         conclusion={conclusion}
-        busy={busy}
-        planning={planning}
         controlBusy={controlBusy}
-        onGeneratePlan={() => void runPlan()}
-        onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
-        onStart={() => void runStart()}
         onPause={() => void runControl(() => window.projectHub.missions.pause(missionId))}
-        onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
-        onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
         onCancel={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
         onDelete={() => void removeMission(project.id)}
       />
-
-      <MissionFlow
-        mission={mission}
-        steps={steps}
-        executions={state.view.executions}
-        events={events}
-        diff={diffSummary}
-        conclusion={conclusion}
-      />
-
-      {/* A região fica montada o tempo todo: só assim o leitor de tela anuncia o banner quando ele entra. */}
-      <div role="status" aria-live="polite" className="decision-status">
-        <DecisionBanner view={state.view} onOpen={openDecision} />
-      </div>
-
       {actionError === null ? null : (
         <p role="alert" className="page-alert">
           {actionError}
@@ -350,96 +307,85 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
           {reloadError}
         </p>
       )}
-
-      <div className="mission-tabs">
-        <Tabs
-          label="Abas da missão"
-          tabs={missionTabs(missionTabCounts({ steps, diff: diffSummary, events }))}
-          active={tab}
-          onChange={setTab}
-          panelId={tabPanelId}
-        />
-        <TabPanel id="conversation" active={tab}>
-          <div ref={conversationRef} tabIndex={-1} className="mission-focus">
-            <ConversationPanel
-              view={state.view}
-              busy={busy}
-              onAnswer={(text) =>
-                run(() => window.projectHub.missions.provideInput({ missionId, text }))
-              }
-              onDecide={(approvalId, decision) =>
-                void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
-              }
-              onApprove={() => void run(() => window.projectHub.missions.approveReview(missionId))}
-              onRequestChanges={(text) =>
-                run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
-              }
-              decisionRef={decisionRef}
-              answerRef={answerRef}
-            />
-          </div>
-        </TabPanel>
-        <TabPanel id="plan" active={tab}>
-          <PlanPanel
-            mission={mission}
-            steps={steps}
-            busy={busy}
-            planning={planning}
-            error={planEditError ?? undefined}
-            onEditStep={(stepId, edit) => void runEditStep(stepId, edit)}
-            onRequestNewPlan={(instruction) => void runPlan(instruction)}
-          />
-        </TabPanel>
-        <TabPanel id="diff" active={tab}>
-          <DiffPanel
-            missionId={missionId}
-            hasWorktree={hasWorktree}
-            refreshKey={events.length}
-            onSummary={setDiffSummary}
-          />
-        </TabPanel>
-        <TabPanel id="tests" active={tab}>
-          <TestsPanel events={events} />
-          <AcceptancePanel
-            criteria={mission.acceptanceCriteria}
-            verified={verifiedCriteria(events)}
-          />
-        </TabPanel>
-        <TabPanel id="terminal" active={tab}>
-          <MissionTerminal missionId={missionId} events={events} />
-        </TabPanel>
-        <TabPanel id="logs" active={tab}>
-          <LogsPanel events={events} />
-        </TabPanel>
-      </div>
-    </div>
+      <PlanPanel
+        mission={mission}
+        steps={steps}
+        busy={busy}
+        planning={planning}
+        error={planEditError ?? undefined}
+        onEditStep={(stepId, edit) => void runEditStep(stepId, edit)}
+      />
+      <ChangedFiles missionId={missionId} hasWorktree={hasWorktree} refreshKey={events.length} />
+      <DecisionBlock
+        view={state.view}
+        busy={busy}
+        planning={planning}
+        controlBusy={controlBusy}
+        onGeneratePlan={() => void runPlan()}
+        onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
+        onStart={() => void runStart()}
+        onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
+        onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
+        onOpenDecision={openDecision}
+      />
+    </>
   );
-}
 
-/**
- * Painel de uma aba. Fica montado mesmo escondido, para não perder o estado (a resposta digitada, o
- * arquivo escolhido no Diff). O painel ativo rola dentro de si e recebe o foco do teclado, para a
- * rolagem funcionar sem mouse.
- */
-function TabPanel({
-  id,
-  active,
-  children,
-}: {
-  id: MissionTab;
-  active: MissionTab;
-  children: ReactNode;
-}) {
   return (
-    <div
-      role="tabpanel"
-      id={tabPanelId(id)}
-      aria-labelledby={`tab-${id}`}
-      tabIndex={0}
-      hidden={id !== active}
-      className="mission-tabpanel"
-    >
-      {children}
+    <div className="mission-page">
+      <MissionBottomPanel
+        main={main}
+        tab={tab}
+        onTabChange={setTab}
+        steps={steps}
+        diff={diffSummary}
+        events={events}
+        panels={{
+          conversation: (
+            <div ref={conversationRef} tabIndex={-1} className="mission-focus">
+              <ConversationPanel
+                view={state.view}
+                busy={busy}
+                onAnswer={(text) =>
+                  run(() => window.projectHub.missions.provideInput({ missionId, text }))
+                }
+                onDecide={(approvalId, decision) =>
+                  void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+                }
+                onApprove={() =>
+                  void run(() => window.projectHub.missions.approveReview(missionId))
+                }
+                onRequestChanges={(text) =>
+                  run(() =>
+                    window.projectHub.missions.requestChanges({ missionId, feedback: text }),
+                  )
+                }
+                decisionRef={decisionRef}
+                answerRef={answerRef}
+              />
+            </div>
+          ),
+          diff: (
+            <DiffPanel
+              missionId={missionId}
+              hasWorktree={hasWorktree}
+              refreshKey={events.length}
+              onSummary={setDiffSummary}
+            />
+          ),
+          tests: (
+            <>
+              <TestsPanel events={events} />
+              <AcceptancePanel
+                criteria={mission.acceptanceCriteria}
+                verified={verifiedCriteria(events)}
+              />
+            </>
+          ),
+          terminal: <MissionTerminal missionId={missionId} events={events} />,
+          logs: <LogsPanel events={events} />,
+        }}
+      />
     </div>
   );
 }

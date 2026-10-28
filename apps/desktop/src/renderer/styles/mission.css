@@ -1,0 +1,265 @@
+/*
+ * A missão dentro da aba do projeto (pages/MissionPage.tsx, components/mission/*, components/workspace/
+ * MissionSummary.tsx): em cima o corpo que rola (cabeçalho, quadro do orquestrador, tabela de tarefas,
+ * arquivos alterados e "Sua decisão") e, embaixo, o painel redimensionável com as abas Conversa, Diff,
+ * Testes, Terminal e Logs. Ligado por <link> no index.html, depois do project.css e antes do workspace.css;
+ * só usa tokens de tokens.css, sem cor literal, sem estilo escrito em texto (CSP) e sem animação. A divisória
+ * é a `.pane-tree__separator` do workspace.css. Em janela estreita o corpo e o painel seguem empilhados, e o
+ * que não cabe quebra de linha, sem rolagem horizontal.
+ */
+
+/* O painel das Missões com uma missão aberta: sem respiro, e quem rola é o corpo da missão. */
+.project-tab__panel--missoes.project-tab__panel--mission {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mission-page {
+  height: 100%;
+  min-height: 0;
+}
+
+/* A divisória entre o corpo e o painel inferior: o grupo e os painéis seguem a altura da biblioteca. */
+.mission-split,
+.mission-split__panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.mission-split {
+  width: 100%;
+  height: 100%;
+}
+
+.mission-split__panel {
+  overflow: hidden;
+}
+
+/* O corpo rola sozinho; os blocos se afastam por um vão só, e o contêiner dá a largura aos cartões. */
+.mission-main {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  height: 100%;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  overflow: auto;
+  container-type: inline-size;
+}
+
+.mission-main > p,
+.changed-files p,
+.decision-block p {
+  margin: 0;
+}
+
+.mission-main > * {
+  min-width: 0;
+}
+
+/* Cabeçalho: o "← Missões", a linha pequena com o projeto, o título, o objetivo e, à direita, o selo e as ações. */
+.mission-head {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.mission-head__back {
+  justify-self: start;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.mission-head__back:hover {
+  color: var(--text);
+}
+
+.mission-head__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-3);
+}
+
+.mission-head__title {
+  display: grid;
+  flex: 1 1 18rem;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.mission-head .eyebrow,
+.mission-head h1,
+.mission-head p {
+  margin: 0;
+}
+
+.mission-head h1 {
+  font-size: var(--text-lg);
+  overflow-wrap: anywhere;
+}
+
+.mission-head__objective {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.mission-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* Pausar, cancelar e excluir: o botão "Mais ações" neutro e pequeno (a pergunta de exclusão ocupa o lugar dele). */
+.mission-head__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mission-head__secondary button {
+  padding: 0.25rem var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* A linha do worktree: o nome curto e o botão que copia o caminho. */
+.mission-head .mission-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.mission-head .conclusion__summary {
+  max-width: none;
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Títulos pequenos das seções do corpo: ARQUIVOS ALTERADOS e SUA DECISÃO. */
+.mission-section-title {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Arquivos alterados: uma linha por arquivo, o caminho em mono e as linhas a mais e a menos à direita. */
+.changed-files__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.changed-files__item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.changed-files__path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.changed-files__counts {
+  flex: none;
+}
+
+.changed-files__empty,
+.changed-files__note {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Sua decisão: o aviso (só quando há decisão pendente) e a ação principal da situação. */
+.decision-block {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.decision-block .decision-status {
+  width: 100%;
+}
+
+/* Vazia, a região de anúncio não ocupa espaço: o vão do `gap` da grade é o único que vale. */
+.decision-block .decision-status:empty {
+  margin: 0;
+}
+
+.decision-block__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.decision-block__actions .plan-quota {
+  max-width: 16rem;
+}
+
+/* O painel inferior: a barra de abas fica parada e cada painel rola dentro de si. */
+.mission-dock {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+
+.mission-dock > .tabs {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-3) 0;
+}
+
+.mission-dock > .tabs .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* O respiro dos lados deixa o contorno de foco (2px, afastado 2px) inteiro nos controles rente à borda. */
+.mission-dock__panel {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  overflow: auto;
+}
+
+.mission-dock__panel[hidden] {
+  display: none;
+}
+
+.mission-dock__panel:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Conversa: quando a missão pede a decisão, o foco vem para cá; o contorno fica por dentro. */
+.mission-focus:focus-visible {
+  outline-offset: -2px;
+}
+
+/* A mensagem de "Carregando missão…" e o erro de leitura, soltos no painel, ganham o respiro do corpo. */
+.project-tab__panel--missoes.project-tab__panel--mission > p {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+}

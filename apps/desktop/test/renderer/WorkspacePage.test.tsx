@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import type {
@@ -12,7 +12,7 @@ import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
-import { AppRoutes, ROUTE_PATHS } from '../../src/renderer/routes';
+import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
 // O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador.
 vi.mock('../../src/renderer/components/terminals/TerminalView', () => ({
@@ -875,5 +875,169 @@ describe('aba do projeto: visões', () => {
     await waitFor(() => expect(current.state).toBeNull());
     expect(current.pathname).toBe('/workspaces/p1');
     expect(current.search).toBe('?visao=missoes');
+  });
+});
+
+describe('aba do projeto: missão aberta', () => {
+  const MISSION_VIEW = {
+    mission: {
+      id: 'm1',
+      projectId: 'p1',
+      title: 'Ajustar login',
+      objective: 'Corrigir o login',
+      status: 'draft',
+      altersCode: false,
+      acceptanceCriteria: [],
+      createdAt: '2026-10-20T09:00:00.000Z',
+      updatedAt: '2026-10-20T09:00:00.000Z',
+    },
+    project: { id: 'p1', name: 'app', path: 'x', defaultBranch: 'main' },
+    steps: [],
+    executions: [],
+    pendingApprovals: [],
+    events: [],
+  };
+  let go: (to: string) => void = () => undefined;
+  function Nav() {
+    const navigate = useNavigate();
+    go = (to) => navigate(to);
+    return null;
+  }
+
+  function renderMission(initial = '/workspaces/p1/missoes/m1') {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, {
+      get: vi.fn(() => Promise.resolve({ ok: true, data: MISSION_VIEW })),
+      diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
+      subscribe: vi.fn(() => () => undefined),
+    });
+    return render(
+      <>
+        <MemoryRouter initialEntries={[initial]}>
+          <Nav />
+          {tree()}
+        </MemoryRouter>
+        <Toaster />
+      </>,
+    );
+  }
+
+  it('a missão abre dentro da aba do projeto: o cabeçalho segue na tela, com Missões como visão ativa', async () => {
+    renderMission();
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'app' })).toBeInTheDocument();
+    const tabs = screen.getByRole('tablist', { name: 'Visões do projeto' });
+    expect(within(tabs).getByRole('tab', { name: 'Missões' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(tabs).getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    // A missão ocupa o painel das Missões, no lugar da lista.
+    const panel = document.getElementById('project-panel-missoes');
+    expect(panel).not.toHaveAttribute('hidden');
+    expect(panel).toHaveClass('project-tab__panel--mission');
+    expect(panel).toContainElement(
+      screen.getByRole('heading', { level: 1, name: 'Ajustar login' }),
+    );
+    expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
+  });
+
+  it('com a missão aberta, os terminais seguem montados, escondidos', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderMission();
+
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+    const terminal = await screen.findByTestId('terminal-view');
+    expect(document.getElementById('project-panel-terminais')).toHaveAttribute('hidden');
+    expect(document.getElementById('project-panel-terminais')).toContainElement(terminal);
+  });
+
+  it('abrir a missão e voltar por "← Missões" não recarrega o workspace nem refaz o terminal', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderMission('/workspaces/p1');
+    const terminal = await screen.findByTestId('terminal-view');
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+
+    act(() => go('/workspaces/p1/missoes/m1'));
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+    expect(current.pathname).toBe('/workspaces/p1/missoes/m1');
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+
+    await userEvent.click(screen.getByRole('link', { name: '← Missões' }));
+
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(current.search).toBe('?visao=missoes');
+    // A lista de missões do projeto voltou ao painel (o botão do cabeçalho também se chama "Nova missão").
+    const panel = document.getElementById('project-panel-missoes') as HTMLElement;
+    expect(await within(panel).findByRole('button', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('escolher Missões de novo, com a missão aberta, volta à lista de missões', async () => {
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Missões' }));
+
+    await waitFor(() => expect(current.pathname).toBe('/workspaces/p1'));
+    expect(current.search).toBe('?visao=missoes');
+  });
+
+  it('escolher outra visão com a missão aberta leva a ela', async () => {
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    act(() => screen.getByRole('tab', { name: 'Terminais' }).focus());
+
+    await waitFor(() => expect(current.search).toBe('?visao=terminais'));
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a rota antiga da missão redireciona para a missão dentro da aba do projeto', async () => {
+    Object.assign(api.missions, {
+      get: vi.fn(() => Promise.resolve({ ok: true, data: MISSION_VIEW })),
+      diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
+      subscribe: vi.fn(() => () => undefined),
+    });
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <Probe />
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).toBeInTheDocument();
+    expect(current.pathname).toBe('/workspaces/p1/missoes/m1');
+  });
+
+  it('missionPath monta o endereço da missão na aba do projeto', () => {
+    expect(missionPath('p1', 'm1')).toBe('/workspaces/p1/missoes/m1');
+    expect(missionPath('a b', 'm/1')).toBe('/workspaces/a%20b/missoes/m%2F1');
+  });
+
+  it('projeto ausente, com a missão na rota, mostra a mensagem com o link para o Início', async () => {
+    renderMission('/workspaces/outro/missoes/m1');
+
+    expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Ajustar login' })).toBeNull();
   });
 });

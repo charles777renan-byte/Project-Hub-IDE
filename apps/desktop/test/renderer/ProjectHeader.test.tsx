@@ -27,16 +27,16 @@ function installApi() {
   return api;
 }
 
-let current = { pathname: '', search: '' };
+let current = { pathname: '', search: '', key: '' };
 function Probe() {
   const location = useLocation();
-  current = { pathname: location.pathname, search: location.search };
+  current = { pathname: location.pathname, search: location.search, key: location.key };
   return null;
 }
 
 function renderAt(
   path: string,
-  overrides: { project?: ProjectSummary; onNewMission?: () => void } = {},
+  overrides: { project?: ProjectSummary; onNewMission?: () => void; missionOpen?: boolean } = {},
 ) {
   const onNewMission = overrides.onNewMission ?? vi.fn();
   render(
@@ -47,7 +47,11 @@ function renderAt(
         <Route
           path={ROUTE_PATHS.workspace}
           element={
-            <ProjectHeader project={overrides.project ?? project} onNewMission={onNewMission} />
+            <ProjectHeader
+              project={overrides.project ?? project}
+              onNewMission={onNewMission}
+              missionOpen={overrides.missionOpen ?? false}
+            />
           }
         />
       </Routes>
@@ -123,7 +127,7 @@ describe('ProjectHeader: uma linha', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: 'Configurações' }));
 
-    expect(current).toEqual({ pathname: '/workspaces/p1', search: '?visao=configuracoes' });
+    expect(current).toMatchObject({ pathname: '/workspaces/p1', search: '?visao=configuracoes' });
     expect(screen.getByRole('tab', { name: 'Configurações' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -211,5 +215,38 @@ describe('ProjectHeader: Mais ações', () => {
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Project Hub' })).toBeInTheDocument();
     expect(screen.queryByText('Página inicial')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectHeader: com uma missão aberta', () => {
+  it('a visão ativa é Missões, mesmo sem ?visao= na rota', () => {
+    installApi();
+    renderAt('/workspaces/p1', { missionOpen: true });
+
+    expect(screen.getByRole('tab', { name: 'Missões' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
+
+  it('escolher Missões de novo leva à lista de missões', async () => {
+    installApi();
+    renderAt('/workspaces/p1', { missionOpen: true });
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Missões' }));
+
+    expect(current.search).toBe('?visao=missoes');
+  });
+
+  it('sem missão aberta, escolher a visão que já está ativa não navega', async () => {
+    installApi();
+    renderAt('/workspaces/p1?visao=missoes');
+    const before = current.key;
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Missões' }));
+
+    expect(current.key).toBe(before);
+    expect(current.search).toBe('?visao=missoes');
   });
 });

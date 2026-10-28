@@ -48,7 +48,6 @@ const STEPS: MissionStepDto[] = [
 
 function setup(props: Partial<Parameters<typeof PlanPanel>[0]> = {}) {
   const onEditStep = vi.fn();
-  const onRequestNewPlan = vi.fn();
   render(
     <PlanPanel
       mission={missionOf('planned')}
@@ -56,11 +55,10 @@ function setup(props: Partial<Parameters<typeof PlanPanel>[0]> = {}) {
       busy={false}
       planning={false}
       onEditStep={onEditStep}
-      onRequestNewPlan={onRequestNewPlan}
       {...props}
     />,
   );
-  return { onEditStep, onRequestNewPlan };
+  return { onEditStep };
 }
 
 describe('PlanPanel: tabela', () => {
@@ -200,7 +198,6 @@ describe('PlanPanel: edição das tarefas', () => {
     expect(screen.getByRole('button', { name: 'Remover tarefa Criar API' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Subir tarefa Montar a tela' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Programa da tarefa Criar API' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Planejar de novo' })).toBeDisabled();
   });
 
   it('ao subir a tarefa até o topo, o foco passa para o "Descer" dela, em vez de se perder', async () => {
@@ -210,7 +207,6 @@ describe('PlanPanel: edição das tarefas', () => {
       busy: false,
       planning: false,
       onEditStep: vi.fn(),
-      onRequestNewPlan: vi.fn(),
     };
     const two = STEPS.slice(0, 2);
     const { rerender } = render(<PlanPanel {...props} steps={two} />);
@@ -235,7 +231,6 @@ describe('PlanPanel: edição das tarefas', () => {
       steps: STEPS,
       planning: false,
       onEditStep: vi.fn(),
-      onRequestNewPlan: vi.fn(),
     };
     const { rerender } = render(<PlanPanel {...props} busy={false} />);
 
@@ -450,7 +445,6 @@ describe('PlanPanel: descrição das tarefas', () => {
       mission: missionOf('planned'),
       steps: withDescriptions(),
       onEditStep: vi.fn(),
-      onRequestNewPlan: vi.fn(),
     };
     const { rerender } = render(<PlanPanel {...props} busy={false} planning={false} />);
 
@@ -466,43 +460,32 @@ describe('PlanPanel: descrição das tarefas', () => {
   });
 });
 
-describe('PlanPanel: novo plano', () => {
-  it('Planejar de novo envia a instrução e mostra o aviso da cota', async () => {
-    const user = userEvent.setup();
-    const { onRequestNewPlan } = setup();
-
-    expect(screen.getByText('Planejar usa a cota do seu Claude.')).toBeInTheDocument();
-    await user.type(
-      screen.getByRole('textbox', { name: 'Instrução para o novo plano' }),
-      '  Separe o banco da API  ',
-    );
-    await user.click(screen.getByRole('button', { name: 'Planejar de novo' }));
-
-    expect(onRequestNewPlan).toHaveBeenCalledWith('Separe o banco da API');
-  });
-
-  it('sem instrução, envia texto vazio', async () => {
-    const user = userEvent.setup();
-    const { onRequestNewPlan } = setup();
-
-    await user.click(screen.getByRole('button', { name: 'Planejar de novo' }));
-
-    expect(onRequestNewPlan).toHaveBeenCalledWith('');
-  });
-
-  it('enquanto planeja, mostra "Planejando…" e desabilita o botão', () => {
+describe('PlanPanel: planejamento em curso e erro', () => {
+  it('enquanto planeja, mostra "Planejando…" numa região de status', () => {
     setup({ busy: true, planning: true });
 
     expect(screen.getByRole('status')).toHaveTextContent('Planejando…');
-    expect(screen.getByRole('button', { name: 'Planejando…' })).toBeDisabled();
   });
 
-  it('o erro aparece com role="alert" e o botão continua disponível', () => {
+  it('o erro aparece com role="alert"', () => {
     setup({ error: 'O Claude não respondeu a tempo.' });
 
     expect(screen.getByRole('alert')).toHaveTextContent('O Claude não respondeu a tempo.');
-    expect(screen.getByRole('button', { name: 'Planejar de novo' })).toBeEnabled();
   });
+
+  it('o painel não tem mais a instrução nem o Planejar de novo (vão para o bloco Sua decisão)', () => {
+    setup();
+
+    expect(screen.queryByRole('textbox', { name: 'Instrução para o novo plano' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Planejar de novo' })).toBeNull();
+    expect(screen.queryByText('Planejar usa a cota do seu Claude.')).toBeNull();
+  });
+
+  // Mudaram para o bloco "Sua decisão" (Tarefa 7 da reestruturação): voltam a ser testados lá.
+  it.todo('Planejar de novo envia a instrução e mostra o aviso da cota');
+  it.todo('Planejar de novo sem instrução envia texto vazio');
+  it.todo('enquanto planeja, o botão Planejar de novo mostra "Planejando…" e fica desabilitado');
+  it.todo('com erro de planejamento, o Planejar de novo continua disponível');
 });
 
 describe('PlanPanel: fora do estado planejado', () => {
