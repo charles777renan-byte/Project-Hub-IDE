@@ -49,6 +49,7 @@ export type {
   GitDetector,
   MissionChanges,
   MissionRepository,
+  Planner,
   ProjectRepository,
   SettingsRepository,
   TerminalErrorCode,

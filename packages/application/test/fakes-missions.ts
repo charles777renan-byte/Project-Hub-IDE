@@ -5,7 +5,9 @@ import type {
   Mission,
   MissionStep,
 } from '@project-hub/domain';
-import type { MissionRepository, WorktreePort } from '../src/ports';
+import type { AppResult } from '@project-hub/contracts';
+import type { PlannedTask } from '../src/missions/plan-validation';
+import type { MissionRepository, Planner, WorktreePort } from '../src/ports';
 
 type State = {
   missions: Map<string, Mission>;
@@ -188,6 +190,24 @@ export function fakeWorktrees(failWith?: { code: string; message: string }): Fak
     remove(input) {
       removed.push(input);
       return Promise.resolve();
+    },
+  };
+}
+
+export type PlannerInput = Parameters<Planner['plan']>[0];
+
+export type FakePlanner = Planner & { readonly calls: PlannerInput[] };
+
+/** Planejador falso: guarda cada chamada e responde com o que `respond` devolver (ou aguardar). */
+export function fakePlanner(
+  respond: (input: PlannerInput) => AppResult<PlannedTask[]> | Promise<AppResult<PlannedTask[]>>,
+): FakePlanner {
+  const calls: PlannerInput[] = [];
+  return {
+    calls,
+    async plan(input) {
+      calls.push(input);
+      return respond(input);
     },
   };
 }

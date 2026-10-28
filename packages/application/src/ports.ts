@@ -1,4 +1,4 @@
-import type { ErrorCode, MissionDiffDto } from '@project-hub/contracts';
+import type { AppResult, ErrorCode, MissionDiffDto } from '@project-hub/contracts';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -10,6 +10,7 @@ import type {
   NewProject,
   ProjectRecord,
 } from '@project-hub/domain';
+import type { PlannedTask } from './missions/plan-validation';
 
 /**
  * Porta do repositório de projetos. O repositório do banco a satisfaz por tipagem estrutural, e a
@@ -56,6 +57,21 @@ export interface GitDetector {
   detect(path: string): Promise<{ kind: 'git' | 'none'; defaultBranch?: string }>;
 }
 
+/**
+ * Planejador da missão: propõe as tarefas do plano a partir do objetivo e dos critérios, lendo a pasta
+ * do projeto em `cwd`. `instruction` é o pedido de ajuste do usuário ao refazer o plano. A implementação
+ * real fica no app desktop. Devolve falha como resultado; `signal` aborta a proposta em andamento.
+ */
+export interface Planner {
+  plan(input: {
+    objective: string;
+    criteria: readonly string[];
+    instruction?: string;
+    cwd: string;
+    signal: AbortSignal;
+  }): Promise<AppResult<PlannedTask[]>>;
+}
+
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
 export interface FileSystemPort {
   isDirectory(path: string): Promise<boolean>;
@@ -77,7 +93,7 @@ export type MissionChanges = Partial<
 
 export type StepChanges = Partial<Pick<MissionStep, 'status' | 'startedAt' | 'finishedAt'>>;
 
-export type ExecutionChanges =Partial<
+export type ExecutionChanges = Partial<
   Pick<
     Execution,
     | 'status'

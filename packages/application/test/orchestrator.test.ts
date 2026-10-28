@@ -6,10 +6,13 @@ import { fakeRepository } from './fakes';
 import { fakeAgent, type FakeAgent, type FakeStep } from './fake-agent';
 import {
   fakeMissionRepository,
+  fakePlanner,
   fakeWorktrees,
   type FakeMissionRepository,
+  type FakePlanner,
   type FakeWorktrees,
 } from './fakes-missions';
+import type { PlannedTask } from '../src/missions/plan-validation';
 
 const T0 = '2026-10-20T09:00:00.000Z';
 
@@ -25,6 +28,10 @@ type HarnessOptions = {
   repositoryKind?: 'git' | 'none';
   /** Lê as alterações do worktree ao concluir. Sem ele, a missão conclui sem o resumo de arquivos. */
   diff?: (worktreePath: string) => Promise<MissionDiffDto>;
+  /** Planejador do plano. Sem ele, o plano sai um passo por critério. */
+  planner?: FakePlanner;
+  /** Consulta à pasta do projeto. Sem ela, a pasta não é conferida. */
+  isDirectory?: (path: string) => Promise<boolean>;
 };
 
 type Harness = {
@@ -70,6 +77,8 @@ function harness(options: HarnessOptions = {}): Harness {
     worktreesRoot: 'C:\\hub\\worktrees',
     agent,
     ...(options.diff === undefined ? {} : { diff: { diff: options.diff } }),
+    ...(options.planner === undefined ? {} : { planner: options.planner }),
+    ...(options.isDirectory === undefined ? {} : { fs: { isDirectory: options.isDirectory } }),
     now: () => new Date(Date.UTC(2026, 9, 20, 10, 0, tick++)).toISOString(),
     newId: () => `id-${++ids}`,
   });
@@ -191,6 +200,236 @@ describe('planMission e approvePlan', () => {
     h.repo.insertMission(missionFixture({ status: 'draft' }));
 
     expect(codeOf(await h.orchestrator.approvePlan(MISSION))).toBe('MISSION_INVALID_STATE');
+  });
+});
+
+const PLANNED_TASKS: PlannedTask[] = [
+  { title: 'Ler o código', description: 'Entender o login', role: 'docs', dependsOn: [] },
+  {
+    title: 'Corrigir o login',
+    description: 'Ajustar a regra',
+    role: 'backend',
+    dependsOn: [1],
+  },
+  { title: 'Rodar os testes', description: '', role: 'qa', dependsOn: [1, 2] },
+];
+
+const OK_PLAN: AppResult<PlannedTask[]> = { ok: true, data: PLANNED_TASKS };
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe('planMission com o planejador', () => {
+  it('grava as tarefas do planejador com papel e dependências e leva draft a planned', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const plan = data(await h.orchestrator.planMission(MISSION));
+
+    expect(plan.steps.map((step) => [step.position, step.title, step.role])).toEqual([
+      [1, 'Ler o código', 'docs'],
+      [2, 'Corrigir o login', 'backend'],
+      [3, 'Rodar os testes', 'qa'],
+    ]);
+    const stored = h.repo.listSteps(MISSION);
+    expect(stored).toHaveLength(3);
+    expect(stored[2]?.dependsOn).toEqual([stored[0]?.id, stored[1]?.id]);
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+    expect(planner.calls).toHaveLength(1);
+    expect(planner.calls[0]).toMatchObject({
+      objective: 'Corrigir o login',
+      criteria: ['Login funciona', 'Testes passam'],
+      cwd: 'C:\\dev\\app',
+    });
+    expect(planner.calls[0]?.instruction).toBeUndefined();
+    const generated = h.repo.audit().find((e) => e.eventType === 'plan.generated');
+    expect(generated?.payload).toEqual({
+      steps: ['Ler o código', 'Corrigir o login', 'Rodar os testes'],
+      source: 'claude',
+    });
+  });
+
+  it('refaz o plano de uma missão planned com a instrução e troca as etapas', async () => {
+    let answer: AppResult<PlannedTask[]> = OK_PLAN;
+    const planner = fakePlanner(() => answer);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    data(await h.orchestrator.planMission(MISSION));
+    answer = {
+      ok: true,
+      data: [{ title: 'Escrever testes', description: '', role: 'qa', dependsOn: [] }],
+    };
+
+    const plan = data(await h.orchestrator.planMission(MISSION, { instruction: 'inclua testes' }));
+
+    expect(planner.calls[1]?.instruction).toBe('inclua testes');
+    expect(plan.steps.map((step) => step.title)).toEqual(['Escrever testes']);
+    expect(h.repo.listSteps(MISSION).map((step) => step.title)).toEqual(['Escrever testes']);
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+    const generated = h.repo.audit().filter((e) => e.eventType === 'plan.generated');
+    expect(generated).toHaveLength(2);
+    expect(generated[1]?.payload).toEqual({
+      steps: ['Escrever testes'],
+      source: 'claude',
+      instruction: 'inclua testes',
+    });
+  });
+
+  it('falha do planejador em planned mantém o plano antigo e registra plan.failed', async () => {
+    let answer: AppResult<PlannedTask[]> = OK_PLAN;
+    const h = harness({ planner: fakePlanner(() => answer) });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    data(await h.orchestrator.planMission(MISSION));
+    const before = h.repo.listSteps(MISSION);
+    answer = {
+      ok: false,
+      error: {
+        code: 'AGENT_UNAVAILABLE',
+        message: 'O Claude Code não respondeu.',
+        retryable: true,
+      },
+    };
+
+    const result = await h.orchestrator.planMission(MISSION, { instruction: 'tente de novo' });
+
+    expect(codeOf(result)).toBe('AGENT_UNAVAILABLE');
+    expect(h.repo.listSteps(MISSION)).toEqual(before);
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.generated')).toHaveLength(1);
+    const failed = h.repo.audit().filter((e) => e.eventType === 'plan.failed');
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.severity).toBe('warning');
+    expect(failed[0]?.payload).toMatchObject({ message: 'O Claude Code não respondeu.' });
+  });
+
+  it('duas chamadas simultâneas: a segunda é recusada e o planejador roda uma vez', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    const planner = fakePlanner(() => gate.promise);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const first = h.orchestrator.planMission(MISSION);
+    const second = await h.orchestrator.planMission(MISSION);
+
+    expect(codeOf(second)).toBe('MISSION_INVALID_STATE');
+    expect(second.ok ? '' : second.error.message).toBe(
+      'O plano desta missão já está sendo gerado.',
+    );
+    gate.resolve(OK_PLAN);
+    data(await first);
+    expect(planner.calls).toHaveLength(1);
+  });
+
+  it('libera a trava quando o planejador falha, e um novo pedido passa', async () => {
+    let attempt = 0;
+    const planner = fakePlanner(() =>
+      ++attempt === 1
+        ? { ok: false, error: { code: 'UNKNOWN', message: 'falhou', retryable: false } }
+        : OK_PLAN,
+    );
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    expect(codeOf(await h.orchestrator.planMission(MISSION))).toBe('UNKNOWN');
+    data(await h.orchestrator.planMission(MISSION));
+    expect(planner.calls).toHaveLength(2);
+  });
+
+  it('libera a trava quando o planejador lança erro', async () => {
+    let attempt = 0;
+    const planner = fakePlanner(() => {
+      if (++attempt === 1) throw new Error('quebrou');
+      return OK_PLAN;
+    });
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    await expect(h.orchestrator.planMission(MISSION)).rejects.toThrow('quebrou');
+    data(await h.orchestrator.planMission(MISSION));
+  });
+
+  it('missão cancelada enquanto o planejador aguarda: nada é gravado', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    const planner = fakePlanner(() => gate.promise);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const pending = h.orchestrator.planMission(MISSION);
+    await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+    h.repo.updateMission(MISSION, { status: 'cancelled' });
+    gate.resolve(OK_PLAN);
+    const result = await pending;
+
+    expect(codeOf(result)).toBe('MISSION_INVALID_STATE');
+    expect(h.repo.listSteps(MISSION)).toEqual([]);
+    expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
+    expect(h.repo.audit().filter((e) => e.eventType.startsWith('plan.'))).toEqual([]);
+  });
+
+  it('missão apagada enquanto o planejador aguarda: nada é gravado', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    const planner = fakePlanner(() => gate.promise);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const pending = h.orchestrator.planMission(MISSION);
+    await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+    h.repo.deleteMission(MISSION);
+    gate.resolve(OK_PLAN);
+    const result = await pending;
+
+    expect(codeOf(result)).toBe('MISSION_NOT_FOUND');
+    expect(h.repo.listSteps(MISSION)).toEqual([]);
+    expect(h.repo.audit()).toEqual([]);
+  });
+
+  it('pasta do projeto indisponível: erro e o planejador não é chamado', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const h = harness({ planner, isDirectory: () => Promise.resolve(false) });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    expect(codeOf(await h.orchestrator.planMission(MISSION))).toBe('PROJECT_PATH_UNAVAILABLE');
+    expect(planner.calls).toHaveLength(0);
+    expect(h.repo.getMission(MISSION)?.status).toBe('draft');
+  });
+
+  it('projeto ausente: PROJECT_NOT_FOUND e o planejador não é chamado', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft', projectId: 'sumiu' }));
+
+    expect(codeOf(await h.orchestrator.planMission(MISSION))).toBe('PROJECT_NOT_FOUND');
+    expect(planner.calls).toHaveLength(0);
+  });
+
+  it('plano inválido do planejador vira VALIDATION_FAILED e nada do plano é gravado', async () => {
+    const invalid: PlannedTask[] = [
+      { title: 'Primeira', description: '', role: 'backend', dependsOn: [2] },
+      { title: 'Segunda', description: '', role: 'qa', dependsOn: [] },
+    ];
+    const h = harness({ planner: fakePlanner(() => ({ ok: true, data: invalid })) });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    expect(codeOf(await h.orchestrator.planMission(MISSION))).toBe('VALIDATION_FAILED');
+    expect(h.repo.listSteps(MISSION)).toEqual([]);
+    expect(h.repo.getMission(MISSION)?.status).toBe('draft');
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.generated')).toEqual([]);
+  });
+
+  it('sem planejador, o plano continua com um passo por critério', async () => {
+    const h = harness({ isDirectory: () => Promise.resolve(false) });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const plan = data(await h.orchestrator.planMission(MISSION, { instruction: 'ignorada' }));
+
+    expect(plan.steps.map((step) => step.title)).toEqual(['Login funciona', 'Testes passam']);
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
   });
 });
 
