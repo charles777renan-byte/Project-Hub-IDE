@@ -45,7 +45,7 @@ describe('casca do app', () => {
     '.topbar__close',
     '.topbar__add',
     '.topbar__menu',
-    '.topbar__status',
+    '.topbar__home',
   ])('%s fica fora da área de arrastar, para continuar clicável', (selector) => {
     expect(ruleDeclarations(workspaceCss, selector).get('-webkit-app-region')).toBe('no-drag');
   });
@@ -120,8 +120,17 @@ describe('casca do app', () => {
     );
   });
 
-  it('os contadores ficam no canto direito', () => {
-    expect(ruleDeclarations(workspaceCss, '.topbar__status').get('margin-left')).toBe('auto');
+  it('os contadores saíram da barra superior: não há mais regra para eles', () => {
+    expect(ruleDeclarations(workspaceCss, '.topbar__status').size).toBe(0);
+    expect(ruleDeclarations(readCss('app.css'), '.topbar__status .btn-danger').size).toBe(0);
+  });
+
+  it('a aba Início é fixa: não encolhe, tem o formato das outras abas e o cursor de clique', () => {
+    const home = ruleDeclarations(workspaceCss, '.topbar__home');
+    expect(home.get('flex')).toBe('none');
+    expect(ruleDeclarations(workspaceCss, '.topbar__home .topbar__tab-link').get('cursor')).toBe(
+      'pointer',
+    );
   });
 
   // Atualizado na identidade visual (Tarefa 5): o item ativo troca o fundo --field-line por --line e ganha
@@ -584,6 +593,47 @@ describe('tela do terminal', () => {
     expect(ruleDeclarations(appCss, '.terminal-view .xterm-rows').get('white-space')).toBe('pre');
     expect(ruleDeclarations(appCss, '.terminal-view .xterm-rows span').get('display')).toBe(
       'inline-block',
+    );
+  });
+});
+
+/**
+ * Barra de status (components/StatusBar.tsx, styles/statusbar.css): rodapé de 24px da janela, com borda
+ * superior no token de linha, fonte pequena e uma linha só, que trunca com reticências em janela estreita,
+ * sem rolagem de lado. Só tokens de cor.
+ */
+describe('barra de status', () => {
+  const statusCss = readCss('statusbar.css');
+
+  it('tem 24px, não encolhe, não quebra linha e tem borda superior --line', () => {
+    const bar = ruleDeclarations(statusCss, '.statusbar');
+    expect(bar.get('height')).toBe('24px');
+    expect(bar.get('flex')).toBe('none');
+    expect(bar.get('flex-wrap')).toBe('nowrap');
+    expect(bar.get('overflow')).toBe('hidden');
+    expect(bar.get('border-top')).toBe('1px solid var(--line)');
+    expect(bar.get('background')).toBe('var(--bg)');
+    expect(bar.get('white-space')).toBe('nowrap');
+  });
+
+  it('o projeto trunca com reticências e é o que cede primeiro', () => {
+    const project = ruleDeclarations(statusCss, '.statusbar__project');
+    expect(project.get('min-width')).toBe('0');
+    expect(project.get('overflow')).toBe('hidden');
+    expect(project.get('text-overflow')).toBe('ellipsis');
+    expect(project.get('white-space')).toBe('nowrap');
+  });
+
+  it('o uso do computador fica à direita e o anel de foco dos links fica por dentro', () => {
+    expect(ruleDeclarations(statusCss, '.statusbar__end').get('margin-left')).toBe('auto');
+    expect(ruleDeclarations(statusCss, '.statusbar a:focus-visible').get('outline-offset')).toBe(
+      '-2px',
+    );
+  });
+
+  it('o link do contador não é sublinhado', () => {
+    expect(ruleDeclarations(readCss('app.css'), '.overview-counter').get('text-decoration')).toBe(
+      'none',
     );
   });
 });

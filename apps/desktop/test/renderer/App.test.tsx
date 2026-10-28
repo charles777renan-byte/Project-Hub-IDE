@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProjectHubApi } from '@project-hub/contracts';
 import { App } from '../../src/renderer/App';
 
+/** O link da navegação principal (a barra lateral): "Início" também é a aba fixa da barra superior. */
+function mainLink(name: string): HTMLElement {
+  return within(screen.getByRole('navigation', { name: 'Principal' })).getByRole('link', { name });
+}
+
 // O aplicativo usa HashRouter (o renderer roda de file:// em produção). Os testes usam
 // MemoryRouter, que não depende do endereço da janela.
 describe('App', () => {
@@ -14,7 +19,7 @@ describe('App', () => {
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('link', { name: 'Início' })).toBeInTheDocument();
+    expect(mainLink('Início')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Projetos' })).toBeInTheDocument();
   });
 
@@ -35,7 +40,7 @@ describe('App', () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Início' })).toHaveAttribute('aria-current', 'page');
+    expect(mainLink('Início')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Projetos' })).not.toHaveAttribute('aria-current');
   });
 
@@ -47,7 +52,7 @@ describe('App', () => {
     );
     await userEvent.click(screen.getByRole('link', { name: 'Projetos' }));
     expect(screen.getByRole('link', { name: 'Projetos' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Início' })).not.toHaveAttribute('aria-current');
+    expect(mainLink('Início')).not.toHaveAttribute('aria-current');
     expect(screen.queryByRole('heading', { name: 'Início' })).not.toBeInTheDocument();
   });
 
@@ -80,13 +85,16 @@ describe('App', () => {
       </MemoryRouter>,
     );
 
-    // A barra superior vem antes da navegação.
+    // A barra superior vem antes da navegação: primeiro a aba fixa Início, depois o botão de abrir workspace.
+    await user.tab();
+    const topBar = document.querySelector('header.topbar') as HTMLElement;
+    expect(within(topBar).getByRole('link', { name: 'Início' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('link', { name: 'Início' })).toHaveFocus();
+    expect(mainLink('Início')).toHaveFocus();
     await user.tab();
     expect(screen.getByRole('link', { name: 'Projetos' })).toHaveFocus();
 
@@ -181,26 +189,25 @@ describe('barra superior', () => {
     expect(mark).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('mostra no canto direito o que vier em headerStatus', () => {
+  it('a aba Início é a primeira da barra e marca a rota raiz como a atual', () => {
     render(
       <MemoryRouter>
-        <App headerStatus={<span>2 executando</span>} />
+        <App />
       </MemoryRouter>,
     );
-    const status = topBar().querySelector('.topbar__status');
-    expect(status).toHaveTextContent('2 executando');
+    const home = within(topBar()).getAllByRole('link')[0];
+    expect(home).toHaveTextContent('Início');
+    expect(home).toHaveAttribute('aria-current', 'page');
   });
 
-  it.each([
-    ['sem headerStatus', undefined],
-    ['com headerStatus nulo', null],
-  ])('%s, não deixa um espaço vazio na barra', (_caso, headerStatus) => {
+  it('não leva mais os contadores, que foram para a barra de status', () => {
     render(
       <MemoryRouter>
-        <App headerStatus={headerStatus} />
+        <App />
       </MemoryRouter>,
     );
     expect(topBar().querySelector('.topbar__status')).toBeNull();
+    expect(within(topBar()).queryByText(/executando/)).toBeNull();
   });
 
   it('o fundo topográfico aparece fora da rota do workspace e some nela', () => {
@@ -321,4 +328,49 @@ describe('paleta de comandos (Ctrl+K)', () => {
     expect(screen.getByRole('dialog', { name: 'Paleta de comandos' })).toBeVisible();
     expect(screen.getByRole('combobox')).toHaveFocus();
   });
+});
+
+// Barra de status: o rodapé da janela aparece em todas as rotas, abaixo do corpo, com os contadores.
+describe('barra de status', () => {
+  beforeEach(() => {
+    window.projectHub = {
+      projects: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        listArchived: () => Promise.resolve({ ok: true, data: [] }),
+      },
+      missions: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        subscribe: () => () => undefined,
+      },
+      workspaces: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+      },
+    } as unknown as ProjectHubApi;
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'projectHub');
+  });
+
+  it.each(['/', '/projects', '/projects/p1', '/workspaces/p1'])(
+    'existe na rota %s, com os contadores como links, e vem depois do corpo da janela',
+    async (route) => {
+      render(
+        <MemoryRouter initialEntries={[route]}>
+          <App />
+        </MemoryRouter>,
+      );
+      const footer = screen.getByRole('contentinfo', { name: 'Barra de status' });
+      expect(await within(footer).findByRole('link', { name: '0 executando' })).toHaveAttribute(
+        'href',
+        '/?estado=running',
+      );
+      expect(within(footer).getAllByRole('link')).toHaveLength(3);
+      const shell = footer.parentElement as HTMLElement;
+      expect(shell).toHaveClass('app-shell');
+      expect(document.querySelector('.app-body')?.compareDocumentPosition(footer)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    },
+  );
 });

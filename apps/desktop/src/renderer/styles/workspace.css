@@ -1,6 +1,6 @@
 /*
- * Casca do app e chrome do workspace: a barra superior de 36px (marca, abas dos workspaces, botão de
- * abrir e contadores), a barra lateral (navegação principal, workspaces e missões em andamento) e a área
+ * Casca do app e chrome do workspace: a barra superior de 36px (marca, a aba Início, as abas dos workspaces e o botão de
+ * abrir), a barra lateral (navegação principal, workspaces e missões em andamento) e a área
  * da página. Ligado depois de
  * app.css no index.html. As cores são só as neutras do tema (--bg, --surface, --line, --field-line,
  * --muted e --text), o anel de foco (--focus) e misturas delas por color-mix; o lima (--accent) só
@@ -294,17 +294,19 @@
   outline-offset: -2px;
 }
 
-/* Contadores da visão geral, no canto direito, antes dos 140px dos botões do Windows. */
-.topbar__status {
-  display: flex;
+/*
+ * A aba Início, fixa, antes das abas dos workspaces: o formato das outras abas, mas sem botão de fechar e
+ * fora do arrasto de ordem, então o cursor é o de clique (a aba de workspace usa a mão aberta).
+ */
+/* Não encolhe: as abas dos workspaces é que rolam de lado. */
+.topbar__home {
   flex: none;
-  align-items: center;
-  gap: var(--space-3);
-  margin-left: auto;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.71875rem;
   -webkit-app-region: no-drag;
+}
+
+.topbar__home .topbar__tab-link {
+  padding-right: var(--space-3);
+  cursor: pointer;
 }
 
 /*

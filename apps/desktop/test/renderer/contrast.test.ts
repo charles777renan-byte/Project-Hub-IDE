@@ -342,12 +342,12 @@ describe('cores do chrome do workspace', () => {
 });
 
 /**
- * Aba Plano (plan.css) e quadro do orquestrador (orchestrator-board.css): só tokens de tokens.css e
+ * Aba Plano (plan.css), quadro do orquestrador (orchestrator-board.css) e barra de status (statusbar.css): só tokens de tokens.css e
  * app.css, sem cor literal, sem animação. O programa é texto e a cor só o reforça; cada cor de programa
  * (hoje o laranja do Claude) passa de 4,5:1 como texto e de 3:1 como borda sobre o fundo e o cartão
  * (WCAG 1.4.3 e 1.4.11). O lima (--accent) fica fora desses dois arquivos.
  */
-describe.each(['plan.css', 'orchestrator-board.css'])('cores de %s', (name) => {
+describe.each(['plan.css', 'orchestrator-board.css', 'statusbar.css'])('cores de %s', (name) => {
   const css = readFileSync(
     resolve(import.meta.dirname, '../../src/renderer/styles', name),
     'utf8',
