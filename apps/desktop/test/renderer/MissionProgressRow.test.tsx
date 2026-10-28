@@ -144,6 +144,13 @@ describe('MissionProgressRow', () => {
     expect(link).toHaveTextContent('Abrir missão');
   });
 
+  it('pausada com etapa ainda running: a frase diz Pausada e a barra não fala de execução', () => {
+    renderRow(item('paused', 'running'));
+    expect(screen.getByText('Pausada', { selector: '.progress-row__state' })).toBeInTheDocument();
+    expect(screen.queryByText(/Executando/)).toBeNull();
+    expect(screen.getByRole('img', { name: '2 de 5 tarefas concluídas' })).toBeInTheDocument();
+  });
+
   it('falhou: a frase diz a posição e o título da tarefa; o link abre a missão', () => {
     const tasks = [task(1, 'succeeded'), task(2, 'failed', { title: 'Migrar tabelas' })];
     renderRow(item('failed', 'failed', tasks));

@@ -81,10 +81,14 @@ export function countByGroup(items: readonly ProgressMission[]): Record<Progress
   return counts;
 }
 
-/** Tarefas em execução agora, somadas entre as missões. */
+/**
+ * Tarefas em execução agora, somadas entre as missões. Só conta a missão `running`: ao pausar ou
+ * esperar uma decisão, a etapa segue `running` mas nada executa.
+ */
 export function runningTaskCount(items: readonly ProgressMission[]): number {
   let count = 0;
   for (const item of items) {
+    if (item.mission.status !== 'running') continue;
     for (const task of item.tasks) if (task.status === 'running') count += 1;
   }
   return count;
