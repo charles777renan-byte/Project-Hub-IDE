@@ -6,6 +6,7 @@ import {
   statusTone,
   type MissionStatusFilter,
 } from '../mission-text';
+import { useListMotion } from '../list-motion';
 import { missionPath } from '../routes';
 import type { MissionBoardItem } from '../use-missions-board';
 
@@ -16,6 +17,7 @@ export type { MissionStatusFilter } from '../mission-text';
  * tarefas" (sem tarefas, só o estado), o total de tarefas à direita e a barra de progresso, tingida pelo tom
  * do estado (`mission-progress__bar--<tom>`). Com `filter`, só as missões daquele estado. Lista vazia
  * (ou sem nada no filtro) não desenha nada: quem chama escolhe a frase. Usada no Início e na visão Missões do projeto.
+ * Missão que entra, sai (o filtro) ou muda de lugar se move (`useListMotion`).
  */
 export function MissionProgressList({
   items,
@@ -24,13 +26,14 @@ export function MissionProgressList({
   items: readonly MissionBoardItem[];
   filter?: MissionStatusFilter;
 }) {
+  const motion = useListMotion<HTMLUListElement>();
   const shown =
     filter === undefined
       ? items
       : items.filter((item) => matchesStatusFilter(item.mission.status, filter));
   if (shown.length === 0) return null;
   return (
-    <ul className="mission-progress">
+    <ul ref={motion} className="mission-progress">
       {shown.map(({ mission, projectId, done, total }) => {
         const state = boardStatusLabel(mission.status);
         return (

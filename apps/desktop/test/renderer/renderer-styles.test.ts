@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css, o mission.css e o progress.css depois do app.css e o workspace.css por último', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css, o mission.css e o progress.css depois do app.css, o workspace.css e, por último, o motion.css', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -64,6 +64,7 @@ describe('index.html do renderer', () => {
       './styles/mission.css',
       './styles/progress.css',
       './styles/workspace.css',
+      './styles/motion.css',
     ]);
   });
 
@@ -155,6 +156,7 @@ describe('fontes locais', () => {
       'mission.css',
       'progress.css',
       'workspace.css',
+      'motion.css',
     ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
         /\/\*[\s\S]*?\*\//g,
@@ -313,9 +315,10 @@ describe('botões, campos e anel de foco', () => {
   });
 
   it('a aba ativa tem pistas além do preenchimento: peso 700 e anel de 1px em --muted', () => {
-    const active = rule(".tab[aria-selected='true']");
-    expect(active.get('font-weight')).toBe('700');
-    expect(active.get('box-shadow')).toBe('inset 0 0 0 1px var(--muted)');
+    // O anel mora na pílula (o ::before da aba), que acende na ativa; o peso fica na própria aba.
+    expect(rule(".tab[aria-selected='true']").get('font-weight')).toBe('700');
+    expect(rule('.tab::before').get('box-shadow')).toBe('inset 0 0 0 1px var(--muted)');
+    expect(rule(".tab[aria-selected='true']::before").get('opacity')).toBe('1');
     // A inativa sob o mouse não usa a ponta do gradiente da ativa.
     expect(rule('.tab:hover').get('background')).toBe('var(--surface-2)');
   });

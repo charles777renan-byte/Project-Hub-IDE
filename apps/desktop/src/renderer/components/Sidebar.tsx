@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import type { LayoutNode, ProjectSummary, TerminalSummary } from '@project-hub/contracts';
+import { useListMotion } from '../list-motion';
 import { formatTime, needsAttention, statusIcon, statusLabel } from '../mission-text';
 import { notify } from '../notify';
 import { colorOf } from '../project-color';
@@ -325,6 +326,24 @@ function Avatars({ sessions }: { sessions: readonly TerminalSummary[] }) {
   );
 }
 
+/** Um `<ul>` cujos itens se movem ao entrar, sair e trocar de lugar (`useListMotion`). */
+function MotionList({
+  id,
+  className,
+  children,
+}: {
+  id?: string;
+  className: string;
+  children: ReactNode;
+}) {
+  const motion = useListMotion<HTMLUListElement>();
+  return (
+    <ul ref={motion} id={id} className={className}>
+      {children}
+    </ul>
+  );
+}
+
 type SpacesProps = {
   data: SidebarData;
   terminals: readonly TerminalSummary[];
@@ -367,7 +386,7 @@ function Spaces(props: SpacesProps) {
 
   const renderProjects = (projects: readonly ProjectSummary[]) =>
     view === 'grid' ? (
-      <ul className="sidebar__grid">
+      <MotionList className="sidebar__grid">
         {projects.map((project) => (
           <ProjectTile
             key={project.id}
@@ -376,9 +395,9 @@ function Spaces(props: SpacesProps) {
             isCurrent={project.id === props.currentId}
           />
         ))}
-      </ul>
+      </MotionList>
     ) : (
-      <ul className="sidebar__list">
+      <MotionList className="sidebar__list">
         {projects.map((project) => (
           <ProjectRow
             key={project.id}
@@ -393,7 +412,7 @@ function Spaces(props: SpacesProps) {
             listId={`${props.idPrefix}-sessoes-${project.id}`}
           />
         ))}
-      </ul>
+      </MotionList>
     );
 
   if (!hasGroups) return renderProjects(data.projects);
@@ -509,7 +528,7 @@ function ProjectRow({
         {project.available ? null : <StatusChip label="pasta indisponível" tone="warn" />}
       </div>
       {isOpen ? (
-        <ul id={listId} className="sidebar__sessions">
+        <MotionList id={listId} className="sidebar__sessions">
           {sessions.length === 0 ? (
             <li className="sidebar__empty">Nenhuma sessão aberta.</li>
           ) : (
@@ -528,7 +547,7 @@ function ProjectRow({
               />
             ))
           )}
-        </ul>
+        </MotionList>
       ) : null}
     </li>
   );
