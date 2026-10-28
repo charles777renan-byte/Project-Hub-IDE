@@ -39,7 +39,7 @@ describe('leavesOf', () => {
   });
 
   it('devolve a própria folha quando a raiz é uma folha', () => {
-    const so = leaf('so', 'gemini');
+    const so = leaf('so', 'antigravity');
     expect(leavesOf(so)).toEqual([so]);
   });
 });

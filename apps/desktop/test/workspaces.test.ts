@@ -268,6 +268,21 @@ describe('open', () => {
     expect(rows.get('w1')?.layout).toBe('null');
   });
 
+  it('layout guardado com o Gemini CLI abre como Antigravity CLI, sem perder o workspace', async () => {
+    // O registro antigo ainda tem o provedor que saiu do contrato.
+    const stored = split('s1', leaf('l1', 'gemini' as ProviderId), leaf('l2', 'shell'), 0.5);
+    const { service } = setup({ records: [record({ layout: JSON.stringify(stored) })] });
+
+    const result = await service.open('p1');
+
+    expect(result).toMatchObject({ ok: true, data: { id: 'w1' } });
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data.layout).toMatchObject({
+      type: 'split',
+      first: { type: 'leaf', id: 'l1', provider: 'antigravity' },
+    });
+  });
+
   it('layout guardado como "null" abre vazio, sem regravar', async () => {
     const { service, updateLayout } = setup({ records: [record({ layout: 'null' })] });
 
@@ -718,7 +733,7 @@ describe('addPane', () => {
       openIds: () => 'nova',
     });
 
-    const result = await service.addPane('w1', 'gemini');
+    const result = await service.addPane('w1', 'antigravity');
 
     if (!result.ok) throw new Error('esperava sucesso');
     expect(leavesOf(result.data.layout).map((l) => [l.id, l.terminalId])).toEqual([

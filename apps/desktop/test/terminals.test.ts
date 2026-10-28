@@ -25,7 +25,7 @@ const providers: ProviderRegistry = {
   list: () => [
     { id: 'claude', label: 'Claude Code', available: true },
     { id: 'codex', label: 'Codex', available: false, reason: UNAVAILABLE_REASON },
-    { id: 'gemini', label: 'Gemini CLI', available: true },
+    { id: 'antigravity', label: 'Antigravity CLI', available: true },
     { id: 'shell', label: 'PowerShell', available: true },
   ],
   resolve: (id) =>

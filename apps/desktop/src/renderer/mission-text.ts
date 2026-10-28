@@ -220,11 +220,11 @@ export function agentLabel(agent: AgentId): string {
   return AGENT_LABEL[agent];
 }
 
-/** Programas do seletor: só Claude vale hoje; Codex e Gemini aparecem desabilitados, "em breve". */
+/** Programas do seletor: só Claude vale hoje; Codex e Antigravity aparecem desabilitados, "em breve". */
 export const AGENT_CHOICES: readonly { value: string; label: string; available: boolean }[] = [
   { value: 'claude-code', label: 'Claude', available: true },
   { value: 'codex', label: 'Codex', available: false },
-  { value: 'gemini', label: 'Gemini', available: false },
+  { value: 'antigravity', label: 'Antigravity CLI', available: false },
 ];
 
 /** Textos do Plano (tabela de tarefas, edição e novo plano). Os nomes acessíveis levam o título da tarefa. */

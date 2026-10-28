@@ -63,7 +63,7 @@ describe('workspaceLayoutSchema', () => {
   });
 
   it('aceita uma folha sozinha', () => {
-    expect(workspaceLayoutSchema.safeParse(leaf('so', 'gemini')).success).toBe(true);
+    expect(workspaceLayoutSchema.safeParse(leaf('so', 'antigravity')).success).toBe(true);
   });
 
   it('expõe os limites combinados', () => {
@@ -181,7 +181,7 @@ describe('workspaceLayoutSchema', () => {
     const ruim = { type: 'leaf', id: 'a', provider: 'bash', terminalId: null };
     expect(workspaceLayoutSchema.safeParse(ruim).success).toBe(false);
     expect(providerIdSchema.safeParse('bash').success).toBe(false);
-    expect(providerIdSchema.safeParse('gemini').success).toBe(true);
+    expect(providerIdSchema.safeParse('antigravity').success).toBe(true);
   });
 
   it('recusa nó de tipo desconhecido e folha incompleta', () => {

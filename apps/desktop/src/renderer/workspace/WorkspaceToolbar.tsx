@@ -11,7 +11,7 @@ export const LIMIT_HINT = 'Limite de 12 painéis';
 const DESCRIPTION: Record<ProviderId, string> = {
   claude: 'Agente de código da Anthropic',
   codex: 'Agente de código da OpenAI',
-  gemini: 'Agente de linha de comando do Google',
+  antigravity: 'Agente de linha de comando do Google',
   shell: 'Terminal do sistema',
 };
 
