@@ -65,6 +65,16 @@ describe('buildPaletteItems', () => {
     expect(items.some((item) => item.rotulo === 'Ir para Projetos')).toBe(false);
   });
 
+  it('Alterar meu nome leva ao Início com o pedido de edição do nome', () => {
+    const navigate = vi.fn();
+    const items = buildPaletteItems(COM_DADOS, navigate);
+
+    const item = itemNamed(items, 'Alterar meu nome');
+    expect(item.grupo).toBe('Ações');
+    item.executar();
+    expect(navigate).toHaveBeenLastCalledWith('/?editar-nome=1');
+  });
+
   it('Adicionar projeto pede à lateral que abra o seletor, sem navegar', () => {
     const navigate = vi.fn();
     const items = buildPaletteItems(COM_DADOS, navigate);
@@ -103,7 +113,11 @@ describe('buildPaletteItems', () => {
       { status: 'loading', projects: [], missionsByProject: {} },
       vi.fn(),
     );
-    expect(items.map((item) => item.rotulo)).toEqual(['Ir para Início', 'Adicionar projeto']);
+    expect(items.map((item) => item.rotulo)).toEqual([
+      'Ir para Início',
+      'Alterar meu nome',
+      'Adicionar projeto',
+    ]);
   });
 
   it('dá um id único a cada item, mesmo quando um projeto e uma missão têm o mesmo nome', () => {

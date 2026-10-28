@@ -2,11 +2,11 @@ import type { NavigateFunction } from 'react-router';
 import type { ItemComando } from './components/PaletaComandos';
 import type { SidebarData } from './overview-data';
 import { ADD_PROJECT_REQUEST_EVENT } from './projects-events';
-import { missionPath, projectPath, ROUTE_PATHS } from './routes';
+import { EDIT_NAME_PARAM, missionPath, projectPath, ROUTE_PATHS } from './routes';
 
 /**
  * Itens da paleta de comandos (Ctrl+K), a partir da barra lateral: cada projeto, cada missão e as ações (Ir
- * para Início, Adicionar projeto e Nova missão em cada projeto). Os itens só levam a telas ou pedem o fluxo
+ * para Início, Alterar meu nome, Adicionar projeto e Nova missão em cada projeto). Os itens só levam a telas ou pedem o fluxo
  * que a tela já tem (o seletor de pasta da lateral, o formulário de missão do projeto) e não mudam dado
  * nenhum: uma ação de missão daqui pularia a confirmação e as aprovações que as telas já pedem.
  */
@@ -40,6 +40,12 @@ export function buildPaletteItems(sidebar: SidebarData, navigate: NavigateFuncti
       rotulo: 'Ir para Início',
       grupo: 'Ações',
       executar: () => navigate(ROUTE_PATHS.home),
+    },
+    {
+      id: 'acao:alterar-nome',
+      rotulo: 'Alterar meu nome',
+      grupo: 'Ações',
+      executar: () => navigate(`${ROUTE_PATHS.home}?${EDIT_NAME_PARAM}=1`),
     },
     {
       id: 'acao:adicionar-projeto',

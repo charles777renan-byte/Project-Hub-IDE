@@ -306,6 +306,67 @@ export function requiredActionOf(status: MissionStatus): string | undefined {
   return REQUIRED_ACTION[status];
 }
 
+/**
+ * Rótulos curtos do estado nas listas com progresso (Início e Missões do projeto): "Em andamento",
+ * "Aguardando aprovação", "Aguardando início". Os estados que o protótipo não mostra usam o rótulo
+ * de `statusLabel`.
+ */
+const BOARD_LABEL: Partial<Record<MissionStatus, string>> = {
+  planned: 'Aguardando aprovação do plano',
+  queued: 'Aguardando início',
+  running: 'Em andamento',
+  waiting_approval: 'Aguardando aprovação',
+  waiting_input: 'Aguardando resposta',
+  review: 'Aguardando revisão',
+};
+
+export function boardStatusLabel(status: MissionStatus): string {
+  return BOARD_LABEL[status] ?? STATUS[status].label;
+}
+
+/**
+ * Filtro por estado das listas de missões, o mesmo dos contadores da barra de status (`?estado=`):
+ * `running` é "Em execução", `attention` é o que espera a pessoa (`needsAttention`) e `failed` é "Falhou".
+ */
+export type MissionStatusFilter = 'running' | 'attention' | 'failed';
+
+export const STATUS_FILTERS: readonly MissionStatusFilter[] = ['running', 'attention', 'failed'];
+
+/** O valor de `?estado=` como filtro; valor desconhecido (ou ausente) vale como sem filtro. */
+export function parseStatusFilter(value: string | null): MissionStatusFilter | undefined {
+  return STATUS_FILTERS.find((filter) => filter === value);
+}
+
+export function matchesStatusFilter(status: MissionStatus, filter: MissionStatusFilter): boolean {
+  if (filter === 'running') return status === 'running';
+  if (filter === 'failed') return status === 'failed';
+  return needsAttention(status);
+}
+
+/** Textos do Início e das listas de missões com progresso. */
+export const HOME_TEXT = {
+  needsYou: 'Precisa de você',
+  needsYouEmpty: 'Nada espera por você.',
+  needsYouUnread: (missionTitle: string) =>
+    `Não foi possível carregar a aprovação de ${missionTitle}.`,
+  loading: 'Carregando…',
+  missions: 'Missões',
+  missionsEmpty: 'Nenhuma missão ainda.',
+  missionsEmptyFiltered: 'Nenhuma missão neste estado.',
+  missionsError: 'Não foi possível carregar as missões.',
+  filterGroup: 'Filtrar missões por estado',
+  filterClear: 'Limpar filtro',
+  filterLabel: {
+    running: 'Em andamento',
+    attention: 'Esperam você',
+    failed: 'Falharam',
+  } satisfies Record<MissionStatusFilter, string>,
+  tasks: (done: number, total: number) => `${done}/${total} tarefas`,
+  progressLabel: (title: string, done: number, total: number) =>
+    `Progresso de ${title}: ${done} de ${total} tarefas`,
+  activityEmpty: (days: number) => `Nenhuma atividade nos últimos ${days} dias.`,
+} as const;
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)

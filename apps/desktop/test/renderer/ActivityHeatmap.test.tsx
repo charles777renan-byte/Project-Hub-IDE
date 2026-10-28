@@ -133,11 +133,11 @@ describe('leadingBlanks', () => {
 
 describe('ActivityHeatmap', () => {
   it('a primeira semana começa no dia da semana certo, com os rótulos seg, qua e sex', async () => {
-    installActivity({ ok: true, data: [] });
+    installActivity({ ok: true, data: [{ date: '2026-10-22', count: 1 }] });
 
     const { container } = render(<ActivityHeatmap today={new Date(2026, 9, 22, 9, 0)} />);
 
-    await screen.findAllByText('Nenhum evento de missão nos últimos 90 dias.');
+    await screen.findByRole('img');
     const grid = container.querySelector('.activity-grid') as HTMLElement;
     const items = [...grid.children];
     // 7 rótulos, depois 6 vazios (a janela começa num sábado) e então o primeiro dia.
@@ -156,10 +156,12 @@ describe('ActivityHeatmap', () => {
     );
     expect(cells[6]).toHaveClass('activity-level--0');
     expect(cells[6]).not.toHaveClass('activity-cell--blank');
-    expect(grid.querySelectorAll('.activity-level--0')).toHaveLength(90);
+    // 89 dias sem evento e o de hoje, no nível 4.
+    expect(grid.querySelectorAll('.activity-level--0')).toHaveLength(89);
+    expect(grid.querySelectorAll('.activity-level--4')).toHaveLength(1);
   });
 
-  it('mostra o total, o período, o selo, a sequência e a legenda', async () => {
+  it('mostra o total, o período, a sequência e a legenda numa faixa compacta', async () => {
     installActivity({
       ok: true,
       data: [
@@ -172,8 +174,8 @@ describe('ActivityHeatmap', () => {
 
     expect(await screen.findByText('eventos de missão')).toBeInTheDocument();
     expect(container.querySelector('.activity__number')).toHaveTextContent('10');
-    expect(screen.getByText('últimos 90 dias · dia local')).toBeInTheDocument();
-    expect(container.querySelector('.home-badge')).toHaveTextContent('90 dias');
+    expect(screen.getByText('nos últimos 90 dias')).toBeInTheDocument();
+    expect(container.querySelector('.home-badge')).toBeNull();
     expect(screen.getByText('sequência atual: 2 dias')).toBeInTheDocument();
     const legend = container.querySelector('.activity-legend') as HTMLElement;
     expect(legend).toHaveTextContent('menos');
@@ -189,18 +191,16 @@ describe('ActivityHeatmap', () => {
     expect(await screen.findByText('sequência atual: 0 dias')).toBeInTheDocument();
   });
 
-  it('com banco vazio, mostra os 90 dias vazios e uma frase, sem erro', async () => {
+  it('com banco vazio, é uma linha só: sem mapa, sem legenda e sem erro', async () => {
     installActivity({ ok: true, data: [] });
 
     const { container } = render(<ActivityHeatmap today={TODAY} />);
 
-    expect(
-      (await screen.findAllByText('Nenhum evento de missão nos últimos 90 dias.')).length,
-    ).toBeGreaterThan(0);
-    const grid = container.querySelector('.activity-grid');
-    expect(grid?.querySelectorAll('.activity-level--0')).toHaveLength(90);
-    expect(grid?.querySelectorAll('.activity-cell--blank').length).toBeLessThan(7);
-    expect(container.querySelector('.activity__number')).toHaveTextContent('0');
+    expect(await screen.findByText('Nenhuma atividade nos últimos 90 dias.')).toBeInTheDocument();
+    expect(container.querySelector('.activity-grid')).toBeNull();
+    expect(container.querySelector('.activity-cell')).toBeNull();
+    expect(container.querySelector('.activity-legend')).toBeNull();
+    expect(screen.queryByRole('img')).toBeNull();
     expect(screen.queryByText(/Não foi possível/)).toBeNull();
   });
 
@@ -257,7 +257,7 @@ describe('ActivityHeatmap', () => {
 
 describe('ActivityHeatmap: classes', () => {
   it('a seção não usa a classe `activity`, que é do gráfico pequeno da barra lateral (12 px de altura)', async () => {
-    installActivity({ ok: true, data: [] });
+    installActivity({ ok: true, data: [{ date: '2026-10-24', count: 1 }] });
     const { container } = render(<ActivityHeatmap today={TODAY} />);
 
     await screen.findByRole('img');
