@@ -8,6 +8,7 @@ import {
   type LayoutChangedMeta,
 } from 'react-resizable-panels';
 import type { LayoutLeaf, LayoutNode, LayoutSplit } from '@project-hub/contracts';
+import { PANE_IN, PANE_OUT, type PaneMotion } from './pane-motion';
 
 const MIN_RATIO = 0.15;
 const MAX_RATIO = 0.85;
@@ -18,29 +19,51 @@ type PaneTreeProps = {
   /** Chamado quando o usuário termina de mover uma divisória; `ratio` é a fração de `first`. */
   onRatio(splitId: string, ratio: number): void;
   renderLeaf(leaf: LayoutLeaf): ReactNode;
+  /** Folhas entrando e saindo, para a animação (pane-motion.ts). Sem ele, nada anima. */
+  motion?: PaneMotion | undefined;
 };
 
-export function PaneTree({ layout, onRatio, renderLeaf }: PaneTreeProps) {
+export function PaneTree({ layout, onRatio, renderLeaf, motion }: PaneTreeProps) {
   return (
     <div className="pane-tree">
-      <Node node={layout} onRatio={onRatio} renderLeaf={renderLeaf} />
+      <Node node={layout} onRatio={onRatio} renderLeaf={renderLeaf} motion={motion} />
     </div>
   );
 }
 
 type NodeProps = Omit<PaneTreeProps, 'layout'> & { node: LayoutNode };
 
-function Node({ node, onRatio, renderLeaf }: NodeProps) {
+function motionOf(motion: PaneMotion | undefined, leafId: string) {
+  if (motion?.leaving.has(leafId) === true) return 'leaving';
+  if (motion?.entering.has(leafId) === true) return 'entering';
+  return undefined;
+}
+
+function Node({ node, onRatio, renderLeaf, motion }: NodeProps) {
   if (node.type === 'leaf') {
-    return <div className="pane-tree__leaf">{renderLeaf(node)}</div>;
+    return (
+      <div
+        className="pane-tree__leaf"
+        data-motion={motionOf(motion, node.id)}
+        onAnimationEnd={(event) => {
+          // Só as da própria folha: as animações de dentro dela também borbulham até aqui.
+          if (event.target !== event.currentTarget) return;
+          if (event.animationName === PANE_IN) motion?.onEntered(node.id);
+          else if (event.animationName === PANE_OUT) motion?.onLeft(node.id);
+        }}
+      >
+        {renderLeaf(node)}
+      </div>
+    );
   }
-  return <SplitNode split={node} onRatio={onRatio} renderLeaf={renderLeaf} />;
+  return <SplitNode split={node} onRatio={onRatio} renderLeaf={renderLeaf} motion={motion} />;
 }
 
 function SplitNode({
   split,
   onRatio,
   renderLeaf,
+  motion,
 }: Omit<NodeProps, 'node'> & { split: LayoutSplit }) {
   const groupRef = useGroupRef();
   // O ratio que o grupo já exibe: o inicial, o último do usuário ou o último aplicado de fora.
@@ -87,7 +110,13 @@ function SplitNode({
       >
         {/* Mudar a estrutura (abrir/fechar painel) gera ids novos de divisão e remonta os painéis: o xterm
             desmonta e remonta, e a saída volta do buffer do processo. Aceito de propósito. */}
-        <Node key={split.first.id} node={split.first} onRatio={onRatio} renderLeaf={renderLeaf} />
+        <Node
+          key={split.first.id}
+          node={split.first}
+          onRatio={onRatio}
+          renderLeaf={renderLeaf}
+          motion={motion}
+        />
       </Panel>
       <Separator className="pane-tree__separator" aria-label="Redimensionar painéis" />
       <Panel
@@ -96,7 +125,13 @@ function SplitNode({
         defaultSize={String((1 - split.ratio) * 100)}
         minSize="15"
       >
-        <Node key={split.second.id} node={split.second} onRatio={onRatio} renderLeaf={renderLeaf} />
+        <Node
+          key={split.second.id}
+          node={split.second}
+          onRatio={onRatio}
+          renderLeaf={renderLeaf}
+          motion={motion}
+        />
       </Panel>
     </Group>
   );

@@ -1208,6 +1208,11 @@
   display: flex;
 }
 
+/* O painel que está fechando já não recebe clique enquanto some (a animação fica em motion.css). */
+.pane-tree__leaf[data-motion='leaving'] {
+  pointer-events: none;
+}
+
 /*
  * Divisória: o vão de 8px entre dois cartões. É transparente (o brilho da janela aparece nele) e é a própria
  * pegada de arrastar; ao passar o mouse, arrastar ou focar, um traço de 2px em --field-line surge no meio

@@ -67,8 +67,10 @@ test('o documento não rola, as três barras aparecem e o anel de foco não é c
   expect(status.y + status.height).toBeGreaterThanOrEqual(scroll.innerHeight - 1);
   expect(side.y + side.height).toBeLessThanOrEqual(status.y + 1);
 
-  // A barra superior vem antes da lateral: o primeiro Tab cai na aba fixa Início, depois no botão de abrir
-  // workspace; a busca da lateral vem em seguida, e depois o botão de adicionar projeto.
+  // A barra superior vem antes da lateral: o primeiro Tab cai no botão que oculta a lateral, depois na aba fixa
+  // Início e no botão de abrir workspace; a busca da lateral vem em seguida, e depois o botão de adicionar projeto.
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Ocultar barra lateral' })).toBeFocused();
   await page.keyboard.press('Tab');
   const home = page.getByRole('link', { name: 'Início', exact: true });
   await expect(home).toBeFocused();
