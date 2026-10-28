@@ -20,7 +20,11 @@ export type ProviderRegistryDeps = {
 
 /** Executável de cada agente. O shell não passa pela busca no PATH. */
 const EXECUTABLES = { claude: 'claude', codex: 'codex', antigravity: 'agy' } as const;
-const AGENT_LABELS = { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity CLI' } as const;
+const AGENT_LABELS = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  antigravity: 'Antigravity CLI',
+} as const;
 const ORDER: readonly ProviderId[] = ['claude', 'codex', 'antigravity', 'shell'];
 
 /** No Windows, o `.exe` roda direto e os scripts `.cmd` e `.bat` só rodam pelo interpretador de comandos. */
@@ -40,9 +44,20 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
       .filter((folder) => folder !== '' && pathApi.isAbsolute(folder));
   }
 
-  function findExecutable(name: string): ProviderLaunch | undefined {
+  /**
+   * Pasta padrão de instalação de um programa, depois do PATH. O instalador do Antigravity CLI (`agy`) põe a pasta no
+   * PATH do usuário, mas um processo que já estava aberto não recebe essa mudança: sem a pasta padrão o app não acha
+   * o `agy` até ser reaberto.
+   */
+  function installFolders(id: ProviderId): string[] {
+    if (id !== 'antigravity' || !windows) return [];
+    const local = env['LOCALAPPDATA'];
+    return local === undefined || local === '' ? [] : [pathApi.join(local, 'agy', 'bin')];
+  }
+
+  function findExecutable(name: string, folders: string[]): ProviderLaunch | undefined {
     const extensions = windows ? WINDOWS_EXTENSIONS : [''];
-    for (const folder of searchFolders()) {
+    for (const folder of folders) {
       for (const extension of extensions) {
         const candidate = pathApi.join(folder, name + extension);
         if (!exists(candidate)) continue;
@@ -68,7 +83,7 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
           : { command: env['SHELL'] ?? '/bin/bash', args: [] },
       };
     }
-    const launch = findExecutable(EXECUTABLES[id]);
+    const launch = findExecutable(EXECUTABLES[id], [...searchFolders(), ...installFolders(id)]);
     if (launch !== undefined) return { ok: true, launch };
     return {
       ok: false,
