@@ -6,6 +6,7 @@ import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contract
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
+import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { ProjectHeader } from '../components/project/ProjectHeader';
 import { ProjectMissions } from '../components/project/ProjectMissions';
 import { ProjectSettings } from '../components/project/ProjectSettings';
@@ -37,7 +38,8 @@ function requestedTerminal(state: unknown): string | null {
 /**
  * A aba do projeto (`/workspaces/:projectId?visao=...`): o cabeçalho de uma linha com as visões e, abaixo, a
  * visão escolhida. Terminais (a padrão) é o workspace de painéis; Missões é a lista de missões do projeto e o
- * formulário Nova missão; Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais
+ * formulário Nova missão; Progresso mostra o resumo, as missões agrupadas com a linha do tempo das tarefas e a
+ * atividade recente; Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais
  * ficam sempre montados (só escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz
  * os terminais. As outras visões só são montadas enquanto ativas. Projeto arquivado ou removido com a aba
  * aberta mostra a mensagem e o link para o Início.
@@ -95,6 +97,9 @@ export function WorkspacePage() {
           <ProjectMissions projectId={projectId} project={project} />
         ) : null}
       </ProjectPanel>
+      <ProjectPanel view="progresso" active={view} labelled={project !== undefined}>
+        {view === 'progresso' ? <ProjectProgress projectId={projectId} project={project} /> : null}
+      </ProjectPanel>
       <ProjectPanel view="worktrees" active={view} labelled={project !== undefined}>
         {view === 'worktrees' ? <WorktreesTab projectId={projectId} /> : null}
       </ProjectPanel>
@@ -108,7 +113,7 @@ export function WorkspacePage() {
 }
 
 /**
- * O painel de uma visão (`role="tabpanel"`, o `aria-controls` da aba dela). Os quatro existem sempre; só o da
+ * O painel de uma visão (`role="tabpanel"`, o `aria-controls` da aba dela). Os cinco existem sempre; só o da
  * visão ativa aparece (`hidden` nos outros). O conteúdo de cada um é montado só quando a visão está ativa,
  * menos os terminais: o dono dele os mantém montados, para que uma espiada em Configurações não derrube os
  * painéis, o xterm e o estado do workspace.
