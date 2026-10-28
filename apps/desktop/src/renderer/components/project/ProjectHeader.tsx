@@ -27,7 +27,7 @@ type Pending = 'archive' | 'remove';
  * Cabeçalho da aba do projeto, numa linha só: o nome (e o apelido, se houver), a barra de visões, o botão
  * Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação). A visão ativa vem de
  * `?visao=` na rota; escolher uma aba troca só esse parâmetro. O painel da visão é do chamador: as abas apontam
- * para o `tab-panel`. Arquivar ou remover só sai da tela quando a ação dá certo: falha fica aqui, com a
+ * para o `project-panel-<visão>` de cada visão. Arquivar ou remover só sai da tela quando a ação dá certo: falha fica aqui, com a
  * mensagem da API, e o projeto segue como estava.
  */
 export function ProjectHeader({

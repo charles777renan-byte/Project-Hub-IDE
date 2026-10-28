@@ -27,6 +27,9 @@ const fake = vi.hoisted(() => ({
   /** Terminal e área em que ele foi aberto, para conferir o gancho de teste. */
   instance: undefined as object | undefined,
   openedIn: undefined as HTMLElement | undefined,
+  /** Medidas da tela do xterm; 0 x 0 é o terminal aberto numa área escondida, que ainda não mediu a célula. */
+  screenWidth: 640,
+  screenHeight: 384,
 }));
 
 vi.mock('@xterm/addon-webgl', () => ({
@@ -59,8 +62,8 @@ vi.mock('@xterm/xterm', () => ({
       // A tela do xterm, com as medidas de uma célula de 8 x 16 (640 x 384 para 80 x 24).
       const screen = document.createElement('div');
       screen.className = 'xterm-screen';
-      Object.defineProperty(screen, 'clientWidth', { value: 640 });
-      Object.defineProperty(screen, 'clientHeight', { value: 384 });
+      Object.defineProperty(screen, 'clientWidth', { get: () => fake.screenWidth });
+      Object.defineProperty(screen, 'clientHeight', { get: () => fake.screenHeight });
       host.append(screen);
     }
     loadAddon() {
@@ -121,6 +124,8 @@ beforeEach(() => {
   fake.contextLoss = undefined;
   fake.instance = undefined;
   fake.openedIn = undefined;
+  fake.screenWidth = 640;
+  fake.screenHeight = 384;
   emit = undefined;
   vi.stubGlobal(
     'ResizeObserver',
@@ -226,6 +231,155 @@ describe('TerminalView', () => {
     expect(terminals['resize']).toHaveBeenCalledTimes(1);
     expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
     view.unmount();
+  });
+});
+
+describe('TerminalView: aberto numa área escondida', () => {
+  function sizeHost() {
+    const host = fake.openedIn as HTMLElement;
+    Object.defineProperty(host, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(host, 'clientHeight', { value: 320, configurable: true });
+  }
+
+  /** ResizeObserver que guarda o que observa e deixa o teste disparar o aviso. */
+  function captureObservers() {
+    const observed: Element[] = [];
+    let notify: () => void = () => {};
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          notify = callback;
+        }
+        observe(target: Element) {
+          observed.push(target);
+        }
+        disconnect() {}
+      },
+    );
+    return { observed, fire: () => notify() };
+  }
+
+  /** requestAnimationFrame manual: os quadros só rodam quando o teste manda. */
+  function captureFrames() {
+    const frames = new Map<number, () => void>();
+    let next = 1;
+    vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+      frames.set(next, callback);
+      return next++;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    return {
+      pending: () => frames.size,
+      run: () => {
+        const due = [...frames.values()];
+        frames.clear();
+        due.forEach((callback) => callback());
+      },
+    };
+  }
+
+  it('observa também a tela do xterm, para ajustar quando ele mede a célula depois de a área aparecer', async () => {
+    const { observed, fire } = captureObservers();
+    captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+    expect(observed).toContain(fake.openedIn);
+    expect(observed).toContain(fake.openedIn?.querySelector('.xterm-screen'));
+
+    // A área aparece, mas a célula ainda não foi medida: nada de tamanho ao processo.
+    fire();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminals['resize']).not.toHaveBeenCalled();
+
+    // O xterm mede (a tela passa a medir 640 x 384) e o observador da tela avisa: ajusta uma vez, no tamanho real.
+    fake.screenWidth = 640;
+    fake.screenHeight = 384;
+    fire();
+    expect(terminals['resize']).toHaveBeenCalledTimes(1);
+    expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
+    expect((fake.instance as { cols: number }).cols).toBe(100);
+    view.unmount();
+  });
+
+  it('sem aviso do observador, tenta de novo a cada quadro até o xterm medir, e para quando ajusta', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    expect(frames.pending()).toBe(1);
+
+    frames.run();
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    expect(frames.pending()).toBe(1);
+
+    fake.screenWidth = 640;
+    fake.screenHeight = 384;
+    frames.run();
+    expect(terminals['resize']).toHaveBeenCalledTimes(1);
+    expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
+    expect(frames.pending()).toBe(0);
+    view.unmount();
+  });
+
+  it('com a área ainda escondida (menor que o mínimo), não manda tamanho nem fica tentando', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    const host = fake.openedIn as HTMLElement;
+    Object.defineProperty(host, 'clientWidth', { value: 0, configurable: true });
+    Object.defineProperty(host, 'clientHeight', { value: 0, configurable: true });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    expect(frames.pending()).toBe(0);
+    view.unmount();
+  });
+
+  it('desiste depois de 30 tentativas', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    for (let attempt = 0; attempt < 40; attempt += 1) frames.run();
+
+    expect(frames.pending()).toBe(0);
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('desmontar cancela o quadro pendente', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(frames.pending()).toBe(1);
+
+    view.unmount();
+
+    expect(frames.pending()).toBe(0);
   });
 });
 

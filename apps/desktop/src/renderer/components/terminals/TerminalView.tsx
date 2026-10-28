@@ -65,6 +65,21 @@ export function fitTerminal(
   return { cols, rows };
 }
 
+/** Quantas vezes seguidas o ajuste espera o xterm medir a célula (um quadro cada) antes de desistir. */
+const MAX_MEASURE_RETRIES = 30;
+
+/**
+ * Se a área já comporta um ajuste, mas o xterm ainda não mediu a célula (a tela dele mede 0). Acontece quando o
+ * terminal abre dentro de uma área escondida: ao aparecer, a área muda de tamanho, mas o xterm só mede a célula
+ * depois, no callback do IntersectionObserver dele, e a área não muda mais. Quem chama tenta de novo.
+ */
+function awaitingMeasure(host: HTMLElement): boolean {
+  const screen = host.querySelector<HTMLElement>('.xterm-screen');
+  if (screen === null) return false;
+  if (host.clientWidth < MIN_FIT_WIDTH || host.clientHeight < MIN_FIT_HEIGHT) return false;
+  return screen.clientWidth === 0 || screen.clientHeight === 0;
+}
+
 /**
  * Um terminal ao vivo. Assina a saída do terminal pelo preload (primeiro a guardada, depois a ao vivo),
  * manda a digitação de volta e acompanha o tamanho da área. A saída entra no xterm como dado, nunca como
@@ -97,12 +112,24 @@ export function TerminalView({
     term.open(host);
     termRef.current = term;
     let disposed = false;
+    let retryFrame: number | undefined;
+    let retries = 0;
     const refit = () => {
       // Uma montagem desfeita (o StrictMode do desenvolvimento monta, desfaz e monta de novo) não pode mais mandar
       // tamanho ao processo: o `.then(refit)` da assinatura dela ainda chega depois da limpeza.
       if (disposed) return;
       const size = fitTerminal(term, host);
       if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
+      // Aberto escondido, o xterm ainda não mediu a célula quando a área aparece: espera o quadro seguinte (limitado).
+      if (!awaitingMeasure(host)) {
+        retries = 0;
+      } else if (retryFrame === undefined && retries < MAX_MEASURE_RETRIES) {
+        retries += 1;
+        retryFrame = window.requestAnimationFrame(() => {
+          retryFrame = undefined;
+          refit();
+        });
+      }
     };
     // O WebGL desenha blocos, caixas e cores de 24 bits; sem ele, o xterm segue no DOM (ver webgl-renderer.ts).
     // Se o contexto se perde e o terminal cai no DOM, a célula muda de largura: as colunas se ajustam de novo
@@ -144,10 +171,14 @@ export function TerminalView({
     });
     const observer = new ResizeObserver(refit);
     observer.observe(host);
+    // A tela do xterm muda de tamanho quando ele mede a célula (depois de o terminal aparecer): é o aviso para ajustar.
+    const screen = host.querySelector('.xterm-screen');
+    if (screen !== null) observer.observe(screen);
     void api.subscribe(terminalId).then(refit);
 
     return () => {
       disposed = true;
+      if (retryFrame !== undefined) window.cancelAnimationFrame(retryFrame);
       observer.disconnect();
       typing.dispose();
       stopEvents();
