@@ -8,6 +8,12 @@ import {
   type MissionRepository,
 } from '@project-hub/database';
 import { expect, test } from './fixtures';
+import {
+  addGitProject,
+  createMission as createMissionOf,
+  openProject,
+  orchestrate,
+} from './missions';
 
 // Critério de saída da etapa (seção 22) e Review Focus 5 do plano, pela interface real: a janela do
 // Electron construído, o IPC, o SQLite, o Git e o agente simulado de demonstração. O agente simula
@@ -60,51 +66,22 @@ async function unknownViolations(
   });
 }
 
-/** Abre Projetos e cadastra a pasta que o seletor de teste devolve. Confere nome, tipo e branch. */
-async function addGitProject(page: Page, projectName: string): Promise<void> {
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Projetos' })
-    .click();
-  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
-
-  const card = page
-    .getByRole('list', { name: 'Projetos cadastrados' })
-    .getByRole('listitem')
-    .filter({ has: page.getByRole('heading', { name: projectName }) });
-  await expect(card.getByText('Repositório Git')).toBeVisible();
-  await expect(card.getByText('Branch padrão: main')).toBeVisible();
+/** Cria a missão do teste pelo formulário. Ela nasce em rascunho; o plano nasce no Orquestrar. */
+function createMission(page: Page): Promise<void> {
+  return createMissionOf(page, MISSION);
 }
 
-/** Do catálogo de projetos para a aba Missões do projeto. */
-async function openProject(page: Page, projectName: string): Promise<void> {
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Projetos' })
-    .click();
-  await page.getByRole('main').getByRole('link', { name: projectName }).click();
-  await expect(page.getByText('Branch: main')).toBeVisible();
-}
-
-/** Cria a missão pelo formulário. A criação gera o plano e abre o workspace da missão. */
-async function createMission(page: Page): Promise<void> {
-  await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
-  const form = page.getByRole('form', { name: 'Nova missão' });
-  await form.getByLabel('Título').fill(MISSION.title);
-  await form.getByLabel('Objetivo').fill(MISSION.objective);
-  await form.getByLabel('Critérios de aceite').fill(MISSION.criterion);
-  await form.getByLabel('Esta missão altera código').check();
-  await form.getByRole('button', { name: 'Criar missão' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
-}
-
-/** Plano gerado e visível; aprova o plano e inicia a missão até o agente pedir aprovação. */
+/**
+ * Orquestra a missão (sem planejador configurado nestes testes, o plano sai com um passo por critério), vê
+ * a tabela das tarefas, aprova o plano e inicia a missão até o agente pedir aprovação.
+ */
 async function approvePlanAndStart(page: Page): Promise<void> {
-  await expect(
-    page.getByRole('main').getByText('Aguarda aprovação do plano', { exact: true }),
-  ).toBeVisible();
+  await orchestrate(page);
   await page.getByRole('tab', { name: 'Plano' }).click();
-  await expect(page.getByRole('list', { name: 'Etapas do plano' })).toBeVisible();
+  const table = page.getByRole('table', { name: 'Etapas do plano' });
+  await expect(table).toBeVisible();
+  // Um passo por critério de aceite: o critério da missão vira a tarefa da tabela.
+  await expect(table.getByRole('row', { name: new RegExp(MISSION.criterion) })).toBeVisible();
   await page.getByRole('button', { name: 'Aprovar plano' }).click();
 
   await expect(
@@ -175,7 +152,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await openProject(page, projectName);
   await expect(page.getByText('Comece sua primeira missão')).toBeVisible();
 
-  // 2. Cria a missão com um critério de aceite, vê o plano e o aprova.
+  // 2. Cria a missão com um critério de aceite, clica em Orquestrar, vê o plano e o aprova.
   await createMission(page);
   await approvePlanAndStart(page);
 

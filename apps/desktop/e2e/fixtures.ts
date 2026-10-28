@@ -55,6 +55,11 @@ export type LaunchedProcess = Omit<LaunchedApp, 'page'>;
 export type LaunchOptions = {
   /** Valor de `PROJECT_HUB_TEST_DIALOG_PATH`: a pasta que o seletor de pasta devolve. */
   dialogPath?: string;
+  /**
+   * Caminho de um `.mjs` que faz o papel do `claude -p` no planejador (`APP_PLANNER_SCRIPT`). Sem esta opção
+   * o planejador não é ligado: o plano sai com um passo por critério de aceite.
+   */
+  plannerScript?: string;
   /** Espera a interface ficar pronta. O padrão confere a navegação principal. */
   waitForReady?: (page: Page) => Promise<void>;
   /** Chamado assim que o processo abre, antes de qualquer espera. */
@@ -239,6 +244,10 @@ export const test = base.extend<Fixtures>({
       delete env['PROJECT_HUB_TEST_DIALOG_PATH'];
       if (options.dialogPath !== undefined)
         env['PROJECT_HUB_TEST_DIALOG_PATH'] = options.dialogPath;
+      // Nenhum gancho do planejador vem da máquina de quem roda: só a opção do teste liga o CLI falso.
+      delete env['APP_PLANNER_COMMAND'];
+      delete env['APP_PLANNER_SCRIPT'];
+      if (options.plannerScript !== undefined) env['APP_PLANNER_SCRIPT'] = options.plannerScript;
       if (options.rendererUrl !== undefined) env['ELECTRON_RENDERER_URL'] = options.rendererUrl;
 
       const app = await electron.launch({
