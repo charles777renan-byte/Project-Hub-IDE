@@ -142,6 +142,59 @@ describe('PaneTree', () => {
     expect(montagens).toHaveBeenCalledTimes(3);
   });
 
+  it('abrir e fechar um painel ao lado não remonta o conteúdo da folha que já estava lá', () => {
+    const montagens = vi.fn();
+    function Folha({ id }: { id: string }) {
+      useEffect(() => {
+        montagens(id);
+      }, [id]);
+      return <i>{id}</i>;
+    }
+    const renderLeaf = (l: LayoutLeaf) => <Folha id={l.id} />;
+    const sozinha = leaf('a', 'claude');
+    const comNova: LayoutNode = {
+      type: 'split',
+      id: 'raiz-nova',
+      direction: 'row',
+      ratio: 0.5,
+      first: leaf('a', 'claude'),
+      second: leaf('n', 'shell'),
+    };
+    const { rerender } = render(
+      <PaneTree layout={sozinha} onRatio={vi.fn()} renderLeaf={renderLeaf} />,
+    );
+    rerender(<PaneTree layout={comNova} onRatio={vi.fn()} renderLeaf={renderLeaf} />);
+    rerender(<PaneTree layout={sozinha} onRatio={vi.fn()} renderLeaf={renderLeaf} />);
+    expect(montagens.mock.calls.map(([id]) => id)).toEqual(['a', 'n']);
+    // O conteúdo de "a" ficou no lugar da folha, e o de "n" saiu.
+    expect(screen.getByText('a').closest('.pane-tree__leaf')).not.toBeNull();
+    expect(screen.queryByText('n')).not.toBeInTheDocument();
+  });
+
+  it('o foco dentro da folha continua nela quando a estrutura muda', () => {
+    const renderLeaf = (l: LayoutLeaf) => <button type="button">{`botão ${l.id}`}</button>;
+    const sozinha = leaf('a', 'claude');
+    const { rerender } = render(
+      <PaneTree layout={sozinha} onRatio={vi.fn()} renderLeaf={renderLeaf} />,
+    );
+    act(() => screen.getByRole('button', { name: 'botão a' }).focus());
+    rerender(
+      <PaneTree
+        layout={{
+          type: 'split',
+          id: 'raiz-nova',
+          direction: 'column',
+          ratio: 0.5,
+          first: leaf('a', 'claude'),
+          second: leaf('n', 'shell'),
+        }}
+        onRatio={vi.fn()}
+        renderLeaf={renderLeaf}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'botão a' })).toHaveFocus();
+  });
+
   it('identifica cada nó filho pelo id: trocar a ordem das folhas não carrega o estado de uma para a outra', () => {
     function Folha({ id }: { id: string }) {
       const [inicial] = useState(id);

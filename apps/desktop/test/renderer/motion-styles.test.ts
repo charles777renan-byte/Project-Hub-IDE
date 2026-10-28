@@ -16,6 +16,8 @@ const reduced = mediaBlock(motionCss, '(prefers-reduced-motion: reduce)');
 const ENTER_PANELS = ['.project-tab__panel:not([hidden])', '.mission-dock__panel:not([hidden])'];
 const ENTER_TERMINALS = '.project-tab__panel--terminais:not([hidden])';
 const ENTER_PAGE = '.app-main__content > *';
+const PANE_ENTERING = ".pane-tree__leaf[data-motion='entering']";
+const PANE_LEAVING = ".pane-tree__leaf[data-motion='leaving']";
 
 /** O valor de uma declaração com os espaços e as quebras de linha reduzidos a um espaço. */
 const flat = (value: string | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
@@ -33,8 +35,13 @@ describe('keyframes de entrada', () => {
     ...motionCss.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g),
   ].map(([, name = '', body = '']) => ({ name, body }));
 
-  it('declara panel-in e panel-fade', () => {
-    expect(blocks.map((block) => block.name).sort()).toEqual(['panel-fade', 'panel-in']);
+  it('declara panel-in, panel-fade, pane-in e pane-out', () => {
+    expect(blocks.map((block) => block.name).sort()).toEqual([
+      'pane-in',
+      'pane-out',
+      'panel-fade',
+      'panel-in',
+    ]);
   });
 
   it('só mexe em opacity e transform, que não refazem o layout', () => {
@@ -82,6 +89,38 @@ describe('o que entra animado', () => {
   });
 });
 
+describe('painel de terminal abrindo e fechando', () => {
+  it('o painel novo cresce e aparece (pane-in), com o preenchimento "backwards"', () => {
+    const animation = ruleDeclarations(motionCss, PANE_ENTERING).get('animation') ?? '';
+    expect(animation).toContain('pane-in');
+    expect(animation).toContain('backwards');
+  });
+
+  it('o painel que fecha encolhe e some (pane-out) e segura o último quadro até sair do layout', () => {
+    const animation = ruleDeclarations(motionCss, PANE_LEAVING).get('animation') ?? '';
+    expect(animation).toContain('pane-out');
+    expect(animation).toContain('forwards');
+    // A saída acelera: com a curva da entrada (que desacelera), o painel sumiria no primeiro quadro.
+    expect(animation).toContain('var(--ease-exit)');
+    expect(animation).not.toContain('infinite');
+  });
+
+  it('a escala é a mesma na ida e na volta', () => {
+    const scale = (name: string) =>
+      new RegExp(String.raw`@keyframes\s+${name}\s*\{[^}]*transform:\s*(scale\([^)]*\))`).exec(
+        motionCss,
+      )?.[1];
+    expect(scale('pane-in')).toBe('scale(0.96)');
+    expect(scale('pane-out')).toBe('scale(0.96)');
+  });
+
+  it('o painel que fecha não recebe clique enquanto some', () => {
+    expect(ruleDeclarations(readCss('workspace.css'), PANE_LEAVING).get('pointer-events')).toBe(
+      'none',
+    );
+  });
+});
+
 describe('pílula da aba ativa', () => {
   it('é o ::before da aba: fica apagada e acende na ativa, para a opacidade poder animar', () => {
     expect(ruleDeclarations(appCss, '.tab::before').get('opacity')).toBe('0');
@@ -109,14 +148,14 @@ describe('custo e consistência', () => {
     expect(values.length).toBeGreaterThan(0);
     for (const value of values) {
       expect(value).toMatch(/var\(--dur(?:-fast)?\)/);
-      expect(value).toContain('var(--ease)');
+      expect(value).toMatch(/var\(--ease(?:-exit)?\)/);
       expect(value).not.toMatch(/\b\d+(?:\.\d+)?m?s\b/);
     }
   });
 
   it('as transições só listam propriedades baratas, nunca "all" nem medidas de layout', () => {
     const properties = motionValues(motionCss)
-      .filter((value) => !value.includes('panel-'))
+      .filter((value) => !/\bpanel?-/.test(value))
       .flatMap((value) => value.split(',').map((part) => part.trim().split(/\s+/)[0] ?? ''));
     expect(properties.length).toBeGreaterThan(0);
     for (const property of properties) {
@@ -135,7 +174,13 @@ describe('custo e consistência', () => {
 
 describe('movimento reduzido', () => {
   it('desliga a animação de cada entrada', () => {
-    for (const selector of [...ENTER_PANELS, ENTER_TERMINALS, ENTER_PAGE]) {
+    for (const selector of [
+      ...ENTER_PANELS,
+      ENTER_TERMINALS,
+      ENTER_PAGE,
+      PANE_ENTERING,
+      PANE_LEAVING,
+    ]) {
       expect(ruleDeclarations(reduced, selector).get('animation'), selector).toBe('none');
     }
   });
