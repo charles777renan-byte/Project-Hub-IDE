@@ -49,8 +49,12 @@ export class PlannerTimeoutError extends Error {
 export type ClaudePlannerOptions = {
   /** Executável do Claude Code (caminho completo: no Windows o nome solto não é procurado no PATH). */
   command: string;
+  /** Argumentos que vêm antes dos fixos. Só os testes usam (rodar um script no lugar do `claude`). */
+  commandPrefix?: readonly string[];
   /** Ambiente do processo filho. A composição passa o ambiente filtrado dos terminais. */
   env: NodeJS.ProcessEnv;
+  /** Variáveis somadas ao `env`, que elas vencem. Só os testes usam. */
+  extraEnv?: NodeJS.ProcessEnv;
   /** Tempo limite em milissegundos. O padrão é 180000. */
   timeoutMs?: number;
   /** Executor do processo. Os testes passam um falso. */
@@ -249,15 +253,17 @@ export const runPlannerProcess: PlannerRunner = (input) =>
 export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
   const run = options.run ?? runPlannerProcess;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const args = [...(options.commandPrefix ?? []), ...buildPlannerArgs()];
+  const env = { ...options.env, ...options.extraEnv };
   return {
     async plan(input) {
       let output: { stdout: string; exitCode: number };
       try {
         output = await run({
           command: options.command,
-          args: buildPlannerArgs(),
+          args,
           cwd: input.cwd,
-          env: options.env,
+          env,
           stdin: buildPlannerPrompt(input),
           timeoutMs,
           signal: input.signal,

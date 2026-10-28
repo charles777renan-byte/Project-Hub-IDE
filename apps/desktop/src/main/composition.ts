@@ -164,15 +164,44 @@ export function resolveDirectoryChooser<Args extends unknown[]>(
   return () => Promise.resolve(testPath);
 }
 
+/** Como o planejador é executado: o executável, o que vai antes dos argumentos fixos e o ambiente extra. */
+export type PlannerCommand = {
+  command: string;
+  /** Argumentos antes dos fixos do planejador (o script do CLI falso). Vazio fora dos testes. */
+  commandPrefix: string[];
+  /** Variáveis somadas ao ambiente do processo (`ELECTRON_RUN_AS_NODE` do CLI falso). Vazio fora dos testes. */
+  extraEnv: Record<string, string>;
+  /** Verdadeiro quando um comando de teste tomou o lugar do `claude`: liga o planejador sem `APP_AGENT_ADAPTER`. */
+  overridden: boolean;
+};
+
 /**
- * Comando do planejador nos testes de ponta a ponta. Só com `PROJECT_HUB_ENV=test` e
- * `APP_PLANNER_COMMAND` preenchida o comando de teste vale (um CLI falso no lugar do `claude`). Em
- * qualquer outro caso, a variável é ignorada e vale `defaultCommand`. Empacotado, as duas variáveis já
- * foram retiradas por `applicationEnvironment`.
+ * Comando do planejador. Só com `PROJECT_HUB_ENV=test` os ganchos de teste valem; em qualquer outro caso
+ * são ignorados e vale `defaultCommand`. `APP_PLANNER_SCRIPT` (um `.mjs`) roda o próprio executável
+ * (`execPath`, o Electron) como Node, com o script na frente dos argumentos fixos: o Windows não executa um
+ * `.cmd` direto, e assim o CLI falso é um script portátil. `APP_PLANNER_COMMAND` troca só o executável.
+ * O script vence o comando. Empacotado, as variáveis já foram retiradas por `applicationEnvironment`.
  */
-export function resolvePlannerCommand(env: NodeJS.ProcessEnv, defaultCommand: string): string {
-  const testCommand = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_PLANNER_COMMAND'] : undefined;
-  return testCommand === undefined || testCommand === '' ? defaultCommand : testCommand;
+export function resolvePlannerCommand(
+  env: NodeJS.ProcessEnv,
+  defaultCommand: string,
+  execPath: string = process.execPath,
+): PlannerCommand {
+  const isTest = env['PROJECT_HUB_ENV'] === 'test';
+  const script = isTest ? env['APP_PLANNER_SCRIPT'] : undefined;
+  if (script !== undefined && script !== '') {
+    return {
+      command: execPath,
+      commandPrefix: [script],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      overridden: true,
+    };
+  }
+  const testCommand = isTest ? env['APP_PLANNER_COMMAND'] : undefined;
+  if (testCommand !== undefined && testCommand !== '') {
+    return { command: testCommand, commandPrefix: [], extraEnv: {}, overridden: true };
+  }
+  return { command: defaultCommand, commandPrefix: [], extraEnv: {}, overridden: false };
 }
 
 /**

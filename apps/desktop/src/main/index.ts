@@ -202,13 +202,17 @@ app
     };
     const terminalBackend = createTerminalBackend(terminalOptions);
     // Planejador do Claude Code: o PATH e o ambiente filtrado são os do agente (process.env, como em
-    // `terminalOptions`), e não o `env` da aplicação, que empacotado vem sem o PATH. Em teste, um comando
-    // falso (`APP_PLANNER_COMMAND`) liga o planejador mesmo sem `APP_AGENT_ADAPTER`.
-    const claudeCommand = resolveExecutable('claude', process.env);
-    const plannerCommand = resolvePlannerCommand(env, claudeCommand);
+    // `terminalOptions`), e não o `env` da aplicação, que empacotado vem sem o PATH. Em teste, um CLI falso
+    // (`APP_PLANNER_COMMAND` ou `APP_PLANNER_SCRIPT`) liga o planejador mesmo sem `APP_AGENT_ADAPTER`.
+    const plannerCommand = resolvePlannerCommand(env, resolveExecutable('claude', process.env));
     const planner =
-      process.env['APP_AGENT_ADAPTER'] === 'claude-code' || plannerCommand !== claudeCommand
-        ? createClaudePlanner({ command: plannerCommand, env: buildTerminalEnv(process.env) })
+      process.env['APP_AGENT_ADAPTER'] === 'claude-code' || plannerCommand.overridden
+        ? createClaudePlanner({
+            command: plannerCommand.command,
+            commandPrefix: plannerCommand.commandPrefix,
+            env: buildTerminalEnv(process.env),
+            extraEnv: plannerCommand.extraEnv,
+          })
         : undefined;
     const services = createAppServices({
       dbFile: resolveDatabaseFile(env, app.getPath('userData')),

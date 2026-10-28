@@ -248,6 +248,28 @@ describe('createClaudePlanner', () => {
     expect(call.signal).toBe(controller.signal);
   });
 
+  it('o prefixo do comando vem antes dos argumentos fixos, e o ambiente extra vale por cima do ambiente', async () => {
+    const calls: Parameters<PlannerRunner>[0][] = [];
+    const run: PlannerRunner = async (input) => {
+      calls.push(input);
+      return { stdout: realOutput, exitCode: 0 };
+    };
+
+    await createClaudePlanner({
+      command: 'C:/app/electron.exe',
+      commandPrefix: ['C:/e2e/falso.mjs'],
+      env: { A: '1', ELECTRON_RUN_AS_NODE: '0' },
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      run,
+    }).plan(baseInput({ instruction: '--help' }));
+
+    const call = calls[0] as Parameters<PlannerRunner>[0];
+    expect(call.command).toBe('C:/app/electron.exe');
+    expect(call.args).toEqual(['C:/e2e/falso.mjs', ...buildPlannerArgs()]);
+    expect(call.env).toEqual({ A: '1', ELECTRON_RUN_AS_NODE: '1' });
+    expect(call.args.join(' ')).not.toContain('--help');
+  });
+
   it('usa o tempo limite dado', async () => {
     let seen = 0;
     await planner(async (input) => {

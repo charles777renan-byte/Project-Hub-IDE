@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { orchestrate } from './missions';
 import { expectOpenSessions, expectTerminalToContain } from './terminals';
 
 // Identidade visual (Tarefa 10), na janela real do Electron construído: em cada tela principal não há
@@ -260,9 +261,8 @@ test('Missão criada pelo formulário: sem violação de CSP e com foco visível
 
   await form.getByRole('button', { name: 'Criar missão' }).click();
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
-  await expect(
-    page.getByRole('main').getByText('Aguarda aprovação do plano', { exact: true }),
-  ).toBeVisible();
+  // A missão nasce em rascunho; Orquestrar gera o plano, e a tela com o plano pronto também fica sem violação.
+  await orchestrate(page);
 
   await expectNoViolations(page);
   await expectVisibleFocus(page, 5);

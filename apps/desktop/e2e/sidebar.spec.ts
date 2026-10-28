@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { orchestrate } from './missions';
 
 // Barra lateral (Tarefa 4 do plano da interface e Tarefa 7 do plano do workspace), na janela real. Cada
 // seção rola sozinha, e um contorno de foco de 2px com recuo de 2px sairia da borda da rolagem. Por isso
@@ -76,8 +77,8 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   await card.getByRole('link', { name: projectName }).click();
   await expect(page.getByText('Branch: main')).toBeVisible();
 
-  // Cria uma missão pelo formulário: o workspace abre e a missão, com o plano à espera de aprovação,
-  // entra na seção Em andamento.
+  // Cria uma missão pelo formulário: o workspace abre com a missão em rascunho. Orquestrar gera o plano, e a
+  // missão, com o plano à espera de aprovação, entra no aviso "Precisa de você".
   const missionTitle = 'Missão da barra';
   await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
   const form = page.getByRole('form', { name: 'Nova missão' });
@@ -87,6 +88,7 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
   await form.getByLabel('Esta missão altera código').check();
   await form.getByRole('button', { name: 'Criar missão' }).click();
   await expect(page.getByRole('heading', { level: 1, name: missionTitle })).toBeVisible();
+  await orchestrate(page);
 
   // A missão, com o plano à espera de aprovação, sobe para o aviso "Precisa de você", e o botão Nova missão
   // fica no rodapé da barra.
