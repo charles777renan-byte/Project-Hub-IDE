@@ -115,6 +115,8 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const decisionRef = useRef<HTMLElement>(null);
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const latestRequest = useRef(0);
+  /** Planejamento ou edição do plano em curso: o React só mostra o bloqueio depois, a trava é imediata. */
+  const planMutation = useRef(false);
 
   const reload = useCallback(async () => {
     const request = ++latestRequest.current;
@@ -223,6 +225,9 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
    * Sem instrução, a chamada leva só o id da missão. A falha fica na página, visível em qualquer aba.
    */
   const runPlan = (instruction = '') => {
+    // Um segundo clique com o planejamento (ou uma edição) em curso é ignorado: duas mudanças no mesmo plano.
+    if (planMutation.current) return Promise.resolve(false);
+    planMutation.current = true;
     setPlanEditError(null);
     const call = () =>
       instruction === ''
@@ -231,10 +236,14 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     return execute(call, (pending) => {
       setBusy(pending);
       setPlanning(pending);
+    }).finally(() => {
+      planMutation.current = false;
     });
   };
   /** Edição de uma tarefa do plano (renomear, remover, mover ou trocar o programa). A falha vai ao painel. */
   async function runEditStep(stepId: string, edit: PlanEditInput) {
+    if (planMutation.current) return;
+    planMutation.current = true;
     setBusy(true);
     setPlanEditError(null);
     setActionError(null);
@@ -244,8 +253,12 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     } catch {
       setPlanEditError(GENERIC_ERROR);
     }
-    await reload();
-    setBusy(false);
+    try {
+      await reload();
+    } finally {
+      setBusy(false);
+      planMutation.current = false;
+    }
   }
   /** Início da missão: falha de worktree ganha a mensagem do seu código (R213). */
   const runStart = () =>

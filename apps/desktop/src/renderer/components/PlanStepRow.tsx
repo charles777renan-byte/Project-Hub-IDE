@@ -32,7 +32,7 @@ export function PlanStepRow({
   step: MissionStepDto;
   steps: readonly MissionStepDto[];
   editable: boolean;
-  /** Uma chamada em curso: nenhum controle de edição aceita clique. */
+  /** Uma chamada em curso (edição ou planejamento): nenhum controle de edição aceita ação. */
   busy: boolean;
   isFirst: boolean;
   isLast: boolean;
@@ -79,7 +79,8 @@ export function PlanStepRow({
     setRenaming(false);
   }
   function saveRename() {
-    if (!canSave) return;
+    // Enter no campo não passa pelo botão desabilitado: com outra chamada em curso, nada é enviado.
+    if (!canSave || busy) return;
     onEdit({ op: 'rename', title: trimmed });
     closeRename();
   }
@@ -109,6 +110,7 @@ export function PlanStepRow({
                 aria-label={PLAN_TEXT.newName(step.title)}
                 value={name}
                 maxLength={120}
+                disabled={busy}
                 autoFocus
                 onChange={(event) => setName(event.target.value)}
                 onKeyDown={onRenameKey}

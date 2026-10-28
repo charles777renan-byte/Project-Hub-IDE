@@ -40,6 +40,8 @@ export function PlanPanel({
   const instructionId = useId();
   const hintId = useId();
   const editable = mission.status === 'planned';
+  /** Uma regra só: com qualquer chamada em curso, planejar inclusive, nada do painel muda o plano. */
+  const locked = busy || planning;
 
   return (
     <section aria-label="Plano da missão">
@@ -73,7 +75,7 @@ export function PlanPanel({
                 step={step}
                 steps={steps}
                 editable={editable}
-                busy={busy}
+                busy={locked}
                 isFirst={index === 0}
                 isLast={index === steps.length - 1}
                 onEdit={(edit) => onEditStep(step.id, edit)}
@@ -105,7 +107,7 @@ export function PlanPanel({
               type="button"
               className="btn-outline"
               aria-describedby={warningId}
-              disabled={busy || planning}
+              disabled={locked}
               onClick={() => onRequestNewPlan(instruction.trim())}
             >
               {planning ? PLAN_TEXT.planning : PLAN_TEXT.replan}
