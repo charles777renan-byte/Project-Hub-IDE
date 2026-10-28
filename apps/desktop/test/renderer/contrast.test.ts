@@ -413,9 +413,10 @@ describe('cores dos programas no quadro do orquestrador', () => {
 
 /**
  * Início em painéis (home.css): só tokens de tokens.css, sem cor literal, sem animação. Cada cor de
- * destaque tem um lugar: o lima (--accent) só no ícone da chamada (o botão é o .btn-primary do app.css) e no dia de hoje do mapa de
- * atividade, o vermelho (--danger) só no número de falhas, e o mapa usa a rampa de --muted (#b7adcf)
- * por opacidade. O texto do cartão (--text e --muted sobre --surface) já está nos pares do começo.
+ * destaque tem um lugar: o lima (--accent) só no dia de hoje do mapa de atividade e no preenchimento da
+ * barra de missão em andamento ou concluída, o âmbar (--warn) só no preenchimento da barra de missão que
+ * espera a pessoa, o vermelho (--danger) só no da barra de missão que falhou, e o mapa usa a rampa de --muted
+ * (#b7adcf) por opacidade. O texto do cartão (--text e --muted sobre --surface e --surface-2) já está nos pares do começo.
  */
 describe('cores do Início (home.css)', () => {
   const homeCss = readFileSync(
@@ -435,17 +436,20 @@ describe('cores do Início (home.css)', () => {
     '--bg',
     '--surface',
     '--surface-2',
-    '--surface-glass',
     '--line',
     '--field-line',
     '--muted',
     '--text',
     '--accent',
-    '--accent-ink',
+    '--warn',
     '--danger',
-    '--cell',
   ]);
   const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+  /** O preenchimento da barra de progresso, nos dois motores (WebKit e Gecko), por tom do estado. */
+  const FILL = (tone: string) => [
+    `.mission-progress__bar--${tone}::-webkit-progress-value`,
+    `.mission-progress__bar--${tone}::-moz-progress-bar`,
+  ];
 
   it('só usa var() de tokens permitidos', () => {
     const used = [...homeCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
@@ -461,24 +465,36 @@ describe('cores do Início (home.css)', () => {
     }
   });
 
-  it('o lima (--accent) só aparece no ícone da chamada e no dia de hoje do mapa', () => {
-    const using = rules.filter(({ body }) => body.includes('var(--accent)'));
+  it.each([
+    ['--accent', ['.activity-cell--today', ...FILL('lime')]],
+    ['--warn', FILL('warn')],
+    ['--danger', FILL('red')],
+  ])('%s só aparece onde tem papel', (token, allowed) => {
+    const using = rules.filter(({ body }) => body.includes(`var(${token})`));
     expect(using.length).toBeGreaterThan(0);
-    for (const { selectors, body } of using) {
+    for (const { selectors } of using) {
       expect(
-        selectors.every((item) => item === '.home-cta__icon' || item === '.activity-cell--today'),
+        selectors.every((item) => allowed.includes(item)),
         selectors.join(', '),
       ).toBe(true);
-      expect(body).toMatch(/(?:background:|outline:\s*1px solid) var\(--accent\)/);
     }
   });
 
-  it('o vermelho (--danger) só pinta o número de falhas', () => {
-    const using = rules.filter(({ body }) => body.includes('var(--danger)'));
-    expect(using.map(({ selectors }) => selectors)).toEqual([
-      ['.stat-pill--danger .stat-pill__value'],
-    ]);
-    expect(using[0]?.body).toMatch(/color:\s*var\(--danger\)/);
+  it('a barra de progresso pinta o preenchimento por tom do estado e o trilho de --line', () => {
+    for (const [tone, token] of [
+      ['lime', '--accent'],
+      ['warn', '--warn'],
+      ['red', '--danger'],
+    ] as const) {
+      for (const selector of FILL(tone)) {
+        const rule = rules.find((item) => item.selectors.includes(selector));
+        expect(rule?.body, selector).toMatch(new RegExp(String.raw`background:\s*var\(${token}\)`));
+      }
+    }
+    const track = rules.find((item) =>
+      item.selectors.includes('.mission-progress__bar::-webkit-progress-bar'),
+    );
+    expect(track?.body).toMatch(/background:\s*var\(--line\)/);
   });
 
   it('a rampa do mapa vai de 0 a 4 só com --muted, em opacidade crescente', () => {

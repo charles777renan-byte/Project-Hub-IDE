@@ -60,11 +60,21 @@ function useDisplayName() {
 }
 
 /**
- * Cabeçalho do Início: a saudação (com o nome, quando a pessoa informou um) e a data por extenso com a hora.
- * Um botão sob a data abre o campo do nome, que grava no perfil local e fecha. O título da página para a
- * leitura de tela continua sendo "Início" (h1 escondido); a saudação é o título que se vê. `now` existe para o teste.
+ * Cabeçalho do Início, numa linha só: a saudação (com o nome, quando a pessoa informou um) e a data por
+ * extenso com a hora. Não há botão do nome: o campo "Seu nome" abre quando `editRequested` fica
+ * verdadeiro (o Início o liga com `?editar-nome=1`, vindo do item "Alterar meu nome" da paleta), grava
+ * no perfil local e fecha, avisando por `onEditClose` (salvar, remover ou cancelar). O título da página
+ * para a leitura de tela continua sendo "Início" (h1 escondido). `now` existe para o teste.
  */
-export function Greeting({ now }: { now?: Date }) {
+export function Greeting({
+  now,
+  editRequested = false,
+  onEditClose,
+}: {
+  now?: Date;
+  editRequested?: boolean;
+  onEditClose?: () => void;
+}) {
   const moment = now ?? new Date();
   const [name, setName] = useDisplayName();
   const [editing, setEditing] = useState(false);
@@ -72,11 +82,21 @@ export function Greeting({ now }: { now?: Date }) {
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
   const greeting = greetingFor(moment.getHours());
+  const nameLoaded = name !== undefined;
 
-  function openEditor() {
+  // O pedido só vale com o nome já lido: o campo abre com o nome atual. Depois de fechado, o mesmo
+  // pedido não reabre; só um pedido novo (o parâmetro some e volta) abre de novo.
+  useEffect(() => {
+    if (!editRequested || !nameLoaded) return;
     setDraft(name ?? '');
     setError(null);
     setEditing(true);
+    // O nome entra só na abertura: salvar um nome novo não pode reabrir o campo.
+  }, [editRequested, nameLoaded]);
+
+  function close() {
+    setEditing(false);
+    onEditClose?.();
   }
 
   /** Grava o nome (ou o tira, com `null`). Com falha, a mensagem vai para o campo e ele continua aberto. */
@@ -90,7 +110,7 @@ export function Greeting({ now }: { now?: Date }) {
       }
       const trimmed = (value ?? '').trim();
       setName(trimmed === '' ? null : trimmed);
-      setEditing(false);
+      close();
     } catch {
       setError(SAVE_ERROR);
     }
@@ -99,8 +119,10 @@ export function Greeting({ now }: { now?: Date }) {
   return (
     <header className="home-greeting">
       <h1 className="visually-hidden">Início</h1>
-      <p className="home-greeting__hello">{name ? `${greeting}, ${name}` : greeting}</p>
-      <p className="home-greeting__date">{dateLabel(moment)}</p>
+      <p className="home-greeting__line">
+        <span className="home-greeting__hello">{name ? `${greeting}, ${name}` : greeting}</span>
+        <span className="home-greeting__date">{dateLabel(moment)}</span>
+      </p>
       {editing ? (
         <form
           aria-label="Seu nome"
@@ -116,6 +138,7 @@ export function Greeting({ now }: { now?: Date }) {
             value={draft}
             maxLength={NAME_MAX_LENGTH}
             placeholder="ex.: Ana"
+            autoFocus
             onChange={(event) => setDraft(event.target.value)}
           />
           <button type="submit" className="btn-primary">
@@ -126,7 +149,7 @@ export function Greeting({ now }: { now?: Date }) {
               Remover nome
             </button>
           ) : null}
-          <button type="button" onClick={() => setEditing(false)}>
+          <button type="button" onClick={close}>
             Cancelar
           </button>
           {error === null ? null : (
@@ -135,11 +158,7 @@ export function Greeting({ now }: { now?: Date }) {
             </span>
           )}
         </form>
-      ) : name === undefined ? null : (
-        <button type="button" className="btn-link home-greeting__edit" onClick={openEditor}>
-          {name === null ? 'Dizer seu nome' : 'Alterar nome'}
-        </button>
-      )}
+      ) : null}
     </header>
   );
 }

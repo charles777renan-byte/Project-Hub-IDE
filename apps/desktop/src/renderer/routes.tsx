@@ -18,6 +18,9 @@ export const ROUTE_PATHS = {
   workspace: '/workspaces/:projectId',
 } as const;
 
+/** Parâmetro do Início (`/?editar-nome=1`) que abre o campo do nome na saudação; a paleta o pede. */
+export const EDIT_NAME_PARAM = 'editar-nome';
+
 /** Endereço do detalhe de um projeto (seção 10.5). */
 export function projectPath(projectId: string): string {
   return `/projects/${encodeURIComponent(projectId)}`;
