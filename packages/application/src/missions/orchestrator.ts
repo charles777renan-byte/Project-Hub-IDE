@@ -95,10 +95,11 @@ export interface Orchestrator {
     stepId: string;
     edit: PlanEdit;
   }): Promise<AppResult<MissionPlan>>;
-  /** `planned` -> `queued`. */
+  /** `planned` -> `queued`. Recusada enquanto o plano da missão está sendo gerado. */
   approvePlan(missionId: string): Promise<AppResult<void>>;
   /** `queued` -> `running`. Devolve a execução no estado em que o agente parou. */
   startMission(missionId: string): Promise<AppResult<Execution>>;
+  /** Cancela a missão e, se o plano dela está sendo gerado, também encerra o planejador dessa missão. */
   cancelMission(missionId: string): Promise<AppResult<void>>;
   /** `running` -> `paused`. Pausa a sessão do agente (R181). Nunca lança: falha vira resultado. */
   pauseMission(missionId: string): Promise<AppResult<void>>;
@@ -121,8 +122,8 @@ export interface Orchestrator {
    */
   requestChanges(input: { missionId: string; feedback: string }): Promise<AppResult<Execution>>;
   /**
-   * Fechamento do app: aborta o planejamento em andamento e mais nada. O planejador devolve uma falha, e a
-   * missão fica no estado em que estava. Pode ser chamado mais de uma vez.
+   * Fechamento do app: aborta o planejamento em andamento de todas as missões e mais nada. O planejador
+   * devolve uma falha, e a missão fica no estado em que estava. Pode ser chamado mais de uma vez.
    */
   dispose(): void;
 }
@@ -182,8 +183,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const planner = deps.planner;
   /** Missões cujo plano está sendo gerado agora: o planejador roda uma vez por missão. */
   const planning = new Set<string>();
-  /** Sinal repassado ao planejador. Só `dispose` o aborta. */
-  const plannerAbort = new AbortController();
+  /**
+   * Um controlador de aborto por planejamento em curso, pela missão. `cancelMission` aborta o da missão
+   * cancelada, e `dispose` (o app fechando) aborta todos.
+   */
+  const plannerAborts = new Map<string, AbortController>();
+  /** Depois de `dispose`, todo planejamento novo já nasce abortado. */
+  let disposed = false;
   /** Uma execução por missão no máximo: a que está em curso ou a que está começando. */
   const active = new Map<string, ActiveRun>();
   const maxRunning = deps.maxRunning ?? DEFAULT_MAX_RUNNING;
@@ -1025,6 +1031,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       if (!canTransition(mission.status, 'cancelled')) {
         return failure('MISSION_INVALID_STATE', 'A missão já foi encerrada.');
       }
+      // Um planejamento em curso da missão para junto: o processo do planejador é encerrado.
+      plannerAborts.get(missionId)?.abort();
       repo.transaction(() => {
         const at = now();
         cancelRunningExecutions(missionId, at);
@@ -1039,6 +1047,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
     // Aborta primeiro: o laço para de consumir eventos. Depois o agente é parado, e só então a
     // execução e a missão são marcadas como canceladas (seção 9.3).
+    plannerAborts.get(missionId)?.abort();
     run.controller.abort();
     try {
       if (run.session !== undefined) await run.session.stop(CANCEL_REASON);
@@ -1438,6 +1447,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       return failure('MISSION_INVALID_STATE', 'O plano desta missão já está sendo gerado.');
     }
     planning.add(missionId);
+    const abort = new AbortController();
+    if (disposed) abort.abort();
+    plannerAborts.set(missionId, abort);
     try {
       const project = projects.get(mission.projectId);
       if (project === undefined) {
@@ -1454,11 +1466,12 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         criteria,
         ...(instruction === undefined ? {} : { instruction }),
         cwd: project.path,
-        signal: plannerAbort.signal,
+        signal: abort.signal,
       });
 
-      // `dispose` (o app fechando): o banco pode já estar fechado, então nada é lido nem gravado.
-      if (plannerAbort.signal.aborted) {
+      // Cancelamento da missão ou `dispose` (o app fechando): o banco pode já estar fechado, então nada
+      // é lido nem gravado.
+      if (abort.signal.aborted) {
         return proposed.ok ? failure('AGENT_UNAVAILABLE', CANCELLED_PLANNING) : proposed;
       }
       const current = repo.getMission(missionId);
@@ -1494,6 +1507,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       return { ok: true, data: { missionId, steps } };
     } finally {
       planning.delete(missionId);
+      plannerAborts.delete(missionId);
     }
   }
 
@@ -1544,6 +1558,12 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   async function approvePlan(missionId: string): Promise<AppResult<void>> {
     const mission = repo.getMission(missionId);
     if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+    if (planning.has(missionId)) {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'O plano está sendo gerado. Espere terminar para aprovar.',
+      );
+    }
     if (mission.status !== 'planned') {
       return failure('MISSION_INVALID_STATE', 'Só um plano gerado pode ser aprovado.');
     }
@@ -1640,6 +1660,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     retryMission: gated(retryMission),
     approveReview: gated(approveReview),
     requestChanges: gated(requestChanges),
-    dispose: () => plannerAbort.abort(),
+    dispose: () => {
+      disposed = true;
+      for (const controller of plannerAborts.values()) controller.abort();
+    },
   };
 }

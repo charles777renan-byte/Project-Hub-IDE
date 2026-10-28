@@ -449,6 +449,113 @@ describe('planMission com o planejador', () => {
     expect(h.repo.getMission(MISSION)?.status).toBe('draft');
   });
 
+  it('recusa aprovar enquanto o plano está sendo gerado, e o plano anterior fica como estava', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    let calls = 0;
+    const planner = fakePlanner(() => (++calls === 1 ? OK_PLAN : gate.promise));
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    data(await h.orchestrator.planMission(MISSION));
+    const before = h.repo.listSteps(MISSION);
+
+    const replanning = h.orchestrator.planMission(MISSION, { instruction: 'de novo' });
+    await vi.waitFor(() => expect(planner.calls).toHaveLength(2));
+    const result = await h.orchestrator.approvePlan(MISSION);
+
+    expect(codeOf(result)).toBe('MISSION_INVALID_STATE');
+    expect(result.ok ? '' : result.error.message).toBe(
+      'O plano está sendo gerado. Espere terminar para aprovar.',
+    );
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+    expect(h.repo.listSteps(MISSION)).toEqual(before);
+    gate.resolve(OK_PLAN);
+    data(await replanning);
+    data(await h.orchestrator.approvePlan(MISSION));
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+  });
+
+  describe('um sinal de aborto por missão', () => {
+    const SECOND = 'missao-2-abcdef';
+
+    /** Planejador que guarda o sinal de cada missão (pelo objetivo) e só responde quando abortado ou liberado. */
+    function twoMissions() {
+      const signals = new Map<string, AbortSignal>();
+      const gates = new Map<string, ReturnType<typeof deferred<AppResult<PlannedTask[]>>>>();
+      const planner = fakePlanner((input) => {
+        signals.set(input.objective, input.signal);
+        const gate = deferred<AppResult<PlannedTask[]>>();
+        gates.set(input.objective, gate);
+        const cancelled = () =>
+          gate.resolve(failure('AGENT_UNAVAILABLE', 'O planejamento foi cancelado.'));
+        if (input.signal.aborted) cancelled();
+        else input.signal.addEventListener('abort', cancelled, { once: true });
+        return gate.promise;
+      });
+      const h = harness({ planner });
+      h.repo.insertMission(missionFixture({ status: 'draft', objective: 'objetivo um' }));
+      h.repo.insertMission(
+        missionFixture({ id: SECOND, status: 'draft', objective: 'objetivo dois' }),
+      );
+      return { h, planner, signals, gates };
+    }
+
+    it('cancelar uma missão aborta só o planejamento dela', async () => {
+      const { h, planner, signals, gates } = twoMissions();
+      const first = h.orchestrator.planMission(MISSION);
+      const second = h.orchestrator.planMission(SECOND);
+      await vi.waitFor(() => expect(planner.calls).toHaveLength(2));
+
+      data(await h.orchestrator.cancelMission(MISSION));
+
+      expect(signals.get('objetivo um')?.aborted).toBe(true);
+      expect(signals.get('objetivo dois')?.aborted).toBe(false);
+      expect(codeOf(await first)).toBe('AGENT_UNAVAILABLE');
+      expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
+      expect(h.repo.listSteps(MISSION)).toEqual([]);
+      gates.get('objetivo dois')?.resolve(OK_PLAN);
+      data(await second);
+      expect(h.repo.getMission(SECOND)?.status).toBe('planned');
+    });
+
+    it('dispose aborta o planejamento de todas as missões', async () => {
+      const { h, planner, signals } = twoMissions();
+      const first = h.orchestrator.planMission(MISSION);
+      const second = h.orchestrator.planMission(SECOND);
+      await vi.waitFor(() => expect(planner.calls).toHaveLength(2));
+
+      h.orchestrator.dispose();
+      h.orchestrator.dispose();
+
+      expect(signals.get('objetivo um')?.aborted).toBe(true);
+      expect(signals.get('objetivo dois')?.aborted).toBe(true);
+      expect(codeOf(await first)).toBe('AGENT_UNAVAILABLE');
+      expect(codeOf(await second)).toBe('AGENT_UNAVAILABLE');
+    });
+
+    it('um novo planejamento depois de dispose já nasce abortado', async () => {
+      const { h, signals } = twoMissions();
+      h.orchestrator.dispose();
+
+      const result = await h.orchestrator.planMission(MISSION);
+
+      expect(signals.get('objetivo um')?.aborted).toBe(true);
+      expect(codeOf(result)).toBe('AGENT_UNAVAILABLE');
+    });
+
+    it('o sinal de um planejamento terminado não vaza para o seguinte', async () => {
+      const { h, planner, signals, gates } = twoMissions();
+      const first = h.orchestrator.planMission(MISSION);
+      await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+      gates.get('objetivo um')?.resolve(OK_PLAN);
+      data(await first);
+      const firstSignal = signals.get('objetivo um');
+
+      data(await h.orchestrator.cancelMission(MISSION));
+
+      expect(firstSignal?.aborted).toBe(false);
+    });
+  });
+
   it('pasta do projeto indisponível: erro e o planejador não é chamado', async () => {
     const planner = fakePlanner(() => OK_PLAN);
     const h = harness({ planner, isDirectory: () => Promise.resolve(false) });
