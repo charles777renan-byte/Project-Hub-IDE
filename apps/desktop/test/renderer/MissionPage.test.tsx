@@ -119,10 +119,10 @@ function MissionRoute() {
   return <MissionPage missionId={missionId} />;
 }
 
-function renderPage() {
+function renderPage(state?: unknown) {
   return render(
     <>
-      <MemoryRouter initialEntries={['/workspaces/p1/missoes/m1']}>
+      <MemoryRouter initialEntries={[{ pathname: '/workspaces/p1/missoes/m1', state }]}>
         <Routes>
           <Route path={ROUTE_PATHS.missionDetail} element={<MissionRoute />} />
           <Route path={ROUTE_PATHS.workspace} element={<p>Página do projeto</p>} />
@@ -799,6 +799,31 @@ describe('MissionPage: ações e decisão', () => {
     expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Cancelar missão' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Pausar' })).toBeNull();
+  });
+
+  it('aberta por "Criar e orquestrar" em rascunho, planeja uma vez sozinha', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    renderPage({ orchestrate: true });
+
+    await waitFor(() => expect(hub.api.missions.plan).toHaveBeenCalledWith('m1'));
+    await screen.findByRole('button', { name: 'Orquestrar' });
+    expect(hub.api.missions.plan).toHaveBeenCalledTimes(1);
+  });
+
+  it('o pedido de orquestrar não planeja missão que já saiu do rascunho', async () => {
+    const hub = installApi(viewOf({ status: 'planned' }));
+    renderPage({ orchestrate: true });
+
+    await screen.findByRole('button', { name: 'Aprovar plano' });
+    expect(hub.api.missions.plan).not.toHaveBeenCalled();
+  });
+
+  it('sem o pedido, abrir a missão em rascunho não planeja', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    renderPage();
+
+    await screen.findByRole('button', { name: 'Orquestrar' });
+    expect(hub.api.missions.plan).not.toHaveBeenCalled();
   });
 
   it('Orquestrar chama o planejamento da missão, sem instrução', async () => {

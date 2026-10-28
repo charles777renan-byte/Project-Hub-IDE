@@ -224,12 +224,12 @@ describe('ProjectMissions: o formulário abre pelo pedido da rota', () => {
     await waitFor(() => expect(current.search).toBe('?visao=missoes'));
   });
 
-  it('o foco do formulário aberto fica no Título', async () => {
+  it('o foco do formulário aberto fica no Objetivo', async () => {
     installApi();
     renderMissions({ state: { newMission: true } });
 
     await screen.findByRole('form', { name: 'Nova missão' });
-    expect(screen.getByLabelText('Título')).toHaveFocus();
+    expect(screen.getByLabelText('Objetivo')).toHaveFocus();
   });
 
   it('sem pedido, a lista aparece e o formulário não', async () => {
@@ -242,19 +242,15 @@ describe('ProjectMissions: o formulário abre pelo pedido da rota', () => {
 });
 
 describe('ProjectMissions: criar missão', () => {
-  it('o formulário não tem os blocos numerados e cada campo tem no máximo uma dica', async () => {
+  it('o formulário é o compositor: sem blocos numerados nem dicas por campo', async () => {
     installApi();
     renderMissions({ state: { newMission: true } });
 
     const form = await screen.findByRole('form', { name: 'Nova missão' });
     expect(within(form).queryByText('O que fazer')).not.toBeInTheDocument();
     expect(within(form).queryByText('Como saber que ficou pronto')).not.toBeInTheDocument();
-    for (const name of ['Título', 'Objetivo', 'Critérios de aceite']) {
-      const ids = (within(form).getByLabelText(name).getAttribute('aria-describedby') ?? '')
-        .split(' ')
-        .filter((id) => id !== '');
-      expect(ids, name).toHaveLength(1);
-    }
+    expect(form.querySelector('.field-hint, .check__hint')).toBeNull();
+    expect(within(form).getByRole('button', { name: 'Criar e orquestrar' })).toBeInTheDocument();
   });
 
   it('Criar chama create, sem gerar o plano, e abre a missão', async () => {
@@ -278,28 +274,20 @@ describe('ProjectMissions: criar missão', () => {
     expect(current.pathname).toBe('/workspaces/p1/missoes/nova');
   });
 
-  it('"Só criar, sem abrir" fica na lista, avisa e pede a lista de novo', async () => {
+  it('Criar e orquestrar cria sem chamar o plano aqui e abre a missão pedindo o plano', async () => {
     const api = installApi();
     const user = userEvent.setup();
     renderMissions({ state: { newMission: true } });
     await screen.findByRole('form', { name: 'Nova missão' });
 
     await preencher(user);
-    await user.click(screen.getByLabelText('Só criar, sem abrir'));
-    await user.click(screen.getByRole('button', { name: 'Criar' }));
+    await user.click(screen.getByRole('button', { name: 'Criar e orquestrar' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Missão criada. Abra a missão e clique em Orquestrar para gerar o plano.',
-    );
-    expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Missão aberta')).not.toBeInTheDocument();
+    expect(api.missions.create).toHaveBeenCalledTimes(1);
     expect(api.missions.plan).not.toHaveBeenCalled();
-    // A nova missão tem de aparecer na lista: o quadro lê de novo depois da criação.
-    api.missions.list.mockResolvedValue({
-      ok: true,
-      data: [missionOf({ id: 'nova', title: 'Nova missão' })],
-    });
-    expect(await screen.findByRole('link', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(await screen.findByText('Missão aberta')).toBeInTheDocument();
+    expect(current.pathname).toBe('/workspaces/p1/missoes/nova');
+    expect(current.state).toEqual({ orchestrate: true });
   });
 
   it('Cancelar volta à lista, sem criar nada', async () => {

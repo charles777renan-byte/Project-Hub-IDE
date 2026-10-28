@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import type {
   AppError,
   AppResult,
@@ -75,6 +75,7 @@ export function MissionPage({ missionId }: { missionId: string }) {
  */
 function MissionWorkspace({ missionId }: { missionId: string }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   /**
    * Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima do plano.
@@ -232,6 +233,23 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
       planMutation.current = false;
     });
   };
+  /**
+   * "Criar e orquestrar": a missão nasce em rascunho e abre com `state.orchestrate`. Na primeira visão pronta, se
+   * ela ainda está em rascunho, o planejamento roda uma vez, como um clique no Orquestrar (a pessoa clicou para
+   * isso no formulário). O estado sai da rota logo, para voltar ou recarregar não planejar de novo.
+   */
+  const orchestrateRequested =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    (location.state as { orchestrate?: unknown }).orchestrate === true;
+  const orchestrateConsumed = useRef(false);
+  useEffect(() => {
+    if (!orchestrateRequested || orchestrateConsumed.current || decisionStatus === undefined) return;
+    orchestrateConsumed.current = true;
+    navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+    if (decisionStatus === 'draft') void runPlan();
+  });
+
   /** Edição de uma tarefa do plano (renomear, remover, mover ou trocar o programa). A falha vai ao painel. */
   async function runEditStep(stepId: string, edit: PlanEditInput) {
     if (planMutation.current) return;

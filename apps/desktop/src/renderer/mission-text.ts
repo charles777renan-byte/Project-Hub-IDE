@@ -471,12 +471,10 @@ export const PROJECT_TEXT = {
     nicknameSaved: 'Apelido salvo.',
     nicknameClear: 'Remover apelido',
     save: 'Salvar',
+    cancel: 'Cancelar',
+    edit: 'Editar',
+    none: 'Nenhum',
   },
-} as const;
-
-/** Textos da visão Missões da aba do projeto. */
-export const MISSIONS_VIEW_TEXT = {
-  createdNotice: 'Missão criada. Abra a missão e clique em Orquestrar para gerar o plano.',
 } as const;
 
 /** Textos do formulário Nova missão: uma linha de dica por campo, sem blocos numerados. */
@@ -484,27 +482,26 @@ export const MISSION_FORM_TEXT = {
   heading: 'Nova missão',
   noGit:
     'Este projeto não é um repositório Git, e toda missão roda num worktree. Inicialize o Git na pasta para criar missões aqui.',
-  title: { label: 'Título', hint: 'Um nome curto, para achar a missão na lista.' },
-  objective: { label: 'Objetivo', hint: 'O que precisa ser feito e por quê.' },
+  title: { label: 'Título', placeholder: 'Título (opcional: sai da primeira linha do objetivo)' },
+  objective: {
+    label: 'Objetivo',
+    placeholder: 'O que o agente deve fazer? Ex.: aceitar login com a conta Google além de e-mail e senha.',
+  },
   criteria: {
-    label: 'Critérios de aceite',
-    hint: 'Um por linha, pelo menos um. Cada um vira uma etapa do plano.',
+    label: 'Pronto quando',
+    input: 'Critérios de aceite',
+    placeholder: 'Digite um critério e aperte Enter',
+    remove: 'Remover critério',
   },
-  altersCode: {
-    label: 'Esta missão altera código',
-    hint: 'Marque se o agente vai editar arquivos do projeto.',
-  },
-  planOnly: {
-    label: 'Só criar, sem abrir',
-    hint: 'Fica na lista. O plano só é gerado quando você clica em Orquestrar.',
-  },
+  altersCode: { label: 'Altera código' },
   errors: {
-    title: 'Informe o título da missão.',
     objective: 'Informe o objetivo da missão.',
     criteria: 'Informe ao menos um critério de aceite',
   },
   cancel: 'Cancelar',
   submit: 'Criar',
+  submitAndOrchestrate: 'Criar e orquestrar',
+  quota: 'Orquestrar usa a cota do seu Claude.',
 } as const;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

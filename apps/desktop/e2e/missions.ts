@@ -85,7 +85,7 @@ export async function createMission(page: Page, mission: MissionForm): Promise<v
   await form.getByLabel('Título').fill(mission.title);
   await form.getByLabel('Objetivo').fill(mission.objective);
   await form.getByLabel('Critérios de aceite').fill(mission.criterion);
-  await form.getByLabel('Esta missão altera código').check();
+  await form.getByLabel('Altera código').check();
   await form.getByRole('button', { name: 'Criar', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: mission.title })).toBeVisible();
 }
