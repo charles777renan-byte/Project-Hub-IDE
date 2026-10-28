@@ -22,6 +22,34 @@ describe('registro de provedores', () => {
     });
   });
 
+  it('acha o agy na pasta padrão do instalador quando o PATH deste processo não tem a pasta', () => {
+    const agy = 'C:\\Users\\ana\\AppData\\Local\\agy\\bin\\agy.exe';
+    const registry = createProviderRegistry({
+      env: { PATH: 'C:\\bin', LOCALAPPDATA: 'C:\\Users\\ana\\AppData\\Local' },
+      platform: 'win32',
+      exists: (path) => path === agy,
+    });
+
+    expect(registry.resolve('antigravity')).toEqual({
+      ok: true,
+      launch: { command: agy, args: [] },
+    });
+  });
+
+  it('o PATH vem antes da pasta padrão do agy', () => {
+    const fromPath = 'C:\\bin\\agy.exe';
+    const registry = createProviderRegistry({
+      env: { PATH: 'C:\\bin', LOCALAPPDATA: 'C:\\Users\\ana\\AppData\\Local' },
+      platform: 'win32',
+      exists: (path) => path === fromPath || path.endsWith('agy.exe'),
+    });
+
+    expect(registry.resolve('antigravity')).toEqual({
+      ok: true,
+      launch: { command: fromPath, args: [] },
+    });
+  });
+
   it('roda um .cmd por cmd.exe /d /c', () => {
     const registry = windowsRegistry(['C:\\bin\\codex.cmd']);
 
@@ -78,7 +106,10 @@ describe('registro de provedores', () => {
       available: false,
       reason: MISSING('Antigravity CLI'),
     });
-    expect(registry.resolve('antigravity')).toEqual({ ok: false, reason: MISSING('Antigravity CLI') });
+    expect(registry.resolve('antigravity')).toEqual({
+      ok: false,
+      reason: MISSING('Antigravity CLI'),
+    });
   });
 
   it('lista os quatro provedores com rótulo e disponibilidade', () => {
@@ -87,7 +118,12 @@ describe('registro de provedores', () => {
     expect(registry.list()).toEqual([
       { id: 'claude', label: 'Claude Code', available: true },
       { id: 'codex', label: 'Codex', available: false, reason: MISSING('Codex') },
-      { id: 'antigravity', label: 'Antigravity CLI', available: false, reason: MISSING('Antigravity CLI') },
+      {
+        id: 'antigravity',
+        label: 'Antigravity CLI',
+        available: false,
+        reason: MISSING('Antigravity CLI'),
+      },
       { id: 'shell', label: 'PowerShell', available: true },
     ]);
   });
