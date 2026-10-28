@@ -193,6 +193,22 @@ describe('HomePage', () => {
     }
   });
 
+  it('o fundo topográfico fica só na faixa do topo (a saudação), nunca atrás das listas', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    const { container } = renderHome();
+
+    await screen.findByText('Aprovar m3');
+    const hero = container.querySelector('.home > .home-hero');
+    expect(hero).not.toBeNull();
+    expect(hero?.querySelector('.topo-background')).not.toBeNull();
+    expect(hero?.querySelector('.home-greeting')).not.toBeNull();
+    expect(container.querySelectorAll('.topo-background')).toHaveLength(1);
+    expect(container.querySelector('.home-columns .topo-background')).toBeNull();
+    // O fundo é decorativo: a faixa não leva lista, tabela nem formulário de dados além do nome.
+    expect(hero?.querySelector('ul, table')).toBeNull();
+  });
+
   it('Precisa de você lista a aprovação e o que mais espera a pessoa, cada item com link direto', async () => {
     installApi({ projects: [project('p1')], missions: MIXED });
 

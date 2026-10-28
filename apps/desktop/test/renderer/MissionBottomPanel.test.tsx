@@ -96,6 +96,15 @@ describe('MissionBottomPanel', () => {
     expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('lê a altura guardada uma vez só, e não a cada render', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    render(<Harness />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Logs' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Diff' }));
+
+    expect(getItem.mock.calls.filter(([key]) => key === KEY)).toHaveLength(1);
+  });
+
   it('os cinco painéis ficam montados; só o da aba aberta é visível', async () => {
     render(<Harness />);
 

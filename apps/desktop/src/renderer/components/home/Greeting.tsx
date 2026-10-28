@@ -34,7 +34,7 @@ export function dateLabel(moment: Date): string {
 
 /**
  * Nome do perfil local. `undefined` enquanto carrega; `null` quando não há nome ou a leitura falha. Sem o
- * preload (testes) ou com o canal fora do ar, a saudação sai sem nome e o botão de definir o nome segue.
+ * preload (testes) ou com o canal fora do ar, a saudação sai sem nome.
  */
 function useDisplayName() {
   const [name, setName] = useState<string | null | undefined>(undefined);

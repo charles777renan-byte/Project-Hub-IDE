@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import type { ProjectSummary } from '@project-hub/contracts';
 import { HOME_TEXT, MISSIONS_VIEW_TEXT, PROJECT_TEXT } from '../../mission-text';
 import { scheduleReload } from '../../overview-data';
-import { NEW_MISSION_PARAM } from '../../project-views';
+import { NEW_MISSION_PARAM, VIEW_PARAM } from '../../project-views';
 import { missionPath } from '../../routes';
 import { useMissionsBoard } from '../../use-missions-board';
 import { MissionForm, type MissionFormValues } from '../MissionForm';
@@ -22,7 +22,7 @@ function newMissionRequested(state: unknown, search: string): boolean {
  * Visão Missões da aba do projeto: a lista com progresso do projeto (`MissionProgressList`, a mesma do Início)
  * ou, sem missões, uma linha com o botão Nova missão. Nova missão abre o formulário compacto no lugar da lista;
  * o pedido vem do cabeçalho, da lista vazia ou da paleta (`state.newMission` ou `?nova-missao=1`) e é consumido
- * uma vez por navegação: a rota é limpa logo depois, sem perder `?visao=`. Criar chama só `missions.create`
+ * uma vez por navegação: a rota é limpa logo depois, e `?visao=missoes` fica nela. Criar chama só `missions.create`
  * (o plano usa a cota do Claude e só nasce no Orquestrar) e abre a missão; com "Só criar, sem abrir" volta à
  * lista e avisa. `project` é `undefined` enquanto a lista da barra lateral não chegou (ou falhou): nesse caso a
  * frase de vazio nunca aparece, para não dizer que não há missões sem saber.
@@ -55,6 +55,8 @@ export function ProjectMissions({
     setCreating(true);
     const rest = new URLSearchParams(location.search);
     rest.delete(NEW_MISSION_PARAM);
+    // `?nova-missao=1` sozinho já abre Missões; ao tirá-lo, a visão fica escrita para não voltar a Terminais.
+    rest.set(VIEW_PARAM, 'missoes');
     const search = rest.toString();
     navigate(
       { pathname: location.pathname, search: search === '' ? '' : `?${search}` },

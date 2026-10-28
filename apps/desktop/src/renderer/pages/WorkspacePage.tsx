@@ -13,7 +13,7 @@ import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
 import { MissionPage } from './MissionPage';
-import { parseProjectView, projectPanelId, VIEW_PARAM, type ProjectView } from '../project-views';
+import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
@@ -51,7 +51,7 @@ export function WorkspacePage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const missionId = useMatch(ROUTE_PATHS.missionDetail)?.params.missionId;
-  const view = missionId === undefined ? parseProjectView(params.get(VIEW_PARAM)) : 'missoes';
+  const view = missionId === undefined ? projectViewFromParams(params) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -76,7 +76,12 @@ export function WorkspacePage() {
         />
       )}
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
-        <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />
+        <WorkspaceBody
+          key={projectId}
+          projectId={projectId}
+          projectName={project?.name ?? ''}
+          visible={view === 'terminais'}
+        />
       </ProjectPanel>
       <ProjectPanel
         view="missoes"
@@ -136,7 +141,16 @@ function ProjectPanel({
   );
 }
 
-function WorkspaceBody({ projectId, projectName }: { projectId: string; projectName: string }) {
+function WorkspaceBody({
+  projectId,
+  projectName,
+  visible,
+}: {
+  projectId: string;
+  projectName: string;
+  /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
+  visible: boolean;
+}) {
   const workspace = useWorkspace(projectId);
 
   const { terminals, loaded, reload } = useTerminals();
@@ -387,7 +401,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
           </div>
         ) : shown === null ? (
           <div className="workspace__empty">
-            <TopographicBackground />
+            {visible ? <TopographicBackground /> : null}
             <EmptyState
               icon={SquareTerminal}
               title="Nenhum terminal aberto"

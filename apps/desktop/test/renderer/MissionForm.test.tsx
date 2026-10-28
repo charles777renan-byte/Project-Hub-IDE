@@ -73,7 +73,7 @@ describe('MissionForm', () => {
 
   describe('projeto sem Git', () => {
     const WARNING =
-      'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.';
+      'Este projeto não é um repositório Git, e toda missão roda num worktree. Inicialize o Git na pasta para criar missões aqui.';
 
     it('mostra o aviso e desabilita Criar, mesmo sem "altera código" marcado', () => {
       render(<MissionForm onSubmit={vi.fn()} projectHasGit={false} />);

@@ -188,21 +188,28 @@ describe('barra superior', () => {
     expect(within(topBar()).queryByText(/executando/)).toBeNull();
   });
 
-  it('o fundo topográfico aparece fora da rota do workspace e some nela', () => {
-    const first = render(
+  it('o fundo topográfico não cobre mais a janela: fica só no topo do Início', () => {
+    render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     );
-    expect(document.querySelector('.topo-background')).not.toBeNull();
-    first.unmount();
+    const background = document.querySelector('.topo-background');
+    expect(background).not.toBeNull();
+    expect(background?.parentElement).toHaveClass('home-hero');
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+    // Nada de fundo atrás da barra lateral, da barra de status nem das listas do Início.
+    expect(document.querySelector('.app-shell > .topo-background')).toBeNull();
+    expect(document.querySelector('.home-columns .topo-background')).toBeNull();
+  });
+
+  it('a janela da aba do projeto não tem fundo topográfico por trás da casca', () => {
     render(
       <MemoryRouter initialEntries={['/workspaces/p1']}>
         <App />
       </MemoryRouter>,
     );
-    expect(document.querySelector('.topo-background')).toBeNull();
-    // Sem página até a Tarefa 9, mas a casca continua de pé.
+    expect(document.querySelector('.app-shell > .topo-background')).toBeNull();
     expect(document.querySelector('header.topbar')).not.toBeNull();
     expect(screen.getByRole('main')).toBeInTheDocument();
   });

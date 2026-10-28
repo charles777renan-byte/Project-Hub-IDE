@@ -19,8 +19,8 @@ export type TabItem<T extends string> = { id: T; label: string; count?: TabCount
  * sem ele, o painel é o `tab-panel` (uma página com um painel só). Uma aba com `count` mostra o número
  * depois do nome e ganha a frase da contagem como descrição (`aria-describedby`).
  *
- * A raiz do Radix vira a própria barra (`asChild`), sem `div` extra: o CSS da missão depende de a barra
- * ser filha direta do contêiner (`.mission-tabs > .tabs`). Os ids `tab-<id>` e o `aria-controls` ficam
+ * A raiz do Radix vira a própria barra (`asChild`), sem `div` extra: o CSS do painel inferior da missão depende de a barra
+ * ser filha direta do contêiner (`.mission-dock > .tabs`). Os ids `tab-<id>` e o `aria-controls` ficam
  * os mesmos de antes, porque os painéis apontam para eles por `aria-labelledby`.
  */
 export function Tabs<T extends string>({

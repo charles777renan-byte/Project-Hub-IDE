@@ -97,7 +97,22 @@ describe('ChangedFiles', () => {
     );
   });
 
-  it('lista cortada avisa que há mais arquivos no worktree', async () => {
+  it('lista cortada avisa que há mais arquivos no worktree, no plural certo', async () => {
+    installDiff({
+      ok: true,
+      data: {
+        files: [fileOf('src/a.ts', 1, 0), fileOf('src/b.ts', 2, 1)],
+        truncatedFiles: true,
+      },
+    });
+    render(<ChangedFiles missionId="m1" hasWorktree refreshKey={0} />);
+
+    expect(
+      await screen.findByText('Mostrando os primeiros 2 arquivos. Há mais alterações no worktree.'),
+    ).toBeInTheDocument();
+  });
+
+  it('lista cortada com um arquivo só diz "o primeiro arquivo", sem "1 arquivos"', async () => {
     installDiff({
       ok: true,
       data: { files: [fileOf('src/a.ts', 1, 0)], truncatedFiles: true },
@@ -105,7 +120,8 @@ describe('ChangedFiles', () => {
     render(<ChangedFiles missionId="m1" hasWorktree refreshKey={0} />);
 
     expect(
-      await screen.findByText('Mostrando os primeiros 1 arquivos. Há mais alterações no worktree.'),
+      await screen.findByText('Mostrando o primeiro arquivo. Há mais alterações no worktree.'),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/1 arquivos/)).not.toBeInTheDocument();
   });
 });

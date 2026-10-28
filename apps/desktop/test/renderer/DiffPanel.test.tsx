@@ -129,7 +129,7 @@ describe('DiffPanel', () => {
 
     render(<DiffPanel missionId="m1" hasWorktree refreshKey={0} />);
 
-    expect(await screen.findByText(/Mostrando os primeiros 1 arquivos/)).toBeInTheDocument();
+    expect(await screen.findByText(/Mostrando o primeiro arquivo\./)).toBeInTheDocument();
     expect(screen.getByText('Arquivo grande: mostrando só o começo.')).toBeInTheDocument();
   });
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StopAll } from '../../src/renderer/components/StopAll';
 import { getToasts, notify } from '../../src/renderer/notify';
 
-// "Parar todos" no cabeçalho: cancela as missões em execução, depois de uma pergunta. A API do preload é falsa.
+// "Parar todos" na barra de status: cancela as missões em execução, depois de uma pergunta. A API do preload é falsa.
 
 const project: ProjectSummary = {
   id: 'p1',
@@ -130,7 +130,7 @@ describe('StopAll', () => {
     );
   });
 
-  it('uma chamada que quebra conta como falha, sem derrubar o cabeçalho', async () => {
+  it('uma chamada que quebra conta como falha, sem derrubar a barra de status', async () => {
     installApi([mission('m1', 'running')], () => Promise.reject(new Error('falha de IPC')));
     render(<StopAll />);
 

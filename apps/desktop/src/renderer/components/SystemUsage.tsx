@@ -11,7 +11,7 @@ function gigabytes(bytes: number, fixed: boolean): string {
 }
 
 /**
- * Uso do computador no cabeçalho: "CPU 12%" e "RAM 6,4/24 GB". Antes da primeira leitura, ou se ela falhar,
+ * Uso do computador na barra de status: "CPU 12%" e "RAM 6,4/24 GB". Antes da primeira leitura, ou se ela falhar,
  * os valores aparecem como traço. Não é uma região viva: o número muda a cada poucos segundos, e anunciar cada
  * mudança só atrapalharia a leitura de tela.
  */

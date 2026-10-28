@@ -36,7 +36,11 @@ export function MissionProgressList({
         return (
           <li key={mission.id} className="mission-progress__item">
             <div className="mission-progress__head">
-              <Link to={missionPath(projectId, mission.id)} className="mission-progress__title">
+              <Link
+                to={missionPath(projectId, mission.id)}
+                className="mission-progress__title"
+                title={mission.title}
+              >
                 {mission.title}
               </Link>
               {total > 0 ? (

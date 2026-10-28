@@ -1,11 +1,17 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import type { AppResult, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router';
+import type {
+  AppResult,
+  ProjectHubApi,
+  ProjectSummary,
+  WorkspaceDto,
+} from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectHeader } from '../../src/renderer/components/project/ProjectHeader';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
+import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
 const project: ProjectSummary = {
   id: 'p1',
@@ -16,21 +22,41 @@ const project: ProjectSummary = {
   defaultBranch: 'main',
 };
 
+function workspaceOf(id: string, projectId: string): WorkspaceDto {
+  return {
+    id,
+    projectId,
+    layout: { type: 'leaf', id: 'a', provider: 'shell', terminalId: null },
+    position: 0,
+    lastActiveAt: '2026-10-22T10:00:00.000Z',
+  };
+}
+
 function installApi() {
   const api = {
     projects: {
       archive: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
       remove: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
     },
+    workspaces: {
+      list: vi.fn(() =>
+        Promise.resolve<AppResult<WorkspaceDto[]>>({
+          ok: true,
+          data: [workspaceOf('w1', 'p1'), workspaceOf('w2', 'p2')],
+        }),
+      ),
+      close: vi.fn(() => Promise.resolve<AppResult<void>>({ ok: true, data: undefined })),
+    },
   };
   window.projectHub = api as unknown as ProjectHubApi;
   return api;
 }
 
-let current = { pathname: '', search: '', key: '' };
+let current = { pathname: '', search: '', key: '', type: '' };
 function Probe() {
   const location = useLocation();
-  current = { pathname: location.pathname, search: location.search, key: location.key };
+  const type = useNavigationType();
+  current = { pathname: location.pathname, search: location.search, key: location.key, type };
   return null;
 }
 
@@ -134,6 +160,22 @@ describe('ProjectHeader: uma linha', () => {
     );
   });
 
+  it('trocar de visão substitui a entrada do histórico, em vez de empilhar uma por aba', async () => {
+    installApi();
+    renderAt('/workspaces/p1');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Worktrees' }));
+
+    expect(current).toMatchObject({ search: '?visao=worktrees', type: 'REPLACE' });
+  });
+
+  it('?nova-missao=1 sem ?visao= deixa Missões como a visão ativa', () => {
+    installApi();
+    renderAt('/workspaces/p1?nova-missao=1');
+
+    expect(screen.getByRole('tab', { name: 'Missões' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('Nova missão chama onNewMission', async () => {
     installApi();
     const { onNewMission } = renderAt('/workspaces/p1');
@@ -162,6 +204,82 @@ describe('ProjectHeader: Mais ações', () => {
     expect(await screen.findByText('Página inicial')).toBeInTheDocument();
     expect(avisos).toHaveBeenCalled();
     window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+  });
+
+  it('arquivar fecha também a aba do workspace desse projeto e avisa a barra superior', async () => {
+    const api = installApi();
+    const avisos = vi.fn();
+    window.addEventListener(WORKSPACES_CHANGED_EVENT, avisos);
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Arquivar projeto' }));
+    await user.click(screen.getByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByText('Página inicial')).toBeInTheDocument();
+    expect(api.workspaces.close).toHaveBeenCalledTimes(1);
+    expect(api.workspaces.close).toHaveBeenCalledWith('w1');
+    expect(avisos).toHaveBeenCalled();
+    window.removeEventListener(WORKSPACES_CHANGED_EVENT, avisos);
+  });
+
+  it('remover da lista fecha a aba do workspace desse projeto', async () => {
+    const api = installApi();
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Remover da lista' }));
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    expect(await screen.findByText('Página inicial')).toBeInTheDocument();
+    expect(api.workspaces.close).toHaveBeenCalledWith('w1');
+  });
+
+  it('se o arquivamento falhar, a aba do workspace continua aberta', async () => {
+    const api = installApi();
+    api.projects.archive.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'MISSION_INVALID_STATE', message: 'Há missões ativas.', retryable: false },
+    });
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Arquivar projeto' }));
+    await user.click(screen.getByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Há missões ativas.');
+    expect(api.workspaces.list).not.toHaveBeenCalled();
+    expect(api.workspaces.close).not.toHaveBeenCalled();
+  });
+
+  it('sem workspace aberto para o projeto, arquiva e volta ao Início sem fechar nada', async () => {
+    const api = installApi();
+    api.workspaces.list.mockResolvedValueOnce({ ok: true, data: [workspaceOf('w2', 'p2')] });
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Arquivar projeto' }));
+    await user.click(screen.getByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByText('Página inicial')).toBeInTheDocument();
+    expect(api.workspaces.close).not.toHaveBeenCalled();
+  });
+
+  it('se não der para fechar a aba, o projeto ainda sai e o Início abre', async () => {
+    const api = installApi();
+    api.workspaces.close.mockRejectedValueOnce(new Error('x'));
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Arquivar projeto' }));
+    await user.click(screen.getByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByText('Página inicial')).toBeInTheDocument();
   });
 
   it('Voltar desfaz o pedido de arquivar sem chamar a API', async () => {

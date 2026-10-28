@@ -176,13 +176,15 @@ export const MISSION_TEXT = {
   generatePlan: 'Orquestrar',
   approvePlan: 'Aprovar plano',
   start: 'Iniciar missão',
-  decisionLink: 'Ver a decisão',
   approveReview: 'Aprovar conclusão',
   requestChanges: 'Pedir ajustes',
   eyebrow: (project: string) => `Missão · ${project}`,
   backToMissions: '← Missões',
   changedFilesTitle: 'Arquivos alterados',
   noChanges: 'Nenhuma alteração pendente.',
+  /** Aviso da lista de arquivos cortada pelo limite, no singular e no plural. */
+  truncatedFiles: (count: number) =>
+    `${count === 1 ? 'Mostrando o primeiro arquivo.' : `Mostrando os primeiros ${count} arquivos.`} Há mais alterações no worktree.`,
   decisionTitle: 'Sua decisão',
 } as const;
 
@@ -445,8 +447,7 @@ export const PROJECT_TEXT = {
   archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
   archiveConfirm: 'Arquivar',
   remove: 'Remover da lista',
-  removeQuestion:
-    'Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão, e cadastrar a pasta de novo traz tudo de volta.',
+  removeQuestion: 'Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão.',
   removeConfirm: 'Remover',
   notFound: 'O projeto não foi encontrado.',
   backHome: 'Voltar ao Início',
@@ -482,7 +483,7 @@ export const MISSIONS_VIEW_TEXT = {
 export const MISSION_FORM_TEXT = {
   heading: 'Nova missão',
   noGit:
-    'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.',
+    'Este projeto não é um repositório Git, e toda missão roda num worktree. Inicialize o Git na pasta para criar missões aqui.',
   title: { label: 'Título', hint: 'Um nome curto, para achar a missão na lista.' },
   objective: { label: 'Objetivo', hint: 'O que precisa ser feito e por quê.' },
   criteria: {
