@@ -115,6 +115,7 @@ test('trocar de visão muda o endereço da aba do projeto, e as rotas antigas re
 
   for (const [view, param] of [
     ['Missões', 'missoes'],
+    ['Progresso', 'progresso'],
     ['Worktrees', 'worktrees'],
     ['Configurações', 'configuracoes'],
   ] as const) {

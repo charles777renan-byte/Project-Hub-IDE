@@ -221,7 +221,7 @@ test('o filtro de CSP do teste não esconde violações que não são do xterm',
   expect(await cspViolations(page)).toEqual({ foreignStyles: [], others: [] });
 });
 
-test('Aba do projeto (Missões, Worktrees e Configurações): sem violação de CSP e com foco visível em cada controle', async ({
+test('Aba do projeto (Missões, Progresso, Worktrees e Configurações): sem violação de CSP e com foco visível em cada controle', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -235,6 +235,11 @@ test('Aba do projeto (Missões, Worktrees e Configurações): sem violação de 
 
   await expectNoViolations(page);
   await expectVisibleFocus(page, 5);
+  // Projeto sem missões: o Progresso mostra o vazio, e o link "Ver todas as missões" também tem anel.
+  await openView(page, 'Progresso');
+  await expect(page.getByRole('link', { name: 'Ver todas as missões' })).toBeVisible();
+  await expectNoViolations(page);
+  await expectVisibleFocus(page, 3);
   for (const view of ['Worktrees', 'Configurações'] as const) {
     await openView(page, view);
     await expectNoViolations(page);

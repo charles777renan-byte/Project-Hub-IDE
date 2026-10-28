@@ -98,6 +98,12 @@ p {
   margin: 0 0 var(--space-3);
 }
 
+/* Links não são azuis nem sublinhados (isso faz o app parecer um site): herdam a cor; o foco visível marca o link. */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
 /*
  * Botões. Lima só na ação principal (e em aprovar, que tem a mesma aparência); o resto é contorno ou
  * fantasma. Texto sobre lima usa --accent-ink. Só cor de fundo e de borda animam.
