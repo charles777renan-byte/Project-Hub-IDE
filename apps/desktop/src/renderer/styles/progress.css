@@ -1,0 +1,508 @@
+/*
+ * Aba Progresso do projeto (components/progress/*, aberta por ?visao=progresso): o resumo que filtra, as
+ * missões agrupadas por estado com a linha do tempo das tarefas e, ao lado, a atividade recente. Ligado
+ * por <link> no index.html, depois do mission.css e antes do workspace.css; só usa tokens de tokens.css,
+ * sem cor literal, sem estilo escrito em texto (CSP) e sem animação. Posição e largura das barras vêm de
+ * atributos SVG (x, width), nunca de estilo: aqui só entra a cor, por classe.
+ *
+ * Cores com papel (o estado nunca vai só na cor: ícone e texto acompanham):
+ * - preenchimento: concluída em --muted, em andamento em --blue, falhou em --danger; pendente é só
+ *   contorno fino em --muted (3:1 sobre o cartão, WCAG 1.4.11), oco para se distinguir do cheio;
+ * - borda do cartão da missão: precisa de você em --warn, falhou em --danger, o resto em --line;
+ * - texto só em --text, --muted, --warn e --danger. O lima (--accent) fica de fora.
+ *
+ * Layout: coluna principal e atividade lado a lado a partir de 1101px; até 1100px a atividade desce para
+ * baixo da coluna principal; até 900px a coluna "Papel · programa" some da tabela. Filhos de grid e de
+ * flex levam min-width: 0, e nada força rolagem horizontal.
+ */
+
+/* O painel da visão tem respiro e rola por dentro (as outras visões de lista fazem o mesmo, no project.css). */
+.project-tab__panel--progresso {
+  padding: var(--space-4);
+  overflow: auto;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  max-width: 80rem;
+}
+
+.progress p {
+  max-width: none;
+  margin: 0;
+}
+
+.progress__main,
+.progress__aside {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1101px) {
+  .progress {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+}
+
+/* Resumo: quatro botões que filtram a lista; o ativo ganha a borda clara. */
+.progress-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.progress-summary__item {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+}
+
+.progress-summary__item:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--field-line);
+}
+
+.progress-summary__item[aria-pressed='true'] {
+  border-color: var(--text);
+  background: var(--surface-2);
+}
+
+.progress-summary__label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.progress-summary__count {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.progress-summary__note {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Grupo: o título pequeno em caixa alta e a lista de cartões. */
+.progress-group {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+}
+
+.progress-group__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.progress-group__count {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}
+
+.progress-group__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-group__list > li {
+  min-width: 0;
+}
+
+/*
+ * Cartão da missão. `overflow: hidden` corta o conteúdo no arredondamento; por isso o anel de foco do botão
+ * de expandir e o do link ficam por dentro do cartão (outline-offset: -2px), ou o corte os esconderia.
+ */
+.progress-row {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.progress-row--attention {
+  border-color: var(--warn);
+}
+
+.progress-row--failed {
+  border-color: var(--danger);
+}
+
+/* Cabeçalho: o botão de expandir cresce, e a barra de segmentos, o "N de M" e o link vão à direita. */
+.progress-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.progress-row__toggle {
+  display: flex;
+  flex: 1 1 16rem;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+}
+
+.progress-row__toggle:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.progress-row__toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Sem tarefas lidas o botão fica desligado, mas o título segue legível. */
+.progress-row__toggle:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.progress-row__text {
+  display: grid;
+  min-width: 0;
+}
+
+.progress-row__title {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-row__state {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-row__state--attention {
+  color: var(--warn);
+}
+
+.progress-row__state--failed {
+  color: var(--danger);
+}
+
+.progress-row__meter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.progress-row__count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.progress-row__link {
+  flex: none;
+  margin-right: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.progress-row__link:focus-visible {
+  outline-offset: -2px;
+}
+
+/* A linha do tempo das tarefas, na faixa abaixo do cabeçalho. */
+.progress-row__body {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+/* Segmentos: um por tarefa, lado a lado. O estado também vai no nome acessível, nunca só na cor. */
+.progress-segs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  width: 7rem;
+  min-width: 0;
+}
+
+.progress-seg {
+  flex: 1 1 0;
+  box-sizing: border-box;
+  min-width: 2px;
+  height: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.progress-seg--succeeded {
+  border-color: var(--muted);
+  background: var(--muted);
+}
+
+.progress-seg--running {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.progress-seg--failed {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+/* Pendente: só contorno. */
+.progress-seg--pending {
+  border: 1px solid var(--muted);
+  background: transparent;
+}
+
+/* Tabela das tarefas: três colunas (Tarefa, Papel · programa, Tempo); a de papel some em janela estreita. */
+.progress-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.progress-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.progress-table th,
+.progress-table td {
+  min-width: 0;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.progress-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.progress-table th {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.progress-table__task {
+  width: 42%;
+}
+
+.progress-table__role {
+  width: 22%;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.progress-table__time {
+  width: auto;
+}
+
+.progress-table__after {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.progress-table__time svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.progress-table__duration {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* Estado da tarefa: ícone e texto lado a lado. */
+.progress-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+}
+
+.progress-state--running {
+  color: var(--text);
+}
+
+.progress-state--failed {
+  color: var(--danger);
+}
+
+.progress-queued {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* Barras no tempo (SVG, x e width em atributos): a cor é o preenchimento, por estado. */
+.progress-bar {
+  rx: 2px;
+  fill: transparent;
+  stroke: var(--muted);
+}
+
+.progress-bar--succeeded {
+  fill: var(--muted);
+  stroke: none;
+}
+
+.progress-bar--running {
+  fill: var(--blue);
+  stroke: none;
+}
+
+.progress-bar--failed {
+  fill: var(--danger);
+  stroke: none;
+}
+
+/* O eixo de tempo e a linha do "agora", tracejada. */
+.progress-axis {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.progress-axis__line {
+  stroke: var(--line);
+}
+
+.progress-now {
+  stroke: var(--blue);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* Atividade recente: cartão com o título pequeno e a lista, mais novo primeiro. */
+.progress-feed {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.progress-feed__title {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.progress-feed__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-feed__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.progress-feed__time {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+}
+
+.progress-feed__item--failed .progress-feed__what {
+  color: var(--danger);
+}
+
+.progress-feed__mission {
+  color: var(--muted);
+}
+
+.progress-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  /* Sem a coluna "Papel · programa" a tabela cabe sem rolagem; o cabeçalho do cartão quebra de linha. */
+  .progress-table__role {
+    display: none;
+  }
+
+  .progress-table__task {
+    width: 50%;
+  }
+
+  .project-tab__panel--progresso {
+    padding: var(--space-3);
+  }
+}

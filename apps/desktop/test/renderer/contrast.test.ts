@@ -521,3 +521,67 @@ describe('cores do Início (home.css)', () => {
     expect(homeCss).not.toMatch(/\b(?:animation|transition)\b/);
   });
 });
+
+/**
+ * Aba Progresso (progress.css): só tokens de tokens.css, sem cor literal, sem animação. O estado nunca
+ * vai só na cor (ícone e texto acompanham), mas o preenchimento das barras ainda precisa de 3:1 sobre o
+ * cartão e sobre a linha expandida (WCAG 1.4.11): concluída em --muted, em andamento em --blue, falhou em
+ * --danger; pendente é só contorno em --field-line. Os textos em --warn e --danger passam de 4,5:1 sobre
+ * o cartão. O lima (--accent) fica de fora.
+ */
+describe('cores da aba Progresso (progress.css)', () => {
+  const css = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles/progress.css'),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ALLOWED = new Set([
+    '--bg',
+    '--surface',
+    '--surface-2',
+    '--line',
+    '--field-line',
+    '--muted',
+    '--text',
+    '--blue',
+    '--warn',
+    '--danger',
+  ]);
+  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+
+  it('só usa var() de tokens permitidos', () => {
+    const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((token) => !ALLOWED.has(token) && !NOT_COLOR.test(token))).toEqual([]);
+  });
+
+  it('não escreve cor literal, não usa o lima e não tem animação nem transição', () => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
+    expect(css).not.toContain('var(--accent)');
+    expect(css).not.toMatch(/\b(?:animation|transition)\b/);
+  });
+
+  it.each(['--muted', '--blue', '--danger'])(
+    'o preenchimento %s passa de 3:1 sobre o cartão e sobre a linha expandida',
+    (fill) => {
+      for (const surface of ['--surface', '--surface-2']) {
+        expect(
+          contrastRatio(tokens.get(fill) ?? '', tokens.get(surface) ?? ''),
+          `${fill} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    },
+  );
+
+  it.each(['--warn', '--danger'])(
+    'o texto em %s passa de 4,5:1 sobre o cartão e sobre a linha expandida',
+    (color) => {
+      for (const surface of ['--surface', '--surface-2']) {
+        expect(
+          contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    },
+  );
+});
