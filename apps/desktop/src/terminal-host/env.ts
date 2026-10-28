@@ -33,6 +33,9 @@ export const TERMINAL_ENV_ALLOWLIST: readonly string[] = [
   'LC_CTYPE',
   'TERM',
   'TZ',
+  // Pasta de dados do Claude Code (login e transcripts). É caminho, não segredo; sem ela, o terminal usaria
+  // outra conta e o app leria o gasto de outra pasta.
+  'CLAUDE_CONFIG_DIR',
 ];
 
 /**

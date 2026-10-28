@@ -48,6 +48,7 @@
 
 .mission-main > p,
 .changed-files p,
+.token-usage p,
 .decision-block p {
   margin: 0;
 }
@@ -179,6 +180,59 @@
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
+}
+
+/*
+ * Gasto de tokens: o total de tokens novos em destaque, o detalhe (entrada, saída, cache e custo estimado) em
+ * linhas pequenas e, com mais de uma tarefa, uma linha por tarefa no mesmo desenho dos arquivos alterados.
+ */
+.token-usage {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.token-usage__headline {
+  font-size: var(--text-md);
+}
+
+.token-usage__figure {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.token-usage__detail,
+.token-usage__note {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.token-usage__list {
+  display: grid;
+  margin: var(--space-1) 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.token-usage__item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.token-usage__task {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.token-usage__counts {
+  flex: none;
 }
 
 /*

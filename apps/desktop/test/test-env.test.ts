@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applicationEnvironment,
+  resolveAgentCommand,
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolvePlannerCommand,
@@ -219,5 +220,76 @@ describe('comando do planejador nos testes (APP_PLANNER_COMMAND e APP_PLANNER_SC
 
     expect(env).toEqual({});
     expect(resolvePlannerCommand(env, real, '/app/electron')).toEqual(untouched);
+  });
+});
+
+describe('comando do agente nos testes (APP_AGENT_SCRIPT)', () => {
+  const real = '/real/claude';
+  const untouched = { command: real, commandPrefix: [], extraEnv: {}, overridden: false };
+
+  it('com PROJECT_HUB_ENV=test e script, roda o script no próprio executável como Node', () => {
+    expect(
+      resolveAgentCommand(
+        { PROJECT_HUB_ENV: 'test', APP_AGENT_SCRIPT: '/e2e/fake-agent.mjs' },
+        real,
+        '/app/electron',
+      ),
+    ).toEqual({
+      command: '/app/electron',
+      commandPrefix: ['/e2e/fake-agent.mjs'],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      overridden: true,
+    });
+  });
+
+  it('sem PROJECT_HUB_ENV=test, o script é ignorado', () => {
+    expect(resolveAgentCommand({ APP_AGENT_SCRIPT: '/e2e/fake-agent.mjs' }, real)).toEqual(
+      untouched,
+    );
+  });
+
+  it.each(['production', 'development', 'TEST', ''])(
+    'PROJECT_HUB_ENV=%j não libera o script de teste',
+    (value) => {
+      expect(
+        resolveAgentCommand(
+          { PROJECT_HUB_ENV: value, APP_AGENT_SCRIPT: '/e2e/fake-agent.mjs' },
+          real,
+          '/app/electron',
+        ),
+      ).toEqual(untouched);
+    },
+  );
+
+  it('script vazio ou ausente, mesmo em teste, deixa o comando padrão', () => {
+    expect(resolveAgentCommand({ PROJECT_HUB_ENV: 'test', APP_AGENT_SCRIPT: '' }, real)).toEqual(
+      untouched,
+    );
+    expect(resolveAgentCommand({ PROJECT_HUB_ENV: 'test' }, real)).toEqual(untouched);
+  });
+
+  it('o gancho do planejador não liga o agente, e o do agente não liga o planejador', () => {
+    expect(
+      resolveAgentCommand(
+        { PROJECT_HUB_ENV: 'test', APP_PLANNER_SCRIPT: '/e2e/fake-planner.mjs' },
+        real,
+      ),
+    ).toEqual(untouched);
+    expect(
+      resolvePlannerCommand(
+        { PROJECT_HUB_ENV: 'test', APP_AGENT_SCRIPT: '/e2e/fake-agent.mjs' },
+        real,
+      ),
+    ).toEqual(untouched);
+  });
+
+  it('empacotado, APP_AGENT_SCRIPT some junto com PROJECT_HUB_ENV (R193)', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', APP_AGENT_SCRIPT: '/e2e/fake-agent.mjs' },
+      true,
+    );
+
+    expect(env).toEqual({});
+    expect(resolveAgentCommand(env, real, '/app/electron')).toEqual(untouched);
   });
 });

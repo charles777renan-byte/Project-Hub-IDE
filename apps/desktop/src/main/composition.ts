@@ -41,7 +41,11 @@ import {
 } from '@project-hub/git-adapter';
 import { createDemoAgent } from './demo-agent';
 import { createIsDirectory } from './filesystem';
-import { withMissionEvents, type MissionEventPublisher } from './mission-events';
+import {
+  withMissionEvents,
+  type MissionEventPublisher,
+  type MissionUsagePublisher,
+} from './mission-events';
 
 /** Serviços de missões: o orquestrador e as consultas que o IPC usa (visão, alterações e exclusão). */
 export type MissionServices = {
@@ -82,6 +86,8 @@ export type AppServicesOptions = {
   /** Pasta absoluta onde os worktrees das missões ficam (seção 16.2). */
   worktreesRoot: string;
   publishMissionEvent: MissionEventPublisher;
+  /** Gasto de tokens das tentativas, pelo canal próprio. Sem ele, a tela só vê o gasto ao recarregar. */
+  publishMissionUsage?: MissionUsagePublisher | undefined;
   /** Missões com agente vivo ao mesmo tempo. Sem valor, o orquestrador usa o padrão (seção 15.6). */
   maxRunningMissions?: number | undefined;
   /** Agente das missões. Sem ele, vale o agente simulado. */
@@ -204,6 +210,41 @@ export function resolvePlannerCommand(
   return { command: defaultCommand, commandPrefix: [], extraEnv: {}, overridden: false };
 }
 
+/** Como o agente é executado: o executável, o que vai antes dos argumentos da sessão e o ambiente extra do terminal. */
+export type AgentCommand = {
+  command: string;
+  /** Argumentos antes dos da sessão (o script do CLI falso). Vazio fora dos testes. */
+  commandPrefix: string[];
+  /** Variáveis somadas ao ambiente filtrado do terminal (`ELECTRON_RUN_AS_NODE` do CLI falso). Vazio fora dos testes. */
+  extraEnv: Record<string, string>;
+  /** Verdadeiro quando um comando de teste tomou o lugar do `claude`: liga o agente real sem `APP_AGENT_ADAPTER`. */
+  overridden: boolean;
+};
+
+/**
+ * Comando do agente das missões. Só com `PROJECT_HUB_ENV=test` o gancho `APP_AGENT_SCRIPT` vale; em qualquer
+ * outro caso é ignorado e vale `defaultCommand`. O script (um `.mjs`) roda o próprio executável (`execPath`, o
+ * Electron) como Node, com o script na frente dos argumentos da sessão, no mesmo padrão do planejador
+ * (`resolvePlannerCommand`). O ambiente do terminal é filtrado e não deixa `ELECTRON_RUN_AS_NODE` passar, por
+ * isso ele volta aqui, como variável extra. Empacotado, a variável já foi retirada por `applicationEnvironment`.
+ */
+export function resolveAgentCommand(
+  env: NodeJS.ProcessEnv,
+  defaultCommand: string,
+  execPath: string = process.execPath,
+): AgentCommand {
+  const script = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_AGENT_SCRIPT'] : undefined;
+  if (script !== undefined && script !== '') {
+    return {
+      command: execPath,
+      commandPrefix: [script],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      overridden: true,
+    };
+  }
+  return { command: defaultCommand, commandPrefix: [], extraEnv: {}, overridden: false };
+}
+
 /**
  * Liga as portas dos casos de uso às implementações reais (composição do processo principal). Abre
  * o banco, aplica as migrações e trata as execuções que ficaram abertas antes de devolver os
@@ -221,7 +262,11 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   }
 
   const projects = createProjectRepository(db);
-  const repo = withMissionEvents(createMissionRepository(db), options.publishMissionEvent);
+  const repo = withMissionEvents(
+    createMissionRepository(db),
+    options.publishMissionEvent,
+    options.publishMissionUsage,
+  );
   const now = () => new Date().toISOString();
   const newId = () => randomUUID();
 

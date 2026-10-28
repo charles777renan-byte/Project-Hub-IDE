@@ -12,6 +12,7 @@ import { PlanPanel } from '../components/PlanPanel';
 import { ChangedFiles } from '../components/mission/ChangedFiles';
 import { DecisionBlock } from '../components/mission/DecisionBlock';
 import { MissionBottomPanel, type MissionTab } from '../components/mission/MissionBottomPanel';
+import { TokenUsage } from '../components/mission/TokenUsage';
 import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
 import { DiffPanel, type DiffSummary } from '../components/workspace/DiffPanel';
 import { LogsPanel } from '../components/workspace/LogsPanel';
@@ -139,6 +140,36 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     [missionId, reload],
   );
 
+  /**
+   * O gasto de tokens chega por um canal próprio, a cada 1,5 s no máximo por tentativa, e cada evento traz o
+   * total da tentativa: ele substitui o `usage` dela na visão, sem somar e sem recarregar (não é evento da
+   * missão). Uma tentativa que ainda não está na visão é ignorada: o evento da missão que a criou já faz a
+   * recarga, e ela vem com o gasto.
+   */
+  useEffect(
+    () =>
+      window.projectHub.missions.subscribeUsage((event) => {
+        if (event.missionId !== missionId) return;
+        setState((current) => {
+          if (current.status !== 'ready') return current;
+          const { executions } = current.view;
+          if (!executions.some((execution) => execution.id === event.executionId)) return current;
+          return {
+            status: 'ready',
+            view: {
+              ...current.view,
+              executions: executions.map((execution) =>
+                execution.id === event.executionId
+                  ? { ...execution, usage: event.usage }
+                  : execution,
+              ),
+            },
+          };
+        });
+      }),
+    [missionId],
+  );
+
   const decisionStatus = state.status === 'ready' ? state.view.mission.status : undefined;
   const awaitingDecision = decisionStatus !== undefined && needsDecision(decisionStatus);
   /** A aba mais recente, lida só ao pôr o foco (sem refazer o efeito a cada troca de aba). */
@@ -244,9 +275,13 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     (location.state as { orchestrate?: unknown }).orchestrate === true;
   const orchestrateConsumed = useRef(false);
   useEffect(() => {
-    if (!orchestrateRequested || orchestrateConsumed.current || decisionStatus === undefined) return;
+    if (!orchestrateRequested || orchestrateConsumed.current || decisionStatus === undefined)
+      return;
     orchestrateConsumed.current = true;
-    navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
     if (decisionStatus === 'draft') void runPlan();
   });
 
@@ -318,7 +353,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     );
   }
 
-  const { mission, project, events, steps } = state.view;
+  const { mission, project, events, steps, executions } = state.view;
   const hasWorktree = mission.worktreePath !== undefined;
 
   const main = (
@@ -349,6 +384,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         error={planEditError ?? undefined}
         onEditStep={(stepId, edit) => void runEditStep(stepId, edit)}
       />
+      <TokenUsage executions={executions} steps={steps} />
       <ChangedFiles missionId={missionId} hasWorktree={hasWorktree} refreshKey={events.length} />
       <DecisionBlock
         view={state.view}

@@ -15,6 +15,7 @@ import type {
   MissionDto,
   MissionEventDto,
   MissionPlanDto,
+  MissionUsageEventDto,
   MissionViewDto,
   ProvideInput,
   RequestChanges,
@@ -90,6 +91,11 @@ export type ProjectHubApi = {
      * assinatura.
      */
     subscribe(listener: (event: MissionEventDto) => void): () => void;
+    /**
+     * Assina o gasto de tokens das tentativas, a cada mudança. Cada evento chega validado e traz o total
+     * da tentativa, não a diferença. Devolve a função que cancela a assinatura.
+     */
+    subscribeUsage(listener: (event: MissionUsageEventDto) => void): () => void;
   };
   terminals: {
     /** Agentes em andamento e shells abertos, com o estado de cada um. */
