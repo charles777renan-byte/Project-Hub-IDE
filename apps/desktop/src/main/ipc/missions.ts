@@ -10,12 +10,15 @@ import {
   type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
+  type PlanEdit,
 } from '@project-hub/application';
 import {
   CHANNELS,
   createMissionInputSchema,
+  editPlanStepInputSchema,
   listMissionsInputSchema,
   missionIdInputSchema,
+  planMissionInputSchema,
   provideInputSchema,
   requestChangesInputSchema,
   type AppResult,
@@ -38,6 +41,9 @@ const INVALID_MISSION = 'Confira os campos da missão: título, objetivo e um cr
 const INVALID_PROJECT = 'Informe o projeto da missão.';
 const INVALID_MISSION_ID = 'Informe a missão.';
 const INVALID_INPUT = 'Confira a resposta antes de enviar.';
+const INVALID_PLAN_REQUEST = 'Informe a missão e, se quiser, um pedido de até 1000 caracteres.';
+const INVALID_PLAN_EDIT =
+  'Confira a edição da tarefa: o título tem de 1 a 120 caracteres, a descrição até 2000 e a posição começa em 1.';
 
 /** Cria a missão em rascunho. A entrada é conferida pelo schema antes de qualquer gravação (R165). */
 export function handleCreateMission(deps: CreateMissionDeps, payload: unknown) {
@@ -73,6 +79,37 @@ export function handleDeleteMission(deps: DeleteMissionDeps, payload: unknown) {
 }
 
 /**
+ * Gera ou refaz o plano. A instrução vai ao orquestrador só quando a pessoa a escreveu; sem ela, a
+ * chamada é a de sempre.
+ */
+function handlePlanMission(orchestrator: Orchestrator, payload: unknown) {
+  const input = planMissionInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PLAN_REQUEST);
+  const { missionId, instruction } = input.data;
+  return instruction === undefined
+    ? orchestrator.planMission(missionId)
+    : orchestrator.planMission(missionId, { instruction });
+}
+
+/** Edita uma tarefa do plano. A forma da edição é conferida aqui; as regras do plano, no orquestrador. */
+export function handleEditPlanStep(orchestrator: Orchestrator, payload: unknown) {
+  const input = editPlanStepInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PLAN_EDIT);
+  const { missionId, stepId, edit } = input.data;
+  // O schema deixa `description` opcional com `undefined`; o `PlanEdit` da aplicação não aceita a chave
+  // presente e vazia (exactOptionalPropertyTypes), então ela só segue quando a pessoa a escreveu.
+  const planEdit: PlanEdit =
+    edit.op === 'rename'
+      ? {
+          op: 'rename',
+          title: edit.title,
+          ...(edit.description === undefined ? {} : { description: edit.description }),
+        }
+      : edit;
+  return orchestrator.editPlanStep({ missionId, stepId, edit: planEdit });
+}
+
+/**
  * Canais de ação sobre uma missão. Cada um confere a entrada e chama o orquestrador (seção 15.3).
  * Quem decide o estado é o orquestrador; o IPC só repassa.
  */
@@ -82,12 +119,11 @@ export function handleMissionAction(
     'plan' | 'approvePlan' | 'start' | 'cancel' | 'pause' | 'resume' | 'retry' | 'approveReview',
   payload: unknown,
 ) {
+  if (action === 'plan') return handlePlanMission(orchestrator, payload);
   const input = missionIdInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION_ID);
   const { missionId } = input.data;
   switch (action) {
-    case 'plan':
-      return orchestrator.planMission(missionId);
     case 'approvePlan':
       return orchestrator.approvePlan(missionId);
     case 'start':
@@ -138,6 +174,7 @@ export function registerMissionHandlers(
   on(CHANNELS.missionsGet, (payload) => handleGetMission(deps.queryDeps, payload));
   on(CHANNELS.missionsDiff, (payload) => handleMissionDiff(deps.diffDeps, payload));
   on(CHANNELS.missionsPlan, (payload) => handleMissionAction(orchestrator, 'plan', payload));
+  on(CHANNELS.missionsEditPlan, (payload) => handleEditPlanStep(orchestrator, payload));
   on(CHANNELS.missionsApprovePlan, (payload) =>
     handleMissionAction(orchestrator, 'approvePlan', payload),
   );

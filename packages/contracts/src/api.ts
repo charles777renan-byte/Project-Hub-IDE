@@ -9,6 +9,7 @@ import type { LayoutNode, ProviderId, ProviderInfo, WorkspaceDto } from './works
 import type {
   CreateMissionInput,
   DecideApprovalInput,
+  EditPlanStepInput,
   ExecutionDto,
   MissionDiffDto,
   MissionDto,
@@ -58,7 +59,12 @@ export type ProjectHubApi = {
     /** Alterações do worktree da missão em relação ao HEAD. Sem worktree, a lista vem vazia. */
     diff(missionId: string): Promise<AppResult<MissionDiffDto>>;
     /** Gera o plano, ou refaz o plano de uma missão planejada (R161). */
-    plan(missionId: string): Promise<AppResult<MissionPlanDto>>;
+    plan(missionId: string, instruction?: string): Promise<AppResult<MissionPlanDto>>;
+    /**
+     * Edita uma tarefa do plano (renomear, remover, reordenar ou trocar o programa) antes de a missão
+     * iniciar. Devolve o plano inteiro, já renumerado.
+     */
+    editPlanStep(input: EditPlanStepInput): Promise<AppResult<MissionPlanDto>>;
     /** Aprova o plano gerado: a missão vai para a fila. */
     approvePlan(missionId: string): Promise<AppResult<void>>;
     /** Inicia a execução de uma missão aprovada. Devolve a tentativa no estado em que parou. */

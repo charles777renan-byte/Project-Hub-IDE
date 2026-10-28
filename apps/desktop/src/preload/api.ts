@@ -8,6 +8,7 @@ import {
   type AppResult,
   type CreateMissionInput,
   type DecideApprovalInput,
+  type EditPlanStepInput,
   type ExecutionDto,
   type LayoutNode,
   type MissionDiffDto,
@@ -99,7 +100,13 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       list: (projectId: string) => call<MissionDto[]>(CHANNELS.missionsList, { projectId }),
       get: (missionId: string) => call<MissionViewDto>(CHANNELS.missionsGet, { missionId }),
       diff: (missionId: string) => call<MissionDiffDto>(CHANNELS.missionsDiff, { missionId }),
-      plan: (missionId: string) => call<MissionPlanDto>(CHANNELS.missionsPlan, { missionId }),
+      plan: (missionId: string, instruction?: string) =>
+        call<MissionPlanDto>(
+          CHANNELS.missionsPlan,
+          instruction === undefined ? { missionId } : { missionId, instruction },
+        ),
+      editPlanStep: (input: EditPlanStepInput) =>
+        call<MissionPlanDto>(CHANNELS.missionsEditPlan, input),
       approvePlan: (missionId: string) => call<void>(CHANNELS.missionsApprovePlan, { missionId }),
       start: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsStart, { missionId }),
       cancel: (missionId: string) => call<void>(CHANNELS.missionsCancel, { missionId }),
