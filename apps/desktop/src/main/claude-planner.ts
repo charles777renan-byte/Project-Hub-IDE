@@ -26,7 +26,8 @@ const AUTH_TEXT = /\/login|not logged in|log in|sign in|authenticat|invalid api 
 /**
  * Executa o processo do planejador. Resolve com a saída e o código de saída quando o processo termina, mesmo
  * com código diferente de zero. Rejeita quando não chega a terminar: executável ausente, falha ao iniciar,
- * tempo esgotado (`PlannerTimeoutError`) ou aborto pelo `signal`.
+ * tempo esgotado (`PlannerTimeoutError`), saída acima do teto (`PlannerOutputTooLargeError`) ou aborto pelo
+ * `signal`.
  */
 export type PlannerRunner = (input: {
   command: string;
@@ -36,6 +37,8 @@ export type PlannerRunner = (input: {
   stdin: string;
   timeoutMs: number;
   signal: AbortSignal;
+  /** Teto da saída em bytes. O padrão é 8 MB; só os testes passam outro valor. */
+  maxOutputBytes?: number;
 }) => Promise<{ stdout: string; exitCode: number }>;
 
 /** O processo passou do tempo e foi encerrado. */
@@ -43,6 +46,14 @@ export class PlannerTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`O planejador passou de ${timeoutMs} ms.`);
     this.name = 'PlannerTimeoutError';
+  }
+}
+
+/** A saída do processo passou do teto e ele foi encerrado. */
+export class PlannerOutputTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`A saída do planejador passou de ${maxBytes} bytes.`);
+    this.name = 'PlannerOutputTooLargeError';
   }
 }
 
@@ -88,7 +99,12 @@ const PLAN_SCHEMA = {
 
 /**
  * Argumentos fixos do `claude`. Só leitura: as ferramentas são Read, Grep e Glob (sem escrita e sem shell)
- * e o modo de permissão é `plan`. Nada que a pessoa digitou entra aqui; o texto dela vai só pelo `stdin`.
+ * e o modo de permissão é `plan`. O `claude -p` pula o diálogo de confiança da pasta e, sem mais nada,
+ * obedeceria ao `.claude/settings.json` e ao `.mcp.json` do próprio projeto (hooks, servidores MCP e
+ * permissões que rodam comandos). `--restricted` ignora os arquivos de configuração de usuário, projeto e
+ * local, e confina as ferramentas de arquivo à pasta de trabalho; `--strict-mcp-config` ignora todo servidor
+ * MCP (nenhum é passado por `--mcp-config`). Nada que a pessoa digitou entra aqui; o texto dela vai só pelo
+ * `stdin`.
  */
 export function buildPlannerArgs(): string[] {
   return [
@@ -102,6 +118,8 @@ export function buildPlannerArgs(): string[] {
     '--no-session-persistence',
     '--permission-mode',
     'plan',
+    '--strict-mcp-config',
+    '--restricted',
   ];
 }
 
@@ -211,6 +229,7 @@ export const runPlannerProcess: PlannerRunner = (input) =>
       reject(input.signal.reason ?? new Error('Aborted'));
       return;
     }
+    const maxOutputBytes = input.maxOutputBytes ?? MAX_OUTPUT_BYTES;
     let timedOut = false;
     const child = execFile(
       input.command,
@@ -219,7 +238,7 @@ export const runPlannerProcess: PlannerRunner = (input) =>
         cwd: input.cwd,
         env: input.env,
         windowsHide: true,
-        maxBuffer: MAX_OUTPUT_BYTES,
+        maxBuffer: maxOutputBytes,
         encoding: 'utf8',
         signal: input.signal,
         timeout: input.timeoutMs,
@@ -227,6 +246,11 @@ export const runPlannerProcess: PlannerRunner = (input) =>
       (error, stdout) => {
         if (error === null) {
           resolve({ stdout, exitCode: 0 });
+          return;
+        }
+        // O estouro do buffer também mata o filho (`killed`), então vem antes da checagem de tempo.
+        if ('code' in error && error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+          reject(new PlannerOutputTooLargeError(maxOutputBytes));
           return;
         }
         if ('killed' in error && error.killed && !input.signal.aborted) {
@@ -271,6 +295,8 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
       } catch (error) {
         if (error instanceof PlannerTimeoutError)
           return failure('AGENT_UNAVAILABLE', TIMEOUT_MESSAGE);
+        if (error instanceof PlannerOutputTooLargeError)
+          return failure('AGENT_PROTOCOL_ERROR', BAD_FORMAT_MESSAGE);
         if (input.signal.aborted) return failure('AGENT_UNAVAILABLE', CANCELLED_MESSAGE);
         if (isRecord(error) && error['code'] === 'ENOENT') {
           return failure('AGENT_UNAVAILABLE', NOT_FOUND_MESSAGE);

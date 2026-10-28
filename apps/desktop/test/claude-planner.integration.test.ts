@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { PlannerTimeoutError, runPlannerProcess } from '../src/main/claude-planner';
+import {
+  PlannerOutputTooLargeError,
+  PlannerTimeoutError,
+  runPlannerProcess,
+} from '../src/main/claude-planner';
 
 const base = {
   command: process.execPath,
@@ -55,6 +59,16 @@ describe('runPlannerProcess (processo real)', () => {
 
     await expect(pending).rejects.not.toBeInstanceOf(PlannerTimeoutError);
     await expect(pending).rejects.toBeDefined();
+  });
+
+  it('rejeita com saída grande demais, sem confundir com tempo esgotado', async () => {
+    const pending = runPlannerProcess({
+      ...base,
+      args: ['-e', "process.stdout.write('x'.repeat(5000)); setInterval(() => {}, 1000)"],
+      maxOutputBytes: 1000,
+    });
+
+    await expect(pending).rejects.toBeInstanceOf(PlannerOutputTooLargeError);
   });
 
   it('rejeita sem iniciar quando o signal já nasce abortado', async () => {

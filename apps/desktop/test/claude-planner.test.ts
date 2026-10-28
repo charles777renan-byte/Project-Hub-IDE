@@ -5,6 +5,7 @@ import {
   buildPlannerPrompt,
   createClaudePlanner,
   parsePlannerOutput,
+  PlannerOutputTooLargeError,
   PlannerTimeoutError,
   type PlannerRunner,
 } from '../src/main/claude-planner';
@@ -152,7 +153,7 @@ describe('parsePlannerOutput', () => {
 });
 
 describe('buildPlannerArgs', () => {
-  it('é só leitura e sem sessão salva', () => {
+  it('é só leitura, sem sessão salva e sem configuração do projeto, MCP ou ferramentas fora da pasta', () => {
     const args = buildPlannerArgs();
 
     expect(args).toEqual([
@@ -166,6 +167,8 @@ describe('buildPlannerArgs', () => {
       '--no-session-persistence',
       '--permission-mode',
       'plan',
+      '--strict-mcp-config',
+      '--restricted',
     ]);
     const schema = JSON.parse(args[4] as string) as {
       properties: {
@@ -320,6 +323,17 @@ describe('createClaudePlanner', () => {
     expect(result).toMatchObject({
       ok: false,
       error: { message: 'O planejamento demorou demais.' },
+    });
+  });
+
+  it('saída grande demais vira plano fora do formato, não tempo esgotado', async () => {
+    const result = await planner(async () => {
+      throw new PlannerOutputTooLargeError(8 * 1024 * 1024);
+    }).plan(baseInput());
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'AGENT_PROTOCOL_ERROR', message: BAD_FORMAT },
     });
   });
 
