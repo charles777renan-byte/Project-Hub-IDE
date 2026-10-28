@@ -2,6 +2,7 @@ import type { MissionDto, ProjectSummary } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import type { SidebarData } from '../../src/renderer/overview-data';
 import { buildPaletteItems } from '../../src/renderer/palette-items';
+import { ADD_PROJECT_REQUEST_EVENT } from '../../src/renderer/projects-events';
 
 const PROJETO: ProjectSummary = {
   id: 'p1',
@@ -37,15 +38,15 @@ function itemNamed(items: ReturnType<typeof buildPaletteItems>, rotulo: string) 
 }
 
 describe('buildPaletteItems', () => {
-  it('leva cada projeto ao detalhe dele e cada missão à sua tela', () => {
+  it('leva cada projeto à aba dele, na visão das missões, e cada missão à sua tela', () => {
     const navigate = vi.fn();
     const items = buildPaletteItems(COM_DADOS, navigate);
 
     itemNamed(items, 'app').executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects/p1');
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1?visao=missoes');
 
     itemNamed(items, 'Ajustar login').executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects/p1/missions/m1');
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1/missoes/m1');
   });
 
   it('põe cada item no grupo certo', () => {
@@ -55,20 +56,72 @@ describe('buildPaletteItems', () => {
     expect(itemNamed(items, 'Ir para Início').grupo).toBe('Ações');
   });
 
-  it('as ações levam à navegação principal', () => {
+  it('Ir para Início leva à raiz, e não há mais "Ir para Projetos"', () => {
     const navigate = vi.fn();
     const items = buildPaletteItems(COM_DADOS, navigate);
 
     itemNamed(items, 'Ir para Início').executar();
     expect(navigate).toHaveBeenLastCalledWith('/');
-
-    itemNamed(items, 'Ir para Projetos').executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects');
+    expect(items.some((item) => item.rotulo === 'Ir para Projetos')).toBe(false);
   });
 
-  it('enquanto a barra carrega, sobram só as ações', () => {
-    const items = buildPaletteItems({ status: 'loading', projects: [], missionsByProject: {} }, vi.fn());
-    expect(items.map((item) => item.grupo)).toEqual(['Ações', 'Ações']);
+  it('Alterar meu nome leva ao Início com o pedido de edição do nome', () => {
+    const navigate = vi.fn();
+    const items = buildPaletteItems(COM_DADOS, navigate);
+
+    const item = itemNamed(items, 'Alterar meu nome');
+    expect(item.grupo).toBe('Ações');
+    item.executar();
+    expect(navigate).toHaveBeenLastCalledWith('/?editar-nome=1');
+  });
+
+  it('Adicionar projeto pede à lateral que abra o seletor, sem navegar', () => {
+    const navigate = vi.fn();
+    const items = buildPaletteItems(COM_DADOS, navigate);
+    const pedido = vi.fn();
+    window.addEventListener(ADD_PROJECT_REQUEST_EVENT, pedido);
+    try {
+      const item = itemNamed(items, 'Adicionar projeto');
+      expect(item.grupo).toBe('Ações');
+      item.executar();
+    } finally {
+      window.removeEventListener(ADD_PROJECT_REQUEST_EVENT, pedido);
+    }
+    expect(pedido).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('tem "Nova missão em {projeto}" para cada projeto, levando ao projeto com o formulário pedido', () => {
+    const navigate = vi.fn();
+    const outro: ProjectSummary = { ...PROJETO, id: 'p2', name: 'site' };
+    const items = buildPaletteItems(
+      { ...COM_DADOS, projects: [PROJETO, outro], missionsByProject: {} },
+      navigate,
+    );
+
+    const item = itemNamed(items, 'Nova missão em app');
+    expect(item.grupo).toBe('Ações');
+    item.executar();
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1?visao=missoes', {
+      state: { newMission: true },
+    });
+
+    itemNamed(items, 'Nova missão em site').executar();
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p2?visao=missoes', {
+      state: { newMission: true },
+    });
+  });
+
+  it('enquanto a barra carrega, sobram só as ações que não dependem de projeto', () => {
+    const items = buildPaletteItems(
+      { status: 'loading', projects: [], missionsByProject: {} },
+      vi.fn(),
+    );
+    expect(items.map((item) => item.rotulo)).toEqual([
+      'Ir para Início',
+      'Alterar meu nome',
+      'Adicionar projeto',
+    ]);
   });
 
   it('dá um id único a cada item, mesmo quando um projeto e uma missão têm o mesmo nome', () => {

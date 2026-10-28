@@ -1,0 +1,185 @@
+{
+  "duration_api_ms": 13328,
+  "stop_reason": "tool_use",
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "total_cost_usd": 0.26548879999999997,
+  "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 61160,
+    "cache_read_input_tokens": 60908,
+    "output_tokens": 1475,
+    "output_tokens_details": {
+      "thinking_tokens": 172
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 61160,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1281,
+        "cache_read_input_tokens": 60908,
+        "cache_creation_input_tokens": 252,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 252
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 4,
+      "outputTokens": 1475,
+      "cacheReadInputTokens": 60908,
+      "cacheCreationInputTokens": 61160,
+      "webSearchRequests": 0,
+      "costUSD": 0.26548879999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 172,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 61160,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 3,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"tasks\":[{\"title\":\"Definir stack e estrutura base\",\"description\":\"A pasta do projeto está vazia. Escolher e inicializar a stack mínima (front-end + servidor com API) e criar a estrutura de pastas, o arquivo de dependências e um script para rodar o projeto localmente. Pronto quando o projeto sobe sem erros e responde numa porta local.\",\"role\":\"general\",\"dependsOn\":[]},{\"title\":\"Modelar tabela de usuários\",\"description\":\"Criar o esquema/migração da tabela de usuários com id, e-mail (único, normalizado em minúsculas), hash da senha e data de criação. Incluir um seed com um usuário de teste. Pronto quando a migração roda do zero e o seed cria o usuário sem erro.\",\"role\":\"database\",\"dependsOn\":[1]},{\"title\":\"Implementar endpoint de login\",\"description\":\"Criar a rota POST /login que recebe e-mail e senha, busca o usuário, compara a senha com o hash (bcrypt/argon2) e responde 200 com sessão ou token em caso de sucesso, ou 401 com mensagem genérica (sem revelar se o e-mail existe) em caso de falha. Validar o formato do corpo e responder 400 se faltar campo. Pronto quando as três respostas (200, 400, 401) funcionam via requisição manual.\",\"role\":\"backend\",\"dependsOn\":[2]},{\"title\":\"Proteger o login contra abuso\",\"description\":\"Adicionar limite de tentativas por IP/e-mail na rota de login, cookie de sessão com flags HttpOnly, Secure e SameSite (ou token com expiração), e garantir que a senha nunca apareça em logs. Pronto quando exceder o limite retorna 429 e o cookie/token sai com as flags esperadas.\",\"role\":\"backend\",\"dependsOn\":[3]},{\"title\":\"Construir a página de login\",\"description\":\"Criar a página /login com campos de e-mail e senha (type=email e type=password, labels associados, autocomplete correto), botão Entrar e área para mensagem de erro. Layout responsivo e acessível por teclado. Pronto quando a página renderiza no navegador e o formulário é navegável só com teclado.\",\"role\":\"frontend\",\"dependsOn\":[1]},{\"title\":\"Integrar formulário com a API\",\"description\":\"Ligar o formulário ao POST /login: validação no cliente (e-mail válido, senha preenchida), estado de carregando com botão desabilitado, exibição do erro retornado pela API e redirecionamento para a página inicial/área logada em caso de sucesso. Pronto quando entrar com o usuário de teste leva à área logada e credenciais erradas mostram o erro sem recarregar a página.\",\"role\":\"frontend\",\"dependsOn\":[3,5]},{\"title\":\"Testes automatizados do login\",\"description\":\"Escrever testes de API (sucesso, senha errada, e-mail inexistente, campos ausentes, limite de tentativas) e um teste ponta a ponta que abre /login, preenche e-mail e senha e verifica o redirecionamento. Pronto quando todos os testes passam com um comando único.\",\"role\":\"qa\",\"dependsOn\":[4,6]},{\"title\":\"Documentar execução e uso do login\",\"description\":\"Atualizar o README com como instalar, configurar variáveis de ambiente, rodar migração e seed, subir o projeto, rodar os testes e as credenciais do usuário de teste. Pronto quando outra pessoa consegue seguir o README do zero e entrar na página de login.\",\"role\":\"docs\",\"dependsOn\":[7]}]}",
+  "structured_output": {
+    "tasks": [
+      {
+        "title": "Definir stack e estrutura base",
+        "description": "A pasta do projeto está vazia. Escolher e inicializar a stack mínima (front-end + servidor com API) e criar a estrutura de pastas, o arquivo de dependências e um script para rodar o projeto localmente. Pronto quando o projeto sobe sem erros e responde numa porta local.",
+        "role": "general",
+        "dependsOn": []
+      },
+      {
+        "title": "Modelar tabela de usuários",
+        "description": "Criar o esquema/migração da tabela de usuários com id, e-mail (único, normalizado em minúsculas), hash da senha e data de criação. Incluir um seed com um usuário de teste. Pronto quando a migração roda do zero e o seed cria o usuário sem erro.",
+        "role": "database",
+        "dependsOn": [1]
+      },
+      {
+        "title": "Implementar endpoint de login",
+        "description": "Criar a rota POST /login que recebe e-mail e senha, busca o usuário, compara a senha com o hash (bcrypt/argon2) e responde 200 com sessão ou token em caso de sucesso, ou 401 com mensagem genérica (sem revelar se o e-mail existe) em caso de falha. Validar o formato do corpo e responder 400 se faltar campo. Pronto quando as três respostas (200, 400, 401) funcionam via requisição manual.",
+        "role": "backend",
+        "dependsOn": [2]
+      },
+      {
+        "title": "Proteger o login contra abuso",
+        "description": "Adicionar limite de tentativas por IP/e-mail na rota de login, cookie de sessão com flags HttpOnly, Secure e SameSite (ou token com expiração), e garantir que a senha nunca apareça em logs. Pronto quando exceder o limite retorna 429 e o cookie/token sai com as flags esperadas.",
+        "role": "backend",
+        "dependsOn": [3]
+      },
+      {
+        "title": "Construir a página de login",
+        "description": "Criar a página /login com campos de e-mail e senha (type=email e type=password, labels associados, autocomplete correto), botão Entrar e área para mensagem de erro. Layout responsivo e acessível por teclado. Pronto quando a página renderiza no navegador e o formulário é navegável só com teclado.",
+        "role": "frontend",
+        "dependsOn": [1]
+      },
+      {
+        "title": "Integrar formulário com a API",
+        "description": "Ligar o formulário ao POST /login: validação no cliente (e-mail válido, senha preenchida), estado de carregando com botão desabilitado, exibição do erro retornado pela API e redirecionamento para a página inicial/área logada em caso de sucesso. Pronto quando entrar com o usuário de teste leva à área logada e credenciais erradas mostram o erro sem recarregar a página.",
+        "role": "frontend",
+        "dependsOn": [3, 5]
+      },
+      {
+        "title": "Testes automatizados do login",
+        "description": "Escrever testes de API (sucesso, senha errada, e-mail inexistente, campos ausentes, limite de tentativas) e um teste ponta a ponta que abre /login, preenche e-mail e senha e verifica o redirecionamento. Pronto quando todos os testes passam com um comando único.",
+        "role": "qa",
+        "dependsOn": [4, 6]
+      },
+      {
+        "title": "Documentar execução e uso do login",
+        "description": "Atualizar o README com como instalar, configurar variáveis de ambiente, rodar migração e seed, subir o projeto, rodar os testes e as credenciais do usuário de teste. Pronto quando outra pessoa consegue seguir o README do zero e entrar na página de login.",
+        "role": "docs",
+        "dependsOn": [7]
+      }
+    ]
+  },
+  "ttft_ms": 3748,
+  "type": "result",
+  "duration_ms": 13713,
+  "uuid": "00000000-0000-0000-0000-000000000000",
+  "ttft_stream_ms": 2270,
+  "time_to_request_ms": 290,
+  "time_to_request_phases_ms": {
+    "other": 47,
+    "system_prompt": 121,
+    "resume_other": 1,
+    "process_user_input": 3,
+    "input_attachments": 21,
+    "input_hooks": 8,
+    "tool_pool_refresh": 3,
+    "init_message": 27,
+    "engine_pickup": 2,
+    "message_prep": 1,
+    "model_config_wait": 2,
+    "autocompact": 3,
+    "query_setup": 9,
+    "auto_mode_context_wait": 3,
+    "model_gates": 0,
+    "tool_schema_build": 13,
+    "message_normalization": 4,
+    "client_creation": 7,
+    "request_build": 15
+  },
+  "turn_start_resume_kind": "none",
+  "process_turn_index": 0,
+  "time_to_request_loop_lag_ms": 31,
+  "time_to_request_cpu_ms": 374,
+  "time_to_request_major_faults": 4494,
+  "input_attachments_detail": {
+    "slowest_producer": "queued_commands",
+    "slowest_producer_ms": 14,
+    "cpu_ms": 31,
+    "major_faults": 301
+  },
+  "first_content_frame_ms": 2271,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

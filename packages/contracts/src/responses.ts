@@ -69,6 +69,7 @@ export const responseSchemas = {
   [CHANNELS.missionsGet]: appResultSchema(missionViewSchema),
   [CHANNELS.missionsDiff]: appResultSchema(missionDiffDtoSchema),
   [CHANNELS.missionsPlan]: appResultSchema(missionPlanDtoSchema),
+  [CHANNELS.missionsEditPlan]: appResultSchema(missionPlanDtoSchema),
   [CHANNELS.missionsApprovePlan]: appResultSchema(z.undefined()),
   [CHANNELS.missionsStart]: appResultSchema(executionDtoSchema),
   [CHANNELS.missionsCancel]: appResultSchema(z.undefined()),

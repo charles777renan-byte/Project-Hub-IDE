@@ -9,16 +9,16 @@ import type {
   MissionViewDto,
   ProjectHubApi,
   ProjectSummary,
-  WorkspaceDto,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { OverviewCounters } from '../../src/renderer/components/OverviewCounters';
 import { HomePage } from '../../src/renderer/pages/HomePage';
-import { missionPath, projectPath, ROUTE_PATHS } from '../../src/renderer/routes';
+import { missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
 /**
- * Início em painéis de dados: blocos novos (saudação, chamada, projetos, atividade, contadores) e os três painéis alimentados pela carga
- * compartilhada da visão geral. A API do preload é falsa; cada teste monta projetos, missões e as
- * leituras de `missions.get`.
+ * Início como painel de abertura: saudação numa linha, "Precisa de você", missões com progresso (e o
+ * filtro `?estado=` dos contadores da barra de status), atividade compacta e uso dos agentes. A API do
+ * preload é falsa; cada teste monta projetos, missões e as leituras de `missions.get`.
  */
 
 type Status = MissionDto['status'];
@@ -69,30 +69,21 @@ type Setup = {
   get?: (missionId: string) => AppResult<MissionViewDto> | 'pending' | undefined;
   /** Resposta de `activity.daily`; sem ela, a consulta devolve banco vazio. */
   activity?: AppResult<ActivityDay[]>;
-  workspaces?: WorkspaceDto[];
-  /** Resposta de `terminals.list`; sem ela, a lista vem vazia. */
-  terminalsResult?: AppResult<never[]>;
+  /** Nome do perfil local (`profile.get`). */
+  displayName?: string | null;
 };
 
-function installApi({
-  projects = [],
-  missions = {},
-  get,
-  activity,
-  workspaces = [],
-  terminalsResult,
-}: Setup) {
+function installApi({ projects = [], missions = {}, get, activity, displayName = null }: Setup) {
+  const setDisplayName = vi.fn(() => Promise.resolve({ ok: true }));
   const api = {
     activity: {
       daily: vi.fn(() =>
         Promise.resolve<AppResult<ActivityDay[]>>(activity ?? { ok: true, data: [] }),
       ),
     },
-    workspaces: {
-      list: vi.fn(() => Promise.resolve<AppResult<WorkspaceDto[]>>({ ok: true, data: workspaces })),
-    },
-    terminals: {
-      list: vi.fn(() => Promise.resolve(terminalsResult ?? { ok: true, data: [] })),
+    profile: {
+      get: vi.fn(() => Promise.resolve({ ok: true, data: { displayName } })),
+      setDisplayName,
     },
     projects: {
       list: vi.fn(() =>
@@ -113,24 +104,34 @@ function installApi({
         if (custom !== undefined) return Promise.resolve(custom);
         return Promise.resolve({
           ok: true,
-          data: { pendingApprovals: [approval(missionId)] },
+          data: { steps: [], pendingApprovals: [approval(missionId)] },
         });
       }),
       subscribe: vi.fn(() => () => {}),
     },
   };
   window.projectHub = api as unknown as ProjectHubApi;
+  return { setDisplayName };
 }
 
 function Where() {
-  return <p data-testid="where">{useLocation().pathname}</p>;
+  const location = useLocation();
+  return <p data-testid="where">{`${location.pathname}${location.search}`}</p>;
 }
 
-function renderHome() {
+function renderHome(entry: string = ROUTE_PATHS.home) {
   return render(
-    <MemoryRouter initialEntries={[ROUTE_PATHS.home]}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
-        <Route path={ROUTE_PATHS.home} element={<HomePage />} />
+        <Route
+          path={ROUTE_PATHS.home}
+          element={
+            <>
+              <HomePage />
+              <Where />
+            </>
+          }
+        />
         <Route path="*" element={<Where />} />
       </Routes>
     </MemoryRouter>,
@@ -141,91 +142,91 @@ function panel(name: string) {
   return screen.getByRole('region', { name });
 }
 
+const MIXED: Record<string, MissionDto[]> = {
+  p1: [
+    mission('m1', 'p1', 'running'),
+    mission('m2', 'p1', 'failed'),
+    mission('m3', 'p1', 'waiting_approval'),
+    mission('m4', 'p1', 'planned'),
+    mission('m5', 'p1', 'succeeded'),
+  ],
+};
+
 afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
 });
 
 describe('HomePage', () => {
-  it('cada painel lista o que vem da visão geral', async () => {
-    installApi({
-      projects: [project('p1')],
-      missions: {
-        p1: [
-          mission('m1', 'p1', 'running'),
-          mission('m2', 'p1', 'failed'),
-          mission('m3', 'p1', 'waiting_approval'),
-        ],
-      },
-    });
+  it('não tem mais "Começar", "Projetos recentes" nem os quatro blocos de números', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
 
     renderHome();
 
-    expect(await within(panel('Aguardando você')).findByText('Aprovar m3')).toBeInTheDocument();
-    expect(within(panel('Missões em execução')).getByText('Missão m1')).toBeInTheDocument();
-    expect(within(panel('Falharam')).getByText('Missão m2')).toBeInTheDocument();
-    expect(within(panel('Projetos recentes')).getByText('Projeto p1')).toBeInTheDocument();
+    await screen.findByText('Aprovar m3');
+    expect(screen.queryByText(/Começar/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Projetos recentes')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Nova missão' })).not.toBeInTheDocument();
+    expect(document.querySelector('.stat-pills, .stat-pill, .recent-projects__grid')).toBeNull();
+    // "Executando" agora também é o nome de um chip de estado; o que sumiu foi o rótulo do bloco de número.
+    expect(screen.queryByText('Executando', { selector: ':not(button)' })).not.toBeInTheDocument();
   });
 
-  it('com tudo vazio, mostra os estados vazios e o convite para adicionar projeto', async () => {
-    installApi({});
+  it('monta as faixas na ordem: saudação, Precisa de você, Missões, Atividade e Uso dos agentes', async () => {
+    installApi({ projects: [project('p1')] });
 
     renderHome();
 
-    expect(await screen.findByText('Nada espera por você')).toBeInTheDocument();
-    expect(screen.getByText('Nenhuma missão em execução.')).toBeInTheDocument();
-    expect(screen.getByText('Nenhuma missão falhou.')).toBeInTheDocument();
-    expect(
-      screen.getByText('Nenhum projeto ainda. Adicione um projeto para começar.'),
-    ).toBeInTheDocument();
-    expect(
-      within(panel('Projetos recentes')).getByRole('link', { name: /projetos/i }),
-    ).toHaveAttribute('href', ROUTE_PATHS.projects);
+    await screen.findByText('Nada espera por você.');
+    const order = [
+      screen.getByRole('heading', { level: 1, name: 'Início' }),
+      panel('Precisa de você'),
+      panel('Missões'),
+      panel('Atividade'),
+      panel('Uso dos agentes'),
+    ];
+    for (let index = 1; index < order.length; index += 1) {
+      const previous = order[index - 1] as HTMLElement;
+      const current = order[index] as HTMLElement;
+      expect(
+        previous.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `bloco ${index}`,
+      ).toBeTruthy();
+    }
   });
 
-  it('enquanto as aprovações não carregam, Aguardando você mostra Carregando e não o vazio', async () => {
-    installApi({
-      projects: [project('p1')],
-      missions: { p1: [mission('m1', 'p1', 'running'), mission('m3', 'p1', 'waiting_approval')] },
-      get: () => 'pending',
-    });
+  it('o fundo topográfico fica só na faixa do topo (a saudação), nunca atrás das listas', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
 
-    renderHome();
+    const { container } = renderHome();
 
-    // A missão em execução serve de marca: quando ela aparece, a fase 1 já chegou.
-    expect(await screen.findByText('Missão m1')).toBeInTheDocument();
-    expect(within(panel('Aguardando você')).getByText('Carregando…')).toBeInTheDocument();
-    expect(screen.queryByText('Nada espera por você')).not.toBeInTheDocument();
+    await screen.findByText('Aprovar m3');
+    const hero = container.querySelector('.home > .home-hero');
+    expect(hero).not.toBeNull();
+    expect(hero?.querySelector('.topo-background')).not.toBeNull();
+    expect(hero?.querySelector('.home-greeting')).not.toBeNull();
+    expect(container.querySelectorAll('.topo-background')).toHaveLength(1);
+    expect(container.querySelector('.home-columns .topo-background')).toBeNull();
+    // O fundo é decorativo: a faixa não leva lista, tabela nem formulário de dados além do nome.
+    expect(hero?.querySelector('ul, table')).toBeNull();
   });
 
-  it('os links de aprovação e de missão apontam para a missão', async () => {
-    installApi({
-      projects: [project('p1')],
-      missions: {
-        p1: [
-          mission('m1', 'p1', 'running'),
-          mission('m2', 'p1', 'failed'),
-          mission('m3', 'p1', 'waiting_approval'),
-        ],
-      },
-    });
+  it('Precisa de você lista a aprovação e o que mais espera a pessoa, cada item com link direto', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
 
     renderHome();
 
-    const approvalLink = await within(panel('Aguardando você')).findByRole('link', {
-      name: /Aprovar m3/,
-    });
+    const needs = panel('Precisa de você');
+    const approvalLink = await within(needs).findByRole('link', { name: /Aprovar m3/ });
     expect(approvalLink).toHaveAttribute('href', missionPath('p1', 'm3'));
-    expect(approvalLink).not.toHaveAttribute('href', projectPath('p1'));
-    expect(
-      within(panel('Missões em execução')).getByRole('link', { name: 'Missão m1' }),
-    ).toHaveAttribute('href', missionPath('p1', 'm1'));
-    expect(within(panel('Falharam')).getByRole('link', { name: 'Missão m2' })).toHaveAttribute(
-      'href',
-      missionPath('p1', 'm2'),
-    );
+    const planLink = within(needs).getByRole('link', { name: 'Missão m4' });
+    expect(planLink).toHaveAttribute('href', missionPath('p1', 'm4'));
+    expect(within(needs).getByText('Aprovar plano')).toBeInTheDocument();
+    // O que está rodando, falhou ou terminou não espera a pessoa.
+    expect(within(needs).queryByRole('link', { name: 'Missão m1' })).not.toBeInTheDocument();
+    expect(within(needs).queryByRole('link', { name: 'Missão m2' })).not.toBeInTheDocument();
   });
 
-  it('leituras perdidas aparecem como texto, junto das aprovações lidas', async () => {
+  it('leituras de aprovação perdidas aparecem como texto, junto das aprovações lidas', async () => {
     installApi({
       projects: [project('p1')],
       missions: {
@@ -242,123 +243,166 @@ describe('HomePage', () => {
     expect(
       await screen.findByText('Não foi possível carregar a aprovação de Missão m4.'),
     ).toBeInTheDocument();
-    expect(within(panel('Aguardando você')).getByText('Aprovar m3')).toBeInTheDocument();
-    expect(screen.queryByText('Nada espera por você')).not.toBeInTheDocument();
+    expect(within(panel('Precisa de você')).getByText('Aprovar m3')).toBeInTheDocument();
+    expect(screen.queryByText('Nada espera por você.')).not.toBeInTheDocument();
   });
 
-  it('com a barra em erro, mostra a mensagem em Projetos recentes', async () => {
-    installApi({ projects: 'error' });
-
-    renderHome();
-
-    // A mensagem vem da carga compartilhada (a mesma da barra lateral).
-    expect(await within(panel('Projetos recentes')).findByRole('alert')).toHaveTextContent(
-      'Não foi possível carregar os projetos.',
-    );
-  });
-
-  it('com a leitura de terminais em erro, os cartões não afirmam que não há sessão', async () => {
+  it('enquanto as aprovações não carregam, Precisa de você mostra Carregando e não o vazio', async () => {
     installApi({
       projects: [project('p1')],
-      terminalsResult: { ok: false, error: { code: 'UNKNOWN', message: 'x', retryable: true } },
+      missions: { p1: [mission('m1', 'p1', 'running'), mission('m3', 'p1', 'waiting_approval')] },
+      get: () => 'pending',
     });
 
     renderHome();
 
-    const recent = panel('Projetos recentes');
-    expect(await within(recent).findByText('Sessões indisponíveis')).toBeInTheDocument();
-    expect(within(recent).queryByText('nenhuma sessão')).not.toBeInTheDocument();
+    // A missão em execução serve de marca: quando ela aparece, a fase 1 já chegou.
+    expect(await within(panel('Missões')).findByText('Missão m1')).toBeInTheDocument();
+    expect(within(panel('Precisa de você')).getByText('Carregando…')).toBeInTheDocument();
+    expect(screen.queryByText('Nada espera por você.')).not.toBeInTheDocument();
   });
 
-  it('Começar → leva para a rota de projetos', async () => {
-    installApi({ projects: [project('p1')] });
+  it('Missões lista todas as missões com o estado e o link para a missão', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
+
     renderHome();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Começar →' }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId('where')).toHaveTextContent(ROUTE_PATHS.projects),
+    const missions = panel('Missões');
+    expect(await within(missions).findByRole('link', { name: 'Missão m1' })).toHaveAttribute(
+      'href',
+      missionPath('p1', 'm1'),
     );
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(missions).getByText(/^Falhou/)).toBeInTheDocument();
   });
 
-  it('tem o painel Falharam e nenhum texto com travad', async () => {
+  it('?estado=failed mostra só as missões que falharam e um chip para limpar o filtro', async () => {
+    const user = userEvent.setup();
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    renderHome('/?estado=failed');
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Missão m2' });
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(missions).queryByRole('link', { name: 'Missão m1' })).not.toBeInTheDocument();
+    expect(within(missions).getByRole('button', { name: 'Falharam' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await user.click(within(missions).getByRole('button', { name: 'Limpar filtro' }));
+
+    expect(await within(missions).findByRole('link', { name: 'Missão m1' })).toBeInTheDocument();
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(5);
+    expect(screen.getByTestId('where')).toHaveTextContent('/');
+    expect(screen.getByTestId('where')).not.toHaveTextContent('estado');
+  });
+
+  it('?estado=attention lista as mesmas missões que o contador da barra de status conta', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
+    render(
+      <MemoryRouter initialEntries={['/?estado=attention']}>
+        <OverviewCounters />
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Missão m3' });
+    await waitFor(() =>
+      expect(screen.getByText(/aguarda você/)).toHaveTextContent('2 aguarda você'),
+    );
+    expect(
+      within(missions)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Missão m3', 'Missão m4']);
+  });
+
+  it('os chips de estado têm os mesmos nomes dos contadores: Executando, Aguarda você e Falharam', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Missão m1' });
+    const chips = within(missions)
+      .getAllByRole('button')
+      .map((button) => button.textContent);
+    expect(chips).toEqual(expect.arrayContaining(['Executando', 'Aguarda você', 'Falharam']));
+    expect(chips).not.toContain('Em andamento');
+    expect(chips).not.toContain('Esperam você');
+  });
+
+  it('um chip de estado filtra a lista e clicar de novo no chip ativo limpa o filtro', async () => {
+    const user = userEvent.setup();
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Missão m1' });
+    await user.click(within(missions).getByRole('button', { name: 'Executando' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/?estado=running');
+    await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(1));
+
+    await user.click(within(missions).getByRole('button', { name: 'Executando' }));
+    await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(5));
+  });
+
+  it('um valor de ?estado= que não existe vale como sem filtro', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    renderHome('/?estado=qualquer');
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Missão m1' });
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(missions).queryByRole('button', { name: 'Limpar filtro' })).toBeNull();
+  });
+
+  it('filtro sem nenhuma missão mostra a frase e mantém o chip para limpar', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m1', 'p1', 'running')] },
+    });
+
+    renderHome('/?estado=failed');
+
+    const missions = panel('Missões');
+    expect(await within(missions).findByText('Nenhuma missão neste estado.')).toBeInTheDocument();
+    expect(within(missions).getByRole('button', { name: 'Limpar filtro' })).toBeInTheDocument();
+  });
+
+  it('com tudo vazio, mostra os estados vazios', async () => {
     installApi({});
 
     renderHome();
 
-    await screen.findByText('Nenhuma missão falhou.');
-    expect(panel('Falharam')).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/travad/i);
+    expect(await screen.findByText('Nada espera por você.')).toBeInTheDocument();
+    expect(within(panel('Missões')).getByText('Nenhuma missão ainda.')).toBeInTheDocument();
   });
-  it('monta as faixas na ordem: cabeçalho, chamada, projetos, atividade, uso dos agentes e as três listas', async () => {
+
+  it('com a carga em erro, Missões mostra a mensagem', async () => {
+    installApi({ projects: 'error' });
+
+    renderHome();
+
+    expect(await within(panel('Missões')).findByRole('alert')).toHaveTextContent(
+      'Não foi possível carregar as missões.',
+    );
+  });
+
+  it('sem eventos, a atividade é uma linha só e não desenha a grade', async () => {
     installApi({ projects: [project('p1')] });
 
     renderHome();
 
-    await screen.findByText('Nada espera por você');
-    const order = [
-      screen.getByRole('heading', { level: 1, name: 'Início' }),
-      screen.getByRole('region', { name: 'Nova missão' }),
-      panel('Projetos recentes'),
-      panel('Atividade'),
-      panel('Uso dos agentes'),
-      panel('Aguardando você'),
-      panel('Missões em execução'),
-      panel('Falharam'),
-    ];
-    for (let index = 1; index < order.length; index += 1) {
-      const previous = order[index - 1] as HTMLElement;
-      const current = order[index] as HTMLElement;
-      expect(
-        previous.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING,
-        `bloco ${index}`,
-      ).toBeTruthy();
-    }
-  });
-
-  it('os contadores usam os números da visão geral', async () => {
-    installApi({
-      projects: [project('p1')],
-      missions: {
-        p1: [
-          mission('m1', 'p1', 'running'),
-          mission('m2', 'p1', 'failed'),
-          mission('m5', 'p1', 'failed'),
-          mission('m3', 'p1', 'waiting_approval'),
-        ],
-      },
-    });
-
-    renderHome();
-
-    await screen.findByText('Aprovar m3');
-    const tiles = document.querySelector('.stat-pills') as HTMLElement;
-    await waitFor(() => {
-      expect(within(tiles).getByText('Executando').nextElementSibling).toHaveTextContent('1');
-      expect(within(tiles).getByText('Aguardando você').nextElementSibling).toHaveTextContent('1');
-      expect(within(tiles).getByText('Falharam').nextElementSibling).toHaveTextContent('2');
-    });
-  });
-
-  it('projeto com workspace mostra o há X, e o sem workspace não', async () => {
-    installApi({
-      projects: [project('p1'), project('p2')],
-      workspaces: [
-        {
-          id: 'w1',
-          projectId: 'p1',
-          layout: null,
-          position: 0,
-          lastActiveAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
-        } as unknown as WorkspaceDto,
-      ],
-    });
-
-    renderHome();
-
-    const recent = panel('Projetos recentes');
-    expect(await within(recent).findByText('nenhuma sessão · há 3 h')).toBeInTheDocument();
-    expect(within(recent).getAllByText(/há /)).toHaveLength(1);
+    expect(
+      await within(panel('Atividade')).findByText('Nenhuma atividade nos últimos 90 dias.'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('.activity-grid')).toBeNull();
   });
 
   it('com a atividade em falha, o bloco mostra a mensagem e o resto da tela segue', async () => {
@@ -373,25 +417,7 @@ describe('HomePage', () => {
     expect(
       await within(panel('Atividade')).findByText('Não foi possível carregar a atividade.'),
     ).toBeInTheDocument();
-    expect(await within(panel('Missões em execução')).findByText('Missão m1')).toBeInTheDocument();
-    expect(within(panel('Projetos recentes')).getByText('Projeto p1')).toBeInTheDocument();
-  });
-
-  it('as pílulas de contadores ficam no cabeçalho, com o número de falhas em destaque', async () => {
-    installApi({ projects: [project('p1')], missions: { p1: [mission('m2', 'p1', 'failed')] } });
-
-    renderHome();
-
-    await screen.findByText('Missão m2', { selector: 'a' });
-    const head = document.querySelector('.home-head') as HTMLElement;
-    const pills = head.querySelector('.stat-pills') as HTMLElement;
-    expect(pills).not.toBeNull();
-    for (const label of ['Executando', 'Aguardando você', 'Falharam']) {
-      expect(within(pills).getByText(label)).toBeInTheDocument();
-    }
-    expect(within(pills).getByText('Falharam').nextElementSibling).toHaveTextContent('1');
-    expect(pills.querySelectorAll('.stat-pill--danger')).toHaveLength(1);
-    expect(head.querySelector('h1')).toHaveTextContent('Início');
+    expect(await within(panel('Missões')).findByText('Missão m1')).toBeInTheDocument();
   });
 
   it('Uso dos agentes é só o estado vazio honesto, sem números nem barras', async () => {
@@ -407,25 +433,53 @@ describe('HomePage', () => {
     expect(usage.querySelector('progress, meter, [role="progressbar"]')).toBeNull();
   });
 
-  it('as listas de missões mostram a contagem ao lado do título', async () => {
-    installApi({
-      projects: [project('p1')],
-      missions: { p1: [mission('m1', 'p1', 'running'), mission('m2', 'p1', 'failed')] },
-    });
+  it('a saudação não tem mais o botão de alterar o nome', async () => {
+    installApi({ displayName: 'Ana' });
 
     renderHome();
 
-    await screen.findByText('Missão m1');
-    const running = panel('Missões em execução');
-    expect(running.querySelector('.home-column__count')).toHaveTextContent('1');
+    expect(await screen.findByText(/, Ana/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /nome/i })).not.toBeInTheDocument();
   });
 
-  it('sem projeto, não desenha grade de projetos', async () => {
+  it('?editar-nome=1 abre o formulário de nome, e salvar fecha e tira o parâmetro', async () => {
+    const user = userEvent.setup();
+    const { setDisplayName } = installApi({ displayName: 'Ana' });
+
+    renderHome('/?editar-nome=1');
+
+    const field = await screen.findByRole('textbox', { name: 'Seu nome' });
+    expect(field).toHaveValue('Ana');
+    await user.clear(field);
+    await user.type(field, 'Bia');
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    expect(setDisplayName).toHaveBeenCalledWith('Bia');
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: 'Seu nome' })).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText(/, Bia/)).toBeInTheDocument();
+    expect(screen.getByTestId('where')).not.toHaveTextContent('editar-nome');
+  });
+
+  it('Cancelar fecha o formulário e tira o parâmetro', async () => {
+    const user = userEvent.setup();
+    installApi({ displayName: null });
+
+    renderHome('/?editar-nome=1');
+
+    await user.click(await screen.findByRole('button', { name: 'Cancelar' }));
+
+    expect(screen.queryByRole('textbox', { name: 'Seu nome' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('where')).not.toHaveTextContent('editar-nome');
+  });
+
+  it('não tem texto com travad', async () => {
     installApi({});
 
     renderHome();
 
-    await screen.findByText('Nada espera por você');
-    expect(document.querySelector('.recent-projects__grid')).toBeNull();
+    await screen.findByText('Nada espera por você.');
+    expect(document.body.textContent).not.toMatch(/travad/i);
   });
 });

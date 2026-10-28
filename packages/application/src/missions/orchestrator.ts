@@ -18,13 +18,18 @@ import {
 } from '@project-hub/domain';
 import type {
   DiffPort,
+  FileSystemPort,
   MissionRepository,
+  Planner,
   ProjectRepository,
   WorktreeNames,
   WorktreePort,
 } from '../ports';
+import { isAvailable } from '../projects/list-projects';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
+import { applyPlanEdit, planEditAudit, type PlanEdit } from './plan-edit';
+import { tasksToSteps, validatePlan } from './plan-validation';
 import { nextTask, taskPrompt } from './tasks';
 import { failInterruptedExecution, openExecutionsAtStart } from './startup-recovery';
 import { expirePendingApprovals, moveMission } from './transitions';
@@ -50,6 +55,16 @@ export type OrchestratorDeps = {
    */
   diff?: Pick<DiffPort, 'diff'>;
   /**
+   * Propõe as tarefas do plano (o planejador do Claude Code). Sem a porta, o plano sai com um passo por
+   * critério de aceite, como antes.
+   */
+  planner?: Planner;
+  /**
+   * Confere se a pasta do projeto existe antes de chamar o planejador. Sem a porta, a pasta não é
+   * conferida.
+   */
+  fs?: Pick<FileSystemPort, 'isDirectory'>;
+  /**
    * Quantas missões podem ter agente vivo ao mesmo tempo (seção 15.6). Padrão: 2. A tentativa além disso
    * entra na fila e começa quando uma vaga abre.
    */
@@ -63,11 +78,28 @@ export type OrchestratorDeps = {
  * vem com código do contrato. Erros inesperados (o banco, por exemplo) são lançados.
  */
 export interface Orchestrator {
-  planMission(missionId: string): Promise<AppResult<MissionPlan>>;
-  /** `planned` -> `queued`. */
+  /**
+   * Gera o plano de uma missão em rascunho, ou refaz o de uma missão planejada. Com o planejador, o plano
+   * vem dele, e `instruction` é o pedido de ajuste do usuário. Sem o planejador, `instruction` não vale.
+   */
+  planMission(
+    missionId: string,
+    options?: { instruction?: string },
+  ): Promise<AppResult<MissionPlan>>;
+  /**
+   * Edita uma tarefa do plano (renomear, remover, reordenar ou trocar o programa) numa missão `planned`.
+   * A edição que deixaria o plano inválido é recusada sem gravar nada.
+   */
+  editPlanStep(input: {
+    missionId: string;
+    stepId: string;
+    edit: PlanEdit;
+  }): Promise<AppResult<MissionPlan>>;
+  /** `planned` -> `queued`. Recusada enquanto o plano da missão está sendo gerado. */
   approvePlan(missionId: string): Promise<AppResult<void>>;
   /** `queued` -> `running`. Devolve a execução no estado em que o agente parou. */
   startMission(missionId: string): Promise<AppResult<Execution>>;
+  /** Cancela a missão e, se o plano dela está sendo gerado, também encerra o planejador dessa missão. */
   cancelMission(missionId: string): Promise<AppResult<void>>;
   /** `running` -> `paused`. Pausa a sessão do agente (R181). Nunca lança: falha vira resultado. */
   pauseMission(missionId: string): Promise<AppResult<void>>;
@@ -89,6 +121,11 @@ export interface Orchestrator {
    * prompt. O texto é obrigatório.
    */
   requestChanges(input: { missionId: string; feedback: string }): Promise<AppResult<Execution>>;
+  /**
+   * Fechamento do app: aborta o planejamento em andamento de todas as missões e mais nada. O planejador
+   * devolve uma falha, e a missão fica no estado em que estava. Pode ser chamado mais de uma vez.
+   */
+  dispose(): void;
 }
 
 const MISSION_NOT_FOUND = 'A missão não foi encontrada.';
@@ -99,6 +136,7 @@ const OPEN_EXECUTION_STATUSES: readonly Execution['status'][] = ['queued', 'runn
 /** Missão que já acabou: uma execução aberta nela não é reanexada. */
 const ENDED_MISSION: readonly MissionStatus[] = ['succeeded', 'failed', 'cancelled'];
 const CANCEL_REASON = 'Cancelado pelo usuário.';
+const CANCELLED_PLANNING = 'O planejamento foi cancelado.';
 const REJECTED_REASON = 'Ação protegida recusada pelo usuário.';
 
 /**
@@ -142,6 +180,16 @@ function errorMessage(error: unknown): string {
 export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const { repo, projects, worktrees, worktreeNames, worktreesRoot, agent, now, newId } = deps;
   const diffPort = deps.diff;
+  const planner = deps.planner;
+  /** Missões cujo plano está sendo gerado agora: o planejador roda uma vez por missão. */
+  const planning = new Set<string>();
+  /**
+   * Um controlador de aborto por planejamento em curso, pela missão. `cancelMission` aborta o da missão
+   * cancelada, e `dispose` (o app fechando) aborta todos.
+   */
+  const plannerAborts = new Map<string, AbortController>();
+  /** Depois de `dispose`, todo planejamento novo já nasce abortado. */
+  let disposed = false;
   /** Uma execução por missão no máximo: a que está em curso ou a que está começando. */
   const active = new Map<string, ActiveRun>();
   const maxRunning = deps.maxRunning ?? DEFAULT_MAX_RUNNING;
@@ -983,6 +1031,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       if (!canTransition(mission.status, 'cancelled')) {
         return failure('MISSION_INVALID_STATE', 'A missão já foi encerrada.');
       }
+      // Um planejamento em curso da missão para junto: o processo do planejador é encerrado.
+      plannerAborts.get(missionId)?.abort();
       repo.transaction(() => {
         const at = now();
         cancelRunningExecutions(missionId, at);
@@ -997,6 +1047,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
     // Aborta primeiro: o laço para de consumir eventos. Depois o agente é parado, e só então a
     // execução e a missão são marcadas como canceladas (seção 9.3).
+    plannerAborts.get(missionId)?.abort();
     run.controller.abort();
     try {
       if (run.session !== undefined) await run.session.stop(CANCEL_REASON);
@@ -1316,7 +1367,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * Gera o plano de uma missão em rascunho, ou refaz o plano de uma missão planejada (R161). O
    * plano refeito troca as etapas e fica registrado na auditoria, com as etapas de cada versão.
    */
-  async function planMission(missionId: string): Promise<AppResult<MissionPlan>> {
+  async function planMission(
+    missionId: string,
+    options: { instruction?: string } = {},
+  ): Promise<AppResult<MissionPlan>> {
     const mission = repo.getMission(missionId);
     if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
     if (mission.status !== 'draft' && mission.status !== 'planned') {
@@ -1331,6 +1385,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     const criteria = [...mission.acceptanceCriteria]
       .sort((a, b) => a.position - b.position)
       .map((criterion) => criterion.text);
+    if (planner !== undefined) {
+      const instruction = options.instruction?.trim();
+      return planWithPlanner(
+        planner,
+        mission,
+        criteria,
+        instruction === '' ? undefined : instruction,
+      );
+    }
     const steps: MissionStep[] = planFromCriteria(criteria).steps.map((step) => ({
       id: newId(),
       missionId,
@@ -1340,28 +1403,167 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       kind: 'custom',
       status: 'pending',
       dependsOn: [],
+      agent: 'claude-code',
     }));
+    storePlan(mission, steps, {});
+    return { ok: true, data: { missionId, steps } };
+  }
+
+  /**
+   * Grava o plano numa só transação: troca as etapas, leva `draft` a `planned` e registra `plan.generated`.
+   * `extra` entra no registro da auditoria, ao lado dos títulos.
+   */
+  function storePlan(mission: Mission, steps: MissionStep[], extra: Record<string, unknown>): void {
     repo.transaction(() => {
       const at = now();
-      repo.replaceSteps(missionId, steps);
+      repo.replaceSteps(mission.id, steps);
       if (mission.status === 'draft')
-        moveMission(repo, missionId, 'planned', { actor: 'user', at });
+        moveMission(repo, mission.id, 'planned', { actor: 'user', at });
       repo.appendAudit({
         aggregateType: 'mission',
-        aggregateId: missionId,
+        aggregateId: mission.id,
         eventType: 'plan.generated',
         severity: 'info',
         actor: 'user',
-        payload: { steps: steps.map((step) => step.title) },
+        payload: { steps: steps.map((step) => step.title), ...extra },
         createdAt: at,
       });
     });
-    return { ok: true, data: { missionId, steps } };
+  }
+
+  /**
+   * Plano vindo do planejador. A missão é relida depois da espera, porque ela pode ter sido cancelada ou
+   * apagada nesse tempo. Falha do planejador, ou plano que não passa na validação, não muda o plano
+   * anterior e fica na auditoria como `plan.failed`.
+   */
+  async function planWithPlanner(
+    port: Planner,
+    mission: Mission,
+    criteria: string[],
+    instruction: string | undefined,
+  ): Promise<AppResult<MissionPlan>> {
+    const missionId = mission.id;
+    if (planning.has(missionId)) {
+      return failure('MISSION_INVALID_STATE', 'O plano desta missão já está sendo gerado.');
+    }
+    planning.add(missionId);
+    const abort = new AbortController();
+    if (disposed) abort.abort();
+    plannerAborts.set(missionId, abort);
+    try {
+      const project = projects.get(mission.projectId);
+      if (project === undefined) {
+        return failure('PROJECT_NOT_FOUND', 'O projeto da missão não foi encontrado.');
+      }
+      if (deps.fs !== undefined && !(await isAvailable(deps.fs, project))) {
+        return failure(
+          'PROJECT_PATH_UNAVAILABLE',
+          'A pasta do projeto não existe mais ou não está acessível.',
+        );
+      }
+      const proposed = await port.plan({
+        objective: mission.objective,
+        criteria,
+        ...(instruction === undefined ? {} : { instruction }),
+        cwd: project.path,
+        signal: abort.signal,
+      });
+
+      // Cancelamento da missão ou `dispose` (o app fechando): o banco pode já estar fechado, então nada
+      // é lido nem gravado.
+      if (abort.signal.aborted) {
+        return proposed.ok ? failure('AGENT_UNAVAILABLE', CANCELLED_PLANNING) : proposed;
+      }
+      const current = repo.getMission(missionId);
+      if (current === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+      if (current.status !== 'draft' && current.status !== 'planned') {
+        return failure(
+          'MISSION_INVALID_STATE',
+          'A missão mudou de estado enquanto o plano era gerado, e o plano foi descartado.',
+        );
+      }
+      const checked = proposed.ok ? validatePlan(proposed.data) : proposed;
+      if (!checked.ok) {
+        repo.appendAudit({
+          aggregateType: 'mission',
+          aggregateId: missionId,
+          eventType: 'plan.failed',
+          severity: 'warning',
+          actor: 'user',
+          payload: {
+            code: checked.error.code,
+            message: checked.error.message,
+            ...(instruction === undefined ? {} : { instruction }),
+          },
+          createdAt: now(),
+        });
+        return checked;
+      }
+      const steps = tasksToSteps(missionId, checked.data, newId);
+      storePlan(current, steps, {
+        source: 'claude',
+        ...(instruction === undefined ? {} : { instruction }),
+      });
+      return { ok: true, data: { missionId, steps } };
+    } finally {
+      planning.delete(missionId);
+      plannerAborts.delete(missionId);
+    }
+  }
+
+  /**
+   * Edição de uma tarefa do plano. Recusada enquanto um planejamento da missão está em andamento, para
+   * que ele não sobrescreva a edição depois. A missão e as etapas são relidas dentro da transação, e as
+   * etapas novas e a auditoria `plan.edited` são gravadas nela.
+   */
+  async function editPlanStep(input: {
+    missionId: string;
+    stepId: string;
+    edit: PlanEdit;
+  }): Promise<AppResult<MissionPlan>> {
+    const { missionId, stepId, edit } = input;
+    if (planning.has(missionId)) {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'O plano está sendo gerado de novo. Espere terminar para editar.',
+      );
+    }
+    return repo.transaction((): AppResult<MissionPlan> => {
+      const mission = repo.getMission(missionId);
+      if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+      if (mission.status !== 'planned') {
+        return failure('MISSION_INVALID_STATE', 'Só um plano ainda não iniciado pode ser editado.');
+      }
+      const current = repo.listSteps(missionId);
+      const edited = applyPlanEdit(current, stepId, edit);
+      const target = current.find((step) => step.id === stepId);
+      if (!edited.ok) return edited;
+      if (target === undefined) {
+        return failure('VALIDATION_FAILED', 'A tarefa não está mais neste plano.');
+      }
+      repo.replaceSteps(missionId, edited.data);
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: missionId,
+        eventType: 'plan.edited',
+        severity: 'info',
+        actor: 'user',
+        payload: planEditAudit(edit, target),
+        createdAt: now(),
+      });
+      return { ok: true, data: { missionId, steps: edited.data } };
+    });
   }
 
   async function approvePlan(missionId: string): Promise<AppResult<void>> {
     const mission = repo.getMission(missionId);
     if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+    if (planning.has(missionId)) {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'O plano está sendo gerado. Espere terminar para aprovar.',
+      );
+    }
     if (mission.status !== 'planned') {
       return failure('MISSION_INVALID_STATE', 'Só um plano gerado pode ser aprovado.');
     }
@@ -1447,6 +1649,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
   return {
     planMission: gated(planMission),
+    editPlanStep: gated(editPlanStep),
     approvePlan: gated(approvePlan),
     startMission: gated(startMission),
     cancelMission: gated(cancelMission),
@@ -1457,5 +1660,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     retryMission: gated(retryMission),
     approveReview: gated(approveReview),
     requestChanges: gated(requestChanges),
+    dispose: () => {
+      disposed = true;
+      for (const controller of plannerAborts.values()) controller.abort();
+    },
   };
 }

@@ -1,13 +1,12 @@
 import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { addGitProject, createMission, openProject, orchestrate, sidebarOf } from './missions';
 
 // Barra lateral (Tarefa 4 do plano da interface e Tarefa 7 do plano do workspace), na janela real. Cada
 // seção rola sozinha, e um contorno de foco de 2px com recuo de 2px sairia da borda da rolagem. Por isso
 // os itens têm `outline-offset: -2px`: este teste anda pelo teclado por cada item da barra e mede que o
 // contorno cabe dentro do retângulo da barra e da seção que rola em que o item está.
-
-const BAR_NAME = 'Projetos e missões';
 
 type FocusedItem = { label: string; style: string; width: number; inside: boolean };
 
@@ -59,41 +58,30 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
 }) => {
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
-  const navigation = page.getByRole('navigation', { name: 'Principal' });
 
-  // Cadastra o projeto pelo seletor (a barra passa a listar o projeto).
-  await navigation.getByRole('link', { name: 'Projetos' }).click();
-  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
-  const card = page
-    .getByRole('list', { name: 'Projetos cadastrados' })
-    .getByRole('listitem')
-    .filter({ has: page.getByRole('heading', { name: projectName }) });
-  await expect(card).toBeVisible();
+  // Cadastra o projeto pelo botão da própria barra (ela passa a listar o projeto) e abre a aba dele.
+  await addGitProject(page, projectName);
+  const bar = sidebarOf(page);
+  await openProject(page, projectName);
 
-  const bar = page.getByRole('complementary', { name: BAR_NAME });
-  // Do catálogo para o detalhe do projeto.
-  await navigation.getByRole('link', { name: 'Projetos' }).click();
-  await card.getByRole('link', { name: projectName }).click();
-  await expect(page.getByText('Branch: main')).toBeVisible();
-
-  // Cria uma missão pelo formulário: o workspace abre e a missão, com o plano à espera de aprovação,
-  // entra na seção Em andamento.
+  // Cria uma missão pelo formulário: a missão abre em rascunho. Orquestrar gera o plano, e a missão, com o
+  // plano à espera de aprovação, entra no aviso "Precisa de você" da barra.
   const missionTitle = 'Missão da barra';
-  await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
-  const form = page.getByRole('form', { name: 'Nova missão' });
-  await form.getByLabel('Título').fill(missionTitle);
-  await form.getByLabel('Objetivo').fill('Conferir a barra lateral.');
-  await form.getByLabel('Critérios de aceite').fill('A barra mostra a missão');
-  await form.getByLabel('Esta missão altera código').check();
-  await form.getByRole('button', { name: 'Criar missão' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: missionTitle })).toBeVisible();
+  await createMission(page, {
+    title: missionTitle,
+    objective: 'Conferir a barra lateral.',
+    criterion: 'A barra mostra a missão',
+  });
+  await orchestrate(page);
 
-  // A missão, com o plano à espera de aprovação, sobe para o aviso "Precisa de você", e o botão Nova missão
-  // fica no rodapé da barra.
+  // A missão, com o plano à espera de aprovação, sobe para o aviso "Precisa de você". A barra não tem mais
+  // o botão Nova missão (ele vive no cabeçalho do projeto) nem os links Início e Projetos.
   const attention = bar.getByRole('region', { name: 'Precisa de você' });
   await expect(attention.getByText(missionTitle)).toBeVisible();
   await expect(attention.getByText(/Aguarda aprovação do plano/)).toBeVisible();
-  await expect(bar.getByRole('button', { name: '+ Nova missão' })).toBeVisible();
+  await expect(bar.getByRole('button', { name: /Nova missão/ })).toHaveCount(0);
+  await expect(bar.getByRole('link', { name: 'Início' })).toHaveCount(0);
+  await expect(bar.getByRole('link', { name: 'Projetos', exact: true })).toHaveCount(0);
 
   // A barra só rola quando o conteúdo passa da altura dela. Com poucos itens ela não rola, e um contorno
   // que saísse da borda da rolagem não seria medido. Por isso a altura da barra é limitada aqui, e a
@@ -118,17 +106,14 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
     expect(item.inside, `o contorno de "${item.label}" cabe dentro da barra`).toBe(true);
   }
 
-  // A ordem da tela: a busca, o aviso (Ir), a navegação, a troca Lista/Grade, o projeto e o rodapé.
+  // A ordem da tela: a busca, o aviso (Ir), Adicionar projeto, a troca Lista/Grade e o projeto.
   expect(visited).toEqual([
     'Buscar projeto ou agente',
     `Ir para ${missionTitle}`,
-    'Início',
-    'Projetos',
+    'Adicionar projeto',
     'Lista',
     'Grade',
     `Sessões de ${projectName}`,
     projectName,
-    '+ Projeto',
-    '+ Nova missão',
   ]);
 });

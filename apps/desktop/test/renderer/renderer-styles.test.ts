@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css depois do app.css e o workspace.css por último', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css e o mission.css depois do app.css e o workspace.css por último', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -57,6 +57,11 @@ describe('index.html do renderer', () => {
       './styles/xterm.css',
       './styles/app.css',
       './styles/home.css',
+      './styles/plan.css',
+      './styles/orchestrator-board.css',
+      './styles/statusbar.css',
+      './styles/project.css',
+      './styles/mission.css',
       './styles/workspace.css',
     ]);
   });
@@ -138,7 +143,17 @@ describe('fontes locais', () => {
   });
 
   it('não importa nem referencia endereço de fora em nenhum CSS do renderer', () => {
-    for (const name of ['fonts.css', 'tokens.css', 'app.css', 'workspace.css']) {
+    for (const name of [
+      'fonts.css',
+      'tokens.css',
+      'app.css',
+      'plan.css',
+      'orchestrator-board.css',
+      'statusbar.css',
+      'project.css',
+      'mission.css',
+      'workspace.css',
+    ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
         /\/\*[\s\S]*?\*\//g,
         '',
@@ -231,6 +246,13 @@ describe('botões, campos e anel de foco', () => {
     expect(rule('button:disabled').get('cursor')).toBe('not-allowed');
   });
 
+  it('a barra de abas, parada do Tab depois de um clique, tem anel de foco que vence o outline inline do Radix', () => {
+    const ring = rule('.tabs:focus-visible');
+    // O Radix põe `outline: none` inline na barra; só o !important o vence.
+    expect(ring.get('outline')).toBe('2px solid var(--focus) !important');
+    expect(ring.get('outline-offset')).toBe('2px');
+  });
+
   it('o botão principal é lima cheio com texto --accent-ink; aprovar tem a mesma aparência', () => {
     const primary = rule('.btn-primary');
     expect(primary.get('background')).toBe('var(--accent)');
@@ -247,9 +269,8 @@ describe('botões, campos e anel de foco', () => {
     expect(rule('.btn-danger').get('color')).toBe('var(--danger)');
   });
 
-  it('.btn-outline e .btn-link continuam, com a cor da marca', () => {
+  it('.btn-outline continua, com a cor da marca', () => {
     expect(rule('.btn-outline').get('color')).toBe('var(--brand)');
-    expect(rule('.btn-link').get('color')).toBe('var(--brand)');
   });
 
   it('o botão anima só cor de fundo e de borda, e o movimento reduzido desliga a transição', () => {
@@ -384,5 +405,64 @@ describe('módulos do renderer', () => {
       offenders,
       'CSS importado por módulo vira <style> em desenvolvimento e a CSP bloqueia. Ligue o arquivo por <link> no index.html.',
     ).toEqual([]);
+  });
+});
+
+/**
+ * Guarda de CSS e código mortos (Tarefa 8): as classes das telas que saíram (o banner "Aguardando você", o fluxo da
+ * missão em cinco etapas, o cartão de projeto, o cabeçalho antigo do projeto, a linha antiga de missão) não voltam
+ * nem nos CSS nem nos módulos.
+ */
+describe('classes removidas', () => {
+  const REMOVED = [
+    'decision-banner',
+    'decision-status',
+    'mission-flow',
+    'project-card',
+    'project-list',
+    'project-unavailable',
+    'project-head__',
+    'mission-row__text',
+    'mission-summary',
+    'mission-indicator',
+    'mission-actions',
+    'mission-workspace',
+    'mission-tabs',
+    'mission-tabpanel',
+    'btn-link',
+    'page-note',
+    'sidebar__meta',
+    'sidebar__project',
+    'conclusion__item--failed',
+  ];
+
+  it('nenhum CSS do renderer cita uma classe que já não existe', () => {
+    const stylesDirectory = join(rendererDirectory, 'styles');
+    const offenders = readdirSync(stylesDirectory)
+      .filter((name) => name.endsWith('.css'))
+      .flatMap((name) => {
+        const css = readFileSync(join(stylesDirectory, name), 'utf8');
+        return REMOVED.filter((cls) => css.includes(`.${cls}`)).map((cls) => `${name}: .${cls}`);
+      });
+    expect(offenders).toEqual([]);
+  });
+
+  it('nenhum módulo do renderer usa uma classe removida nem importa o componente apagado', () => {
+    const offenders = sourceFiles(rendererDirectory).flatMap((file) => {
+      const text = readFileSync(file, 'utf8');
+      const classes = REMOVED.filter((cls) => text.includes(cls)).map(
+        (cls) => `${relative(rendererDirectory, file)}: ${cls}`,
+      );
+      const imports = /\b(?:DecisionBanner|MissionFlow|ProjectCard|mission-flow)\b/.test(text)
+        ? [`${relative(rendererDirectory, file)}: import de componente apagado`]
+        : [];
+      return [...classes, ...imports];
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it('o texto do link "Ver a decisão" do banner apagado não sobrou em mission-text', () => {
+    const text = readFileSync(join(rendererDirectory, 'mission-text.ts'), 'utf8');
+    expect(text).not.toContain('decisionLink');
   });
 });

@@ -282,16 +282,14 @@ describe('cores do chrome do workspace', () => {
     // A aba ativa usa o fundo da página (--bg). O anel de 1px em --muted é a marca do estado além do peso
     // do texto, e precisa de 3:1 sobre o fundo (WCAG 1.4.11).
     const background = tokens.get('--bg') ?? '';
-    expect(contrastRatio(tokens.get('--text') ?? '', background)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(contrastRatio(tokens.get('--text') ?? '', background)).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
     expect(contrastRatio(tokens.get('--muted') ?? '', background)).toBeGreaterThanOrEqual(3);
   });
 
-  it('o lima (--accent) só aparece no traço do item ativo da navegação, na barra do link atual e no botão principal do rodapé da lateral', () => {
-    const allowed = [
-      ".main-nav a[aria-current='page']",
-      ".sidebar__link[aria-current='page']",
-      '.sidebar__foot .sidebar__action--primary',
-    ];
+  it('o lima (--accent) só aparece na barra do link atual da lateral', () => {
+    const allowed = [".sidebar__link[aria-current='page']"];
     const rules = [...workspaceCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
     const using = rules.filter(([, , body = '']) => body.includes('var(--accent)'));
     expect(using.length).toBeGreaterThan(0);
@@ -301,13 +299,8 @@ describe('cores do chrome do workspace', () => {
         list.every((item) => allowed.includes(item)),
         selectors.trim(),
       ).toBe(true);
-      // O traço de 2px embaixo da navegação, a barra de 3px do link atual, ou o fundo do botão principal.
-      const pattern = selectors.includes('.main-nav')
-        ? /box-shadow:\s*inset 0 -2px 0 var\(--accent\)/
-        : selectors.includes('--primary')
-          ? /background:\s*var\(--accent\)/
-          : /box-shadow:\s*inset 3px 0 0 var\(--accent\)/;
-      expect(body, selectors.trim()).toMatch(pattern);
+      // A barra de 3px do link atual.
+      expect(body, selectors.trim()).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--accent\)/);
     }
   });
 
@@ -340,10 +333,96 @@ describe('cores do chrome do workspace', () => {
 });
 
 /**
+ * Aba Plano (plan.css), quadro do orquestrador (orchestrator-board.css) barra de status (statusbar.css), aba do projeto (project.css) e missão (mission.css): só tokens de tokens.css e
+ * app.css, sem cor literal, sem animação. O programa é texto e a cor só o reforça; cada cor de programa
+ * (hoje o laranja do Claude) passa de 4,5:1 como texto e de 3:1 como borda sobre o fundo e o cartão
+ * (WCAG 1.4.3 e 1.4.11). O lima (--accent) fica fora desses dois arquivos.
+ */
+describe.each([
+  'plan.css',
+  'orchestrator-board.css',
+  'statusbar.css',
+  'project.css',
+  'mission.css',
+])('cores de %s', (name) => {
+  const css = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles', name),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ALLOWED = new Set([
+    '--bg',
+    '--surface',
+    '--surface-2',
+    '--surface-glass',
+    '--line',
+    '--field-line',
+    '--muted',
+    '--text',
+    '--blue',
+    '--orange',
+    '--brand',
+    '--danger',
+    '--board-line',
+  ]);
+  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+
+  it('só usa var() de tokens permitidos', () => {
+    const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((token) => !ALLOWED.has(token) && !NOT_COLOR.test(token))).toEqual([]);
+  });
+
+  it('não escreve cor literal, não usa o lima e não tem animação nem estilo inline', () => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
+    expect(css).not.toContain('var(--accent)');
+    expect(css).not.toMatch(/\b(?:animation|transition)\b/);
+  });
+});
+
+describe('cores dos programas no quadro do orquestrador', () => {
+  const PROGRAM_COLORS = ['--orange'] as const;
+  const BORDERS = ['--brand', ...PROGRAM_COLORS] as const;
+
+  it.each(PROGRAM_COLORS)(
+    'o nome do programa em %s passa de 4,5:1 sobre o cartão e o fundo',
+    (color) => {
+      const text = tokens.get(color) ?? '';
+      for (const surface of ['--surface', '--bg']) {
+        expect(
+          contrastRatio(text, tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    },
+  );
+
+  it.each(BORDERS)('a borda do cartão em %s passa de 3:1 sobre o fundo e o cartão', (color) => {
+    const border = tokens.get(color) ?? '';
+    for (const surface of ['--surface', '--bg']) {
+      expect(
+        contrastRatio(border, tokens.get(surface) ?? ''),
+        `${color} sobre ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('o estado "falhou" (--danger) e o texto neutro passam de 4,5:1 sobre o cartão', () => {
+    const surface = tokens.get('--surface') ?? '';
+    for (const color of ['--danger', '--text', '--muted']) {
+      expect(contrastRatio(tokens.get(color) ?? '', surface), color).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+});
+
+/**
  * Início em painéis (home.css): só tokens de tokens.css, sem cor literal, sem animação. Cada cor de
- * destaque tem um lugar: o lima (--accent) só no ícone da chamada (o botão é o .btn-primary do app.css) e no dia de hoje do mapa de
- * atividade, o vermelho (--danger) só no número de falhas, e o mapa usa a rampa de --muted (#b7adcf)
- * por opacidade. O texto do cartão (--text e --muted sobre --surface) já está nos pares do começo.
+ * destaque tem um lugar: o lima (--accent) só no dia de hoje do mapa de atividade e no preenchimento da
+ * barra de missão em andamento ou concluída, o âmbar (--warn) só no preenchimento da barra de missão que
+ * espera a pessoa, o vermelho (--danger) só no da barra de missão que falhou, e o mapa usa a rampa de --muted
+ * (#b7adcf) por opacidade. O texto do cartão (--text e --muted sobre --surface e --surface-2) já está nos pares do começo.
  */
 describe('cores do Início (home.css)', () => {
   const homeCss = readFileSync(
@@ -363,17 +442,20 @@ describe('cores do Início (home.css)', () => {
     '--bg',
     '--surface',
     '--surface-2',
-    '--surface-glass',
     '--line',
     '--field-line',
     '--muted',
     '--text',
     '--accent',
-    '--accent-ink',
+    '--warn',
     '--danger',
-    '--cell',
   ]);
   const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+  /** O preenchimento da barra de progresso, nos dois motores (WebKit e Gecko), por tom do estado. */
+  const FILL = (tone: string) => [
+    `.mission-progress__bar--${tone}::-webkit-progress-value`,
+    `.mission-progress__bar--${tone}::-moz-progress-bar`,
+  ];
 
   it('só usa var() de tokens permitidos', () => {
     const used = [...homeCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
@@ -389,24 +471,36 @@ describe('cores do Início (home.css)', () => {
     }
   });
 
-  it('o lima (--accent) só aparece no ícone da chamada e no dia de hoje do mapa', () => {
-    const using = rules.filter(({ body }) => body.includes('var(--accent)'));
+  it.each([
+    ['--accent', ['.activity-cell--today', ...FILL('lime')]],
+    ['--warn', FILL('warn')],
+    ['--danger', FILL('red')],
+  ])('%s só aparece onde tem papel', (token, allowed) => {
+    const using = rules.filter(({ body }) => body.includes(`var(${token})`));
     expect(using.length).toBeGreaterThan(0);
-    for (const { selectors, body } of using) {
+    for (const { selectors } of using) {
       expect(
-        selectors.every((item) => item === '.home-cta__icon' || item === '.activity-cell--today'),
+        selectors.every((item) => allowed.includes(item)),
         selectors.join(', '),
       ).toBe(true);
-      expect(body).toMatch(/(?:background:|outline:\s*1px solid) var\(--accent\)/);
     }
   });
 
-  it('o vermelho (--danger) só pinta o número de falhas', () => {
-    const using = rules.filter(({ body }) => body.includes('var(--danger)'));
-    expect(using.map(({ selectors }) => selectors)).toEqual([
-      ['.stat-pill--danger .stat-pill__value'],
-    ]);
-    expect(using[0]?.body).toMatch(/color:\s*var\(--danger\)/);
+  it('a barra de progresso pinta o preenchimento por tom do estado e o trilho de --line', () => {
+    for (const [tone, token] of [
+      ['lime', '--accent'],
+      ['warn', '--warn'],
+      ['red', '--danger'],
+    ] as const) {
+      for (const selector of FILL(tone)) {
+        const rule = rules.find((item) => item.selectors.includes(selector));
+        expect(rule?.body, selector).toMatch(new RegExp(String.raw`background:\s*var\(${token}\)`));
+      }
+    }
+    const track = rules.find((item) =>
+      item.selectors.includes('.mission-progress__bar::-webkit-progress-bar'),
+    );
+    expect(track?.body).toMatch(/background:\s*var\(--line\)/);
   });
 
   it('a rampa do mapa vai de 0 a 4 só com --muted, em opacidade crescente', () => {

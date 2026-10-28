@@ -6,6 +6,22 @@ import { ConfirmButton, ConfirmInline } from '../../src/renderer/components/Conf
 const QUESTION = 'Excluir esta missão? Não dá para desfazer.';
 
 describe('ConfirmButton', () => {
+  it('com ariaLabel, o botão inicial ganha esse nome acessível e mantém o texto visível', () => {
+    render(
+      <ConfirmButton
+        label="Remover"
+        ariaLabel="Remover tarefa Criar API"
+        question="Remover a tarefa?"
+        confirmLabel="Remover"
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Remover tarefa Criar API' })).toHaveTextContent(
+      'Remover',
+    );
+  });
+
   it('o primeiro clique troca o botão pela pergunta, sem chamar a ação', async () => {
     const onConfirm = vi.fn();
     const user = userEvent.setup();

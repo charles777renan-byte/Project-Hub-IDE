@@ -12,7 +12,7 @@ export type { SidebarData } from './overview-data';
 /**
  * Dados da barra lateral, da carga compartilhada (`overview-data.ts`). Além dos eventos de missão e do
  * cadastro de projeto, que a carga já ouve, a troca de rota também pede recarga, no mesmo agrupamento
- * de 250 ms (um projeto cadastrado na página de Projetos aparece na barra quando a pessoa sai dela).
+ * de 250 ms (um projeto cadastrado fora da barra aparece nela quando a pessoa troca de tela).
  * Sem o preload (testes), a barra mostra a mensagem e segue.
  */
 export function useSidebarData(): SidebarData {

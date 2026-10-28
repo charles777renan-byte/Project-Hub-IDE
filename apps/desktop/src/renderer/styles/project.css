@@ -1,0 +1,417 @@
+/*
+ * Aba do projeto (pages/WorkspacePage.tsx, components/project/*): o cabeçalho de uma linha com o nome, as
+ * visões, Nova missão e Mais ações, e o painel da visão abaixo. Só usa tokens de cor de tokens.css (--bg,
+ * --surface, --line, --field-line, --muted e --text), sem cor literal, sem animação. Ligado depois do
+ * statusbar.css e antes do workspace.css no index.html.
+ */
+.app-main:has(.project-tab) {
+  padding: 0;
+  overflow: hidden;
+  /* Sem fundo próprio: o brilho da janela fica visível nos vãos dos painéis de terminal. */
+  background: transparent;
+}
+
+.app-main:has(.project-tab) .app-main__content {
+  max-width: none;
+  height: 100%;
+}
+
+.project-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Cabeçalho: uma linha de 40px que cede para duas quando a janela é estreita (o nome trunca primeiro). */
+.project-header {
+  flex: none;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.project-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-4);
+  min-height: 40px;
+}
+
+.project-header .project-header__title {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 24rem;
+}
+
+.project-header .project-header__title h1 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.9375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-header__name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Visões: abas sublinhadas, a ativa com o traço claro embaixo, alinhadas à base do cabeçalho. */
+.project-header .tabs {
+  flex-wrap: nowrap;
+  align-self: stretch;
+  gap: 0 var(--space-3);
+  margin: 0;
+}
+
+.project-header .tab {
+  flex: none;
+  margin: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 var(--space-2);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+/* Foco pelo teclado: o anel abraça o nome da aba, arredondado, em vez de contornar a altura toda do cabeçalho. */
+.project-header .tab:focus-visible {
+  border-radius: 6px;
+  outline-offset: -6px;
+}
+
+.project-header .tab:hover {
+  background: transparent;
+}
+
+.project-header .tab[aria-selected='true'] {
+  border-bottom-color: var(--text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.project-header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.project-header__actions button,
+.project-header .menu-acoes__gatilho {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.project-header .confirm-inline,
+.project-header .page-alert {
+  margin: 0 0 var(--space-2);
+}
+
+/* O painel da visão ocupa o resto da altura. Os terminais vão de borda a borda; as outras visões têm respiro e rolam. */
+.project-tab__panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.project-tab__panel[hidden] {
+  display: none;
+}
+
+.project-tab__panel--terminais {
+  overflow: hidden;
+}
+
+.project-tab__panel--missoes,
+.project-tab__panel--worktrees,
+.project-tab__panel--configuracoes {
+  padding: var(--space-4);
+  overflow: auto;
+}
+
+.project-tab .workspace-status,
+.project-tab .workspace-missing {
+  padding: var(--space-3);
+}
+
+/*
+ * Configurações: uma linha por item (rótulo, valor e ações), como numa IDE. Grupo e apelido editam em linha: o
+ * campo aparece no clique, com folga dos botões ao lado, e o aviso de situação fica logo abaixo da linha.
+ */
+.project-settings {
+  max-width: 44rem;
+}
+
+.settings-list {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr) auto;
+  column-gap: var(--space-4);
+  margin: 0;
+}
+
+.settings-row {
+  display: contents;
+}
+
+.settings-row > dt,
+.settings-row > dd {
+  margin: 0;
+  padding: var(--space-2) 0;
+}
+
+.settings-row > dt {
+  color: var(--muted);
+  align-self: center;
+}
+
+.settings-row > dd {
+  align-self: center;
+  min-width: 0;
+}
+
+.settings-row__wide {
+  grid-column: 2 / 4;
+}
+
+.settings-row__value {
+  overflow-wrap: anywhere;
+}
+
+.settings-row__value.muted {
+  color: var(--muted);
+}
+
+.settings-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.settings-row__edit {
+  grid-column: 2 / 4;
+}
+
+.settings-row__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.settings-row__input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-row__input:hover {
+  border-color: var(--muted);
+}
+
+.settings-row__form .settings-row__actions {
+  flex: none;
+}
+
+.settings-row__error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* A linha do aviso ocupa a grade toda e some sem texto (a região de anúncio continua montada). */
+.settings-row__status {
+  grid-column: 2 / 4;
+  padding: 0 !important;
+}
+
+.settings-row__status p {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.settings-row__status p:empty {
+  display: none;
+}
+
+/*
+ * Missões: a lista com progresso (.mission-progress*, de home.css) e o formulário Nova missão, compacto e sem
+ * moldura: título, três campos com uma dica cada, duas opções e Cancelar e Criar no fim.
+ */
+.project-missions {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  max-width: 56rem;
+}
+
+.project-missions:focus {
+  outline: none;
+}
+
+.project-missions p {
+  margin: 0;
+}
+
+.project-missions__note {
+  color: var(--muted);
+}
+
+.project-missions__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+}
+
+.mission-form {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 48rem;
+}
+
+.mission-form .mission-form__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* O compositor: um cartão só, com o título e o objetivo sem moldura própria, os critérios e o rodapé. */
+.composer {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.composer:focus-within {
+  border-color: var(--muted);
+}
+
+.composer__title,
+.composer__objective,
+.composer__add {
+  width: 100%;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.composer__title {
+  font-weight: 600;
+}
+
+.composer__objective {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+/* O anel de foco global vale aqui também; um pouco recuado, para não encostar na borda do cartão. */
+.composer__title:focus-visible,
+.composer__objective:focus-visible,
+.composer__add:focus-visible {
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.composer__criteria {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.composer__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.composer__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-1) 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+}
+
+.composer__chip-remove {
+  min-height: 0;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.composer__chip-remove:hover {
+  color: var(--text);
+}
+
+.composer__add {
+  border-bottom: 1px dashed var(--line);
+}
+
+.composer__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.composer__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+
+.composer__spacer {
+  flex: 1;
+}
+
+.composer__quota {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.mission-form .field-error {
+  margin: 0;
+}

@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { useEffect, useRef } from 'react';
 import { registerTerminalForE2e } from './e2e-hook';
 import { EXIT_HINT } from './exit-hint';
+import { attachTerminalStream } from './terminal-stream';
 import { attachWebglRenderer } from './webgl-renderer';
 
 /** Cores do terminal: as mesmas do app (tokens.css). O xterm recebe valores, não variáveis de CSS. */
@@ -55,14 +56,29 @@ export function fitTerminal(
   const screen = host.querySelector<HTMLElement>('.xterm-screen');
   if (screen === null || term.cols < 1 || term.rows < 1) return undefined;
   if (host.clientWidth < MIN_FIT_WIDTH || host.clientHeight < MIN_FIT_HEIGHT) return undefined;
-  const cellWidth = screen.clientWidth / term.cols;
-  const cellHeight = screen.clientHeight / term.rows;
-  if (!(cellWidth > 0) || !(cellHeight > 0)) return undefined;
-  const cols = Math.max(2, Math.floor(host.clientWidth / cellWidth));
-  const rows = Math.max(1, Math.floor(host.clientHeight / cellHeight));
+  if (!(screen.clientWidth > 0) || !(screen.clientHeight > 0)) return undefined;
+  // Multiplica antes de dividir: `área / (tela / colunas)` perde precisão (1402 / (1402 / 219) dá 218,99999999999997)
+  // e, em escala fracionária, o ajuste alternava entre duas larguras sem parar.
+  const cols = Math.max(2, Math.floor((host.clientWidth * term.cols) / screen.clientWidth));
+  const rows = Math.max(1, Math.floor((host.clientHeight * term.rows) / screen.clientHeight));
   if (cols === term.cols && rows === term.rows) return undefined;
   term.resize(cols, rows);
   return { cols, rows };
+}
+
+/** Quantas vezes seguidas o ajuste espera o xterm medir a célula (um quadro cada) antes de desistir. */
+const MAX_MEASURE_RETRIES = 30;
+
+/**
+ * Se a área já comporta um ajuste, mas o xterm ainda não mediu a célula (a tela dele mede 0). Acontece quando o
+ * terminal abre dentro de uma área escondida: ao aparecer, a área muda de tamanho, mas o xterm só mede a célula
+ * depois, no callback do IntersectionObserver dele, e a área não muda mais. Quem chama tenta de novo.
+ */
+function awaitingMeasure(host: HTMLElement): boolean {
+  const screen = host.querySelector<HTMLElement>('.xterm-screen');
+  if (screen === null) return false;
+  if (host.clientWidth < MIN_FIT_WIDTH || host.clientHeight < MIN_FIT_HEIGHT) return false;
+  return screen.clientWidth === 0 || screen.clientHeight === 0;
 }
 
 /**
@@ -97,12 +113,24 @@ export function TerminalView({
     term.open(host);
     termRef.current = term;
     let disposed = false;
+    let retryFrame: number | undefined;
+    let retries = 0;
     const refit = () => {
       // Uma montagem desfeita (o StrictMode do desenvolvimento monta, desfaz e monta de novo) não pode mais mandar
       // tamanho ao processo: o `.then(refit)` da assinatura dela ainda chega depois da limpeza.
       if (disposed) return;
       const size = fitTerminal(term, host);
       if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
+      // Aberto escondido, o xterm ainda não mediu a célula quando a área aparece: espera o quadro seguinte (limitado).
+      if (!awaitingMeasure(host)) {
+        retries = 0;
+      } else if (retryFrame === undefined && retries < MAX_MEASURE_RETRIES) {
+        retries += 1;
+        retryFrame = window.requestAnimationFrame(() => {
+          retryFrame = undefined;
+          refit();
+        });
+      }
     };
     // O WebGL desenha blocos, caixas e cores de 24 bits; sem ele, o xterm segue no DOM (ver webgl-renderer.ts).
     // Se o contexto se perde e o terminal cai no DOM, a célula muda de largura: as colunas se ajustam de novo
@@ -133,8 +161,8 @@ export function TerminalView({
       return false;
     });
 
-    const stopEvents = api.onEvent((event) => {
-      if (event.terminalId !== terminalId) return;
+    // A assinatura é contada por terminal (terminal-stream.ts): o mesmo terminal em outra visão não a duplica nem a solta.
+    const stream = attachTerminalStream(terminalId, (event) => {
       if (event.type === 'data') term.write(event.data);
       else if (event.type === 'restart') term.reset();
       else term.write(`\r\n[processo encerrado, código ${event.exitCode}]\r\n`);
@@ -144,14 +172,17 @@ export function TerminalView({
     });
     const observer = new ResizeObserver(refit);
     observer.observe(host);
-    void api.subscribe(terminalId).then(refit);
+    // A tela do xterm muda de tamanho quando ele mede a célula (depois de o terminal aparecer): é o aviso para ajustar.
+    const screen = host.querySelector('.xterm-screen');
+    if (screen !== null) observer.observe(screen);
+    void stream.ready.then(refit);
 
     return () => {
       disposed = true;
+      if (retryFrame !== undefined) window.cancelAnimationFrame(retryFrame);
       observer.disconnect();
       typing.dispose();
-      stopEvents();
-      void api.unsubscribe(terminalId);
+      stream.detach();
       termRef.current = null;
       unregisterForE2e();
       releaseWebgl();

@@ -14,6 +14,7 @@ import {
   type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
+  type Planner,
   type Platform,
   type ProfileDeps,
   type ProjectLifecycleDeps,
@@ -85,6 +86,8 @@ export type AppServicesOptions = {
   maxRunningMissions?: number | undefined;
   /** Agente das missões. Sem ele, vale o agente simulado. */
   agent?: OrchestratorDeps['agent'] | undefined;
+  /** Planejador das tarefas do plano. Sem ele, o plano sai com um passo por critério de aceite. */
+  planner?: Planner | undefined;
 };
 
 /**
@@ -161,6 +164,46 @@ export function resolveDirectoryChooser<Args extends unknown[]>(
   return () => Promise.resolve(testPath);
 }
 
+/** Como o planejador é executado: o executável, o que vai antes dos argumentos fixos e o ambiente extra. */
+export type PlannerCommand = {
+  command: string;
+  /** Argumentos antes dos fixos do planejador (o script do CLI falso). Vazio fora dos testes. */
+  commandPrefix: string[];
+  /** Variáveis somadas ao ambiente do processo (`ELECTRON_RUN_AS_NODE` do CLI falso). Vazio fora dos testes. */
+  extraEnv: Record<string, string>;
+  /** Verdadeiro quando um comando de teste tomou o lugar do `claude`: liga o planejador sem `APP_AGENT_ADAPTER`. */
+  overridden: boolean;
+};
+
+/**
+ * Comando do planejador. Só com `PROJECT_HUB_ENV=test` os ganchos de teste valem; em qualquer outro caso
+ * são ignorados e vale `defaultCommand`. `APP_PLANNER_SCRIPT` (um `.mjs`) roda o próprio executável
+ * (`execPath`, o Electron) como Node, com o script na frente dos argumentos fixos: o Windows não executa um
+ * `.cmd` direto, e assim o CLI falso é um script portátil. `APP_PLANNER_COMMAND` troca só o executável.
+ * O script vence o comando. Empacotado, as variáveis já foram retiradas por `applicationEnvironment`.
+ */
+export function resolvePlannerCommand(
+  env: NodeJS.ProcessEnv,
+  defaultCommand: string,
+  execPath: string = process.execPath,
+): PlannerCommand {
+  const isTest = env['PROJECT_HUB_ENV'] === 'test';
+  const script = isTest ? env['APP_PLANNER_SCRIPT'] : undefined;
+  if (script !== undefined && script !== '') {
+    return {
+      command: execPath,
+      commandPrefix: [script],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      overridden: true,
+    };
+  }
+  const testCommand = isTest ? env['APP_PLANNER_COMMAND'] : undefined;
+  if (testCommand !== undefined && testCommand !== '') {
+    return { command: testCommand, commandPrefix: [], extraEnv: {}, overridden: true };
+  }
+  return { command: defaultCommand, commandPrefix: [], extraEnv: {}, overridden: false };
+}
+
 /**
  * Liga as portas dos casos de uso às implementações reais (composição do processo principal). Abre
  * o banco, aplica as migrações e trata as execuções que ficaram abertas antes de devolver os
@@ -183,6 +226,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const newId = () => randomUUID();
 
   const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
+  const fs = { isDirectory: createIsDirectory() };
   const orchestrator = createOrchestrator({
     repo,
     projects,
@@ -193,11 +237,12 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     agent: options.agent ?? createDemoAgent(),
     ...(options.maxRunningMissions === undefined ? {} : { maxRunning: options.maxRunningMissions }),
     diff,
+    fs,
+    ...(options.planner === undefined ? {} : { planner: options.planner }),
     now,
     newId,
   });
   // A recuperação das execuções abertas roda dentro do orquestrador (reanexa ou fecha, e anda com a fila).
-  const fs = { isDirectory: createIsDirectory() };
   return {
     repo: projects,
     git: createGitDetector(),
@@ -222,6 +267,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       },
     },
     close: () => {
+      // Antes do banco: aborta o planejador que estiver rodando, para o processo `claude` não sobreviver ao app.
+      orchestrator.dispose();
       db.$client.close();
     },
   };

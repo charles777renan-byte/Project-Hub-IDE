@@ -7,7 +7,7 @@ import { ConfirmButton } from './ConfirmButton';
 const plural = (count: number) => (count === 1 ? '1 missão' : `${count} missões`);
 
 /**
- * "Parar todos", no cabeçalho: cancela as missões em execução (as mesmas que o contador "N executando" conta), depois
+ * "Parar todos", na barra de status: cancela as missões em execução (as mesmas que o contador "N executando" conta), depois
  * de uma pergunta na mesma linha. Só aparece quando há alguma. Usa o cancelamento que a missão já tem, então a
  * pessoa pode tentar de novo depois. Terminais abertos não são tocados: fechá-los mataria sessões vivas.
  */

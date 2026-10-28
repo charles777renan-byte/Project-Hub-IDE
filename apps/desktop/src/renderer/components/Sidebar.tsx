@@ -1,15 +1,16 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import type { LayoutNode, ProjectSummary, TerminalSummary } from '@project-hub/contracts';
 import { formatTime, needsAttention, statusIcon, statusLabel } from '../mission-text';
 import { notify } from '../notify';
 import { colorOf } from '../project-color';
-import { missionPath, projectPath, ROUTE_PATHS, workspacePath } from '../routes';
+import { missionPath, ROUTE_PATHS, workspacePath } from '../routes';
 import { barLevels, useActivity } from '../sidebar-activity';
 import { useTerminals } from '../terminals-data';
+import { useProjectActions, type ProjectActions } from '../use-project-actions';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
-import { ChevronRight, Clock, ICON_PROPS, Search } from './Icon';
-import { MainNav } from './MainNav';
+import { ArchivedProjects } from './ArchivedProjects';
+import { ChevronRight, Clock, ICON_PROPS, Plus, Search } from './Icon';
 import { ProviderIcon } from './ProviderIcon';
 import { StatusChip } from './StatusChip';
 
@@ -41,29 +42,20 @@ function saveView(view: View): void {
 }
 
 /**
- * Barra lateral: a busca, o aviso do que espera a pessoa e a navegação principal no topo; os espaços (os
- * projetos, em lista com os agentes em cartões, ou em grade; agrupados quando a pessoa criou grupos); e, no
- * rodapé, os botões de novo projeto e nova missão. Ocupa toda a coluna que a recebe, e a lista de espaços rola
- * sozinha. O projeto atual, que dá destino ao botão Nova missão, vem de `currentProjectId` ou, sem ele, da
- * rota. `onSearch` abre a paleta de comandos; sem ele, a busca não aparece.
+ * Barra lateral, o explorador da janela: a busca, o aviso do que espera a pessoa e o botão Adicionar projeto
+ * no topo; os espaços (os projetos, em lista com os agentes em cartões, ou em grade; agrupados quando a
+ * pessoa criou grupos); e, no fim, os projetos arquivados, numa seção recolhível com Restaurar. Início e a
+ * lista de projetos não têm mais página: Início é a aba fixa da barra superior. Ocupa toda a coluna que a
+ * recebe, e a lista de espaços rola sozinha. `onSearch` abre a paleta de comandos; sem ele, a busca não
+ * aparece.
  */
-export function Sidebar({
-  currentProjectId,
-  onSearch,
-}: {
-  currentProjectId?: string;
-  onSearch?: () => void;
-}) {
+export function Sidebar({ onSearch }: { onSearch?: () => void }) {
   const navigate = useNavigate();
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
-  const projectMatch = useMatch(ROUTE_PATHS.projectDetail);
-  const missionMatch = useMatch(ROUTE_PATHS.missionDetail);
-  const projectId =
-    currentProjectId ??
-    missionMatch?.params.projectId ??
-    workspaceMatch?.params.projectId ??
-    projectMatch?.params.projectId;
   const data = useSidebarData();
+  const projectActions = useProjectActions();
+  const addButton = useRef<HTMLButtonElement>(null);
+  const archivedToggle = useRef<HTMLButtonElement>(null);
   const { terminals, error: terminalsError, reload } = useTerminals();
   const activity = useActivity(terminals);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
@@ -84,6 +76,13 @@ export function Sidebar({
     setView(next);
     saveView(next);
   };
+  // O botão Restaurar some com o projeto: o foco vai para a seção Arquivados, se ainda restar algum, e senão
+  // para Adicionar projeto, em vez de cair no corpo da página.
+  const restore = async (projectId: string) => {
+    const remaining = projectActions.archived.length - 1;
+    if (!(await projectActions.restoreProject(projectId))) return;
+    (remaining > 0 ? archivedToggle : addButton).current?.focus();
+  };
 
   return (
     <aside aria-label="Projetos e missões" className="sidebar">
@@ -97,7 +96,8 @@ export function Sidebar({
           navigate(missionPath(targetProjectId, missionId))
         }
       />
-      <MainNav />
+
+      <AddProject actions={projectActions} buttonRef={addButton} />
 
       <section aria-labelledby={`${ids}-espacos`} className="sidebar__section sidebar__spaces">
         <div className="sidebar__label">
@@ -127,26 +127,11 @@ export function Sidebar({
         </div>
       </section>
 
-      <div className="sidebar__foot">
-        <button
-          type="button"
-          className="sidebar__action"
-          onClick={() => navigate(ROUTE_PATHS.projects)}
-        >
-          + Projeto
-        </button>
-        <button
-          type="button"
-          className="sidebar__action sidebar__action--primary"
-          onClick={() =>
-            projectId === undefined
-              ? navigate(ROUTE_PATHS.projects)
-              : navigate(projectPath(projectId), { state: { newMission: true } })
-          }
-        >
-          + Nova missão
-        </button>
-      </div>
+      <ArchivedProjects
+        projects={projectActions.archived}
+        onRestore={(projectId) => void restore(projectId)}
+        toggleRef={archivedToggle}
+      />
     </aside>
   );
 }
@@ -178,6 +163,35 @@ function SearchButton({ onSearch }: { onSearch: () => void }) {
       <span>Buscar projeto ou agente</span>
       <kbd aria-hidden="true">Ctrl K</kbd>
     </button>
+  );
+}
+
+/** O botão Adicionar projeto, com a mensagem de erro da última ação de projeto logo abaixo. */
+function AddProject({
+  actions,
+  buttonRef,
+}: {
+  actions: ProjectActions;
+  buttonRef: Ref<HTMLButtonElement>;
+}) {
+  return (
+    <div className="sidebar__add">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="sidebar__action"
+        disabled={actions.adding}
+        onClick={() => void actions.addProject()}
+      >
+        <Plus {...ICON_PROPS} />
+        Adicionar projeto
+      </button>
+      {actions.error === null ? null : (
+        <p role="alert" className="page-alert">
+          {actions.error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -410,7 +424,7 @@ function Swatch({ project }: { project: ProjectSummary }) {
   return <span aria-hidden="true" className={`swatch swatch--${colorOf(project.id)}`} />;
 }
 
-/** O projeto na grade: um bloco com a cor, o nome e os agentes. Leva ao workspace. */
+/** O projeto na grade: um bloco com a cor, o nome, o aviso de pasta indisponível e os agentes. Leva ao workspace. */
 function ProjectTile({
   project,
   sessions,
@@ -431,6 +445,7 @@ function ProjectTile({
         <span className="sidebar__name" title={project.name}>
           {project.name}
         </span>
+        {project.available ? null : <StatusChip label="pasta indisponível" tone="warn" />}
         <Avatars sessions={sessions} />
       </Link>
     </li>
@@ -439,7 +454,7 @@ function ProjectTile({
 
 /**
  * Linha de um projeto na lista: o botão que expande os cartões, a cor, o nome (um link para o workspace), os
- * ícones dos agentes e, no projeto sem Git, o chip "sem Git". Só o projeto da rota do workspace leva
+ * ícones dos agentes e os chips "sem Git" e "pasta indisponível", quando valem. Só o projeto da rota do workspace leva
  * `aria-current`. Nomes entram como texto.
  */
 function ProjectRow({
@@ -491,6 +506,7 @@ function ProjectRow({
         </Link>
         <Avatars sessions={sessions} />
         {project.repositoryKind === 'git' ? null : <StatusChip label="sem Git" tone="muted" />}
+        {project.available ? null : <StatusChip label="pasta indisponível" tone="warn" />}
       </div>
       {isOpen ? (
         <ul id={listId} className="sidebar__sessions">

@@ -11,11 +11,15 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { Sidebar } from '../../src/renderer/components/Sidebar';
-import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
+import {
+  ADD_PROJECT_REQUEST_EVENT,
+  PROJECTS_CHANGED_EVENT,
+} from '../../src/renderer/projects-events';
+import { getToasts, notify } from '../../src/renderer/notify';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
-// Barra lateral (lateral v3): busca, aviso do que espera a pessoa, navegação, espaços (lista ou grade, com
-// grupos opcionais, cada projeto com as sessões em cartões) e o rodapé com novo projeto e nova missão. O
+// Barra lateral (explorador): busca, aviso do que espera a pessoa, "Adicionar projeto", espaços (lista ou
+// grade, com grupos opcionais, cada projeto com as sessões em cartões) e, no fim, os projetos arquivados. O
 // `window.projectHub` é falso, como o preload entregaria.
 
 const gitProject: ProjectSummary = {
@@ -64,8 +68,17 @@ function terminalOf(overrides: Partial<TerminalSummary>): TerminalSummary {
   };
 }
 
+const archivedProject: ProjectSummary = {
+  id: 'p9',
+  name: 'Antigo',
+  path: 'C:\\Projetos\\Antigo',
+  repositoryKind: 'git',
+  available: true,
+};
+
 type Fixture = {
   projects: ProjectSummary[];
+  archived: ProjectSummary[];
   missions: Record<string, MissionDto[]>;
   terminals: TerminalSummary[];
 };
@@ -74,6 +87,7 @@ type Fixture = {
 function installApi(fixture: Partial<Fixture> = {}) {
   const state: Fixture = {
     projects: fixture.projects ?? [gitProject, plainProject],
+    archived: fixture.archived ?? [],
     missions: fixture.missions ?? {},
     terminals: fixture.terminals ?? [],
   };
@@ -82,6 +96,16 @@ function installApi(fixture: Partial<Fixture> = {}) {
   const api = {
     projects: {
       list: vi.fn(() => Promise.resolve({ ok: true, data: state.projects })),
+      listArchived: vi.fn(() => Promise.resolve({ ok: true, data: state.archived })),
+      chooseDirectory: vi.fn((): Promise<AppResult<{ path: string } | null>> =>
+        Promise.resolve({ ok: true, data: null }),
+      ),
+      add: vi.fn((): Promise<AppResult<ProjectSummary>> =>
+        Promise.reject(new Error('add não deveria ser chamado')),
+      ),
+      unarchive: vi.fn((id: string): Promise<AppResult<undefined>> =>
+        Promise.reject(new Error(`unarchive(${id}) não deveria ser chamado`)),
+      ),
     },
     missions: {
       list: vi.fn((projectId: string) =>
@@ -120,16 +144,12 @@ function Destination({ label }: { label: string }) {
 }
 
 /** Barra e rotas de destino, para ver para onde os botões levam. */
-function renderSidebar(
-  path: string,
-  props: { currentProjectId?: string; onSearch?: () => void } = {},
-) {
+function renderSidebar(path: string, props: { onSearch?: () => void } = {}) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Sidebar {...props} />
       <Routes>
         <Route path={ROUTE_PATHS.home} element={<p>Página inicial</p>} />
-        <Route path={ROUTE_PATHS.projects} element={<p>Página de projetos</p>} />
         <Route path={ROUTE_PATHS.projectDetail} element={<p>Página do projeto</p>} />
         <Route path={ROUTE_PATHS.missionDetail} element={<p>Página da missão</p>} />
         <Route path={ROUTE_PATHS.workspace} element={<Destination label="Workspace" />} />
@@ -139,6 +159,7 @@ function renderSidebar(
 }
 
 afterEach(() => {
+  notify.clear();
   Reflect.deleteProperty(window, 'projectHub');
   window.localStorage.clear();
 });
@@ -153,25 +174,23 @@ function expandOf(name: string) {
 }
 
 describe('Sidebar: estrutura', () => {
-  it('é uma barra com nome acessível: busca, navegação, espaços e rodapé, nessa ordem', async () => {
-    installApi();
+  it('é uma barra com nome acessível: busca, adicionar projeto, espaços e arquivados, sem navegação principal', async () => {
+    installApi({ archived: [archivedProject] });
     renderSidebar('/', { onSearch: () => undefined });
 
     const bar = screen.getByRole('complementary', { name: 'Projetos e missões' });
     const search = within(bar).getByRole('button', { name: /Buscar projeto ou agente/ });
-    const navigation = within(bar).getByRole('navigation', { name: 'Principal' });
+    const add = within(bar).getByRole('button', { name: 'Adicionar projeto' });
     const area = await spaces();
-    const footer = within(bar).getByRole('button', { name: '+ Projeto' });
-    expect(
-      within(navigation)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Início', 'Projetos']);
+    const archived = await within(bar).findByRole('button', { name: /Arquivados/ });
     const follows = (a: Element, b: Element) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(follows(search, navigation)).toBe(true);
-    expect(follows(navigation, area)).toBe(true);
-    expect(follows(area, footer)).toBe(true);
+    expect(follows(search, add)).toBe(true);
+    expect(follows(add, area)).toBe(true);
+    expect(follows(area, archived)).toBe(true);
+    expect(within(bar).queryByRole('navigation')).not.toBeInTheDocument();
+    expect(within(bar).queryByRole('link', { name: 'Início' })).not.toBeInTheDocument();
+    expect(within(bar).queryByRole('link', { name: 'Projetos' })).not.toBeInTheDocument();
   });
 
   it('não tem mais a seção Em andamento', async () => {
@@ -248,6 +267,22 @@ describe('Sidebar: espaços', () => {
     expect(within(area).getAllByText('sem Git')).toHaveLength(1);
     expect(within(area).getByText('<b>Notas</b>')).toBeInTheDocument();
     expect(area.querySelector('b')).toBeNull();
+  });
+
+  it('marca em texto o projeto cuja pasta sumiu, na lista e na grade, e só ele', async () => {
+    installApi({ projects: [gitProject, { ...plainProject, available: false }] });
+    renderSidebar('/');
+
+    const area = await spaces();
+    expect(await within(area).findAllByText('pasta indisponível')).toHaveLength(1);
+    const row = within(area).getByRole('link', { name: 'Notas' }).closest('li') as HTMLElement;
+    expect(within(row).getByText('pasta indisponível')).toBeInTheDocument();
+
+    await userEvent.click(within(area).getByRole('button', { name: 'Grade' }));
+
+    expect(within(area).getAllByText('pasta indisponível')).toHaveLength(1);
+    const tile = within(area).getByRole('link', { name: /^Notas/ });
+    expect(within(tile).getByText('pasta indisponível')).toBeInTheDocument();
   });
 
   it('cada projeto leva uma marca de cor, que é a mesma sempre', async () => {
@@ -355,31 +390,330 @@ describe('Sidebar: lista, grade e grupos', () => {
 });
 
 describe('Sidebar: rodapé', () => {
-  it('+ Projeto leva à página de Projetos', async () => {
-    installApi();
-    renderSidebar('/');
-
-    await userEvent.click(screen.getByRole('button', { name: '+ Projeto' }));
-
-    expect(await screen.findByText('Página de projetos')).toBeInTheDocument();
-  });
-
-  it('+ Nova missão, na rota de um projeto, leva à página dele pedindo o formulário aberto', async () => {
+  it('não tem mais o botão Nova missão nem o + Projeto', async () => {
     installApi();
     renderSidebar('/projects/p1');
 
-    await userEvent.click(screen.getByRole('button', { name: '+ Nova missão' }));
+    await spaces();
+    expect(screen.queryByRole('button', { name: /Nova missão/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Projeto' })).not.toBeInTheDocument();
+  });
+});
 
-    expect(await screen.findByText('Página do projeto')).toBeInTheDocument();
+describe('Sidebar: adicionar projeto', () => {
+  const novo: ProjectSummary = {
+    id: 'p3',
+    name: 'Novo',
+    path: 'C:\\Projetos\\Novo',
+    repositoryKind: 'none',
+    available: true,
+  };
+
+  it('escolhe a pasta, cadastra, recarrega a lista e avisa a janela', async () => {
+    const { api, state } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({ ok: true, data: { path: novo.path } });
+    api.projects.add.mockImplementation(() => {
+      state.projects.push(novo);
+      return Promise.resolve({ ok: true, data: novo });
+    });
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    try {
+      renderSidebar('/');
+      const area = await spaces();
+      await within(area).findByText('Notas');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+      expect(await within(area).findByRole('link', { name: 'Novo' })).toBeInTheDocument();
+      expect(api.projects.chooseDirectory).toHaveBeenCalledTimes(1);
+      expect(api.projects.add).toHaveBeenCalledWith({ path: novo.path });
+      expect(avisos).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    }
   });
 
-  it('+ Nova missão, fora de uma rota de projeto, leva à lista de projetos', async () => {
+  it('cancelar o seletor não cadastra nada e não mostra erro', async () => {
+    const { api } = installApi();
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+    await waitFor(() => expect(api.projects.chooseDirectory).toHaveBeenCalledTimes(1));
+    expect(api.projects.add).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('mostra a mensagem da API quando o cadastro é recusado, e mantém a lista', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({ ok: true, data: { path: gitProject.path } });
+    api.projects.add.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'PROJECT_ALREADY_EXISTS',
+        message: 'Esta pasta já está cadastrada.',
+        retryable: false,
+      },
+    });
+    renderSidebar('/');
+    const area = await spaces();
+    await within(area).findByRole('link', { name: 'Project Hub' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Esta pasta já está cadastrada.');
+    expect(within(area).getByRole('link', { name: 'Project Hub' })).toBeInTheDocument();
+  });
+
+  it('pelo botão da barra, a falha aparece no alerta embaixo dele e não vira aviso', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({ ok: true, data: { path: gitProject.path } });
+    api.projects.add.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'PROJECT_ALREADY_EXISTS',
+        message: 'Esta pasta já está cadastrada.',
+        retryable: false,
+      },
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Esta pasta já está cadastrada.');
+    expect(getToasts()).toEqual([]);
+  });
+
+  it('pedido de fora (paleta, menu +): a falha vira aviso com a mensagem da API, sem alerta na barra', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({ ok: true, data: { path: gitProject.path } });
+    api.projects.add.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'PROJECT_ALREADY_EXISTS',
+        message: 'Esta pasta já está cadastrada.',
+        retryable: false,
+      },
+    });
+    renderSidebar('/');
+    await spaces();
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+
+    await waitFor(() =>
+      expect(getToasts().map((toast) => [toast.kind, toast.message])).toEqual([
+        ['error', 'Esta pasta já está cadastrada.'],
+      ]),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('pedido de fora: falha do seletor e erro geral também viram aviso', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'UNKNOWN', message: 'O seletor não abriu.', retryable: false },
+      })
+      .mockRejectedValueOnce(new Error('canal fechado'));
+    renderSidebar('/');
+    await spaces();
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+    await waitFor(() =>
+      expect(getToasts().map((toast) => toast.message)).toContain('O seletor não abriu.'),
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+    await waitFor(() =>
+      expect(getToasts().map((toast) => toast.message)).toContain(
+        'Não foi possível concluir a ação. Tente de novo.',
+      ),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('mostra a mensagem da API quando o seletor falha', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({
+      ok: false,
+      error: { code: 'UNKNOWN', message: 'O seletor não abriu.', retryable: false },
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O seletor não abriu.');
+    expect(api.projects.add).not.toHaveBeenCalled();
+  });
+
+  it('mostra uma mensagem geral quando a chamada ao processo principal quebra', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockRejectedValue(new Error('canal fechado'));
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não foi possível concluir a ação. Tente de novo.',
+    );
+  });
+
+  it('desabilita o botão enquanto o cadastro está em andamento', async () => {
+    const { api } = installApi();
+    let finish: (value: AppResult<{ path: string } | null>) => void = () => undefined;
+    api.projects.chooseDirectory.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+    expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toBeDisabled();
+
+    await act(async () => finish({ ok: true, data: null }));
+    expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toBeEnabled();
+  });
+
+  it('o pedido de adicionar projeto vindo de fora (paleta, menu +) abre o seletor uma vez', async () => {
+    const { api } = installApi();
+    renderSidebar('/');
+    await spaces();
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+
+    await waitFor(() => expect(api.projects.chooseDirectory).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('Sidebar: arquivados', () => {
+  it('sem projetos arquivados, a seção não aparece', async () => {
     installApi();
     renderSidebar('/');
 
-    await userEvent.click(screen.getByRole('button', { name: '+ Nova missão' }));
+    await spaces();
+    expect(screen.queryByRole('button', { name: /Arquivados/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Projetos arquivados' })).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByText('Página de projetos')).toBeInTheDocument();
+  it('lista os arquivados numa seção recolhível, com a disponibilidade da pasta', async () => {
+    installApi({
+      archived: [archivedProject, { ...plainProject, id: 'p8', name: 'Sumiu', available: false }],
+    });
+    renderSidebar('/');
+
+    const toggle = await screen.findByRole('button', { name: /Arquivados/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('list', { name: 'Projetos arquivados' })).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const list = screen.getByRole('list', { name: 'Projetos arquivados' });
+    expect(within(list).getByText('Antigo')).toHaveAttribute('title', 'C:\\Projetos\\Antigo');
+    expect(within(list).getByText('Sumiu')).toBeInTheDocument();
+    expect(within(list).getAllByText('Pasta indisponível')).toHaveLength(1);
+
+    await userEvent.click(toggle);
+    expect(screen.queryByRole('list', { name: 'Projetos arquivados' })).not.toBeInTheDocument();
+  });
+
+  it('Restaurar desarquiva o projeto, recarrega as listas e avisa a janela', async () => {
+    const { api, state } = installApi({ archived: [archivedProject] });
+    api.projects.unarchive.mockImplementation(() => {
+      state.archived = [];
+      state.projects.push(archivedProject);
+      return Promise.resolve({ ok: true, data: undefined });
+    });
+    const avisos = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    try {
+      renderSidebar('/');
+      await userEvent.click(await screen.findByRole('button', { name: /Arquivados/ }));
+
+      await userEvent.click(screen.getByRole('button', { name: 'Restaurar Antigo' }));
+
+      await waitFor(() => expect(api.projects.unarchive).toHaveBeenCalledWith('p9'));
+      const area = await spaces();
+      expect(await within(area).findByRole('link', { name: 'Antigo' })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /Arquivados/ })).not.toBeInTheDocument(),
+      );
+      expect(avisos).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(PROJECTS_CHANGED_EVENT, avisos);
+    }
+  });
+
+  it('depois de Restaurar, o foco vai para Arquivados se restam outros, e para Adicionar projeto se não', async () => {
+    const outroArquivado: ProjectSummary = { ...archivedProject, id: 'p8', name: 'Velho' };
+    const { api, state } = installApi({ archived: [archivedProject, outroArquivado] });
+    api.projects.unarchive.mockImplementation((id: string) => {
+      state.archived = state.archived.filter((project) => project.id !== id);
+      return Promise.resolve({ ok: true, data: undefined });
+    });
+    renderSidebar('/');
+    const toggle = await screen.findByRole('button', { name: /Arquivados/ });
+    await userEvent.click(toggle);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restaurar Antigo' }));
+    await waitFor(() => expect(toggle).toHaveFocus());
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Restaurar Velho' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toHaveFocus(),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /Arquivados/ })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('falha ao restaurar mostra a mensagem da API e o projeto segue arquivado', async () => {
+    const { api } = installApi({ archived: [archivedProject] });
+    api.projects.unarchive.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'PROJECT_NOT_FOUND',
+        message: 'O projeto não foi encontrado.',
+        retryable: false,
+      },
+    });
+    renderSidebar('/');
+    await userEvent.click(await screen.findByRole('button', { name: /Arquivados/ }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restaurar Antigo' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O projeto não foi encontrado.');
+    expect(screen.getByRole('list', { name: 'Projetos arquivados' })).toBeInTheDocument();
+  });
+
+  it('um projeto arquivado em outra tela (evento da janela) aparece na seção', async () => {
+    const { state } = installApi();
+    renderSidebar('/');
+    await spaces();
+    expect(screen.queryByRole('button', { name: /Arquivados/ })).not.toBeInTheDocument();
+
+    state.archived = [archivedProject];
+    act(() => {
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+    });
+
+    expect(await screen.findByRole('button', { name: /Arquivados/ })).toBeInTheDocument();
   });
 });
 

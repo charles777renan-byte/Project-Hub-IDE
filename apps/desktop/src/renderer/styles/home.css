@@ -1,10 +1,14 @@
 /*
- * Início em faixas (pages/HomePage.tsx e components/home/): cabeçalho, chamada, projetos recentes,
- * atividade, uso dos agentes e missões. Cada faixa é uma linha do grid de .home e nada usa posição
- * absoluta; filhos de grid e de flex levam min-width: 0 para nunca transbordar. Ligado por <link> no
+ * Início, o painel de abertura (pages/HomePage.tsx e components/home/), e a lista de missões com progresso
+ * (components/MissionProgressList.tsx, que a visão Missões do projeto também usa; por isso as classes
+ * mission-progress* não ficam sob .home). Denso: saudação numa linha, faixas de leitura rápida, nada de
+ * bloco vazio. Duas colunas em janela larga (missões à esquerda, atividade e uso à direita) e uma só em
+ * janela estreita. Filhos de grid e de flex levam min-width: 0 para nunca transbordar. Ligado por <link> no
  * index.html, depois de app.css e antes de workspace.css; só usa tokens de tokens.css. Cores com papel:
- * - lima (--accent): só o ícone e o botão da chamada (.home-cta__icon e .btn-primary) e o dia de hoje no mapa;
- * - vermelho (--danger): só o número da pílula de falhas;
+ * - lima (--accent): só o dia de hoje no mapa de atividade e a barra de uma missão em andamento ou concluída;
+ * - âmbar (--warn): só a barra de uma missão que espera a pessoa;
+ * - vermelho (--danger): só a barra de uma missão que falhou;
+ * - o resto das barras (pausada, rascunho, cancelada…) é neutro (--muted);
  * - o mapa de atividade usa a rampa de --muted (#b7adcf) por opacidade, dos níveis 0 a 4.
  * Sem animação nem transição. Os níveis entram por classe (activity-level--0 a --4), nunca por estilo escrito.
  */
@@ -23,7 +27,8 @@
 
 .home {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  align-content: start;
   min-width: 0;
 }
 
@@ -31,26 +36,95 @@
   min-width: 0;
 }
 
-/* Cartão de bloco: título pequeno em caixa alta. */
-.home-block {
+/*
+ * Faixa do topo do Início: a única parte dele com o fundo topográfico (components/TopographicBackground.tsx), que
+ * preenche a faixa e fica atrás da saudação. `isolate` prende o z-index -1 do fundo aqui e `overflow` corta o canvas
+ * no arredondamento. O fundo nunca desce para as listas; o formulário do nome fica sobre uma base opaca.
+ */
+.home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: var(--space-4) var(--space-3);
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.home-hero .confirm-inline {
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* Saudação e data na mesma linha; o formulário do nome, quando aberto, vem logo abaixo. */
+.home-greeting {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.home-greeting__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.home-greeting__hello {
+  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: 500;
+}
+
+.home-greeting__date {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* Duas colunas em janela larga; uma só (e o lado depois do principal) em janela estreita. */
+.home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.home-main,
+.home-side {
   display: grid;
   gap: var(--space-3);
+  align-content: start;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .home-columns {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+/* Faixa do Início: cartão com título pequeno em caixa alta e a contagem ao lado. */
+.home-band,
+.home-block {
+  display: grid;
+  gap: var(--space-2);
   align-content: start;
   min-width: 0;
   padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  background: var(--surface-glass);
+  background: var(--surface);
 }
 
-.home-block__head {
+.home-band__head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
 }
 
+.home-band__title,
 .home-block__title {
   margin: 0;
   color: var(--muted);
@@ -60,11 +134,60 @@
   text-transform: uppercase;
 }
 
-/* Selo: total ou período, ao lado do título do bloco. */
-.home-badge {
-  flex: none;
+.home-band__count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.home-band__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* A lista de missões rola dentro da faixa, para a página não crescer sem fim. */
+.home-band__scroll {
+  max-height: 32rem;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* Precisa de você: uma linha por item, o link e, à direita, o que falta fazer. */
+.needs-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.needs-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 var(--space-3);
+  min-width: 0;
+  padding: var(--space-1) 0;
+  overflow-wrap: anywhere;
+}
+
+.needs-list__meta {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* Chips de filtro por estado. */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.filter-chip {
   padding: 0 var(--space-2);
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--muted);
@@ -72,241 +195,167 @@
   line-height: 1.5rem;
 }
 
-/* Cabeçalho: saudação à esquerda, pílulas à direita. */
-.home-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+.filter-chip:hover {
+  background: var(--surface-2);
 }
 
-.home-greeting {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.home-greeting__hello {
-  margin: 0;
+.filter-chip[aria-pressed='true'] {
+  border-color: var(--text);
+  background: var(--surface-2);
   color: var(--text);
-  font-size: var(--text-xl);
-  font-weight: 500;
 }
 
-.home-greeting__date {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
+.filter-chip--clear {
+  border-style: dashed;
 }
 
-/* Ação de texto do nome, sob a data. */
-.home-greeting__edit {
-  justify-self: start;
-  font-size: var(--text-sm);
-}
-
-/* Pílulas de contadores. */
-.stat-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: 0;
-}
-
-.stat-pill {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-}
-
-.stat-pill__label {
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-.stat-pill__value {
-  margin: 0;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.stat-pill--danger .stat-pill__value {
-  color: var(--danger);
-}
-
-/* Chamada principal: ícone e botão em lima, o resto neutro. */
-.home-cta {
+/* Lista de missões com progresso: título e total na primeira linha, estado e tarefas na segunda, barra. */
+.mission-progress {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface-glass);
-}
-
-.home-cta__icon {
-  display: grid;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: var(--text-xl);
-  font-weight: 500;
-  line-height: 1;
-}
-
-.home-cta__text {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.home-cta__title {
-  margin: 0;
-  color: var(--text);
-  font-size: var(--text-md);
-  font-weight: 500;
-}
-
-.home-cta__hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-/* Projetos recentes: grade de 3 colunas, cartões de altura uniforme, cada um um único link. */
-.recent-projects__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.recent-item {
-  display: flex;
-  min-width: 0;
-}
-
-.recent-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  box-sizing: border-box;
-  flex: 1;
-  min-height: 4rem;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.recent-card:hover {
-  background: var(--surface-2);
-}
-
-/* A cor vem das classes swatch--* do app.css; o brilho delas não vale aqui. */
-.recent-card__icon {
-  display: grid;
-  place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--radius);
-  box-shadow: none;
-  color: var(--bg);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.recent-card__text {
+.mission-progress__item {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
 }
 
-.recent-card__meta {
+.mission-progress__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.mission-progress__title {
   min-width: 0;
   overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Nome do projeto em tamanho de legenda, numa linha: é um rótulo, não o título do cartão. */
-.recent-card__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.recent-card__meta {
+.mission-progress__count {
+  flex: none;
   color: var(--muted);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
 
-.recent-card__arrow {
+.mission-progress__state {
+  margin: 0;
   color: var(--muted);
+  font-size: var(--text-sm);
 }
 
-/* Atividade: resumo, mapa de 7 linhas por semanas e rodapé. */
+/* Barra: o trilho é neutro; o preenchimento leva a cor do tom do estado (padrão: --muted). */
+.mission-progress__bar {
+  display: block;
+  width: 100%;
+  height: 0.375rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  appearance: none;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.mission-progress__bar::-webkit-progress-bar {
+  background: var(--line);
+}
+
+.mission-progress__bar::-webkit-progress-value {
+  background: var(--muted);
+}
+
+.mission-progress__bar::-moz-progress-bar {
+  background: var(--muted);
+}
+
+.mission-progress__bar--lime::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.mission-progress__bar--lime::-moz-progress-bar {
+  background: var(--accent);
+}
+
+.mission-progress__bar--warn::-webkit-progress-value {
+  background: var(--warn);
+}
+
+.mission-progress__bar--warn::-moz-progress-bar {
+  background: var(--warn);
+}
+
+.mission-progress__bar--red::-webkit-progress-value {
+  background: var(--danger);
+}
+
+.mission-progress__bar--red::-moz-progress-bar {
+  background: var(--danger);
+}
+
+/* Atividade: resumo numa linha e o mapa de 7 linhas por semanas, baixo, com a legenda ao lado. */
 .activity__summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.activity__total {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-2);
+  gap: 0 var(--space-2);
   margin: 0;
 }
 
 .activity__number {
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--text-xl);
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
 .activity__unit,
-.activity__period {
+.activity__period,
+.activity__streak,
+.activity__note {
   color: var(--muted);
   font-size: var(--text-sm);
 }
 
-.activity__period {
-  margin: var(--space-1) 0 0;
+.activity__streak {
+  margin-left: auto;
+}
+
+.activity__note {
+  margin: 0;
+}
+
+.activity__map {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 /* Uma grade só: a primeira coluna leva os rótulos de dia, as demais são as semanas. As células são
-   quadradas (aspect-ratio) e a largura delas nunca passa do cartão (minmax(0, ...)). */
+   quadradas (aspect-ratio) e pequenas, e a largura delas nunca passa do cartão (minmax(0, ...)). */
 .activity-grid {
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(7, auto);
   grid-template-columns: auto;
-  grid-auto-columns: minmax(0, 1.5rem);
-  gap: 4px;
+  grid-auto-columns: minmax(0, 0.75rem);
+  gap: 3px;
   justify-content: start;
   align-items: start;
   min-width: 0;
@@ -324,7 +373,7 @@
   display: block;
   min-width: 0;
   aspect-ratio: 1;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 .activity-cell--blank {
@@ -358,26 +407,6 @@
   outline-offset: 1px;
 }
 
-.activity__note {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-.activity__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.activity__streak {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
 .activity-legend {
   display: flex;
   align-items: center;
@@ -387,90 +416,14 @@
 }
 
 .activity-legend .activity-cell {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: 0.625rem;
+  height: 0.625rem;
   aspect-ratio: auto;
 }
 
-/* Uso dos agentes: faixa curta, só o espaço reservado. */
+/* Uso dos agentes: uma linha, só o espaço reservado. */
 .agent-usage__empty {
   margin: 0;
   color: var(--muted);
   font-size: var(--text-sm);
-}
-
-/* Missões: três colunas iguais de altura mínima uniforme. */
-.home-lists {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-
-.home-column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-  min-height: 14rem;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface-glass);
-}
-
-.home-column__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.home-column__title {
-  margin: 0;
-  color: var(--text);
-  font-size: var(--text-md);
-  font-weight: 500;
-}
-
-.home-column__count {
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-.home-column__body {
-  min-height: 0;
-  max-height: 28rem;
-  overflow: auto;
-}
-
-.home-list,
-.home-approvals {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.home-approvals li {
-  display: grid;
-  gap: var(--space-1);
-  overflow-wrap: anywhere;
-}
-
-.home-approvals__mission {
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-
-@media (max-width: 1199px) {
-  .home-lists {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 999px) {
-  .recent-projects__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }

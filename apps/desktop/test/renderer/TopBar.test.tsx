@@ -21,6 +21,7 @@ import {
   resetRestoreForTests,
   TopBar,
 } from '../../src/renderer/components/TopBar';
+import { ADD_PROJECT_REQUEST_EVENT } from '../../src/renderer/projects-events';
 import { workspacePath } from '../../src/renderer/routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
@@ -101,11 +102,11 @@ function Where() {
   return <p data-testid="where">{useLocation().pathname}</p>;
 }
 
-function renderBar(route = '/', extra?: { status?: string }) {
+function renderBar(route = '/') {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <RestoreWorkspace />
-      <TopBar {...(extra?.status === undefined ? {} : { status: <span>{extra.status}</span> })} />
+      <TopBar />
       <Where />
     </MemoryRouter>,
   );
@@ -191,22 +192,65 @@ describe('abas dos workspaces', () => {
     renderBar('/');
     await screen.findByRole('button', { name: 'Abrir workspace' });
     expect(screen.queryByRole('navigation', { name: 'Workspaces abertos' })).toBeNull();
-    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['Início']);
     expect(screen.queryByRole('button', { name: /^Fechar workspace/ })).toBeNull();
   });
 
-  it('mostra no canto direito o que vier em status', async () => {
-    installApi();
-    renderBar('/', { status: '2 executando' });
-    await screen.findByRole('button', { name: 'Abrir workspace' });
-    expect(document.querySelector('.topbar__status')).toHaveTextContent('2 executando');
+  it('tem a aba fixa Início como primeira, com link para a raiz e sem botão de fechar', async () => {
+    installApi({
+      projects: [project('p1', 'Alfa')],
+      workspaces: [workspace('w1', 'p1')],
+    });
+    renderBar('/workspaces/p1');
+    const home = await screen.findByRole('link', { name: 'Início' });
+    expect(home).toHaveAttribute('href', '/');
+    expect(home).not.toHaveAttribute('aria-current');
+    const header = document.querySelector('header.topbar') as HTMLElement;
+    expect(within(header).getAllByRole('link')[0]).toBe(home);
+    expect(screen.queryByRole('button', { name: /Fechar.*Início/ })).toBeNull();
+    expect(home.closest('li')).toBeNull();
+    expect(home.hasAttribute('data-workspace-id')).toBe(false);
   });
 
-  it('não deixa uma área vazia quando não vem status', async () => {
+  it('a aba Início fica presente sem workspace aberto e marca a rota raiz com aria-current', async () => {
+    installApi({ projects: [project('p1', 'Project Hub')] });
+    renderBar('/');
+    const home = await screen.findByRole('link', { name: 'Início' });
+    expect(home).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('navigation', { name: 'Workspaces abertos' })).toBeNull();
+  });
+
+  it('a aba Início não marca aria-current em outra rota', async () => {
+    installApi({ projects: [project('p1', 'Project Hub')] });
+    renderBar('/projects');
+    expect(await screen.findByRole('link', { name: 'Início' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('a aba Início fica fora da reordenação: o teclado não a move nem entra na ordem', async () => {
+    const user = userEvent.setup();
+    const { workspaces } = installApi({
+      projects: [project('p1', 'Alfa'), project('p2', 'Beta')],
+      workspaces: [workspace('w1', 'p1'), workspace('w2', 'p2', { position: 1 })],
+    });
+    renderBar('/projects');
+    const home = await screen.findByRole('link', { name: 'Início' });
+    home.focus();
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    expect(workspaces.reorder).not.toHaveBeenCalled();
+
+    const alfa = await screen.findByRole('link', { name: 'Alfa' });
+    alfa.focus();
+    await user.keyboard('{Alt>}{ArrowLeft}{/Alt}');
+    // Alfa já é a primeira aba de workspace: o Início não entra na ordem.
+    expect(workspaces.reorder).not.toHaveBeenCalled();
+  });
+
+  it('não leva mais os contadores da visão geral', async () => {
     installApi();
     renderBar('/');
     await screen.findByRole('button', { name: 'Abrir workspace' });
     expect(document.querySelector('.topbar__status')).toBeNull();
+    expect(screen.queryByText(/executando/)).toBeNull();
   });
 
   it('sem o preload (testes) nada lança e o botão de abrir continua lá', async () => {
@@ -320,12 +364,19 @@ describe('menu Abrir workspace', () => {
     );
   });
 
-  it('Adicionar projeto… leva para a página de Projetos', async () => {
+  it('Adicionar projeto… pede à lateral que abra o seletor de pasta, sem trocar de tela', async () => {
     installApi({ projects: [project('p1', 'Alfa')] });
     renderBar('/');
-    await openMenu();
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Adicionar projeto…' }));
-    expect(where()).toBe('/projects');
+    const pedido = vi.fn();
+    window.addEventListener(ADD_PROJECT_REQUEST_EVENT, pedido);
+    try {
+      await openMenu();
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Adicionar projeto…' }));
+    } finally {
+      window.removeEventListener(ADD_PROJECT_REQUEST_EVENT, pedido);
+    }
+    expect(pedido).toHaveBeenCalledTimes(1);
+    expect(where()).toBe('/');
     expect(screen.queryByRole('menu')).toBeNull();
   });
 

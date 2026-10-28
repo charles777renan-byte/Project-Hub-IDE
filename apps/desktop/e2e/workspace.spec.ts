@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { addGitProject, openProject, sidebarOf } from './missions';
 import { decodePng, pixelAt } from './png';
 import {
   expectOpenSessions,
@@ -18,23 +19,21 @@ import {
 // O terminal desenha em WebGL (canvas): o texto dele é lido do buffer do xterm, por `./terminals`.
 test.skip(process.platform !== 'win32', 'o shell do teste é o PowerShell');
 
-const BAR_NAME = 'Projetos e missões';
-
 /** Painéis do PowerShell abertos no workspace (cada sessão em andamento tem o nome do programa). */
 function shellPanes(page: Page): Locator {
   return page.getByRole('region', { name: 'Painel PowerShell' });
 }
 
-/** Cadastra o projeto pelo seletor (a pasta vem de `dialogPath`) e abre o workspace pela barra lateral. */
+/** A aba fixa Início, na barra superior. */
+const homeTab = (page: Page): Locator => page.getByRole('link', { name: 'Início', exact: true });
+
+/**
+ * Cadastra o projeto pelo seletor da barra lateral (a pasta vem de `dialogPath`) e abre a aba do projeto na
+ * visão Terminais, a padrão.
+ */
 async function addProjectAndOpenWorkspace(page: Page, projectName: string): Promise<void> {
-  const navigation = page.getByRole('navigation', { name: 'Principal' });
-  await navigation.getByRole('link', { name: 'Projetos' }).click();
-  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
-  await expect(page.getByRole('heading', { name: projectName })).toBeVisible();
-  await page
-    .getByRole('complementary', { name: BAR_NAME })
-    .getByRole('link', { name: projectName, exact: true })
-    .click();
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
   // O workspace novo abre vazio, com a barra para abrir terminais.
   await expect(page.getByRole('button', { name: 'Abrir terminal' })).toBeVisible();
   await expect(page.getByText('Nenhum terminal aberto')).toBeVisible();
@@ -193,7 +192,7 @@ test('fechar um painel na hora encerra a sessão e os outros ocupam o espaço; f
   await openShell(page);
   const panes = shellPanes(page);
 
-  const bar = page.getByRole('complementary', { name: BAR_NAME });
+  const bar = sidebarOf(page);
   await bar.getByRole('button', { name: `Sessões de ${projectName}` }).click();
   const sessions = bar.locator('.sidebar__session').getByRole('button');
   await expect(sessions).toHaveCount(3);
@@ -237,7 +236,7 @@ test('recarregar a janela mantém os painéis e as sessões vivas', async ({ lau
   await expectTerminalToContain(shellPanes(page).nth(1).locator('.terminal-view'), 'antes-6');
 
   await page.reload();
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  await expect(homeTab(page)).toBeVisible();
   // A aba do workspace continua aberta; se a janela não voltar nela, abre pela aba.
   const tab = page.getByRole('navigation', { name: 'Workspaces abertos' }).getByRole('link');
   await expect(tab).toBeVisible();
@@ -264,10 +263,7 @@ test('a sessão do shell segue viva ao sair do workspace e ao fechar e reabrir a
   const screen = page.locator('.terminal-view');
 
   // Vai para o Início e volta pela aba do workspace: o processo não reinicia.
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Início' })
-    .click();
+  await homeTab(page).click();
   await expect(page.locator('.terminal-view')).toHaveCount(0);
   await page.getByRole('navigation', { name: 'Workspaces abertos' }).getByRole('link').click();
   await expectTerminalToContain(screen, 'ola-4');
@@ -371,16 +367,13 @@ test('a barra lateral lista a sessão do workspace e leva de volta ao terminal d
   await addProjectAndOpenWorkspace(page, projectName);
   await runHello(page);
 
-  const bar = page.getByRole('complementary', { name: BAR_NAME });
+  const bar = sidebarOf(page);
   await bar.getByRole('button', { name: `Sessões de ${projectName}` }).click();
   const session = bar.locator('.sidebar__session').getByRole('button');
   await expect(session).toHaveCount(1);
 
   // Sai do workspace; clicar na sessão leva ao workspace com o terminal no painel.
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Início' })
-    .click();
+  await homeTab(page).click();
   await expect(page.locator('.terminal-view')).toHaveCount(0);
   await session.click();
   await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
@@ -624,7 +617,7 @@ test('remontar os terminais dezenas de vezes libera cada contexto WebGL e os pai
     } as typeof original;
   });
   await page.reload();
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  await expect(homeTab(page)).toBeVisible();
   await skipWithoutWebgl2(page);
   /** Contextos WebGL criados pela página e quantos deles seguem vivos (não perdidos). */
   const contexts = () =>
@@ -688,10 +681,7 @@ test('remontar os terminais dezenas de vezes libera cada contexto WebGL e os pai
   expect.soft(now.alive, 'contextos WebGL vivos com dois terminais na tela').toBeLessThanOrEqual(2);
 
   // Fora do workspace nenhum terminal está montado, e nenhum contexto segue vivo.
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Início' })
-    .click();
+  await homeTab(page).click();
   await expect(views).toHaveCount(0);
   expect
     .soft((await contexts()).alive, 'contextos WebGL vivos sem nenhum terminal na tela')

@@ -3,10 +3,14 @@ import * as Icons from '../../src/renderer/components/Icon';
 import type { MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
+  decisionAnnouncement,
+  decisionTextOf,
   dependencyText,
   formatTime,
   missionTabCounts,
+  needsDecision,
   primaryActionOf,
+  ROLE_DESCRIPTIONS,
   roleLabel,
   statusIcon,
   statusTone,
@@ -120,7 +124,7 @@ describe('ação principal do resumo da missão', () => {
     ['draft', 'generate_plan'],
     ['planned', 'approve_plan'],
     ['queued', 'start'],
-    // Esperando a decisão, o banner "Aguardando você" é o único convite: o resumo não tem ação principal.
+    // Esperando a decisão, os controles são os da própria decisão (cartões, resposta, revisão), não uma ação principal.
     ['waiting_approval', undefined],
     ['waiting_input', undefined],
     ['paused', 'resume'],
@@ -187,7 +191,13 @@ describe('worktreeName', () => {
 });
 
 describe('missionTabCounts', () => {
-  const step = (id: string) => ({ id, position: 1, title: id, status: 'pending' as const });
+  const step = (id: string) => ({
+    id,
+    position: 1,
+    title: id,
+    status: 'pending' as const,
+    agent: 'claude-code' as const,
+  });
   const run = (passed: number, failed: number) =>
     event({
       eventType: 'verification.completed',
@@ -319,9 +329,16 @@ describe('formatTime', () => {
 
 describe('papel e dependência da tarefa', () => {
   const steps = [
-    { id: 'a', position: 1, title: 'A', status: 'pending' as const },
-    { id: 'b', position: 2, title: 'B', status: 'pending' as const },
-    { id: 'c', position: 3, title: 'C', status: 'pending' as const, dependsOn: ['a', 'b'] },
+    { id: 'a', position: 1, title: 'A', status: 'pending' as const, agent: 'claude-code' as const },
+    { id: 'b', position: 2, title: 'B', status: 'pending' as const, agent: 'claude-code' as const },
+    {
+      id: 'c',
+      position: 3,
+      title: 'C',
+      status: 'pending' as const,
+      agent: 'claude-code' as const,
+      dependsOn: ['a', 'b'],
+    },
   ];
 
   it('traduz o papel e deixa vazio quando a etapa não é tarefa', () => {
@@ -333,5 +350,67 @@ describe('papel e dependência da tarefa', () => {
     expect(dependencyText({ ...steps[1]!, dependsOn: ['a'] }, steps)).toBe('depois de 1');
     expect(dependencyText(steps[2]!, steps)).toBe('depois de 1 e 2');
     expect(dependencyText(steps[0]!, steps)).toBeUndefined();
+  });
+
+  it('descreve cada papel numa linha, para o cartão do quadro do orquestrador', () => {
+    expect(ROLE_DESCRIPTIONS).toEqual({
+      frontend: 'Interface e componentes',
+      backend: 'APIs e lógica do sistema',
+      database: 'Modelagem e consultas',
+      docs: 'README e guias de uso',
+      qa: 'Testes e verificação',
+      general: 'Tarefas gerais',
+    });
+  });
+});
+
+describe('bloco Sua decisão: textos', () => {
+  const all: readonly MissionStatus[] = [
+    'draft',
+    'planned',
+    'queued',
+    'running',
+    'waiting_approval',
+    'waiting_input',
+    'paused',
+    'review',
+    'succeeded',
+    'failed',
+    'cancelled',
+  ];
+
+  it('toda situação tem uma frase, e as da tabela são as da spec', () => {
+    for (const status of all) expect(decisionTextOf(status)).not.toBe('');
+    expect(decisionTextOf('queued')).toBe(
+      'Inicie a missão para o Orquestrador distribuir as tarefas entre os agentes.',
+    );
+    expect(decisionTextOf('running')).toBe('O Orquestrador está acompanhando as tarefas.');
+  });
+
+  it('só aprovação, resposta e revisão esperam uma decisão da pessoa', () => {
+    expect(all.filter((status) => needsDecision(status))).toEqual([
+      'waiting_approval',
+      'waiting_input',
+      'review',
+    ]);
+  });
+
+  it('o anúncio lista uma frase por aprovação pendente, mais a resposta ou a revisão', () => {
+    const approval = (title: string) => ({ title }) as never;
+    const view = (status: MissionStatus, titles: string[] = []) => ({
+      mission: { status } as never,
+      pendingApprovals: titles.map(approval),
+    });
+
+    expect(decisionAnnouncement(view('running'))).toBe('');
+    expect(decisionAnnouncement(view('waiting_approval', ['Gravar', 'Rodar']))).toBe(
+      'Aguardando você: aprovação, Gravar. Aguardando você: aprovação, Rodar.',
+    );
+    expect(decisionAnnouncement(view('waiting_input'))).toBe(
+      'Aguardando você: o agente espera uma resposta.',
+    );
+    expect(decisionAnnouncement(view('review'))).toBe(
+      'Aguardando você: a conclusão espera a sua revisão.',
+    );
   });
 });
