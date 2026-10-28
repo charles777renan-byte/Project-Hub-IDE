@@ -18,7 +18,7 @@ import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionSummary } from '../components/workspace/MissionSummary';
 import { MissionTerminal } from '../components/workspace/MissionTerminal';
 import { TestsPanel } from '../components/workspace/TestsPanel';
-import { needsDecision, verifiedCriteria } from '../mission-text';
+import { needsDecision, primaryActionOf, verifiedCriteria } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
 
@@ -157,6 +157,23 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     const target = decisionStatus === 'waiting_input' ? answerRef.current : decisionRef.current;
     (target ?? decisionRef.current)?.focus();
   }, [awaitingDecision, decisionStatus]);
+
+  /**
+   * Ao abrir a missão, se a situação tem uma ação principal ou espera uma decisão, o bloco "Sua decisão" é
+   * trazido à vista (o corpo rola e ele pode ficar abaixo da dobra). Só rola, não move o foco: o foco é do
+   * efeito acima. Uma vez por missão aberta, não a cada recarga.
+   */
+  const scrolledToDecision = useRef(false);
+  useEffect(() => {
+    if (decisionStatus === undefined || scrolledToDecision.current) return;
+    scrolledToDecision.current = true;
+    if (primaryActionOf(decisionStatus) === undefined && !needsDecision(decisionStatus)) return;
+    // O jsdom dos testes não tem scrollIntoView.
+    const block = decisionRef.current;
+    if (block !== null && typeof block.scrollIntoView === 'function') {
+      block.scrollIntoView({ block: 'nearest' });
+    }
+  }, [decisionStatus]);
 
   /** Toda ação nova apaga a falha da anterior, esteja ela no bloco ou no cabeçalho. */
   const clearErrors = () => {
