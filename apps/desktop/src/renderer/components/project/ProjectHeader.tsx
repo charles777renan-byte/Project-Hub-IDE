@@ -3,7 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router';
 import type { AppResult, ProjectSummary } from '@project-hub/contracts';
 import { PROJECT_TEXT } from '../../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../../projects-events';
-import { parseProjectView, PROJECT_VIEWS, VIEW_PARAM, type ProjectView } from '../../project-views';
+import {
+  parseProjectView,
+  PROJECT_VIEWS,
+  projectPanelId,
+  VIEW_PARAM,
+  type ProjectView,
+} from '../../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../../routes';
 import { ConfirmInline } from '../ConfirmButton';
 import { MenuAcoes } from '../MenuAcoes';
@@ -71,6 +77,7 @@ export function ProjectHeader({
           label={PROJECT_TEXT.viewsLabel}
           tabs={VIEW_TABS}
           active={view}
+          panelId={projectPanelId}
           onChange={(next) => navigate(projectViewPath(project.id, next))}
         />
         <div className="project-header__actions">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
@@ -11,7 +11,7 @@ import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
-import { parseProjectView, VIEW_PARAM } from '../project-views';
+import { parseProjectView, projectPanelId, VIEW_PARAM, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
@@ -35,8 +35,9 @@ function requestedTerminal(state: unknown): string | null {
 /**
  * A aba do projeto (`/workspaces/:projectId?visao=...`): o cabeçalho de uma linha com as visões e, abaixo, a
  * visão escolhida. Terminais (a padrão) é o workspace de painéis; Missões é um marcador por enquanto;
- * Worktrees e Configurações mostram a lista e os formulários do projeto. Só a visão ativa fica montada: ao
- * trocar, os terminais saem da tela e as sessões seguem vivas no processo principal. Projeto arquivado ou
+ * Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais ficam sempre montados (só
+ * escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz os terminais. As outras visões
+ * só são montadas enquanto ativas. Projeto arquivado ou
  * removido com a aba aberta mostra a mensagem e o link para o Início.
  */
 export function WorkspacePage() {
@@ -66,22 +67,51 @@ export function WorkspacePage() {
           }
         />
       )}
-      <div
-        role="tabpanel"
-        id="tab-panel"
-        {...(project === undefined ? {} : { 'aria-labelledby': `tab-${view}` })}
-        className={`project-tab__panel project-tab__panel--${view}`}
-      >
-        {view === 'terminais' ? (
-          <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />
-        ) : view === 'missoes' ? (
-          <p className="page-note">{PROJECT_TEXT.missionsSoon}</p>
-        ) : view === 'worktrees' ? (
-          <WorktreesTab projectId={projectId} />
-        ) : project === undefined ? null : (
+      <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
+        <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />
+      </ProjectPanel>
+      <ProjectPanel view="missoes" active={view} labelled={project !== undefined}>
+        {view === 'missoes' ? <p className="page-note">{PROJECT_TEXT.missionsSoon}</p> : null}
+      </ProjectPanel>
+      <ProjectPanel view="worktrees" active={view} labelled={project !== undefined}>
+        {view === 'worktrees' ? <WorktreesTab projectId={projectId} /> : null}
+      </ProjectPanel>
+      <ProjectPanel view="configuracoes" active={view} labelled={project !== undefined}>
+        {view === 'configuracoes' && project !== undefined ? (
           <ProjectSettings project={project} />
-        )}
-      </div>
+        ) : null}
+      </ProjectPanel>
+    </div>
+  );
+}
+
+/**
+ * O painel de uma visão (`role="tabpanel"`, o `aria-controls` da aba dela). Os quatro existem sempre; só o da
+ * visão ativa aparece (`hidden` nos outros). O conteúdo de cada um é montado só quando a visão está ativa,
+ * menos os terminais: o dono dele os mantém montados, para que uma espiada em Configurações não derrube os
+ * painéis, o xterm e o estado do workspace.
+ */
+function ProjectPanel({
+  view,
+  active,
+  labelled,
+  children,
+}: {
+  view: ProjectView;
+  active: ProjectView;
+  /** Com o cabeçalho na tela, a aba da visão existe e nomeia o painel. */
+  labelled: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="tabpanel"
+      id={projectPanelId(view)}
+      {...(labelled ? { 'aria-labelledby': `tab-${view}` } : {})}
+      hidden={view !== active}
+      className={`project-tab__panel project-tab__panel--${view}`}
+    >
+      {children}
     </div>
   );
 }
