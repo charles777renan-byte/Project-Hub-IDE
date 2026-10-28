@@ -796,69 +796,6 @@ button:disabled {
   color: var(--red);
 }
 
-/* Plano: passos numerados e o cartão de decisão. */
-.plan-steps {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  padding: 0;
-  list-style: none;
-}
-
-/*
- * Em painel estreito, o chip de estado desce para baixo do texto, alinhado com ele. Em painel largo
- * (a partir de 24rem), o chip fica à direita, na mesma linha. A coluna do texto encolhe e quebra linha:
- * sem isso o passo mais largo que o painel rola de lado.
- */
-.plan-steps {
-  container-type: inline-size;
-}
-
-.plan-step {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--line);
-  background: var(--surface-glass);
-}
-
-.plan-step > span:not(.chip) {
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-
-.plan-step > .chip {
-  grid-column: 2;
-  justify-self: start;
-}
-
-@container (min-width: 24rem) {
-  .plan-step {
-    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .plan-step > .chip {
-    grid-column: auto;
-    justify-self: auto;
-  }
-}
-
-.plan-step-number {
-  font-family: var(--font-mono);
-  color: var(--blue);
-  font-weight: 700;
-}
-
-.plan-step-agent {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
 /* Cartão de decisão: âmbar (--warn, "aguarda você"), para aprovação do plano e de ação protegida. */
 .decision-card {
   display: grid;
@@ -1584,14 +1521,6 @@ button:disabled {
   outline-offset: -2px;
 }
 
-/* Plano: o convite para revisar as etapas e o botão de pedir outro plano, abaixo da lista. */
-.plan-review {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-2);
-}
-
-/* Critérios de aceite, na aba Testes: um título pequeno, sem moldura, abaixo das verificações. */
 .acceptance {
   margin-top: var(--space-4);
 }

@@ -53,8 +53,8 @@ type LoadState =
 
 /**
  * Detalhe de um projeto (seção 10.5, R167): nome, pasta e branch no cabeçalho, e a aba Missões com
- * os cartões e a criação. A criação gera o plano na hora; com "Somente planejar", a página fica na
- * lista, e sem a opção abre o workspace da missão.
+ * os cartões e a criação. A criação deixa a missão em rascunho (o plano só nasce no Orquestrar, que usa a
+ * cota do Claude); com "Somente planejar", a página fica na lista, e sem a opção abre o workspace.
  */
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams();
@@ -121,7 +121,10 @@ export function ProjectDetailPage() {
   // A lista mostra a situação de cada missão: qualquer evento de missão pede a lista de novo.
   useEffect(() => window.projectHub.missions.subscribe(() => void load()), [load]);
 
-  /** Cria a missão, gera o plano e segue para o workspace, salvo quando a pessoa pediu só o plano. */
+  /**
+   * Cria a missão em rascunho e segue para o workspace, onde a pessoa clica em Orquestrar. O plano usa a
+   * cota do Claude, então nunca é gerado aqui. Com "Somente planejar", a página fica na lista.
+   */
   async function createMission(values: MissionFormValues) {
     setActionError(null);
     setNotice(null);
@@ -137,16 +140,9 @@ export function ProjectDetailPage() {
         setActionError(created.error.message);
         return;
       }
-      const planned = await window.projectHub.missions.plan(created.data.id);
       setCreating(false);
-      if (!planned.ok) {
-        // A missão já existe em rascunho: a lista mostra, e o workspace gera o plano depois.
-        setActionError(planned.error.message);
-        await load();
-        return;
-      }
       if (values.planOnly) {
-        setNotice('Plano gerado. Abra a missão para revisar e aprovar o plano.');
+        setNotice('Missão criada. Abra a missão e clique em Orquestrar para gerar o plano.');
         await load();
         return;
       }

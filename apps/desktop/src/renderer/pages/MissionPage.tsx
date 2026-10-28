@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import type { AppError, AppResult, ErrorCode, MissionViewDto } from '@project-hub/contracts';
+import type {
+  AppError,
+  AppResult,
+  ErrorCode,
+  MissionViewDto,
+  PlanEditInput,
+} from '@project-hub/contracts';
 import { ConversationPanel } from '../components/ConversationPanel';
 import { PlanPanel } from '../components/PlanPanel';
 import { Tabs, type TabCount, type TabItem } from '../components/Tabs';
@@ -93,6 +99,10 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const [reloadError, setReloadError] = useState<string | null>(null);
   /** Chamadas longas (início, decisão, resposta, nova tentativa e planejamento). Não bloqueiam os controles. */
   const [busy, setBusy] = useState(false);
+  /** O planejamento (Orquestrar e Planejar de novo) leva até alguns minutos e muda o rótulo do botão. */
+  const [planning, setPlanning] = useState(false);
+  /** Falha de uma edição das tarefas do plano: aparece no painel do Plano, não na página toda. */
+  const [planEditError, setPlanEditError] = useState<string | null>(null);
   /** Pausar, retomar e cancelar: cada uma só cobre a própria chamada, e vale com a longa em curso. */
   const [controlBusy, setControlBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -208,6 +218,35 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
 
   /** Chamada longa: início, decisão, resposta, nova tentativa e planejamento. */
   const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
+  /**
+   * Planeja a missão (Orquestrar e Planejar de novo). Gasta a cota do Claude, então só roda num clique.
+   * Sem instrução, a chamada leva só o id da missão. A falha fica na página, visível em qualquer aba.
+   */
+  const runPlan = (instruction = '') => {
+    setPlanEditError(null);
+    const call = () =>
+      instruction === ''
+        ? window.projectHub.missions.plan(missionId)
+        : window.projectHub.missions.plan(missionId, instruction);
+    return execute(call, (pending) => {
+      setBusy(pending);
+      setPlanning(pending);
+    });
+  };
+  /** Edição de uma tarefa do plano (renomear, remover, mover ou trocar o programa). A falha vai ao painel. */
+  async function runEditStep(stepId: string, edit: PlanEditInput) {
+    setBusy(true);
+    setPlanEditError(null);
+    setActionError(null);
+    try {
+      const result = await window.projectHub.missions.editPlanStep({ missionId, stepId, edit });
+      if (!result.ok) setPlanEditError(result.error.message);
+    } catch {
+      setPlanEditError(GENERIC_ERROR);
+    }
+    await reload();
+    setBusy(false);
+  }
   /** Início da missão: falha de worktree ganha a mensagem do seu código (R213). */
   const runStart = () =>
     execute(
@@ -262,8 +301,9 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         diff={diffSummary}
         conclusion={conclusion}
         busy={busy}
+        planning={planning}
         controlBusy={controlBusy}
-        onGeneratePlan={() => void run(() => window.projectHub.missions.plan(missionId))}
+        onGeneratePlan={() => void runPlan()}
         onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
         onStart={() => void runStart()}
         onPause={() => void runControl(() => window.projectHub.missions.pause(missionId))}
@@ -331,7 +371,10 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
             mission={mission}
             steps={steps}
             busy={busy}
-            onRequestNewPlan={() => void run(() => window.projectHub.missions.plan(missionId))}
+            planning={planning}
+            error={planEditError ?? undefined}
+            onEditStep={(stepId, edit) => void runEditStep(stepId, edit)}
+            onRequestNewPlan={(instruction) => void runPlan(instruction)}
           />
         </TabPanel>
         <TabPanel id="diff" active={tab}>

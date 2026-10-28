@@ -69,7 +69,7 @@ const NEEDS_ATTENTION: readonly MissionStatus[] = [
 ];
 
 const SITUATION: Record<MissionStatus, string> = {
-  draft: 'Ainda sem plano. Gere o plano para começar.',
+  draft: 'Ainda sem plano. Clique em Orquestrar para começar.',
   planned: 'O plano está pronto e espera a sua aprovação.',
   queued: 'Plano aprovado. Aguarda o início.',
   running: 'O agente está trabalhando nas etapas.',
@@ -157,12 +157,62 @@ export const MISSION_TEXT = {
   pause: 'Pausar',
   resume: 'Retomar',
   retry: 'Tentar de novo',
-  generatePlan: 'Gerar plano',
+  generatePlan: 'Orquestrar',
   approvePlan: 'Aprovar plano',
   start: 'Iniciar missão',
   decisionLink: 'Ver a decisão',
   approveReview: 'Aprovar conclusão',
   requestChanges: 'Pedir ajustes',
+} as const;
+
+/** Programa que executa uma tarefa. O contrato aceita só `claude-code`; os outros são promessa da tela. */
+export type AgentId = MissionStepDto['agent'];
+
+/** Nome curto do programa em cada tarefa, como na tabela do Orquestrador. */
+const AGENT_LABEL: Record<AgentId, string> = {
+  'claude-code': 'Claude',
+};
+
+/** Nome do programa da tarefa. */
+export function agentLabel(agent: AgentId): string {
+  return AGENT_LABEL[agent];
+}
+
+/** Programas do seletor: só Claude vale hoje; Codex e Gemini aparecem desabilitados, "em breve". */
+export const AGENT_CHOICES: readonly { value: string; label: string; available: boolean }[] = [
+  { value: 'claude-code', label: 'Claude', available: true },
+  { value: 'codex', label: 'Codex', available: false },
+  { value: 'gemini', label: 'Gemini', available: false },
+];
+
+/** Textos do Plano (tabela de tarefas, edição e novo plano). Os nomes acessíveis levam o título da tarefa. */
+export const PLAN_TEXT = {
+  quotaWarning: 'Planejar usa a cota do seu Claude.',
+  planning: 'Planejando…',
+  planningHint: 'O Claude está montando o plano. Isso pode levar alguns minutos.',
+  replan: 'Planejar de novo',
+  instructionLabel: 'Instrução para o novo plano',
+  instructionHint: 'Opcional. Diga o que o plano novo deve mudar.',
+  empty: 'Ainda não há plano. Clique em Orquestrar para gerar as tarefas.',
+  reviewHint: 'Revise as tarefas. Nenhuma alteração é feita no código antes da sua aprovação.',
+  tableLabel: 'Etapas do plano',
+  columns: { task: 'Tarefa', agent: 'Agente', status: 'Status' },
+  soon: 'em breve',
+  save: 'Salvar',
+  cancel: 'Cancelar',
+  renameButton: 'Renomear',
+  moveUpButton: 'Subir',
+  moveDownButton: 'Descer',
+  removeButton: 'Remover',
+  rename: (title: string) => `Renomear tarefa ${title}`,
+  newName: (title: string) => `Novo nome da tarefa ${title}`,
+  saveName: (title: string) => `Salvar nome da tarefa ${title}`,
+  cancelRename: (title: string) => `Cancelar renomear tarefa ${title}`,
+  remove: (title: string) => `Remover tarefa ${title}`,
+  removeQuestion: (title: string) => `Remover a tarefa ${title} do plano?`,
+  moveUp: (title: string) => `Subir tarefa ${title}`,
+  moveDown: (title: string) => `Descer tarefa ${title}`,
+  program: (title: string) => `Programa da tarefa ${title}`,
 } as const;
 
 /**

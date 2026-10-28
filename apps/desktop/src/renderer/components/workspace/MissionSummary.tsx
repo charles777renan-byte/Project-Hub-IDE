@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { MissionViewDto } from '@project-hub/contracts';
 import {
   MISSION_TEXT,
+  PLAN_TEXT,
   isEnded,
   primaryActionOf,
   statusIcon,
@@ -238,6 +239,7 @@ export function MissionSummary({
   diff,
   conclusion,
   busy,
+  planning = false,
   controlBusy,
   onGeneratePlan,
   onApprovePlan,
@@ -257,6 +259,8 @@ export function MissionSummary({
   conclusion?: MissionViewDto['conclusion'];
   /** Chamadas longas (planejar, aprovar, iniciar e tentar de novo): desabilitam a ação principal. */
   busy: boolean;
+  /** O planejamento em curso (pode levar minutos): o Orquestrar mostra "Planejando…". */
+  planning?: boolean;
   /** Pausar, retomar, cancelar e excluir: cada uma só cobre a própria chamada. */
   controlBusy: boolean;
   onGeneratePlan: () => void;
@@ -270,6 +274,7 @@ export function MissionSummary({
   onDelete: () => void;
 }) {
   const primary = primaryActionOf(mission.status);
+  const quotaId = useId();
   const tone = statusTone(mission.status);
   const hasWorktree = mission.worktreePath !== undefined;
   const indicators: Indicator[] = [
@@ -313,12 +318,20 @@ export function MissionSummary({
                   ? 'btn-decision mission-summary__primary'
                   : 'btn-primary mission-summary__primary'
               }
+              aria-describedby={primary === 'generate_plan' ? quotaId : undefined}
               disabled={primaryAction[primary].disabled}
               onClick={primaryAction[primary].run}
             >
-              {PRIMARY_LABEL[primary]}
+              {primary === 'generate_plan' && planning
+                ? PLAN_TEXT.planning
+                : PRIMARY_LABEL[primary]}
             </button>
           )}
+          {primary === 'generate_plan' ? (
+            <p id={quotaId} className="plan-quota mission-summary__quota">
+              {PLAN_TEXT.quotaWarning}
+            </p>
+          ) : null}
           <SecondaryActions
             key={isEnded(mission.status) ? 'ended' : 'open'}
             status={mission.status}
