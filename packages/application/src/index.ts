@@ -18,6 +18,12 @@ export {
 } from './missions/orchestrator';
 export { planFromCriteria, type MissionPlanStep } from './missions/plan';
 export {
+  MAX_PLAN_TASKS,
+  tasksToSteps,
+  validatePlan,
+  type PlannedTask,
+} from './missions/plan-validation';
+export {
   createMission,
   type CreateMissionDeps,
   type CreateMissionInput,
