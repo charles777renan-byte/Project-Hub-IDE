@@ -3,9 +3,12 @@ import * as Icons from '../../src/renderer/components/Icon';
 import type { MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
+  decisionAnnouncement,
+  decisionTextOf,
   dependencyText,
   formatTime,
   missionTabCounts,
+  needsDecision,
   primaryActionOf,
   ROLE_DESCRIPTIONS,
   roleLabel,
@@ -121,7 +124,7 @@ describe('ação principal do resumo da missão', () => {
     ['draft', 'generate_plan'],
     ['planned', 'approve_plan'],
     ['queued', 'start'],
-    // Esperando a decisão, o banner "Aguardando você" é o único convite: o resumo não tem ação principal.
+    // Esperando a decisão, os controles são os da própria decisão (cartões, resposta, revisão), não uma ação principal.
     ['waiting_approval', undefined],
     ['waiting_input', undefined],
     ['paused', 'resume'],
@@ -358,5 +361,56 @@ describe('papel e dependência da tarefa', () => {
       qa: 'Testes e verificação',
       general: 'Tarefas gerais',
     });
+  });
+});
+
+describe('bloco Sua decisão: textos', () => {
+  const all: readonly MissionStatus[] = [
+    'draft',
+    'planned',
+    'queued',
+    'running',
+    'waiting_approval',
+    'waiting_input',
+    'paused',
+    'review',
+    'succeeded',
+    'failed',
+    'cancelled',
+  ];
+
+  it('toda situação tem uma frase, e as da tabela são as da spec', () => {
+    for (const status of all) expect(decisionTextOf(status)).not.toBe('');
+    expect(decisionTextOf('queued')).toBe(
+      'Inicie a missão para o Orquestrador distribuir as tarefas entre os agentes.',
+    );
+    expect(decisionTextOf('running')).toBe('O Orquestrador está acompanhando as tarefas.');
+  });
+
+  it('só aprovação, resposta e revisão esperam uma decisão da pessoa', () => {
+    expect(all.filter((status) => needsDecision(status))).toEqual([
+      'waiting_approval',
+      'waiting_input',
+      'review',
+    ]);
+  });
+
+  it('o anúncio lista uma frase por aprovação pendente, mais a resposta ou a revisão', () => {
+    const approval = (title: string) => ({ title }) as never;
+    const view = (status: MissionStatus, titles: string[] = []) => ({
+      mission: { status } as never,
+      pendingApprovals: titles.map(approval),
+    });
+
+    expect(decisionAnnouncement(view('running'))).toBe('');
+    expect(decisionAnnouncement(view('waiting_approval', ['Gravar', 'Rodar']))).toBe(
+      'Aguardando você: aprovação, Gravar. Aguardando você: aprovação, Rodar.',
+    );
+    expect(decisionAnnouncement(view('waiting_input'))).toBe(
+      'Aguardando você: o agente espera uma resposta.',
+    );
+    expect(decisionAnnouncement(view('review'))).toBe(
+      'Aguardando você: a conclusão espera a sua revisão.',
+    );
   });
 });

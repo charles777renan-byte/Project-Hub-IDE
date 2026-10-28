@@ -18,7 +18,7 @@ import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionSummary } from '../components/workspace/MissionSummary';
 import { MissionTerminal } from '../components/workspace/MissionTerminal';
 import { TestsPanel } from '../components/workspace/TestsPanel';
-import { needsDecisionInConversation, verifiedCriteria } from '../mission-text';
+import { needsDecision, verifiedCriteria } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
 
@@ -66,15 +66,20 @@ export function MissionPage({ missionId }: { missionId: string }) {
  * de novo a cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma mais
  * nova, não substitui a tela.
  *
- * Os painéis das abas ficam montados o tempo todo (os de fora ficam escondidos), então a resposta
- * digitada na Conversa não se perde quando a pessoa olha outra aba. Quando a missão espera a decisão
- * (R182), o foco vai para o lugar da decisão, mas só quando a pessoa já está na Conversa: em outra aba,
- * nada troca e nada toma o foco, e o aviso do bloco "Sua decisão" avisa.
+ * As decisões (aprovações, resposta ao agente e revisão) moram no bloco "Sua decisão", no corpo, visível
+ * em qualquer aba do painel inferior; a Conversa tem só a história. Os painéis das abas ficam montados o
+ * tempo todo (os de fora ficam escondidos). Quando a missão espera a decisão (R182), o foco vai para o
+ * bloco (ou para a caixa de resposta), mas só quando a pessoa não está trabalhando em outra aba do
+ * painel: aí nada troca e nada toma o foco (ela pode estar digitando no terminal), e a região de anúncio
+ * do bloco avisa o leitor de tela.
  */
 function MissionWorkspace({ missionId }: { missionId: string }) {
   const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ status: 'loading' });
-  /** Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima do plano. */
+  /**
+   * Falha de uma recarga com a visão já na tela: a visão antiga fica, e o aviso aparece acima do plano.
+   * É da visão, não de uma ação, então fica na página e não no bloco "Sua decisão".
+   */
   const [reloadError, setReloadError] = useState<string | null>(null);
   /** Chamadas longas (início, decisão, resposta, nova tentativa e planejamento). Não bloqueiam os controles. */
   const [busy, setBusy] = useState(false);
@@ -84,13 +89,13 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const [planEditError, setPlanEditError] = useState<string | null>(null);
   /** Pausar, retomar e cancelar: cada uma só cobre a própria chamada, e vale com a longa em curso. */
   const [controlBusy, setControlBusy] = useState(false);
+  /** Falha de uma ação da decisão (planejar, aprovar, iniciar, responder…): aparece no bloco, junto dos botões. */
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Falha de uma ação do cabeçalho (pausar, cancelar e excluir): aparece logo abaixo dele. */
+  const [headerError, setHeaderError] = useState<string | null>(null);
   const [tab, setTab] = useState<MissionTab>('conversation');
-  /** Contagem dos pedidos de foco na decisão: cada pedido muda a aba e, depois dela pintada, o foco. */
-  const [focusRequest, setFocusRequest] = useState(0);
   /** Quantos arquivos o Diff leu, para a contagem da aba. `undefined` até a primeira leitura. */
   const [diffSummary, setDiffSummary] = useState<DiffSummary | undefined>(undefined);
-  const conversationRef = useRef<HTMLDivElement>(null);
   const decisionRef = useRef<HTMLElement>(null);
   const answerRef = useRef<HTMLTextAreaElement>(null);
   const latestRequest = useRef(0);
@@ -134,63 +139,54 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   );
 
   const decisionStatus = state.status === 'ready' ? state.view.mission.status : undefined;
-  const needsDecision = decisionStatus !== undefined && needsDecisionInConversation(decisionStatus);
-  /** A aba e a situação mais recentes, lidas só ao pedir ou pôr o foco (sem refazer os efeitos a cada mudança). */
+  const awaitingDecision = decisionStatus !== undefined && needsDecision(decisionStatus);
+  /** A aba mais recente, lida só ao pôr o foco (sem refazer o efeito a cada troca de aba). */
   const tabRef = useRef(tab);
-  const decisionStatusRef = useRef(decisionStatus);
   useEffect(() => {
     tabRef.current = tab;
-    decisionStatusRef.current = decisionStatus;
   });
-  const requestFocus = useCallback(() => setFocusRequest((count) => count + 1), []);
-  /** Pedido da pessoa (aviso da decisão): leva à Conversa, onde ficam os controles da decisão, e pede o foco. */
-  const openDecision = useCallback(() => {
-    setTab('conversation');
-    requestFocus();
-  }, [requestFocus]);
 
   /**
-   * Quando a missão passa a esperar a decisão da pessoa, o foco vai para o lugar dela (R182), mas só se
-   * ela já está na Conversa. Em outra aba nada troca e nada toma o foco: o aviso do bloco "Sua decisão" avisa.
+   * Quando a missão passa a esperar a decisão da pessoa (ou abre já esperando, vinda do aviso "Precisa de
+   * você"), o foco vai para o bloco "Sua decisão" (R182), ou para a caixa de resposta quando o agente
+   * pergunta. Só se a pessoa não está numa outra aba do painel inferior: lá ela pode estar digitando, e a
+   * região de anúncio do bloco avisa. A Conversa só tem a história, então ali nada se perde.
    */
   useEffect(() => {
-    if (needsDecision && tabRef.current === 'conversation') requestFocus();
-  }, [needsDecision, decisionStatus, requestFocus]);
+    if (!awaitingDecision || tabRef.current !== 'conversation') return;
+    const target = decisionStatus === 'waiting_input' ? answerRef.current : decisionRef.current;
+    (target ?? decisionRef.current)?.focus();
+  }, [awaitingDecision, decisionStatus]);
 
-  /** O foco vai para a aprovação, para a caixa de resposta ou, na falta delas, para a Conversa. */
-  useEffect(() => {
-    if (focusRequest === 0) return;
-    const status = decisionStatusRef.current;
-    const target =
-      status === 'waiting_approval' || status === 'review'
-        ? decisionRef.current
-        : status === 'waiting_input'
-          ? answerRef.current
-          : null;
-    (target ?? conversationRef.current)?.focus();
-  }, [focusRequest]);
+  /** Toda ação nova apaga a falha da anterior, esteja ela no bloco ou no cabeçalho. */
+  const clearErrors = () => {
+    setActionError(null);
+    setHeaderError(null);
+  };
 
   /**
-   * Roda uma ação da missão, marcando `pending` enquanto ela não volta. Falha vira mensagem na tela,
-   * e a visão é buscada de novo em qualquer caso.
+   * Roda uma ação da missão, marcando `pending` enquanto ela não volta. Falha vira mensagem na tela (por
+   * padrão a do bloco da decisão; `setError` escolhe onde ela cai), e a visão é buscada de novo em
+   * qualquer caso.
    */
   async function execute(
     action: () => Promise<AppResult<unknown>>,
     setPending: (pending: boolean) => void,
     failureText: (error: AppError) => string = (error) => error.message,
+    setError: (message: string | null) => void = setActionError,
   ): Promise<boolean> {
     setPending(true);
-    setActionError(null);
+    clearErrors();
     let ok = false;
     try {
       const result = await action();
       if (result.ok) {
         ok = true;
       } else {
-        setActionError(failureText(result.error));
+        setError(failureText(result.error));
       }
     } catch {
-      setActionError(GENERIC_ERROR);
+      setError(GENERIC_ERROR);
     }
     setPending(false);
     await reload();
@@ -201,7 +197,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
   /**
    * Planeja a missão (Orquestrar). Gasta a cota do Claude, então só roda num clique. Sem instrução, a
-   * chamada leva só o id da missão. A falha fica na página, visível em qualquer aba.
+   * chamada leva só o id da missão. A falha aparece no bloco "Sua decisão", junto do botão.
    */
   const runPlan = (instruction = '') => {
     // Um segundo clique com o planejamento (ou uma edição) em curso é ignorado: duas mudanças no mesmo plano.
@@ -225,7 +221,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     planMutation.current = true;
     setBusy(true);
     setPlanEditError(null);
-    setActionError(null);
+    clearErrors();
     try {
       const result = await window.projectHub.missions.editPlanStep({ missionId, stepId, edit });
       if (!result.ok) setPlanEditError(result.error.message);
@@ -246,8 +242,12 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
       setBusy,
       (error) => WORKTREE_START_MESSAGES.get(error.code) ?? error.message,
     );
-  /** Controle da execução: pausar, retomar e cancelar. Não espera a chamada longa terminar. */
-  const runControl = (action: () => Promise<AppResult<unknown>>) => execute(action, setControlBusy);
+  /** Retomar, no bloco da decisão: não espera a chamada longa terminar. A falha vai ao bloco. */
+  const runResume = () =>
+    execute(() => window.projectHub.missions.resume(missionId), setControlBusy);
+  /** Pausar e cancelar, no menu do cabeçalho: não esperam a chamada longa. A falha vai ao cabeçalho. */
+  const runHeaderControl = (action: () => Promise<AppResult<unknown>>) =>
+    execute(action, setControlBusy, (error) => error.message, setHeaderError);
 
   /**
    * Exclui a missão encerrada e volta à lista de missões do projeto. Fora do `execute`: quando dá certo,
@@ -256,7 +256,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
    */
   async function removeMission(projectId: string) {
     setControlBusy(true);
-    setActionError(null);
+    clearErrors();
     try {
       const result = await window.projectHub.missions.delete(missionId);
       if (result.ok) {
@@ -264,9 +264,9 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         navigate(projectPath(projectId));
         return;
       }
-      setActionError(result.error.message);
+      setHeaderError(result.error.message);
     } catch {
-      setActionError(GENERIC_ERROR);
+      setHeaderError(GENERIC_ERROR);
     }
     setControlBusy(false);
     await reload();
@@ -283,7 +283,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     );
   }
 
-  const { mission, project, events, steps, conclusion } = state.view;
+  const { mission, project, events, steps } = state.view;
   const hasWorktree = mission.worktreePath !== undefined;
 
   const main = (
@@ -291,15 +291,14 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
       <MissionSummary
         mission={mission}
         project={project}
-        conclusion={conclusion}
         controlBusy={controlBusy}
-        onPause={() => void runControl(() => window.projectHub.missions.pause(missionId))}
-        onCancel={() => void runControl(() => window.projectHub.missions.cancel(missionId))}
+        onPause={() => void runHeaderControl(() => window.projectHub.missions.pause(missionId))}
+        onCancel={() => void runHeaderControl(() => window.projectHub.missions.cancel(missionId))}
         onDelete={() => void removeMission(project.id)}
       />
-      {actionError === null ? null : (
+      {headerError === null ? null : (
         <p role="alert" className="page-alert">
-          {actionError}
+          {headerError}
         </p>
       )}
       {reloadError === null ? null : (
@@ -321,12 +320,23 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         busy={busy}
         planning={planning}
         controlBusy={controlBusy}
+        error={actionError ?? undefined}
         onGeneratePlan={() => void runPlan()}
         onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
+        onRequestNewPlan={(instruction) => void runPlan(instruction)}
         onStart={() => void runStart()}
-        onResume={() => void runControl(() => window.projectHub.missions.resume(missionId))}
+        onResume={() => void runResume()}
         onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
-        onOpenDecision={openDecision}
+        onDecide={(approvalId, decision) =>
+          void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+        }
+        onAnswer={(text) => run(() => window.projectHub.missions.provideInput({ missionId, text }))}
+        onApproveReview={() => void run(() => window.projectHub.missions.approveReview(missionId))}
+        onRequestChanges={(text) =>
+          run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
+        }
+        decisionRef={decisionRef}
+        answerRef={answerRef}
       />
     </>
   );
@@ -341,30 +351,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         diff={diffSummary}
         events={events}
         panels={{
-          conversation: (
-            <div ref={conversationRef} tabIndex={-1} className="mission-focus">
-              <ConversationPanel
-                view={state.view}
-                busy={busy}
-                onAnswer={(text) =>
-                  run(() => window.projectHub.missions.provideInput({ missionId, text }))
-                }
-                onDecide={(approvalId, decision) =>
-                  void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
-                }
-                onApprove={() =>
-                  void run(() => window.projectHub.missions.approveReview(missionId))
-                }
-                onRequestChanges={(text) =>
-                  run(() =>
-                    window.projectHub.missions.requestChanges({ missionId, feedback: text }),
-                  )
-                }
-                decisionRef={decisionRef}
-                answerRef={answerRef}
-              />
-            </div>
-          ),
+          conversation: <ConversationPanel view={state.view} />,
           diff: (
             <DiffPanel
               missionId={missionId}

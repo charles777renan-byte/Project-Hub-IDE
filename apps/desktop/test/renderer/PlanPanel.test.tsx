@@ -480,12 +480,8 @@ describe('PlanPanel: planejamento em curso e erro', () => {
     expect(screen.queryByRole('button', { name: 'Planejar de novo' })).toBeNull();
     expect(screen.queryByText('Planejar usa a cota do seu Claude.')).toBeNull();
   });
-
-  // Mudaram para o bloco "Sua decisão" (Tarefa 7 da reestruturação): voltam a ser testados lá.
-  it.todo('Planejar de novo envia a instrução e mostra o aviso da cota');
-  it.todo('Planejar de novo sem instrução envia texto vazio');
-  it.todo('enquanto planeja, o botão Planejar de novo mostra "Planejando…" e fica desabilitado');
-  it.todo('com erro de planejamento, o Planejar de novo continua disponível');
+  // A instrução, o aviso da cota e o Planejar de novo (com os bloqueios e a falha) são do bloco
+  // "Sua decisão": testados em DecisionBlock.test.tsx e MissionPage.test.tsx.
 });
 
 describe('PlanPanel: fora do estado planejado', () => {

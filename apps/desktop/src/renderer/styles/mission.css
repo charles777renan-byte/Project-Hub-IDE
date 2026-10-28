@@ -134,13 +134,6 @@
   gap: var(--space-2) var(--space-3);
 }
 
-.mission-head .conclusion__summary {
-  max-width: none;
-  margin: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
 /* Títulos pequenos das seções do corpo: ARQUIVOS ALTERADOS e SUA DECISÃO. */
 .mission-section-title {
   margin: 0 0 var(--space-2);
@@ -188,20 +181,34 @@
   font-size: var(--text-sm);
 }
 
-/* Sua decisão: o aviso (só quando há decisão pendente) e a ação principal da situação. */
+/*
+ * Sua decisão: a frase da situação, o que ela espera da pessoa (cartões, caixas e botões) e a falha de
+ * uma ação. A região de anúncio é só para o leitor de tela (`visually-hidden`, fora da grade).
+ */
 .decision-block {
   display: grid;
   gap: var(--space-2);
   justify-items: start;
 }
 
-.decision-block .decision-status {
-  width: 100%;
+/* Cartões, formulários e o resumo ocupam a largura do bloco (até um limite de leitura), não a do conteúdo. */
+.decision-block .decision-card,
+.decision-block .form,
+.decision-block .conclusion,
+.decision-block__instruction {
+  justify-self: stretch;
+  max-width: 40rem;
 }
 
-/* Vazia, a região de anúncio não ocupa espaço: o vão do `gap` da grade é o único que vale. */
-.decision-block .decision-status:empty {
+.decision-block .conclusion__summary {
+  max-width: none;
   margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.decision-block .page-alert {
+  overflow-wrap: anywhere;
 }
 
 .decision-block__actions {
