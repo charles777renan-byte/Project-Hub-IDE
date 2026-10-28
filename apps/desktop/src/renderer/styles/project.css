@@ -65,38 +65,25 @@
   white-space: nowrap;
 }
 
-/* Visões: abas sublinhadas, a ativa com o traço claro embaixo, alinhadas à base do cabeçalho. */
+/*
+ * Visões: as mesmas pílulas arredondadas das outras abas do app (a ativa acende o gradiente e o anel do
+ * `.tab::before`, que herda o raio da aba). Centralizadas na altura do cabeçalho, com folga em volta do nome,
+ * para a pílula não encostar nas bordas.
+ */
 .project-header .tabs {
   flex-wrap: nowrap;
-  align-self: stretch;
-  gap: 0 var(--space-3);
+  align-self: center;
+  gap: 0 var(--space-1);
   margin: 0;
 }
 
 .project-header .tab {
   flex: none;
   margin: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
   font-size: 0.8125rem;
   white-space: nowrap;
-}
-
-/* Foco pelo teclado: o anel abraça o nome da aba, arredondado, em vez de contornar a altura toda do cabeçalho. */
-.project-header .tab:focus-visible {
-  border-radius: 6px;
-  outline-offset: -6px;
-}
-
-.project-header .tab:hover {
-  background: transparent;
-}
-
-.project-header .tab[aria-selected='true'] {
-  border-bottom-color: var(--text);
-  background: transparent;
-  box-shadow: none;
 }
 
 .project-header__actions {
