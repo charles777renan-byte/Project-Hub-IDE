@@ -1,6 +1,13 @@
 import { basename, join } from 'node:path';
 import { expect, test } from './fixtures';
-import { addGitProject, createMission, openProject, orchestrate } from './missions';
+import {
+  addGitProject,
+  createMission,
+  decisionBlock,
+  missionSummary,
+  openProject,
+  orchestrate,
+} from './missions';
 
 // Fluxo de orquestração pela interface real (fatia 2 do orquestrador): a missão nasce em rascunho, o
 // clique em Orquestrar chama o planejador, a pessoa revisa e edita as tarefas, pede outro plano com uma
@@ -48,8 +55,8 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   await expect(page.getByRole('button', { name: 'Aprovar plano' })).toHaveCount(0);
   await orchestrate(page);
 
-  // 2. A aba Plano mostra as 3 tarefas na tabela e o quadro do orquestrador, com os três papéis.
-  await page.getByRole('tab', { name: 'Plano' }).click();
+  // 2. O centro da missão mostra as 3 tarefas na tabela e o quadro do orquestrador, com os três papéis
+  // (o plano não é mais uma aba: está sempre no corpo da missão).
   const table = page.getByRole('table', { name: 'Etapas do plano' });
   const row = (title: string) => table.getByRole('row', { name: new RegExp(title) });
   for (const title of Object.values(FIRST_PLAN)) await expect(row(title)).toBeVisible();
@@ -115,15 +122,11 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   launched = await launchApp({ plannerScript: FAKE_PLANNER });
   page = launched.page;
   await openProject(page, projectName);
-  await page
-    .getByRole('list', { name: 'Missões do projeto' })
-    .getByRole('link', { name: MISSION.title })
-    .click();
+  await page.getByRole('main').getByRole('link', { name: MISSION.title }).click();
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
   await expect(
-    page.getByRole('main').getByText('Aguarda aprovação do plano', { exact: true }),
+    missionSummary(page).getByText('Aguarda aprovação do plano', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Plano' }).click();
   const reloaded = page.getByRole('table', { name: 'Etapas do plano' });
   const reloadedRow = (title: string) => reloaded.getByRole('row', { name: new RegExp(title) });
   await expect(reloadedRow(FIRST_PLAN.database)).toBeVisible();
@@ -135,9 +138,10 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   ).toHaveCount(0);
 
   // 7. Planejar de novo com uma instrução: o falso só devolve o outro plano se a instrução chegar a ele.
-  await expect(page.getByText('Planejar usa a cota do seu Claude.').first()).toBeVisible();
-  await page.getByLabel('Instrução para o novo plano').fill('Use trocar-plano desta vez.');
-  await page.getByRole('button', { name: 'Planejar de novo' }).click();
+  const decision = decisionBlock(page);
+  await expect(decision.getByText('Planejar usa a cota do seu Claude.')).toBeVisible();
+  await decision.getByLabel('Instrução para o novo plano').fill('Use trocar-plano desta vez.');
+  await decision.getByRole('button', { name: 'Planejar de novo' }).click();
   for (const title of Object.values(SECOND_PLAN)) {
     await expect(reloadedRow(title)).toBeVisible();
   }
@@ -150,47 +154,46 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   await expect(newBoard.getByRole('heading', { name: 'Banco de dados' })).toHaveCount(0);
 
   // 8. Aprova o plano e inicia: a missão roda com o agente de demonstração até pedir aprovação.
-  await page.getByRole('button', { name: 'Aprovar plano' }).click();
+  await decision.getByRole('button', { name: 'Aprovar plano' }).click();
   await expect(
-    page.getByRole('main').getByText('Plano aprovado, aguardando início', { exact: true }),
+    missionSummary(page).getByText('Plano aprovado, aguardando início', { exact: true }),
   ).toBeVisible();
   // Aprovado o plano, as tarefas não se editam mais.
   await expect(
     page.getByRole('button', { name: `Remover tarefa ${SECOND_PLAN.docs}` }),
   ).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Planejar de novo' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Iniciar missão' }).click();
+  await expect(decision.getByRole('button', { name: 'Planejar de novo' })).toHaveCount(0);
+  await decision.getByRole('button', { name: 'Iniciar missão' }).click();
 
+  // A decisão pendente mora no bloco "Sua decisão", sem banner nem botão para ir até ela.
   await expect(
-    page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
+    missionSummary(page).getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole('region', { name: 'Aguardando você' })
-    .getByRole('button', { name: 'Ver a decisão' })
-    .click();
   // O orquestrador roda uma tarefa por vez, cada uma com o seu pedido de aprovação do agente de demonstração.
-  const card = page.getByRole('region', { name: APPROVAL_TITLE });
+  const card = decision.getByRole('region', { name: APPROVAL_TITLE });
   await expect(card).toBeVisible();
-  await expect(page.getByText('0 de 2 etapas concluídas')).toBeVisible();
+  // O progresso (antes "N de 2 etapas concluídas") agora é a coluna de status da tabela das tarefas.
+  await expect(reloaded.getByText('Concluída', { exact: true })).toHaveCount(0);
   await card.getByRole('button', { name: 'Aprovar', exact: true }).click();
-  await expect(page.getByText('1 de 2 etapas concluídas')).toBeVisible();
+  await expect(reloaded.getByText('Concluída', { exact: true })).toHaveCount(1);
   await expect(card).toBeVisible();
   await card.getByRole('button', { name: 'Aprovar', exact: true }).click();
 
   // 9. Terminadas as 2 tarefas, a missão espera a revisão e, aprovada a conclusão, fica concluída.
   await expect(
-    page.getByRole('main').getByText('Aguarda sua revisão', { exact: true }),
+    missionSummary(page).getByText('Aguarda sua revisão', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('2 de 2 etapas concluídas')).toBeVisible();
-  await page
-    .getByRole('region', { name: 'Revisão da conclusão' })
-    .getByRole('button', { name: 'Aprovar conclusão' })
-    .click();
-  const summary = page.getByRole('region', { name: 'Resumo da missão' });
-  await expect(summary.getByText('Concluída', { exact: true })).toBeVisible();
-  // O Plano mostra as 2 tarefas concluídas, e o quadro do orquestrador, os dois papéis concluídos.
-  await page.getByRole('tab', { name: 'Plano' }).click();
+  await expect(reloaded.getByText('Concluída', { exact: true })).toHaveCount(2);
+  await decision.getByRole('button', { name: 'Aprovar conclusão' }).click();
+  await expect(missionSummary(page).getByText('Concluída', { exact: true })).toBeVisible();
+  // A tabela mostra as 2 tarefas concluídas, e o quadro do orquestrador, os dois papéis concluídos.
   await expect(reloaded.getByText('Concluída', { exact: true })).toHaveCount(2);
   await expect(newBoard.getByText('concluído', { exact: true })).toHaveCount(2);
+
+  // O progresso da missão aparece na lista das Missões do projeto, com a barra cheia (2 de 2 tarefas).
+  await missionSummary(page).getByRole('link', { name: '← Missões' }).click();
+  await expect(
+    page.getByRole('progressbar', { name: `Progresso de ${MISSION.title}: 2 de 2 tarefas` }),
+  ).toBeVisible();
   await launched.close();
 });

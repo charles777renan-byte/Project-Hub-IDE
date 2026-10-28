@@ -39,7 +39,7 @@ test('um launch que falha na espera fecha o app e deixa a pasta de dados livre',
         pid = app.process().pid;
       },
       waitForReady: async (page) => {
-        await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Início', exact: true })).toBeVisible();
         throw new Error('falha simulada na espera da interface');
       },
     }),
