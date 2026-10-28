@@ -20,30 +20,6 @@ import { StatusChip } from '../StatusChip';
 const DELETE_QUESTION =
   'Excluir esta missão? O plano, as tentativas e o histórico saem do app. Não dá para desfazer.';
 
-/**
- * Fecho da missão concluída (R130): a frase final do agente e o estado do Git ao concluir, numa caixa
- * discreta abaixo do cabeçalho. A verificação e os arquivos alterados já aparecem nos indicadores,
- * então não se repetem aqui. A frase vem do agente e entra como texto, nunca como HTML.
- */
-function ConclusionSummary({
-  conclusion,
-}: {
-  conclusion: NonNullable<MissionViewDto['conclusion']>;
-}) {
-  return (
-    <section className="conclusion" aria-label="Resumo da conclusão">
-      <p className="conclusion__summary">{conclusion.summary}</p>
-      <ul className="conclusion__facts">
-        <li className="conclusion__item">
-          {conclusion.gitState === 'uncommitted'
-            ? 'Git: alterações sem commit'
-            : 'Git: sem alterações pendentes'}
-        </li>
-      </ul>
-    </section>
-  );
-}
-
 /** Tempo em que o aviso "Copiado" fica na tela. */
 const COPY_FEEDBACK_MS = 2500;
 
@@ -175,14 +151,12 @@ function SecondaryActions({
  * Cabeçalho da missão (seção 10.7), no formato do protótipo: o "← Missões" que volta à lista, a linha
  * "MISSÃO · {PROJETO}", o título, o objetivo em linha menor, o selo da situação (chip com texto e cor) e
  * "Mais ações" (pausar, cancelar ou excluir). Com o worktree criado, mostra o nome curto dele e o botão
- * que copia o caminho. Com a missão concluída, mostra também o fecho da conclusão (a frase final do agente
- * e o estado do Git). A ação principal fica no bloco "Sua decisão". Este componente só mostra e chama o que
- * a página passa: o comportamento das ações fica na página.
+ * que copia o caminho. A ação principal e o resumo da conclusão ficam no bloco "Sua decisão". Este
+ * componente só mostra e chama o que a página passa: o comportamento das ações fica na página.
  */
 export function MissionSummary({
   mission,
   project,
-  conclusion,
   controlBusy,
   onPause,
   onCancel,
@@ -190,8 +164,6 @@ export function MissionSummary({
 }: {
   mission: MissionViewDto['mission'];
   project: MissionViewDto['project'];
-  /** Resumo de conclusão. Só aparece com a missão concluída; cancelada ou com falha não tem resumo. */
-  conclusion?: MissionViewDto['conclusion'];
   /** Pausar, retomar, cancelar e excluir: cada uma só cobre a própria chamada. */
   controlBusy: boolean;
   onPause: () => void;
@@ -233,10 +205,6 @@ export function MissionSummary({
           <WorktreeMeta path={mission.worktreePath} />
         </p>
       )}
-      {(mission.status === 'review' || mission.status === 'succeeded') &&
-      conclusion !== undefined ? (
-        <ConclusionSummary conclusion={conclusion} />
-      ) : null}
     </section>
   );
 }

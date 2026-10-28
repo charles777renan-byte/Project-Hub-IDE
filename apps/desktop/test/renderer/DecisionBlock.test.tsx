@@ -1,13 +1,32 @@
-import { render, screen } from '@testing-library/react';
+import { createRef, type ComponentProps } from 'react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { DecisionBlock } from '../../src/renderer/components/mission/DecisionBlock';
 
-function viewOf(
-  status: MissionViewDto['mission']['status'],
-  rest: Partial<MissionViewDto> = {},
-): MissionViewDto {
+type Status = MissionViewDto['mission']['status'];
+
+const APPROVAL = {
+  id: 'ap1',
+  missionId: 'm1',
+  executionId: 'e1',
+  actionType: 'write_outside_worktree' as const,
+  title: 'Gravar arquivo',
+  rationale: 'O roteiro pediu.',
+  affectedResources: ['C:\\app\\x.md'],
+  status: 'pending' as const,
+  requestedAt: '2026-10-20T09:00:00.000Z',
+};
+
+const CONCLUSION = {
+  summary: 'Login corrigido.',
+  verification: { passed: 12, failed: 0 },
+  changedFiles: 3,
+  gitState: 'uncommitted' as const,
+};
+
+function viewOf(status: Status, rest: Partial<MissionViewDto> = {}): MissionViewDto {
   return {
     mission: {
       id: 'm1',
@@ -29,70 +48,166 @@ function viewOf(
   };
 }
 
-function setup(
-  status: MissionViewDto['mission']['status'],
-  props: { busy?: boolean; planning?: boolean; controlBusy?: boolean } = {},
-  rest: Partial<MissionViewDto> = {},
-) {
-  const handlers = {
+function inputEvent(prompt: string): MissionViewDto['events'][number] {
+  return {
+    id: 'ev1',
+    missionId: 'm1',
+    aggregateType: 'execution',
+    aggregateId: 'e1',
+    eventType: 'input.requested',
+    severity: 'info',
+    actor: 'agent',
+    payload: { request: { id: 'entrada', prompt } },
+    sequence: 1,
+    createdAt: '2026-10-20T09:00:00.000Z',
+  };
+}
+
+function handlersOf() {
+  return {
     onGeneratePlan: vi.fn(),
     onApprovePlan: vi.fn(),
+    onRequestNewPlan: vi.fn(),
     onStart: vi.fn(),
     onResume: vi.fn(),
     onRetry: vi.fn(),
-    onOpenDecision: vi.fn(),
+    onDecide: vi.fn(),
+    onAnswer: vi.fn(() => Promise.resolve(true)),
+    onApproveReview: vi.fn(),
+    onRequestChanges: vi.fn(() => Promise.resolve(true)),
   };
-  render(
+}
+
+type Extra = Partial<
+  Pick<ComponentProps<typeof DecisionBlock>, 'busy' | 'planning' | 'controlBusy' | 'error'>
+>;
+
+function setup(status: Status, props: Extra = {}, rest: Partial<MissionViewDto> = {}) {
+  const handlers = handlersOf();
+  const utils = render(
     <DecisionBlock
       view={viewOf(status, rest)}
       busy={props.busy ?? false}
       planning={props.planning ?? false}
       controlBusy={props.controlBusy ?? false}
+      error={props.error}
       {...handlers}
     />,
   );
-  return handlers;
+  return { handlers, ...utils };
 }
 
+function block(): HTMLElement {
+  return screen.getByRole('region', { name: 'Sua decisão' });
+}
+
+const ALL_STATUS: readonly Status[] = [
+  'draft',
+  'planned',
+  'queued',
+  'running',
+  'waiting_approval',
+  'waiting_input',
+  'paused',
+  'review',
+  'succeeded',
+  'failed',
+  'cancelled',
+];
+
+/** Por situação: a frase do bloco, o botão da ação principal e o comportamento que ele chama. */
 const PRIMARY = [
-  ['draft', 'Orquestrar', 'onGeneratePlan'],
-  ['planned', 'Aprovar plano', 'onApprovePlan'],
-  ['queued', 'Iniciar missão', 'onStart'],
-  ['paused', 'Retomar', 'onResume'],
-  ['failed', 'Tentar de novo', 'onRetry'],
-  ['cancelled', 'Tentar de novo', 'onRetry'],
+  ['draft', 'Peça ao Orquestrador para montar o plano da missão.', 'Orquestrar', 'onGeneratePlan'],
+  ['planned', 'Revise as tarefas e aprove o plano.', 'Aprovar plano', 'onApprovePlan'],
+  [
+    'queued',
+    'Inicie a missão para o Orquestrador distribuir as tarefas entre os agentes.',
+    'Iniciar missão',
+    'onStart',
+  ],
+  ['paused', 'A missão está pausada. Retome para continuar.', 'Retomar', 'onResume'],
+  ['failed', 'A execução terminou com falha.', 'Tentar de novo', 'onRetry'],
+  ['cancelled', 'Missão cancelada.', 'Tentar de novo', 'onRetry'],
 ] as const;
 
-const NO_PRIMARY = ['running', 'waiting_approval', 'waiting_input', 'review', 'succeeded'] as const;
-
-describe('DecisionBlock', () => {
-  it('é a região "Sua decisão"', () => {
+describe('DecisionBlock: estrutura', () => {
+  it('é a região "Sua decisão", nomeada pelo próprio título', () => {
     setup('draft');
 
-    expect(screen.getByRole('region', { name: 'Sua decisão' })).toBeInTheDocument();
+    const region = block();
+    const title = within(region).getByRole('heading', { level: 2, name: 'Sua decisão' });
+    expect(region).toHaveAttribute('aria-labelledby', title.id);
+    expect(title.id).not.toBe('');
+    expect(region).not.toHaveAttribute('aria-label');
   });
 
-  it.each(PRIMARY)(
-    'com a missão %s, a ação principal é "%s" e chama o comportamento',
-    async (status, label, handler) => {
-      const user = userEvent.setup();
-      const handlers = setup(status);
+  it.each(ALL_STATUS)('com a missão %s, o bloco tem uma frase além do título', (status) => {
+    setup(status);
 
-      await user.click(screen.getByRole('button', { name: label }));
+    const lines = [...block().querySelectorAll('p')].filter(
+      (paragraph) => !paragraph.matches('.decision-announce') && paragraph.textContent !== '',
+    );
+    expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it('o bloco recebe o foco (tabIndex -1) pela referência que a página passa', () => {
+    const decisionRef = createRef<HTMLElement>();
+    const handlers = handlersOf();
+    render(
+      <DecisionBlock
+        view={viewOf('waiting_approval', { pendingApprovals: [APPROVAL] })}
+        busy={false}
+        planning={false}
+        controlBusy={false}
+        decisionRef={decisionRef}
+        {...handlers}
+      />,
+    );
+
+    expect(decisionRef.current).toBe(block());
+    expect(block()).toHaveAttribute('tabindex', '-1');
+  });
+});
+
+describe('DecisionBlock: ação principal por situação', () => {
+  it.each(PRIMARY)(
+    'com a missão %s, mostra "%s", o botão "%s" e ele chama o comportamento',
+    async (status, text, label, handler) => {
+      const user = userEvent.setup();
+      const { handlers } = setup(status);
+
+      expect(within(block()).getByText(text)).toBeInTheDocument();
+      await user.click(within(block()).getByRole('button', { name: label }));
 
       expect(handlers[handler]).toHaveBeenCalledTimes(1);
-      expect(screen.getAllByRole('button')).toHaveLength(1);
     },
   );
 
-  it.each(NO_PRIMARY)('com a missão %s não há ação principal', (status) => {
+  it.each([
+    ['draft', 1],
+    ['queued', 1],
+    ['paused', 1],
+    ['failed', 1],
+    ['cancelled', 1],
+  ] as const)('com a missão %s, a única ação é a principal (%i botão)', (status, count) => {
     setup(status);
 
-    expect(
-      screen.queryByRole('button', {
-        name: /Orquestrar|Aprovar plano|Iniciar|Retomar|Tentar de novo/,
-      }),
-    ).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(count);
+  });
+
+  it.each(['running', 'succeeded'] as const)(
+    'com a missão %s não há ação principal nem botão algum',
+    (status) => {
+      setup(status);
+
+      expect(screen.queryByRole('button')).toBeNull();
+    },
+  );
+
+  it('em execução, diz que o Orquestrador acompanha as tarefas', () => {
+    setup('running');
+
+    expect(within(block()).getByText('O Orquestrador está acompanhando as tarefas.')).toBeVisible();
   });
 
   it('Aprovar plano leva a aparência de decisão', () => {
@@ -110,7 +225,7 @@ describe('DecisionBlock', () => {
   });
 
   it('o aviso da cota não aparece onde não há planejamento', () => {
-    setup('planned');
+    setup('queued');
 
     expect(screen.queryByText('Planejar usa a cota do seu Claude.')).toBeNull();
   });
@@ -122,9 +237,9 @@ describe('DecisionBlock', () => {
   });
 
   it.each([
-    ['planned', 'Aprovar plano'],
     ['queued', 'Iniciar missão'],
     ['failed', 'Tentar de novo'],
+    ['draft', 'Orquestrar'],
   ] as const)('com uma chamada longa em curso, a missão %s desabilita "%s"', (status, label) => {
     setup(status, { busy: true });
 
@@ -142,26 +257,403 @@ describe('DecisionBlock', () => {
 
     expect(screen.getByRole('button', { name: 'Retomar' })).toBeDisabled();
   });
+});
 
-  it('a região de aviso já existe, vazia, sem decisão pendente', () => {
+describe('DecisionBlock: plano gerado', () => {
+  it('mostra Aprovar plano, a instrução opcional e Planejar de novo, com a frase de segurança', () => {
+    setup('planned');
+
+    const region = block();
+    expect(within(region).getByRole('button', { name: 'Aprovar plano' })).toBeEnabled();
+    expect(within(region).getByRole('button', { name: 'Planejar de novo' })).toBeEnabled();
+    expect(
+      within(region).getByRole('textbox', { name: 'Instrução para o novo plano' }),
+    ).toBeInTheDocument();
+    expect(within(region).getByText('Opcional. Diga o que o plano novo deve mudar.')).toBeVisible();
+    expect(within(region).getByText('Nada muda no código antes da sua aprovação.')).toBeVisible();
+  });
+
+  it('a frase de segurança não aparece fora do plano gerado', () => {
+    setup('queued');
+
+    expect(screen.queryByText('Nada muda no código antes da sua aprovação.')).toBeNull();
+  });
+
+  it('Planejar de novo envia a instrução aparada e mostra o aviso da cota', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('planned');
+
+    expect(screen.getByText('Planejar usa a cota do seu Claude.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Planejar de novo' })).toHaveAccessibleDescription(
+      'Planejar usa a cota do seu Claude.',
+    );
+    await user.type(
+      screen.getByRole('textbox', { name: 'Instrução para o novo plano' }),
+      '  Separe o banco da API  ',
+    );
+    await user.click(screen.getByRole('button', { name: 'Planejar de novo' }));
+
+    expect(handlers.onRequestNewPlan).toHaveBeenCalledTimes(1);
+    expect(handlers.onRequestNewPlan).toHaveBeenCalledWith('Separe o banco da API');
+    expect(handlers.onApprovePlan).not.toHaveBeenCalled();
+    expect(handlers.onGeneratePlan).not.toHaveBeenCalled();
+  });
+
+  it('sem instrução, Planejar de novo envia texto vazio (nunca o evento do clique)', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('planned');
+
+    await user.click(screen.getByRole('button', { name: 'Planejar de novo' }));
+
+    expect(handlers.onRequestNewPlan).toHaveBeenCalledWith('');
+  });
+
+  it('a instrução aceita até 1000 caracteres, o limite do contrato', () => {
+    setup('planned');
+
+    expect(screen.getByRole('textbox', { name: 'Instrução para o novo plano' })).toHaveAttribute(
+      'maxlength',
+      '1000',
+    );
+  });
+
+  it('enquanto planeja, o botão mostra "Planejando…" e fica desabilitado, com Aprovar plano também', () => {
+    setup('planned', { busy: true, planning: true });
+
+    expect(screen.getByRole('button', { name: 'Planejando…' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Planejar de novo' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Aprovar plano' })).toBeDisabled();
+  });
+
+  it('com uma chamada em curso, Planejar de novo fica desabilitado', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('planned', { busy: true });
+
+    const button = screen.getByRole('button', { name: 'Planejar de novo' });
+    expect(button).toBeDisabled();
+    await user.click(button);
+    expect(handlers.onRequestNewPlan).not.toHaveBeenCalled();
+  });
+
+  it('com erro de planejamento, Planejar de novo e Aprovar plano continuam disponíveis', () => {
+    setup('planned', { error: 'O Claude não respondeu a tempo.' });
+
+    expect(screen.getByRole('button', { name: 'Planejar de novo' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Aprovar plano' })).toBeEnabled();
+  });
+});
+
+describe('DecisionBlock: aprovações do agente', () => {
+  it('o cartão da aprovação pendente mora no bloco, uma vez só, e a decisão vai para onDecide', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('waiting_approval', {}, { pendingApprovals: [APPROVAL] });
+
+    const card = within(block()).getByRole('region', { name: 'Gravar arquivo' });
+    expect(screen.getAllByRole('region', { name: 'Gravar arquivo' })).toHaveLength(1);
+    await user.click(within(card).getByRole('button', { name: 'Aprovar' }));
+    await user.click(within(card).getByRole('button', { name: 'Recusar' }));
+
+    expect(handlers.onDecide).toHaveBeenNthCalledWith(1, 'ap1', 'approved');
+    expect(handlers.onDecide).toHaveBeenNthCalledWith(2, 'ap1', 'rejected');
+  });
+
+  it('com uma chamada em curso, os botões do cartão ficam desabilitados', () => {
+    setup('waiting_approval', { busy: true }, { pendingApprovals: [APPROVAL] });
+
+    expect(screen.getByRole('button', { name: 'Aprovar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Recusar' })).toBeDisabled();
+  });
+
+  it('sem aprovação pendente, o bloco não tem cartão', () => {
     setup('running');
 
-    const region = document.querySelector('[role="status"].decision-status');
-    expect(region).not.toBeNull();
+    expect(screen.queryByText('Aprovação necessária')).toBeNull();
+  });
+});
+
+describe('DecisionBlock: resposta ao agente', () => {
+  it('a pergunta do agente nomeia a caixa; enviar chama onAnswer com o texto aparado e limpa a caixa', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup(
+      'waiting_input',
+      {},
+      { events: [inputEvent('Qual o nome do arquivo?')] },
+    );
+
+    const form = within(block()).getByRole('form', { name: 'Resposta ao agente' });
+    const answer = within(form).getByLabelText('Qual o nome do arquivo?');
+    const send = within(form).getByRole('button', { name: 'Enviar resposta' });
+    expect(send).toBeDisabled();
+    await user.type(answer, '  notas.md  ');
+    await user.click(send);
+
+    expect(handlers.onAnswer).toHaveBeenCalledWith('notas.md');
+    await vi.waitFor(() => expect(answer).toHaveValue(''));
+  });
+
+  it('se o envio falha (onAnswer devolve false), a resposta digitada continua na caixa', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup(
+      'waiting_input',
+      {},
+      { events: [inputEvent('Qual o nome do arquivo?')] },
+    );
+    handlers.onAnswer.mockResolvedValueOnce(false);
+
+    const answer = screen.getByLabelText('Qual o nome do arquivo?');
+    await user.type(answer, 'notas.md');
+    await user.click(screen.getByRole('button', { name: 'Enviar resposta' }));
+
+    expect(handlers.onAnswer).toHaveBeenCalledTimes(1);
+    expect(answer).toHaveValue('notas.md');
+  });
+
+  it('sem pergunta registrada, a caixa leva o texto padrão', () => {
+    setup('waiting_input');
+
+    expect(screen.getByLabelText('O agente aguarda a sua resposta.')).toBeInTheDocument();
+  });
+
+  it('com uma chamada em curso, Enviar resposta fica desabilitado', async () => {
+    const user = userEvent.setup();
+    setup('waiting_input', { busy: true });
+
+    await user.type(screen.getByLabelText('O agente aguarda a sua resposta.'), 'x');
+    expect(screen.getByRole('button', { name: 'Enviar resposta' })).toBeDisabled();
+  });
+
+  it('a referência da caixa recebe o textarea', () => {
+    const answerRef = createRef<HTMLTextAreaElement>();
+    const handlers = handlersOf();
+    render(
+      <DecisionBlock
+        view={viewOf('waiting_input')}
+        busy={false}
+        planning={false}
+        controlBusy={false}
+        answerRef={answerRef}
+        {...handlers}
+      />,
+    );
+
+    expect(answerRef.current).toBe(screen.getByLabelText('O agente aguarda a sua resposta.'));
+  });
+
+  it('fora de waiting_input não há caixa de resposta', () => {
+    setup('running');
+
+    expect(screen.queryByRole('form', { name: 'Resposta ao agente' })).toBeNull();
+  });
+});
+
+describe('DecisionBlock: revisão da conclusão', () => {
+  it('mostra o resumo, Aprovar conclusão e Pedir ajustes, e aprovar chama onApproveReview', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('review', {}, { conclusion: CONCLUSION });
+
+    const region = block();
+    expect(
+      within(within(region).getByRole('region', { name: 'Resumo da conclusão' })).getByText(
+        'Login corrigido.',
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(region).getByRole('button', { name: 'Aprovar conclusão' }));
+
+    expect(handlers.onApproveReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('Pedir ajustes exige texto e envia o pedido aparado; a caixa limpa quando aceito', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('review');
+
+    const form = within(block()).getByRole('form', { name: 'Pedir ajustes' });
+    const adjust = within(form).getByRole('button', { name: 'Pedir ajustes' });
+    expect(adjust).toBeDisabled();
+    const field = within(form).getByLabelText('O que ajustar');
+    await user.type(field, '  Trocar a função  ');
+    await user.click(adjust);
+
+    expect(handlers.onRequestChanges).toHaveBeenCalledWith('Trocar a função');
+    await vi.waitFor(() => expect(field).toHaveValue(''));
+  });
+
+  it('se o pedido não é aceito, o texto continua na caixa', async () => {
+    const user = userEvent.setup();
+    const { handlers } = setup('review');
+    handlers.onRequestChanges.mockResolvedValueOnce(false);
+
+    const field = screen.getByLabelText('O que ajustar');
+    await user.type(field, 'Trocar a função');
+    await user.click(screen.getByRole('button', { name: 'Pedir ajustes' }));
+
+    expect(handlers.onRequestChanges).toHaveBeenCalledTimes(1);
+    expect(field).toHaveValue('Trocar a função');
+  });
+
+  it('com uma chamada em curso, Aprovar conclusão e Pedir ajustes ficam desabilitados', async () => {
+    const user = userEvent.setup();
+    setup('review', { busy: true });
+
+    await user.type(screen.getByLabelText('O que ajustar'), 'x');
+    expect(screen.getByRole('button', { name: 'Aprovar conclusão' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Pedir ajustes' })).toBeDisabled();
+  });
+
+  it('fora da revisão não há Aprovar conclusão nem Pedir ajustes', () => {
+    setup('running');
+
+    expect(screen.queryByRole('button', { name: 'Aprovar conclusão' })).toBeNull();
+    expect(screen.queryByRole('form', { name: 'Pedir ajustes' })).toBeNull();
+  });
+});
+
+describe('DecisionBlock: resumo da conclusão', () => {
+  const SUMMARY = { name: 'Resumo da conclusão' };
+
+  it('missão concluída mostra a frase final do agente e o estado do Git', () => {
+    setup('succeeded', {}, { conclusion: CONCLUSION });
+
+    const summary = within(block()).getByRole('region', SUMMARY);
+    expect(within(summary).getByText('Login corrigido.')).toBeInTheDocument();
+    expect(within(summary).getByText('Git: alterações sem commit')).toBeInTheDocument();
+  });
+
+  it('estado do Git limpo', () => {
+    setup('succeeded', {}, { conclusion: { ...CONCLUSION, changedFiles: 0, gitState: 'clean' } });
+
+    expect(screen.getByText('Git: sem alterações pendentes')).toBeInTheDocument();
+    expect(screen.queryByText('Git: alterações sem commit')).toBeNull();
+  });
+
+  it('o resumo não repete verificação nem arquivos', () => {
+    setup('succeeded', {}, { conclusion: CONCLUSION });
+
+    const summary = within(block()).getByRole('region', SUMMARY);
+    expect(within(summary).queryByText(/Verificação/)).toBeNull();
+    expect(within(summary).queryByText(/arquivo/)).toBeNull();
+  });
+
+  it('o texto vindo do agente entra como texto, não como HTML', () => {
+    setup(
+      'succeeded',
+      {},
+      { conclusion: { ...CONCLUSION, summary: '<img src=x onerror=alert(1)> pronto' } },
+    );
+
+    const summary = within(block()).getByRole('region', SUMMARY);
+    expect(summary.querySelector('img')).toBeNull();
+    expect(within(summary).getByText('<img src=x onerror=alert(1)> pronto')).toBeInTheDocument();
+  });
+
+  it.each(['cancelled', 'failed', 'running', 'planned'] as const)(
+    'missão %s não mostra o resumo, mesmo que chegue um',
+    (status) => {
+      setup(status, {}, { conclusion: CONCLUSION });
+
+      expect(screen.queryByRole('region', SUMMARY)).toBeNull();
+      expect(screen.queryByText('Login corrigido.')).toBeNull();
+    },
+  );
+
+  it('missão concluída sem resumo (missão antiga) mostra só a frase da situação', () => {
+    setup('succeeded');
+
+    expect(screen.queryByRole('region', SUMMARY)).toBeNull();
+    expect(within(block()).getByText('Missão concluída.')).toBeInTheDocument();
+  });
+});
+
+describe('DecisionBlock: falha de uma ação', () => {
+  it.each(ALL_STATUS)(
+    'com a missão %s, o erro da ação aparece como alerta dentro do bloco',
+    (status) => {
+      setup(status, { error: 'A ação falhou.' });
+
+      const alert = within(block()).getByRole('alert');
+      expect(alert).toHaveTextContent('A ação falhou.');
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+    },
+  );
+
+  it('o alerta fica junto dos botões, depois deles', () => {
+    setup('queued', { error: 'Não foi possível criar o worktree da missão.' });
+
+    const button = screen.getByRole('button', { name: 'Iniciar missão' });
+    const alert = screen.getByRole('alert');
+    expect(button.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('sem erro, não há alerta', () => {
+    setup('queued');
+
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('DecisionBlock: aviso para o leitor de tela', () => {
+  function announce(): HTMLElement {
+    const region = document.querySelector<HTMLElement>('[role="status"].decision-announce');
+    if (region === null) throw new Error('A região de anúncio não existe.');
+    return region;
+  }
+
+  it('a região de anúncio já existe, educada e vazia, sem decisão pendente', () => {
+    setup('running');
+
+    const region = announce();
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region).toBeEmptyDOMElement();
+    expect(block()).toContainElement(region);
   });
 
-  it('com decisão pendente, o aviso "Aguardando você" leva à decisão', async () => {
-    const user = userEvent.setup();
-    const handlers = setup('waiting_input');
+  it('a região é escondida só visualmente (o leitor de tela a lê)', () => {
+    setup('waiting_approval', {}, { pendingApprovals: [APPROVAL] });
 
-    expect(screen.getByText('Aguardando você')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Ver a decisão' }));
-    expect(handlers.onOpenDecision).toHaveBeenCalledTimes(1);
+    expect(announce()).toHaveClass('visually-hidden');
   });
 
-  // Chegam na Tarefa 7 da reestruturação, quando o bloco passa a abrigar as decisões.
-  it.todo('Planejar de novo com instrução opcional, ao lado de Aprovar plano');
-  it.todo('os cartões de aprovação e de pergunta do agente moram no bloco');
+  it('com uma aprovação pendente, anuncia o título dela', () => {
+    setup('waiting_approval', {}, { pendingApprovals: [APPROVAL] });
+
+    expect(announce()).toHaveTextContent('Aguardando você: aprovação, Gravar arquivo.');
+  });
+
+  it('com o agente pedindo resposta, anuncia a resposta', () => {
+    setup('waiting_input');
+
+    expect(announce()).toHaveTextContent('Aguardando você: o agente espera uma resposta.');
+  });
+
+  it('em revisão, anuncia a revisão', () => {
+    setup('review');
+
+    expect(announce()).toHaveTextContent('Aguardando você: a conclusão espera a sua revisão.');
+  });
+
+  it.each(['draft', 'planned', 'queued', 'running', 'paused', 'succeeded', 'failed'] as const)(
+    'com a missão %s e nada pendente, nada é anunciado',
+    (status) => {
+      setup(status);
+
+      expect(announce()).toBeEmptyDOMElement();
+    },
+  );
+
+  it('a decisão que chega entra na mesma região, sem ela ser refeita', () => {
+    const handlers = handlersOf();
+    const props = { busy: false, planning: false, controlBusy: false, ...handlers };
+    const { rerender } = render(<DecisionBlock view={viewOf('running')} {...props} />);
+    const region = announce();
+    expect(region).toBeEmptyDOMElement();
+
+    rerender(
+      <DecisionBlock
+        view={viewOf('waiting_approval', { pendingApprovals: [APPROVAL] })}
+        {...props}
+      />,
+    );
+
+    expect(announce()).toBe(region);
+    expect(region).toHaveTextContent('Aguardando você: aprovação, Gravar arquivo.');
+  });
 });

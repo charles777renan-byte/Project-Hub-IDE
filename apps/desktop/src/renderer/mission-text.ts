@@ -1,4 +1,9 @@
-import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
+import type {
+  MissionDto,
+  MissionEventDto,
+  MissionStepDto,
+  MissionViewDto,
+} from '@project-hub/contracts';
 import { differenceInMinutes, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -163,7 +168,7 @@ export function isEnded(status: MissionStatus): boolean {
   return ENDED.includes(status);
 }
 
-/** Textos das ações e do aviso da missão (resumo, banner e abas da missão). */
+/** Textos das ações da missão (resumo, bloco "Sua decisão" e abas da missão). */
 export const MISSION_TEXT = {
   pause: 'Pausar',
   resume: 'Retomar',
@@ -179,6 +184,25 @@ export const MISSION_TEXT = {
   changedFilesTitle: 'Arquivos alterados',
   noChanges: 'Nenhuma alteração pendente.',
   decisionTitle: 'Sua decisão',
+} as const;
+
+/** Textos do bloco "Sua decisão": a frase de cada situação e os controles das decisões. */
+export const DECISION_TEXT = {
+  draft: 'Peça ao Orquestrador para montar o plano da missão.',
+  planned: 'Revise as tarefas e aprove o plano.',
+  plannedReassurance: 'Nada muda no código antes da sua aprovação.',
+  queued: 'Inicie a missão para o Orquestrador distribuir as tarefas entre os agentes.',
+  running: 'O Orquestrador está acompanhando as tarefas.',
+  paused: 'A missão está pausada. Retome para continuar.',
+  answerPromptFallback: 'O agente aguarda a sua resposta.',
+  sendAnswer: 'Enviar resposta',
+  feedbackLabel: 'O que ajustar',
+  /** Anúncio para o leitor de tela quando uma decisão chega: um item por decisão pendente. */
+  announce: {
+    approval: (title: string) => `Aguardando você: aprovação, ${title}.`,
+    input: 'Aguardando você: o agente espera uma resposta.',
+    review: 'Aguardando você: a conclusão espera a sua revisão.',
+  },
 } as const;
 
 /** Programa que executa uma tarefa. O contrato aceita só `claude-code`; os outros são promessa da tela. */
@@ -274,18 +298,14 @@ export function roleState(statuses: readonly MissionStepDto['status'][]): RoleSt
 }
 
 /**
- * Estados que pedem uma decisão da pessoa: a aprovação de uma ação protegida e a resposta do agente
- * ficam na aba Conversa, e o banner "Aguardando você" aparece em todas as abas. O foco vai para o
- * lugar da decisão (R182).
+ * Estados em que a missão espera uma decisão que só a pessoa toma: a aprovação de uma ação protegida,
+ * a resposta do agente e a revisão da conclusão. Os controles ficam no bloco "Sua decisão", e o foco
+ * vai para ele (R182).
  */
-const DECISION_IN_CONVERSATION: readonly MissionStatus[] = [
-  'waiting_approval',
-  'waiting_input',
-  'review',
-];
+const AWAITING_DECISION: readonly MissionStatus[] = ['waiting_approval', 'waiting_input', 'review'];
 
-export function needsDecisionInConversation(status: MissionStatus): boolean {
-  return DECISION_IN_CONVERSATION.includes(status);
+export function needsDecision(status: MissionStatus): boolean {
+  return AWAITING_DECISION.includes(status);
 }
 
 /** A ação principal que o resumo da missão oferece, quando a situação pede uma. */
@@ -303,7 +323,7 @@ const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
 /**
  * Uma única ação principal por situação. Em execução e concluída a missão não espera nada da pessoa,
  * e ficam só as ações secundárias (pausar, cancelar ou excluir). Nas situações que esperam a decisão
- * (aprovação ou resposta) o resumo não tem ação principal: o banner "Aguardando você" é o único convite.
+ * (aprovação, resposta ou revisão) não há ação principal: o bloco "Sua decisão" mostra os controles da decisão.
  */
 export function primaryActionOf(status: MissionStatus): PrimaryAction | undefined {
   return PRIMARY_ACTION[status];
@@ -322,6 +342,27 @@ export function needsAttention(status: MissionStatus): boolean {
 
 export function situationOf(status: MissionStatus): string {
   return SITUATION[status];
+}
+
+/**
+ * A frase do bloco "Sua decisão" para a situação. Rascunho, planejada, na fila, em execução e pausada têm
+ * frase própria; nas demais vale a frase da situação, então o bloco nunca fica só com o título.
+ */
+export function decisionTextOf(status: MissionStatus): string {
+  switch (status) {
+    case 'draft':
+      return DECISION_TEXT.draft;
+    case 'planned':
+      return DECISION_TEXT.planned;
+    case 'queued':
+      return DECISION_TEXT.queued;
+    case 'running':
+      return DECISION_TEXT.running;
+    case 'paused':
+      return DECISION_TEXT.paused;
+    default:
+      return SITUATION[status];
+  }
 }
 
 export function requiredActionOf(status: MissionStatus): string | undefined {
@@ -865,4 +906,19 @@ export function formatTime(iso: string): string {
   if (minutes >= 1 && minutes < 60) return `há ${minutes} min`;
   if (isSameDay(date, now)) return format(date, 'HH:mm', { locale: ptBR });
   return format(date, 'dd/MM HH:mm', { locale: ptBR });
+}
+
+/**
+ * O anúncio do leitor de tela quando a missão passa a esperar a pessoa: uma frase por aprovação pendente,
+ * mais a da resposta ou a da revisão. Vazio quando nada espera uma decisão (a região fica montada, vazia).
+ */
+export function decisionAnnouncement(
+  view: Pick<MissionViewDto, 'mission' | 'pendingApprovals'>,
+): string {
+  const lines = view.pendingApprovals.map((approval) =>
+    DECISION_TEXT.announce.approval(approval.title),
+  );
+  if (view.mission.status === 'waiting_input') lines.push(DECISION_TEXT.announce.input);
+  if (view.mission.status === 'review') lines.push(DECISION_TEXT.announce.review);
+  return lines.join(' ');
 }
