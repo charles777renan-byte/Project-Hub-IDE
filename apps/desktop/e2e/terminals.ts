@@ -217,3 +217,33 @@ export async function expectOpenSessions(page: Page, count: number): Promise<voi
     )
     .toBe(count);
 }
+
+/** Tamanho do terminal da área em células (o que o xterm acha que cabe) e a caixa da tela dele, em px de CSS. */
+export type TerminalSize = {
+  cols: number;
+  rows: number;
+  /** Caixa do `.xterm-screen`, a área desenhada. */
+  screen: { width: number; height: number };
+  /** Caixa da área (`.terminal-view`) que o terminal deveria preencher. */
+  host: { width: number; height: number };
+};
+
+/** Tamanho do terminal em colunas e linhas, junto das caixas dele e da área em que mora. `null` sem terminal. */
+export async function terminalSize(view: Locator): Promise<TerminalSize | null> {
+  return view.evaluate((host, key) => {
+    const hook = (
+      window as unknown as Record<string, { terminals?: Map<Element, XtermLike> } | undefined>
+    )[key];
+    const term = hook?.terminals?.get(host);
+    const screen = host.querySelector('.xterm-screen');
+    if (term === undefined || screen === null) return null;
+    const screenBox = screen.getBoundingClientRect();
+    const hostBox = host.getBoundingClientRect();
+    return {
+      cols: term.cols,
+      rows: term.rows,
+      screen: { width: screenBox.width, height: screenBox.height },
+      host: { width: hostBox.width, height: hostBox.height },
+    };
+  }, E2E_HOOK_KEY);
+}

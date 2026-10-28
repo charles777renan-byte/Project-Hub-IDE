@@ -301,8 +301,14 @@ export const test = base.extend<Fixtures>({
   },
 });
 
+/**
+ * A interface está pronta quando a aba fixa Início (na barra superior), a barra lateral e a barra de status
+ * estão na tela. Não há mais uma navegação "Principal": o Início é a primeira aba da barra superior.
+ */
 async function waitForNavigation(page: Page): Promise<void> {
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Início', exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Projetos e missões' })).toBeVisible();
+  await expect(page.getByRole('contentinfo', { name: 'Barra de status' })).toBeVisible();
 }
 
 export { expect };

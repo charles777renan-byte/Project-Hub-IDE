@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { addGitProject, openProject } from './missions';
 import { expectOpenSessions, expectTerminalToContain } from './terminals';
 
 // O modo "um painel por vez" do workspace pela janela do Electron construído: o botão "Abas", a faixa de abas, o
@@ -8,22 +9,13 @@ import { expectOpenSessions, expectTerminalToContain } from './terminals';
 // prova que a captura chega antes dele) e a volta à grade. Só roda no Windows, onde o shell do teste é o PowerShell.
 test.skip(process.platform !== 'win32', 'o shell do teste é o PowerShell');
 
-const BAR_NAME = 'Projetos e missões';
-
 const shellPanes = (page: Page): Locator => page.getByRole('region', { name: 'Painel PowerShell' });
-const tabs = (page: Page): Locator => page.getByRole('tab');
+const tabs = (page: Page): Locator =>
+  page.getByRole('tablist', { name: 'Painéis abertos' }).getByRole('tab');
 
 async function addProjectAndOpenWorkspace(page: Page, projectName: string): Promise<void> {
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Projetos' })
-    .click();
-  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
-  await expect(page.getByRole('heading', { name: projectName })).toBeVisible();
-  await page
-    .getByRole('complementary', { name: BAR_NAME })
-    .getByRole('link', { name: projectName, exact: true })
-    .click();
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
   await expect(page.getByRole('button', { name: 'Abrir terminal' })).toBeVisible();
 }
 
@@ -64,7 +56,7 @@ test('Abas mostra um painel por vez, Ctrl+Alt com as setas troca de aba com o fo
   await page.getByRole('button', { name: 'Abas', exact: true }).click();
   await expect(tabs(page)).toHaveCount(3);
   await expect(shellPanes(page)).toHaveCount(1);
-  const selected = () => page.getByRole('tab', { selected: true });
+  const selected = () => tabs(page).and(page.getByRole('tab', { selected: true }));
   await expect(selected()).toHaveCount(1);
   const first = await tabs(page).evaluateAll((items) =>
     items.findIndex((item) => item.getAttribute('aria-selected') === 'true'),

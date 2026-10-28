@@ -11,8 +11,11 @@ import { expect, test } from './fixtures';
 import {
   addGitProject,
   createMission as createMissionOf,
+  decisionBlock,
+  missionSummary,
   openProject,
   orchestrate,
+  statusBarOf,
 } from './missions';
 
 // Critério de saída da etapa (seção 22) e Review Focus 5 do plano, pela interface real: a janela do
@@ -25,10 +28,6 @@ const MISSION = {
   objective: 'Gravar o arquivo de demonstração no worktree da missão.',
   criterion: 'O arquivo project-hub-demo.md existe no worktree',
 };
-
-/** Aviso do cabeçalho enquanto a missão espera uma decisão (R182). */
-/** Nome do banner que aparece em todas as abas enquanto há uma decisão pendente. */
-const DECISION_BANNER = 'Aguardando você';
 
 const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
 
@@ -77,27 +76,28 @@ function createMission(page: Page): Promise<void> {
  */
 async function approvePlanAndStart(page: Page): Promise<void> {
   await orchestrate(page);
-  await page.getByRole('tab', { name: 'Plano' }).click();
+  // A tabela das tarefas está no corpo da missão (o plano não é mais uma aba).
   const table = page.getByRole('table', { name: 'Etapas do plano' });
   await expect(table).toBeVisible();
   // Um passo por critério de aceite: o critério da missão vira a tarefa da tabela.
   await expect(table.getByRole('row', { name: new RegExp(MISSION.criterion) })).toBeVisible();
-  await page.getByRole('button', { name: 'Aprovar plano' }).click();
+  await decisionBlock(page).getByRole('button', { name: 'Aprovar plano' }).click();
 
   await expect(
-    page.getByRole('main').getByText('Plano aprovado, aguardando início', { exact: true }),
+    missionSummary(page).getByText('Plano aprovado, aguardando início', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Iniciar missão' }).click();
+  await decisionBlock(page).getByRole('button', { name: 'Iniciar missão' }).click();
 
-  // A missão para no pedido de aprovação do agente. O pedido aparece no banner, e a página continua
-  // na aba do usuário (Plano). O cartão completo mora na aba Conversa, então o banner leva até ele.
+  // A missão para no pedido de aprovação do agente. O cartão do pedido mora no bloco "Sua decisão", que
+  // fica no corpo da missão e aparece com qualquer aba do painel inferior aberta (não há banner nem
+  // botão "Ver a decisão").
   await expect(
-    page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
+    missionSummary(page).getByText('Aguarda sua aprovação', { exact: true }),
   ).toBeVisible();
-  const banner = page.getByRole('region', { name: DECISION_BANNER });
-  await expect(banner).toBeVisible();
-  await banner.getByRole('button', { name: 'Ver a decisão' }).click();
-  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
+  await expect(decisionBlock(page).getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
+  await page.getByRole('tab', { name: 'Testes', exact: true }).click();
+  await expect(decisionBlock(page).getByRole('region', { name: APPROVAL_TITLE })).toBeVisible();
+  await page.getByRole('tab', { name: 'Conversa', exact: true }).click();
 }
 
 /**
@@ -107,7 +107,8 @@ async function approvePlanAndStart(page: Page): Promise<void> {
  */
 async function worktreePathOf(page: Page): Promise<string> {
   const summary = page.getByRole('region', { name: 'Resumo da missão' });
-  await expect(summary.getByText('branch main', { exact: true })).toBeVisible();
+  // A branch padrão do projeto fica na barra de status (o resumo da missão mostra só o worktree).
+  await expect(statusBarOf(page)).toContainText('· main');
   await expect(summary.getByRole('button', { name: 'Copiar caminho' })).toBeVisible();
   const name = summary.locator('.mission-meta__path');
   const path = await name.getAttribute('title');
@@ -150,7 +151,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   // 1. Adiciona o projeto de teste, que tem Git, e vê o branch na tela.
   await addGitProject(page, projectName);
   await openProject(page, projectName);
-  await expect(page.getByText('Comece sua primeira missão')).toBeVisible();
+  await expect(page.getByText('Nenhuma missão ainda.')).toBeVisible();
 
   // 2. Cria a missão com um critério de aceite, clica em Orquestrar, vê o plano e o aprova.
   await createMission(page);
@@ -176,7 +177,7 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   expect(existsSync(join(gitRepo.path, 'project-hub-demo.md'))).toBe(false);
 
   // 4. O cartão de aprovação aparece com o motivo do agente; aprova.
-  const card = page.getByRole('region', { name: APPROVAL_TITLE });
+  const card = decisionBlock(page).getByRole('region', { name: APPROVAL_TITLE });
   await expect(card.getByText('Aprovação necessária')).toBeVisible();
   await expect(card.getByText('O roteiro simulado pediu aprovação.')).toBeVisible();
   await card.getByRole('button', { name: 'Aprovar', exact: true }).click();
@@ -186,21 +187,27 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Sessão do agente concluída.')).toBeVisible();
   await expect(
-    page.getByRole('main').getByText('Aguarda sua revisão', { exact: true }),
+    missionSummary(page).getByText('Aguarda sua revisão', { exact: true }),
   ).toBeVisible();
   await expect(timeline.getByText('Situação: Aguarda sua revisão.')).toBeVisible();
-  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
+  await expect(decisionBlock(page).getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
 
-  // 6. A pessoa aprova a conclusão: a missão fica concluída e o banner some.
-  const review = page.getByRole('region', { name: 'Revisão da conclusão' });
-  await review.getByRole('button', { name: 'Aprovar conclusão' }).click();
-  await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
-  // A Conversa é a aba de abertura da página da missão, e o banner some com a decisão tomada.
+  // 6. A pessoa aprova a conclusão no bloco "Sua decisão": a missão fica concluída e a decisão some.
+  await expect(
+    decisionBlock(page).getByRole('region', { name: 'Resumo da conclusão' }),
+  ).toBeVisible();
+  await decisionBlock(page).getByRole('button', { name: 'Aprovar conclusão' }).click();
+  await expect(missionSummary(page).getByText('Concluída', { exact: true })).toBeVisible();
+  // A Conversa é a aba de abertura do painel inferior, e a decisão some com ela tomada.
   await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
+  await expect(decisionBlock(page).getByRole('button', { name: 'Aprovar conclusão' })).toHaveCount(
+    0,
+  );
   await expect(timeline.getByText('Conclusão aprovada por você.')).toBeVisible();
   await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
-  // A aba Diff lista o arquivo que o agente criou no worktree, como arquivo novo.
+  // "Arquivos alterados", no corpo da missão, e a aba Diff listam o arquivo que o agente criou no worktree.
+  const changedFiles = page.getByRole('region', { name: 'Arquivos alterados' });
+  await expect(changedFiles.getByText('project-hub-demo.md')).toBeVisible();
   await page.getByRole('tab', { name: 'Diff' }).click();
   const changes = page.getByRole('list', { name: 'Arquivos alterados' });
   await expect(changes.getByRole('button', { name: /project-hub-demo\.md/ })).toBeVisible();
@@ -215,14 +222,16 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   page = launched.page;
 
   await openProject(page, projectName);
-  const missions = page.getByRole('list', { name: 'Missões do projeto' });
-  const missionCard = missions.getByRole('listitem').filter({ hasText: MISSION.title });
+  const missionCard = page
+    .getByRole('main')
+    .getByRole('listitem')
+    .filter({ hasText: MISSION.title });
   await expect(missionCard).toHaveCount(1);
-  await expect(missionCard.getByText('Concluída', { exact: true })).toBeVisible();
+  await expect(missionCard.getByText(/^Concluída/)).toBeVisible();
   await missionCard.getByRole('link', { name: MISSION.title }).click();
 
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
-  await expect(page.getByRole('main').getByText('Concluída', { exact: true })).toBeVisible();
+  await expect(missionSummary(page).getByText('Concluída', { exact: true })).toBeVisible();
   await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Eventos da missão' }).getByText('Sessão do agente concluída.'),
@@ -285,27 +294,26 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   page = launched.page;
   await openProject(page, projectName);
   const missionCard = page
-    .getByRole('list', { name: 'Missões do projeto' })
+    .getByRole('main')
     .getByRole('listitem')
     .filter({ hasText: MISSION.title });
-  await expect(missionCard.getByText('Falhou', { exact: true })).toBeVisible();
+  await expect(missionCard.getByText(/^Falhou/)).toBeVisible();
   await missionCard.getByRole('link', { name: MISSION.title }).click();
 
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
-  await expect(page.getByRole('main').getByText('Falhou', { exact: true })).toBeVisible();
+  await expect(missionSummary(page).getByText('Falhou', { exact: true })).toBeVisible();
   // A missão não volta a rodar nem a esperar: sem aviso de decisão, sem cartão, sem pausa.
-  // Escopadas a `main`: a barra lateral também mostra o estado das missões.
+  // Escopadas ao resumo e ao bloco da decisão: a barra lateral também mostra o estado das missões.
   await expect(
-    page.getByRole('main').getByText('Aguarda sua aprovação', { exact: true }),
+    missionSummary(page).getByText('Aguarda sua aprovação', { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByRole('main').getByText('Em execução', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: DECISION_BANNER })).toHaveCount(0);
-  await expect(page.getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
+  await expect(missionSummary(page).getByText('Em execução', { exact: true })).toHaveCount(0);
+  await expect(decisionBlock(page).getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Aprovar', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pausar' })).toHaveCount(0);
   // Pausar, Cancelar missão e Excluir missão moram no menu "Mais ações": numa missão encerrada só sobra
   // Excluir, e a confirmação dele sobrevive ao fechamento do menu.
-  const actionsMenu = page.getByRole('button', { name: 'Mais ações' });
+  const actionsMenu = missionSummary(page).getByRole('button', { name: 'Mais ações' });
   await actionsMenu.click();
   await expect(page.getByRole('menuitem', { name: 'Pausar' })).toHaveCount(0);
   await expect(page.getByRole('menuitem', { name: 'Cancelar missão' })).toHaveCount(0);
@@ -315,7 +323,7 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   await page.getByRole('button', { name: 'Voltar' }).click();
   await expect(actionsMenu).toBeFocused();
   // A pessoa pode tentar de novo, e a conversa explica o que houve.
-  await expect(page.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
+  await expect(decisionBlock(page).getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
   await expect(page.getByRole('tabpanel', { name: 'Conversa', exact: true })).toBeVisible();
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Execução interrompida ao fechar o aplicativo.')).toBeVisible();
@@ -412,7 +420,7 @@ test('o menu Mais ações abre e fecha sem violar a CSP, e o teclado e o foco fu
   // Pelo teclado o item mostra o anel de foco do app (lima), não só o fundo do destaque.
   await expect(cancel).toHaveCSS('outline-style', 'solid');
   // A página não trava (menu não modal): a barra lateral segue acessível aos leitores de tela.
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Projetos e missões' })).toBeVisible();
   expect(await unknownViolations(page)).toEqual({ foreignStyles: [], others: [] });
 
   await page.keyboard.press('Escape');

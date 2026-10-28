@@ -54,14 +54,14 @@ test('a paleta abre com Ctrl+K, leva à tela escolhida e fecha com Escape, sem v
   const { page } = launched;
   await watchCspViolations(page);
 
-  const navigation = page.getByRole('navigation', { name: 'Principal' });
-  await expect(navigation).toBeVisible();
+  // A aba fixa Início (na barra superior) é onde o foco começa e para onde ele volta ao fechar.
+  const inicio = page.getByRole('link', { name: 'Início', exact: true });
+  await expect(inicio).toBeVisible();
   const paleta = page.getByRole('dialog', { name: 'Paleta de comandos' });
   await expect(paleta).toBeHidden();
 
-  // Foco num link da navegação: é para onde o foco tem de voltar ao fechar.
-  const projetos = navigation.getByRole('link', { name: 'Projetos' });
-  await projetos.focus();
+  // Foco na aba Início: é para onde o foco tem de voltar ao fechar.
+  await inicio.focus();
   const stylesAntes = (await cspProblems(page)).styles;
 
   await page.keyboard.press('Control+K');
@@ -69,20 +69,26 @@ test('a paleta abre com Ctrl+K, leva à tela escolhida e fecha com Escape, sem v
   await expectDomFocus(page, paleta.getByRole('combobox'));
   expect(await cspProblems(page)).toEqual({ styles: stylesAntes, others: [] });
 
-  await page.keyboard.type('Ir para Projetos');
+  // Enter leva à tela escolhida: "Alterar meu nome" vai ao Início com o campo do nome aberto (a tela
+  // Projetos não existe mais; os projetos moram na barra lateral).
+  const nome = page.getByRole('form', { name: 'Seu nome' });
+  await expect(nome).toHaveCount(0);
+  await page.keyboard.type('Alterar meu nome');
   await page.keyboard.press('Enter');
   await expect(paleta).toBeHidden();
-  await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
+  await expect(nome).toBeVisible();
+  await expect(page).toHaveURL(/editar-nome=1/);
 
-  // Segunda vez, pela Início: Escape fecha sem navegar e o foco volta ao link de origem.
-  const inicio = navigation.getByRole('link', { name: 'Início' });
+  // Segunda vez, pelo Início: Escape fecha sem navegar e o foco volta ao link de origem.
+  const urlAntes = page.url();
   await inicio.focus();
   await page.keyboard.press('Control+K');
   await expect(paleta).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(paleta).toBeHidden();
   await expectDomFocus(page, inicio);
-  await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
+  expect(page.url()).toBe(urlAntes);
+  await expect(nome).toBeVisible();
 
   expect(await cspProblems(page)).toEqual({ styles: stylesAntes, others: [] });
   await launched.close();

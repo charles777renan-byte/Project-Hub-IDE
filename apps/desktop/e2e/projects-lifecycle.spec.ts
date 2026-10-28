@@ -1,65 +1,82 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { addGitProject, openProject, projectLink, sidebarOf, viewTab } from './missions';
 
-// Arquivar, remover e restaurar projetos pela janela do Electron construído: o botão, o IPC, o banco e
-// a lista. Os testes de renderer usam a API falsa; estes mostram que o caminho real responde.
+// Adicionar, arquivar, restaurar e remover projetos pela janela do Electron construído, na estrutura nova:
+// "Adicionar projeto" e a seção recolhível "Arquivados" ficam na barra lateral, e Arquivar e Remover da lista
+// ficam no "Mais ações" do cabeçalho da aba do projeto (com confirmação). Os testes de renderer usam a API
+// falsa; estes mostram que o caminho real (botão, IPC, banco e lista) responde.
 
-/** Abre Projetos e cadastra a pasta que o seletor de teste devolve. */
-async function addGitProject(page: Page, projectName: string): Promise<void> {
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Projetos' })
-    .click();
-  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
-  await expect(
-    page
-      .getByRole('list', { name: 'Projetos cadastrados' })
-      .getByRole('heading', { name: projectName }),
-  ).toBeVisible();
-}
-
-/** Do catálogo de projetos para o detalhe do projeto. */
-async function openProject(page: Page, projectName: string): Promise<void> {
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Projetos' })
-    .click();
-  await page.getByRole('main').getByRole('link', { name: projectName }).click();
-  await expect(page.getByText('Branch: main')).toBeVisible();
-}
-
-test('arquivar tira o projeto da lista, aparece em Arquivados e Restaurar o devolve', async ({
+test('adicionar pela lateral lista o projeto, e as Configurações dele mostram a pasta, o Git e a branch', async ({
   launchApp,
   gitRepo,
 }) => {
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await expect(sidebarOf(page).getByText('Nenhum projeto ainda.')).toBeVisible();
+
   await addGitProject(page, projectName);
+  await expect(sidebarOf(page).getByText('Nenhum projeto ainda.')).toHaveCount(0);
+  // Adicionar não abre a aba do projeto: só abrir (clicar na lateral) cria a aba na barra superior.
+  await expect(page.getByRole('navigation', { name: 'Workspaces abertos' })).toHaveCount(0);
+
+  await openProject(page, projectName, 'Configurações');
+  // O tipo e a branch padrão do cadastro (antes no cartão da lista de Projetos).
+  const facts = page.getByRole('tabpanel', { name: 'Configurações' });
+  await expect(facts.getByText('Repositório Git')).toBeVisible();
+  await expect(facts.getByText('Branch padrão')).toBeVisible();
+  await expect(facts.getByText('main', { exact: true })).toBeVisible();
+  await expect(facts.getByText(projectName, { exact: true })).toBeVisible();
+});
+
+test('arquivar fecha a aba, tira o projeto da lista e o devolve com Restaurar, em Arquivados na lateral', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const sidebar = sidebarOf(page);
+  await addGitProject(page, projectName);
+  // Sem arquivados, a seção nem existe.
+  await expect(sidebar.getByRole('button', { name: /^Arquivados/ })).toHaveCount(0);
   await openProject(page, projectName);
+  await expect(page.getByRole('navigation', { name: 'Workspaces abertos' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Mais ações' }).click();
   await page.getByRole('menuitem', { name: 'Arquivar projeto' }).click();
+  // Arquivar pede confirmação, com a pergunta na tela.
+  const question = page.getByRole('group', { name: /^Arquivar o projeto\?/ });
+  await expect(question).toBeVisible();
+  await question.getByRole('button', { name: 'Arquivar', exact: true }).click();
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
+  // Volta ao Início, a aba do projeto fecha, e o projeto sai da lista e vai para Arquivados.
+  await expect(page.getByRole('heading', { level: 1, name: 'Início' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Workspaces abertos' })).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(projectLink(page, projectName)).toHaveCount(0);
+  const toggle = sidebar.getByRole('button', { name: /^Arquivados/ });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(
-    page.getByRole('list', { name: 'Projetos arquivados' }).getByText(projectName, { exact: true }),
+    sidebar.getByRole('list', { name: 'Projetos arquivados' }).getByText(projectName, {
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Projetos cadastrados' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: `Restaurar ${projectName}` }).click();
+  await sidebar.getByRole('button', { name: `Restaurar ${projectName}` }).click();
 
-  await expect(
-    page
-      .getByRole('list', { name: 'Projetos cadastrados' })
-      .getByRole('heading', { name: projectName }),
-  ).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Projetos arquivados' })).toHaveCount(0);
+  // O projeto volta à lista, e a seção Arquivados some junto com o último arquivado.
+  await expect(projectLink(page, projectName)).toBeVisible();
+  await expect(sidebar.getByRole('list', { name: 'Projetos arquivados' })).toHaveCount(0);
+  await expect(sidebar.getByRole('button', { name: /^Arquivados/ })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  // O foco não cai no corpo da página: vai para o botão Adicionar projeto, o que sobrou da lateral.
+  await expect(sidebar.getByRole('button', { name: 'Adicionar projeto' })).toBeFocused();
 });
 
-test('remover da lista pede confirmação, tira o projeto da lista e mantém a pasta', async ({
+test('remover da lista pede confirmação, fecha a aba, tira o projeto da lateral e mantém a pasta', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -74,10 +91,46 @@ test('remover da lista pede confirmação, tira o projeto da lista e mantém a p
 
   await page.getByRole('button', { name: 'Remover', exact: true }).click();
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Projetos' })).toBeVisible();
-  await expect(
-    page.getByText('Nenhum projeto ainda. Adicione uma pasta para começar.'),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Início' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Workspaces abertos' })).toHaveCount(0);
+  await expect(sidebarOf(page).getByText('Nenhum projeto ainda.')).toBeVisible();
+  // Remover não arquiva: nada aparece em Arquivados.
+  await expect(sidebarOf(page).getByRole('button', { name: /^Arquivados/ })).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(existsSync(gitRepo.path)).toBe(true);
+});
+
+test('trocar de visão muda o endereço da aba do projeto, e as rotas antigas redirecionam', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  const base = page.url().split('?')[0] ?? '';
+  expect(base).toContain('/workspaces/');
+
+  for (const [view, param] of [
+    ['Missões', 'missoes'],
+    ['Worktrees', 'worktrees'],
+    ['Configurações', 'configuracoes'],
+  ] as const) {
+    await viewTab(page, view).click();
+    await expect(viewTab(page, view)).toHaveAttribute('aria-selected', 'true');
+    await expect(page).toHaveURL(new RegExp(`\\?visao=${param}$`));
+  }
+
+  // O endereço antigo do projeto (`#/projects/:id`) cai na visão Missões da aba, e `#/projects` no Início.
+  const id = decodeURIComponent(base.split('/workspaces/')[1] ?? '');
+  await page.evaluate((projectId) => {
+    location.hash = `#/projects/${encodeURIComponent(projectId)}`;
+  }, id);
+  await expect(viewTab(page, 'Missões')).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/\/workspaces\/.+\?visao=missoes$/);
+  await page.evaluate(() => {
+    location.hash = '#/projects';
+  });
+  await expect(page.getByRole('heading', { level: 1, name: 'Início' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/$/);
 });
