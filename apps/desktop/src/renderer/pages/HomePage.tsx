@@ -5,6 +5,7 @@ import { AgentUsage } from '../components/home/AgentUsage';
 import { Greeting } from '../components/home/Greeting';
 import { MissionProgressList } from '../components/MissionProgressList';
 import { TopographicBackground } from '../components/TopographicBackground';
+import { useListMotion } from '../list-motion';
 import {
   HOME_TEXT,
   matchesStatusFilter,
@@ -45,6 +46,7 @@ function Band({ title, count, children }: { title: string; count?: number; child
  */
 function NeedsYou() {
   const { items, approvals, unreadApprovals, approvalsLoaded, loaded } = useOverview();
+  const motion = useListMotion<HTMLUListElement>();
 
   const others = items.filter(
     ({ mission }) => needsAttention(mission.status) && mission.status !== 'waiting_approval',
@@ -65,7 +67,7 @@ function NeedsYou() {
   return (
     <Band title={HOME_TEXT.needsYou} {...(count === undefined ? {} : { count })}>
       {rows > 0 ? (
-        <ul className="needs-list">
+        <ul ref={motion} className="needs-list">
           {approvals.map(({ projectId, missionId, missionTitle, approval }) => (
             <li key={approval.id} className="needs-list__item">
               <Link to={missionPath(projectId, missionId)}>{approval.title}</Link>
