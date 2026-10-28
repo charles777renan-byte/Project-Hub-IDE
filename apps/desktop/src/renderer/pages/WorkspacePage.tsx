@@ -37,7 +37,7 @@ export function WorkspacePage() {
     return (
       <div className="workspace-missing">
         <p>O projeto não foi encontrado.</p>
-        <Link to={ROUTE_PATHS.projects}>Voltar para Projetos</Link>
+        <Link to={ROUTE_PATHS.home}>Voltar ao Início</Link>
       </div>
     );
   }
@@ -114,7 +114,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     return (
       <div className="workspace-missing">
         <p role="alert">{workspace.state.message}</p>
-        <Link to={ROUTE_PATHS.projects}>Voltar para Projetos</Link>
+        <Link to={ROUTE_PATHS.home}>Voltar ao Início</Link>
       </div>
     );
   }

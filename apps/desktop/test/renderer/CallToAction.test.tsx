@@ -10,12 +10,12 @@ function Where() {
 }
 
 describe('CallToAction', () => {
-  it('"Começar →" leva para a lista de projetos', async () => {
+  it('"Começar →" leva ao Início', async () => {
     render(
-      <MemoryRouter initialEntries={[ROUTE_PATHS.home]}>
+      <MemoryRouter initialEntries={['/outra']}>
         <Routes>
-          <Route path={ROUTE_PATHS.home} element={<CallToAction />} />
-          <Route path="*" element={<Where />} />
+          <Route path={ROUTE_PATHS.home} element={<Where />} />
+          <Route path="*" element={<CallToAction />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -26,8 +26,6 @@ describe('CallToAction', () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Começar →' }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId('where')).toHaveTextContent(ROUTE_PATHS.projects),
-    );
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(ROUTE_PATHS.home));
   });
 });

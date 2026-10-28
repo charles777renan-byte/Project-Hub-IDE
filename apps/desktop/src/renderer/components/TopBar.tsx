@@ -9,6 +9,7 @@ import {
 import { NavLink, useLocation, useMatch, useNavigate } from 'react-router';
 import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
 import markUrl from '../assets/simbolo.png';
+import { ADD_PROJECT_REQUEST_EVENT } from '../projects-events';
 import { ROUTE_PATHS, workspacePath } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { previewDrop, stepId, type DropPreview, type TabSlot } from '../workspace-order';
@@ -356,7 +357,7 @@ export function TopBar() {
       <OpenWorkspaceMenu
         projects={projects.filter((project) => !openIds.has(project.id))}
         onOpen={(projectId) => void openProject(projectId)}
-        onAddProject={() => void navigate(ROUTE_PATHS.projects)}
+        onAddProject={() => window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT))}
       />
       <p role="status" className="visually-hidden">
         {announce}

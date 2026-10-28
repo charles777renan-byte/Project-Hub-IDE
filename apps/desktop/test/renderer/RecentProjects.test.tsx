@@ -7,7 +7,7 @@ import {
   RecentProjects,
   RECENT_PROJECTS,
 } from '../../src/renderer/components/home/RecentProjects';
-import { projectPath, ROUTE_PATHS } from '../../src/renderer/routes';
+import { projectPath } from '../../src/renderer/routes';
 
 const NOW = new Date('2026-10-24T12:00:00.000Z');
 
@@ -78,16 +78,13 @@ describe('agoLabel', () => {
 });
 
 describe('RecentProjects', () => {
-  it('sem projeto, mostra o convite com link para Projetos e nenhuma grade', () => {
+  it('sem projeto, mostra o convite sem link (a lateral tem o Adicionar projeto) e nenhuma grade', () => {
     const { container } = renderProjects();
 
     expect(
       screen.getByText('Nenhum projeto ainda. Adicione um projeto para começar.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ir para Projetos' })).toHaveAttribute(
-      'href',
-      ROUTE_PATHS.projects,
-    );
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(container.querySelector('.recent-projects__grid')).toBeNull();
   });
 

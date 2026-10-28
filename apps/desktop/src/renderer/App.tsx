@@ -41,8 +41,8 @@ function saveSideLayout(layout: Layout) {
 
 /**
  * Estrutura da janela: barra superior de 36px com a marca, a aba fixa Início e as abas dos
- * workspaces; abaixo, a coluna lateral (a barra lateral, que leva a navegação principal, os workspaces e
- * as missões em andamento; redimensionável e recolhível, com a largura lembrada) e a área da página, que
+ * workspaces; abaixo, a coluna lateral (a barra lateral, o explorador: busca, adicionar projeto, os projetos
+ * com as sessões e os arquivados; redimensionável e recolhível, com a largura lembrada) e a área da página, que
  * ocupa o resto da altura e rola sozinha; e, no rodapé, a barra de status (projeto e branch da aba ativa,
  * contadores da visão geral, uso do computador e "Parar todos"). O fundo topográfico fica de fora da rota do workspace, onde
  * há terminais. O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes), então o App
