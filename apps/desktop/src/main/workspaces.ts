@@ -50,12 +50,32 @@ const INVALID_LAYOUT = 'O layout não é válido.';
 const NOT_THE_OPEN_ONES = 'A ordem não bate com os workspaces abertos.';
 
 /**
+ * Layouts gravados antes da troca do Gemini CLI pelo Antigravity CLI têm `gemini` nas folhas. Sem trocar, o
+ * workspace inteiro deixaria de abrir. O painel novo abre o `agy`, então a folha vira `antigravity`.
+ */
+function renameLegacyProviders(node: unknown): unknown {
+  if (typeof node !== 'object' || node === null) return node;
+  const item = node as Record<string, unknown>;
+  if (item['type'] === 'leaf') {
+    return item['provider'] === 'gemini' ? { ...item, provider: 'antigravity' } : item;
+  }
+  if (item['type'] === 'split') {
+    return {
+      ...item,
+      first: renameLegacyProviders(item['first']),
+      second: renameLegacyProviders(item['second']),
+    };
+  }
+  return item;
+}
+
+/**
  * O layout, se o valor vale (`null` vale: é o workspace vazio); `undefined` é inválido. O zod desce a árvore por recursão: uma árvore de milhares de níveis
  * estoura a pilha e lança em vez de devolver falha, então o erro também conta como inválido.
  */
 function validLayout(value: unknown): LayoutNode | null | undefined {
   try {
-    const parsed = workspaceLayoutSchema.safeParse(value);
+    const parsed = workspaceLayoutSchema.safeParse(renameLegacyProviders(value));
     return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;

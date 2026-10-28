@@ -32,9 +32,9 @@ describe('registro de provedores', () => {
   });
 
   it('roda um .bat por cmd.exe /d /c e prefere .exe, depois .cmd, depois .bat', () => {
-    expect(windowsRegistry(['C:\\bin\\gemini.bat']).resolve('gemini')).toEqual({
+    expect(windowsRegistry(['C:\\bin\\agy.bat']).resolve('antigravity')).toEqual({
       ok: true,
-      launch: { command: 'cmd.exe', args: ['/d', '/c', 'C:\\bin\\gemini.bat'] },
+      launch: { command: 'cmd.exe', args: ['/d', '/c', 'C:\\bin\\agy.bat'] },
     });
     expect(
       windowsRegistry(['C:\\bin\\codex.bat', 'C:\\bin\\codex.cmd', 'C:\\bin\\codex.exe']).resolve(
@@ -72,13 +72,13 @@ describe('registro de provedores', () => {
   it('programa ausente fica indisponível, com o motivo, na lista e no resolve', () => {
     const registry = windowsRegistry(['C:\\bin\\claude.exe']);
 
-    expect(registry.list().find((info) => info.id === 'gemini')).toEqual({
-      id: 'gemini',
-      label: 'Gemini CLI',
+    expect(registry.list().find((info) => info.id === 'antigravity')).toEqual({
+      id: 'antigravity',
+      label: 'Antigravity CLI',
       available: false,
-      reason: MISSING('Gemini CLI'),
+      reason: MISSING('Antigravity CLI'),
     });
-    expect(registry.resolve('gemini')).toEqual({ ok: false, reason: MISSING('Gemini CLI') });
+    expect(registry.resolve('antigravity')).toEqual({ ok: false, reason: MISSING('Antigravity CLI') });
   });
 
   it('lista os quatro provedores com rótulo e disponibilidade', () => {
@@ -87,7 +87,7 @@ describe('registro de provedores', () => {
     expect(registry.list()).toEqual([
       { id: 'claude', label: 'Claude Code', available: true },
       { id: 'codex', label: 'Codex', available: false, reason: MISSING('Codex') },
-      { id: 'gemini', label: 'Gemini CLI', available: false, reason: MISSING('Gemini CLI') },
+      { id: 'antigravity', label: 'Antigravity CLI', available: false, reason: MISSING('Antigravity CLI') },
       { id: 'shell', label: 'PowerShell', available: true },
     ]);
   });
