@@ -743,7 +743,10 @@ describe('aba do projeto: visões', () => {
     Object.assign(api, {
       worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
     });
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
     api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
     renderAt();
@@ -796,7 +799,10 @@ describe('aba do projeto: visões', () => {
     Object.assign(api, {
       worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
     });
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt(undefined, 'p1', '?visao=worktrees');
     await screen.findByRole('tab', { name: 'Worktrees' });
 
@@ -814,7 +820,10 @@ describe('aba do projeto: visões', () => {
   });
 
   it('?visao=progresso mostra só o painel Progresso, com a aba selecionada', async () => {
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt(undefined, 'p1', '?visao=progresso');
 
     const panel = await screen.findByRole('tabpanel', { name: 'Progresso' });
@@ -845,6 +854,7 @@ describe('aba do projeto: visões', () => {
     Object.assign(api.missions, {
       get: vi.fn(() => Promise.resolve({ ok: false, error: { code: 'X', message: 'x' } })),
       subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
     });
     renderAt(undefined, 'p1', '?visao=progresso');
 
@@ -886,7 +896,10 @@ describe('aba do projeto: visões', () => {
         ),
       },
     });
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt(undefined, 'p1', '?visao=worktrees');
 
     expect(await screen.findByText('ph/m1-ajustar-login')).toBeInTheDocument();
@@ -938,7 +951,10 @@ describe('aba do projeto: visões', () => {
   });
 
   it('?visao=missoes mostra a lista de missões do projeto, com o estado vazio e o botão', async () => {
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt(undefined, 'p1', '?visao=missoes');
 
     expect(await screen.findByRole('tab', { name: 'Missões' })).toHaveAttribute(
@@ -952,7 +968,10 @@ describe('aba do projeto: visões', () => {
   });
 
   it('Nova missão do cabeçalho abre o formulário na visão Missões e limpa o pedido da rota', async () => {
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt();
     await screen.findByRole('button', { name: 'Iniciar Claude Code' });
 
@@ -965,7 +984,10 @@ describe('aba do projeto: visões', () => {
   });
 
   it('Nova missão do cabeçalho com o formulário já fechado, na própria visão, abre de novo', async () => {
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt(undefined, 'p1', '?visao=missoes');
     const panel = await screen.findByRole('tabpanel', { name: 'Missões' });
     await within(panel).findByText('Nenhuma missão ainda.');
@@ -979,7 +1001,10 @@ describe('aba do projeto: visões', () => {
   });
 
   it('?nova-missao=1 sem ?visao= abre a visão Missões com o formulário', async () => {
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     renderAt(undefined, 'p1', '?nova-missao=1');
 
     expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
@@ -994,7 +1019,10 @@ describe('aba do projeto: visões', () => {
     Object.assign(api, {
       worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
     });
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     const first = renderAt(undefined, 'p1', '?visao=terminais');
     await screen.findByRole('button', { name: 'Iniciar Claude Code' });
     expect(document.querySelector('.topo-background')).toBeNull();
@@ -1022,7 +1050,10 @@ describe('aba do projeto: visões', () => {
     Object.assign(api, {
       worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
     });
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
     renderAt(undefined, 'p1', '?visao=terminais');
     await screen.findByText('Nenhum terminal aberto');
@@ -1076,7 +1107,10 @@ describe('aba do projeto: visões', () => {
   });
 
   it('/projects/p1 redireciona para /workspaces/p1?visao=missoes e abre o formulário da nova missão', async () => {
-    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
     render(
       <MemoryRouter initialEntries={[{ pathname: '/projects/p1', state: { newMission: true } }]}>
         <Probe />
@@ -1129,6 +1163,7 @@ describe('aba do projeto: missão aberta', () => {
       get: vi.fn(() => Promise.resolve({ ok: true, data: MISSION_VIEW })),
       diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
       subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
     });
     return render(
       <>
@@ -1251,6 +1286,7 @@ describe('aba do projeto: missão aberta', () => {
       get: vi.fn(() => Promise.resolve({ ok: true, data: MISSION_VIEW })),
       diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
       subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
     });
     render(
       <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>

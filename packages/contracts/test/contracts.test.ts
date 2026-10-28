@@ -236,10 +236,13 @@ describe('tipos públicos', () => {
 
 describe('responseSchemas', () => {
   it('tem um schema de resposta para cada canal de pedido, e só para eles', () => {
-    // O canal de eventos vai do processo principal ao renderer e não tem resposta (R165).
-    const requestChannels = Object.values(CHANNELS).filter(
-      (c) => c !== CHANNELS.missionsEvent && c !== CHANNELS.terminalsEvent,
-    );
+    // Os canais de eventos vão do processo principal ao renderer e não têm resposta (R165).
+    const eventChannels: string[] = [
+      CHANNELS.missionsEvent,
+      CHANNELS.missionsUsage,
+      CHANNELS.terminalsEvent,
+    ];
+    const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());
   });
 

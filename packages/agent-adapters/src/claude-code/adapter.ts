@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type {
   AgentAdapter,
   AgentCapabilities,
@@ -9,7 +11,15 @@ import type {
   AgentSession,
   AgentStartInput,
 } from '@project-hub/agent-sdk';
-import { mapHookEntry, writeHookScript, writeSettingsFile, type HookRecord } from './settings';
+import type { UsageSummary } from '@project-hub/domain';
+import {
+  isClearSessionEnd,
+  mapHookEntry,
+  writeHookScript,
+  writeSettingsFile,
+  type HookRecord,
+} from './settings';
+import { createTranscriptUsageTracker, type TranscriptUsageTracker } from './transcript-usage';
 
 /** Terminal do processo de terminais, pelo que o adaptador usa. A porta da aplicação satisfaz este tipo. */
 export type ClaudeTerminal = {
@@ -49,17 +59,31 @@ export type ClaudeCodeAdapterOptions = {
   pollMs?: number;
   /** Roda `<comando> --version` e devolve a saída. Padrão: o processo do sistema. */
   runVersion?: (command: string) => Promise<string>;
+  /**
+   * Pasta de dados do Claude Code, onde ficam os transcripts. Padrão: `CLAUDE_CONFIG_DIR` do `env` (o
+   * mesmo que o terminal recebe), ou `~/.claude`. Precisa ser a mesma do terminal, senão o gasto zera.
+   */
+  claudeConfigDir?: string;
+  /** Intervalo de leitura do gasto nos transcripts, em ms. Padrão: 1500. */
+  usageIntervalMs?: number;
+  /** Espera entre as leituras finais do gasto, no fim da sessão, em ms. Padrão: 400. */
+  usageDrainDelayMs?: number;
 };
 
 const DEFAULT_COMMAND = 'claude';
 const DEFAULT_POLL_MS = 200;
+const DEFAULT_USAGE_INTERVAL_MS = 1500;
+const DEFAULT_USAGE_DRAIN_DELAY_MS = 400;
+/** Leituras finais do gasto: o transcript é gravado depois do hook, e a última resposta pode atrasar. */
+const USAGE_DRAIN_READS = 3;
 const NO_APP_APPROVAL = 'Esta sessão não aceita aprovação pelo app: a resposta é dada no terminal.';
 const NO_PAUSE =
   'Esta sessão não pausa: o agente roda num terminal, e a pausa fica fora desta etapa.';
 
 /**
  * Capacidades do Claude Code neste adaptador. A aprovação e a resposta acontecem no terminal, por isso
- * `approvals` fica falso. Pausar e retomar ficam de fora nesta etapa.
+ * `approvals` fica falso. Pausar e retomar ficam de fora nesta etapa. O gasto de tokens vem dos
+ * transcripts que o Claude Code grava.
  */
 export const CLAUDE_CODE_CAPABILITIES: Omit<AgentCapabilities, 'models'> = {
   streaming: false,
@@ -68,7 +92,7 @@ export const CLAUDE_CODE_CAPABILITIES: Omit<AgentCapabilities, 'models'> = {
   approvals: false,
   pauseResume: false,
   attachments: false,
-  usageReporting: false,
+  usageReporting: true,
   persistentContext: false,
   localExecution: true,
 };
@@ -82,6 +106,11 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
   const prefix = options.commandPrefix ?? [];
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   const runVersion = options.runVersion ?? readVersion;
+  const usage: UsageOptions = {
+    configDir: options.claudeConfigDir ?? configDirOf(options.env),
+    intervalMs: options.usageIntervalMs ?? DEFAULT_USAGE_INTERVAL_MS,
+    drainDelayMs: options.usageDrainDelayMs ?? DEFAULT_USAGE_DRAIN_DELAY_MS,
+  };
 
   return {
     type: 'claude-code',
@@ -125,7 +154,7 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
         await quietly(() => options.hooks.unregisterExecution(executionId));
         throw error;
       }
-      return createSession(executionId, options.terminal, options.hooks, pollMs, signal);
+      return createSession(executionId, options.terminal, options.hooks, pollMs, usage, signal);
     },
 
     /**
@@ -142,6 +171,7 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
         options.terminal,
         options.hooks,
         pollMs,
+        usage,
         new AbortController().signal,
         fromSeq,
       );
@@ -149,11 +179,24 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
   };
 }
 
+/** Onde e de quanto em quanto tempo o gasto é lido. */
+type UsageOptions = { configDir: string; intervalMs: number; drainDelayMs: number };
+
+/**
+ * A pasta de dados do Claude Code que o terminal vai usar: `CLAUDE_CONFIG_DIR` do ambiente do terminal
+ * (o nome é comparado sem diferenciar maiúsculas, como no Windows), ou `~/.claude`.
+ */
+function configDirOf(env: Readonly<Record<string, string>>): string {
+  const entry = Object.entries(env).find(([key]) => key.toUpperCase() === 'CLAUDE_CONFIG_DIR');
+  return entry !== undefined && entry[1] !== '' ? entry[1] : join(homedir(), '.claude');
+}
+
 function createSession(
   executionId: string,
   terminal: ClaudeTerminal,
   hooks: ClaudeHooks,
   pollMs: number,
+  usage: UsageOptions,
   signal: AbortSignal,
   fromSeq = 0,
 ): AgentSession {
@@ -162,7 +205,7 @@ function createSession(
   return {
     id: executionId,
     externalInput: true,
-    events: () => watchEvents(executionId, terminal, hooks, pollMs, signal, position),
+    events: () => watchEvents(executionId, terminal, hooks, pollMs, usage, signal, position),
     cursor: () => (position.seq > 0 ? String(position.seq) : undefined),
 
     async send(input) {
@@ -190,26 +233,54 @@ function createSession(
 /**
  * Entrega os eventos dos hooks em ordem, até o SessionEnd. Se o terminal encerra antes disso, lê o que
  * ainda chegou e fecha com falha. O fim do sinal de cancelamento encerra a leitura sem evento.
+ *
+ * O gasto vem dos transcripts que os hooks apontam, lidos de tempos em tempos, e sai como
+ * `usage.updated` com o total da execução, só quando muda. Antes do fim (com sucesso ou falha), o gasto é
+ * lido mais algumas vezes, porque a última resposta pode chegar ao arquivo depois do hook. O `SessionEnd`
+ * de um `/clear` não encerra: o Claude Code segue no mesmo terminal, com outra sessão e outro transcript.
  */
 async function* watchEvents(
   executionId: string,
   terminal: ClaudeTerminal,
   hooks: ClaudeHooks,
   pollMs: number,
+  usageOptions: UsageOptions,
   signal: AbortSignal,
   position: { seq: number },
 ): AsyncGenerator<AgentEvent> {
   let exited = false;
   let waiting = false;
+  const usage = createTranscriptUsageTracker({ configDir: usageOptions.configDir });
+  let tracking = false;
+  let nextUsageRead = 0;
+  const learn = (record: HookRecord): void => {
+    const path = record.payload['transcript_path'];
+    const sessionId = record.payload['session_id'];
+    if (typeof path === 'string' && typeof sessionId === 'string') {
+      usage.addSession(path, sessionId);
+      tracking = true;
+    }
+  };
   try {
+    // Reanexação: os hooks antes da posição não voltam como eventos, mas dizem onde estão os transcripts.
+    // O total é refeito do começo de cada arquivo; a soma por resposta não conta nada duas vezes.
+    if (position.seq > 0) {
+      for (const record of await hooks.readAfter(executionId, 0)) {
+        if (record.seq <= position.seq) learn(record);
+      }
+    }
     while (!signal.aborted) {
       for (const record of await hooks.readAfter(executionId, position.seq)) {
         position.seq = record.seq;
+        learn(record);
         const event = mapHookEntry(record);
         if (event !== undefined) {
           if (waiting && event.type !== 'session.completed') {
             waiting = false;
             yield { type: 'input.received', at: record.receivedAt };
+          }
+          if (event.type === 'session.completed' && tracking) {
+            yield* drainUsage(usage, usageOptions.drainDelayMs, signal);
           }
           yield event;
           if (event.type === 'input.requested') waiting = true;
@@ -217,9 +288,12 @@ async function* watchEvents(
           waiting = false;
           yield { type: 'input.received', at: record.receivedAt };
         }
-        if (record.payload['hook_event_name'] === 'SessionEnd') return;
+        if (record.payload['hook_event_name'] === 'SessionEnd' && !isClearSessionEnd(record)) {
+          return;
+        }
       }
       if (exited) {
+        if (tracking) yield* drainUsage(usage, usageOptions.drainDelayMs, signal);
         yield {
           type: 'session.failed',
           error: {
@@ -231,12 +305,43 @@ async function* watchEvents(
         };
         return;
       }
+      if (tracking && Date.now() >= nextUsageRead) {
+        nextUsageRead = Date.now() + usageOptions.intervalMs;
+        const summary = await readUsage(usage);
+        if (summary !== undefined) yield usageEvent(summary);
+      }
       const snapshot = await terminal.snapshot(executionId);
       exited = snapshot === undefined || !snapshot.alive;
       if (!exited) await sleep(pollMs, signal);
     }
   } finally {
     await quietly(() => hooks.unregisterExecution(executionId));
+  }
+}
+
+/** Lê o gasto sem nunca derrubar a sessão: um erro de arquivo só deixa o número como estava. */
+async function readUsage(usage: TranscriptUsageTracker): Promise<UsageSummary | undefined> {
+  try {
+    return await usage.poll();
+  } catch {
+    return undefined;
+  }
+}
+
+function usageEvent(summary: UsageSummary): AgentEvent {
+  return { type: 'usage.updated', usage: summary, at: new Date().toISOString() };
+}
+
+/** Últimas leituras do gasto antes do fim, com uma espera entre elas. */
+async function* drainUsage(
+  usage: TranscriptUsageTracker,
+  delayMs: number,
+  signal: AbortSignal,
+): AsyncGenerator<AgentEvent> {
+  for (let read = 0; read < USAGE_DRAIN_READS && !signal.aborted; read += 1) {
+    if (read > 0) await sleep(delayMs, signal);
+    const summary = await readUsage(usage);
+    if (summary !== undefined) yield usageEvent(summary);
   }
 }
 

@@ -21,6 +21,12 @@ export type ClaudeAgentOptions = {
   pipeName?: string;
   /** Tempo ocioso até o processo de terminais encerrar. Os testes o encurtam. Padrão: 30 minutos. */
   idleTimeoutMs?: number;
+  /** Executável do agente. Padrão: o `claude` achado no PATH. Só os testes trocam, por um CLI falso. */
+  command?: string;
+  /** Argumentos antes dos da sessão (o script do CLI falso). Só os testes usam. */
+  commandPrefix?: readonly string[];
+  /** Variáveis somadas ao ambiente filtrado do terminal (`ELECTRON_RUN_AS_NODE` do CLI falso). Só os testes usam. */
+  extraEnv?: Record<string, string>;
 };
 
 /**
@@ -71,9 +77,10 @@ export function createClaudeAgent(
   return createClaudeCodeAdapter({
     terminal: backend.port,
     hooks: backend.hooks,
-    command: resolveExecutable('claude', options.env),
+    command: options.command ?? resolveExecutable('claude', options.env),
+    ...(options.commandPrefix === undefined ? {} : { commandPrefix: options.commandPrefix }),
     settingsDir: join(options.dataDir, 'terminal-host', 'settings'),
-    env: buildTerminalEnv(options.env),
+    env: buildTerminalEnv(options.env, options.extraEnv),
   });
 }
 

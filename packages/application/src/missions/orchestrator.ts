@@ -645,10 +645,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         return 'wait';
 
       case 'usage.updated':
-        repo.transaction(() => {
-          repo.updateExecution(executionId, { usage: event.usage });
-          recordEvent(executionId, event);
-        });
+        // O adaptador manda o total a cada mudança (uma a cada segundo ou dois): só a tentativa guarda o
+        // número, sem linha de auditoria, senão a auditoria e a tela receberiam um evento por leitura.
+        repo.updateExecution(executionId, { usage: event.usage });
         return 'continue';
 
       case 'session.started':

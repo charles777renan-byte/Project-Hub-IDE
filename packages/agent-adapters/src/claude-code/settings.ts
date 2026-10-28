@@ -103,8 +103,17 @@ export function writeSettingsFile(dir: string, executionId: string, scriptPath: 
 }
 
 /**
+ * O `SessionEnd` de um `/clear`: a sessão termina, mas o Claude Code continua no mesmo terminal e abre
+ * outra (medido no 2.1.312: `reason: clear`, depois `SessionStart` com `source: clear`).
+ */
+export function isClearSessionEnd(record: HookRecord): boolean {
+  return record.payload['hook_event_name'] === 'SessionEnd' && record.payload['reason'] === 'clear';
+}
+
+/**
  * Converte um evento de hook no evento normalizado do agente. Evento que não entra no contrato devolve
- * undefined. Campo que falta ganha um valor de reserva, para o evento sair mesmo assim.
+ * undefined (como o fim de sessão de um `/clear`, que não encerra a execução). Campo que falta ganha um
+ * valor de reserva, para o evento sair mesmo assim.
  */
 export function mapHookEntry(record: HookRecord): AgentEvent | undefined {
   const { payload, seq, receivedAt: at } = record;
@@ -142,6 +151,7 @@ export function mapHookEntry(record: HookRecord): AgentEvent | undefined {
     case 'Stop':
       return { type: 'message.completed', messageId: `stop-${seq}`, at };
     case 'SessionEnd':
+      if (isClearSessionEnd(record)) return undefined;
       return { type: 'session.completed', result: { summary: '' }, at };
     default:
       return undefined;

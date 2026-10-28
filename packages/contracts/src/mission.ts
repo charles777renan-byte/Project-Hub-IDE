@@ -169,6 +169,22 @@ export const missionPlanDtoSchema = z.object({
 });
 export type MissionPlanDto = z.infer<typeof missionPlanDtoSchema>;
 
+const tokenCount = z.number().int().nonnegative();
+
+/**
+ * Tokens que o agente gastou numa tentativa. `inputTokens` é só a entrada nova; o cache vem à parte.
+ * `estimatedCostUsd` é estimativa a preço de lista, e falta quando algum modelo não tem preço.
+ */
+export const usageSummaryDtoSchema = z.object({
+  inputTokens: tokenCount,
+  outputTokens: tokenCount,
+  cacheReadInputTokens: tokenCount.optional(),
+  cacheWrite5mInputTokens: tokenCount.optional(),
+  cacheWrite1hInputTokens: tokenCount.optional(),
+  estimatedCostUsd: z.number().nonnegative().optional(),
+});
+export type UsageSummaryDto = z.infer<typeof usageSummaryDtoSchema>;
+
 export const executionDtoSchema = z.object({
   id: z.string(),
   missionId: z.string(),
@@ -177,8 +193,18 @@ export const executionDtoSchema = z.object({
   stepId: z.string().optional(),
   status: z.enum(EXECUTION_STATUS_VALUES),
   exitReason: z.enum(EXIT_REASON_VALUES).optional(),
+  /** Tokens gastos, quando o agente informa. Sem o campo, não há número (não é zero). */
+  usage: usageSummaryDtoSchema.optional(),
 });
 export type ExecutionDto = z.infer<typeof executionDtoSchema>;
+
+/** Gasto novo de uma tentativa, do processo principal para o renderer, sem passar pela auditoria. */
+export const missionUsageEventDtoSchema = z.object({
+  missionId: z.string(),
+  executionId: z.string(),
+  usage: usageSummaryDtoSchema,
+});
+export type MissionUsageEventDto = z.infer<typeof missionUsageEventDtoSchema>;
 
 export const approvalDtoSchema = z.object({
   id: z.string(),
