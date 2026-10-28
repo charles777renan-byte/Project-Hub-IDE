@@ -1,7 +1,7 @@
 /*
- * Tarefas da missão: a tabela (TAREFA, AGENTE, STATUS) e as ações de edição de cada tarefa. Ligado por <link> no index.html, depois do home.css e antes do workspace.css; só usa
- * tokens de tokens.css, sem cor literal, sem estilo escrito em texto (CSP) e sem animação. O nome do
- * programa é texto, e a cor só o reforça: o laranja (--orange) é o papel do Claude. O lima fica fora: é só
+ * Tarefas da missão: a tabela (TAREFA, AGENTE, STATUS) e as ações de edição de cada tarefa. Ligado por <link> no
+ * index.html, depois do home.css e antes do workspace.css; só usa tokens de tokens.css, sem cor literal, sem estilo
+ * escrito em texto (CSP) e sem animação. O nome do programa é texto, e a cor só o reforça: o laranja (--orange) é o papel do Claude. O lima fica fora: é só
  * da ação principal.
  */
 

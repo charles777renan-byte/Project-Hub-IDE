@@ -12,9 +12,8 @@ import { OverviewCounters } from '../../src/renderer/components/OverviewCounters
 import { useOverview } from '../../src/renderer/use-overview';
 
 /**
- * Contadores globais do cabeçalho (Tarefa 7 do plano da interface do workspace): "N executando" conta
- * as missões `running`, e "N aguarda você" conta `planned`, `waiting_approval` e `waiting_input`, de
- * todos os projetos. A API do preload é falsa; cada teste monta os projetos e as missões.
+ * Contadores globais da barra de status: "N executando" conta as missões `running`, "N aguarda você"
+ * conta `planned`, `waiting_approval` e `waiting_input`, e "N falharam" conta as que falharam, de todos os projetos. A API do preload é falsa; cada teste monta os projetos e as missões.
  */
 
 type MissionStatus = MissionDto['status'];
@@ -141,7 +140,7 @@ describe('OverviewCounters', () => {
   );
 
   it.each(['draft', 'queued', 'paused', 'succeeded', 'failed', 'cancelled'] as const)(
-    'a missão em "%s" não entra em nenhum dos dois contadores',
+    'a missão em "%s" não entra nos contadores de executando nem de aguarda você',
     async (status) => {
       installApi([project('p1')], () => ({
         ok: true,
@@ -214,7 +213,7 @@ describe('OverviewCounters', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('põe os dois contadores numa região aria-live="polite", cada um com a sua cor', async () => {
+  it('põe os contadores numa região aria-live="polite", cada um com a sua cor', async () => {
     installApi([project('p1')], () => ({
       ok: true,
       data: [mission('m1', 'p1', 'running'), mission('m2', 'p1', 'planned')],

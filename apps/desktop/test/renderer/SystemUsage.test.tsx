@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SystemUsage } from '../../src/renderer/components/SystemUsage';
 import { USAGE_POLL_MS, useSystemUsage } from '../../src/renderer/use-system-usage';
 
-// Uso do computador no cabeçalho: "CPU 12%" e "RAM 6,0/24 GB", lido a cada poucos segundos. A API do preload é falsa.
+// Uso do computador na barra de status: "CPU 12%" e "RAM 6,0/24 GB", lido a cada poucos segundos. A API do preload é falsa.
 
 const GIB = 1024 ** 3;
 

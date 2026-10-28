@@ -20,9 +20,12 @@
   white-space: nowrap;
 }
 
-/* O projeto e a branch da aba ativa: é o que cede primeiro, com reticências. */
+/*
+ * O projeto e a branch da aba ativa: é o que cede primeiro, com reticências. O fator de encolhimento (20) é bem maior
+ * que o do fim da barra (1), então "Parar todos" e a pergunta dele não ficam cortados em janela estreita.
+ */
 .statusbar__project {
-  flex: 0 1 auto;
+  flex: 0 20 auto;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -31,17 +34,28 @@
   white-space: nowrap;
 }
 
+/* Os contadores são o segundo a ceder: cortam pela borda direita, antes do fim da barra. */
 .statusbar .overview-counters {
-  flex: none;
+  flex: 0 20 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
-/* O uso do computador e "Parar todos" ficam no canto direito. */
+/*
+ * O uso do computador e "Parar todos" ficam no canto direito. Podem encolher (min-width: 0), mas só depois do projeto e
+ * dos contadores; o que está dentro (o uso, o botão, a pergunta) não encolhe nem quebra.
+ */
 .statusbar__end {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
   margin-left: auto;
+}
+
+.statusbar__end > * {
+  flex-shrink: 0;
 }
 
 /* O anel de foco fica por dentro: a barra corta o que passa da borda. */

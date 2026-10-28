@@ -36,6 +36,26 @@
   min-width: 0;
 }
 
+/*
+ * Faixa do topo do Início: a única parte dele com o fundo topográfico (components/TopographicBackground.tsx), que
+ * preenche a faixa e fica atrás da saudação. `isolate` prende o z-index -1 do fundo aqui e `overflow` corta o canvas
+ * no arredondamento. O fundo nunca desce para as listas; o formulário do nome fica sobre uma base opaca.
+ */
+.home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: var(--space-4) var(--space-3);
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.home-hero .confirm-inline {
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
 /* Saudação e data na mesma linha; o formulário do nome, quando aberto, vem logo abaixo. */
 .home-greeting {
   display: grid;

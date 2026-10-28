@@ -82,9 +82,7 @@ export function ChangedFiles({
         </ul>
       )}
       {truncated ? (
-        <p className="changed-files__note">
-          Mostrando os primeiros {files.length} arquivos. Há mais alterações no worktree.
-        </p>
+        <p className="changed-files__note">{MISSION_TEXT.truncatedFiles(files.length)}</p>
       ) : null}
     </section>
   );

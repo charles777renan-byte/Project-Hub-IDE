@@ -1,7 +1,6 @@
 /*
  * Casca do app e chrome do workspace: a barra superior de 36px (marca, a aba Início, as abas dos workspaces e o botão de
- * abrir), a barra lateral (navegação principal, workspaces e missões em andamento) e a área
- * da página. Ligado depois de
+ * abrir), a barra lateral (o explorador: projetos com as sessões e os arquivados) e a área da página. Ligado depois de
  * app.css no index.html. As cores são só as neutras do tema (--bg, --surface, --line, --field-line,
  * --muted e --text), o anel de foco (--focus) e misturas delas por color-mix; o lima (--accent) só
  * marca o item ativo da navegação. As cores de destaque dos dados ficam fora. As variáveis
@@ -135,7 +134,6 @@
 .topbar__tab-list--settling .topbar__tab {
   transition: none;
 }
-
 
 .topbar__tab--drop-before::before {
   left: -3px;
@@ -495,7 +493,6 @@
   text-align: center;
 }
 
-
 /* Sessões de um projeto: recuadas, com um traço à esquerda. */
 .sidebar__sessions {
   margin-left: var(--space-3);
@@ -503,29 +500,10 @@
   border-left: 1px solid var(--line);
 }
 
-
 .sidebar__empty {
   padding: 0.25rem var(--space-2);
   color: var(--muted);
   font-size: 0.75rem;
-}
-
-/* Linha de estado da missão: a marca com texto e o nome do projeto. */
-.sidebar__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: 0 var(--space-2) var(--space-1);
-  color: var(--muted);
-  font-size: 0.6875rem;
-}
-
-.sidebar__project {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sidebar a:focus-visible,

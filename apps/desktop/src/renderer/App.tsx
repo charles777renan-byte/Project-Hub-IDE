@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels';
-import { useMatch, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { PaletaComandos } from './components/PaletaComandos';
 import { Sidebar } from './components/Sidebar';
 import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
-import { TopographicBackground } from './components/TopographicBackground';
 import { buildPaletteItems } from './palette-items';
-import { AppRoutes, ROUTE_PATHS } from './routes';
+import { AppRoutes } from './routes';
 import { useSidebarData } from './use-sidebar-data';
 
 const SIDE_STORAGE_KEY = 'project-hub:sidebar-layout';
@@ -44,12 +43,12 @@ function saveSideLayout(layout: Layout) {
  * workspaces; abaixo, a coluna lateral (a barra lateral, o explorador: busca, adicionar projeto, os projetos
  * com as sessões e os arquivados; redimensionável e recolhível, com a largura lembrada) e a área da página, que
  * ocupa o resto da altura e rola sozinha; e, no rodapé, a barra de status (projeto e branch da aba ativa,
- * contadores da visão geral, uso do computador e "Parar todos"). O fundo topográfico fica de fora da rota do workspace, onde
- * há terminais. O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes), então o App
+ * contadores da visão geral, uso do computador e "Parar todos"). A janela não tem fundo decorativo: o fundo topográfico
+ * vive só na faixa do topo do Início e nos estados vazios, nunca atrás de listas, tabelas, formulários ou terminais.
+ * O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes), então o App
  * funciona com qualquer um dos dois.
  */
 export function App() {
-  const inWorkspace = useMatch(ROUTE_PATHS.workspace) !== null;
   const [paletaAberta, setPaletaAberta] = useState(false);
   const sidebar = useSidebarData();
   const navigate = useNavigate();
@@ -77,7 +76,6 @@ export function App() {
 
   return (
     <div className="app-shell">
-      {inWorkspace ? null : <TopographicBackground />}
       <RestoreWorkspace />
       <TopBar />
       <Group

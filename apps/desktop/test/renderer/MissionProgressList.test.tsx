@@ -56,6 +56,12 @@ describe('MissionProgressList', () => {
     expect(bar).toHaveAttribute('max', '5');
   });
 
+  it('o título (truncado pela CSS) leva o texto inteiro também no title do link', () => {
+    renderList([item('m1', 'running', 1, 2)]);
+
+    expect(screen.getByRole('link', { name: 'Missão m1' })).toHaveAttribute('title', 'Missão m1');
+  });
+
   it('sem tarefas, mostra só o estado e nenhuma barra', () => {
     renderList([item('m1', 'draft', 0, 0)]);
 

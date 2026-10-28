@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Group, Panel, Separator, type Layout } from 'react-resizable-panels';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { missionTabCounts } from '../../mission-text';
@@ -109,11 +109,13 @@ export function MissionBottomPanel({
   panels: Record<MissionTab, ReactNode>;
 }) {
   const ids = ['conversation', 'diff', 'tests', 'terminal', 'logs'] as const;
+  // A altura guardada só vale na abertura (o grupo a usa como inicial): ler a cada render seria à toa.
+  const [initialLayout] = useState(readDockLayout);
   return (
     <Group
       className="mission-split"
       orientation="vertical"
-      defaultLayout={readDockLayout()}
+      defaultLayout={initialLayout}
       onLayoutChanged={saveDockLayout}
     >
       <Panel id={MAIN_ID} className="mission-split__panel" minSize="20">

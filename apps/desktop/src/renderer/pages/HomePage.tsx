@@ -4,6 +4,7 @@ import { ActivityHeatmap } from '../components/home/ActivityHeatmap';
 import { AgentUsage } from '../components/home/AgentUsage';
 import { Greeting } from '../components/home/Greeting';
 import { MissionProgressList } from '../components/MissionProgressList';
+import { TopographicBackground } from '../components/TopographicBackground';
 import {
   HOME_TEXT,
   matchesStatusFilter,
@@ -163,7 +164,8 @@ function Missions({
 }
 
 /**
- * Início, o painel de abertura, de cima para baixo: saudação numa linha, "Precisa de você", Missões com
+ * Início, o painel de abertura, de cima para baixo: a faixa do topo (a saudação numa linha, sobre o fundo
+ * topográfico, que não aparece em mais nenhum ponto do Início), "Precisa de você", Missões com
  * progresso (e o filtro `?estado=`), Atividade e Uso dos agentes. Os números vêm da carga compartilhada
  * da visão geral; nada é simulado. `?editar-nome=1` (o item "Alterar meu nome" da paleta) abre o campo do
  * nome na saudação, e o parâmetro sai quando o campo fecha.
@@ -198,7 +200,10 @@ export function HomePage() {
 
   return (
     <div className="home">
-      <Greeting editRequested={editRequested} onEditClose={closeNameEditor} />
+      <div className="home-hero">
+        <TopographicBackground />
+        <Greeting editRequested={editRequested} onEditClose={closeNameEditor} />
+      </div>
       <div className="home-columns">
         <div className="home-main">
           <NeedsYou />

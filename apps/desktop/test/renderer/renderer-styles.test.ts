@@ -262,9 +262,8 @@ describe('botões, campos e anel de foco', () => {
     expect(rule('.btn-danger').get('color')).toBe('var(--danger)');
   });
 
-  it('.btn-outline e .btn-link continuam, com a cor da marca', () => {
+  it('.btn-outline continua, com a cor da marca', () => {
     expect(rule('.btn-outline').get('color')).toBe('var(--brand)');
-    expect(rule('.btn-link').get('color')).toBe('var(--brand)');
   });
 
   it('o botão anima só cor de fundo e de borda, e o movimento reduzido desliga a transição', () => {
@@ -399,5 +398,64 @@ describe('módulos do renderer', () => {
       offenders,
       'CSS importado por módulo vira <style> em desenvolvimento e a CSP bloqueia. Ligue o arquivo por <link> no index.html.',
     ).toEqual([]);
+  });
+});
+
+/**
+ * Guarda de CSS e código mortos (Tarefa 8): as classes das telas que saíram (o banner "Aguardando você", o fluxo da
+ * missão em cinco etapas, o cartão de projeto, o cabeçalho antigo do projeto, a linha antiga de missão) não voltam
+ * nem nos CSS nem nos módulos.
+ */
+describe('classes removidas', () => {
+  const REMOVED = [
+    'decision-banner',
+    'decision-status',
+    'mission-flow',
+    'project-card',
+    'project-list',
+    'project-unavailable',
+    'project-head__',
+    'mission-row__text',
+    'mission-summary',
+    'mission-indicator',
+    'mission-actions',
+    'mission-workspace',
+    'mission-tabs',
+    'mission-tabpanel',
+    'btn-link',
+    'page-note',
+    'sidebar__meta',
+    'sidebar__project',
+    'conclusion__item--failed',
+  ];
+
+  it('nenhum CSS do renderer cita uma classe que já não existe', () => {
+    const stylesDirectory = join(rendererDirectory, 'styles');
+    const offenders = readdirSync(stylesDirectory)
+      .filter((name) => name.endsWith('.css'))
+      .flatMap((name) => {
+        const css = readFileSync(join(stylesDirectory, name), 'utf8');
+        return REMOVED.filter((cls) => css.includes(`.${cls}`)).map((cls) => `${name}: .${cls}`);
+      });
+    expect(offenders).toEqual([]);
+  });
+
+  it('nenhum módulo do renderer usa uma classe removida nem importa o componente apagado', () => {
+    const offenders = sourceFiles(rendererDirectory).flatMap((file) => {
+      const text = readFileSync(file, 'utf8');
+      const classes = REMOVED.filter((cls) => text.includes(cls)).map(
+        (cls) => `${relative(rendererDirectory, file)}: ${cls}`,
+      );
+      const imports = /\b(?:DecisionBanner|MissionFlow|ProjectCard|mission-flow)\b/.test(text)
+        ? [`${relative(rendererDirectory, file)}: import de componente apagado`]
+        : [];
+      return [...classes, ...imports];
+    });
+    expect(offenders).toEqual([]);
+  });
+
+  it('o texto do link "Ver a decisão" do banner apagado não sobrou em mission-text', () => {
+    const text = readFileSync(join(rendererDirectory, 'mission-text.ts'), 'utf8');
+    expect(text).not.toContain('decisionLink');
   });
 });

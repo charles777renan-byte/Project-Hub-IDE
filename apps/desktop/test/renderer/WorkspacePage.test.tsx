@@ -822,6 +822,67 @@ describe('aba do projeto: visões', () => {
     expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
   });
 
+  it('?nova-missao=1 sem ?visao= abre a visão Missões com o formulário', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?nova-missao=1');
+
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Missões' })).toHaveAttribute('aria-selected', 'true');
+    // O pedido sai da rota, e a visão fica escrita nela (senão voltaria para Terminais).
+    await waitFor(() => expect(current.search).toBe('?visao=missoes'));
+    expect(screen.getByRole('tab', { name: 'Missões' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+  });
+
+  it('o fundo topográfico não aparece na aba do projeto com terminais, nas Missões nem nas outras visões', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    const first = renderAt(undefined, 'p1', '?visao=terminais');
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(document.querySelector('.topo-background')).toBeNull();
+    first.unmount();
+
+    for (const search of ['?visao=missoes', '?visao=worktrees', '?visao=configuracoes']) {
+      const view = renderAt(undefined, 'p1', search);
+      await screen.findByRole('tablist', { name: 'Visões do projeto' });
+      expect(document.querySelector('.topo-background')).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it('o fundo topográfico só aparece no estado vazio dos terminais, dentro dele', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    renderAt(undefined, 'p1', '?visao=terminais');
+
+    const empty = (await screen.findByText('Nenhum terminal aberto')).closest('.workspace__empty');
+    expect(empty).not.toBeNull();
+    expect(empty?.querySelector('.topo-background')).not.toBeNull();
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+  });
+
+  it('com os terminais vazios mas escondidos (outra visão), o fundo topográfico não fica montado', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    renderAt(undefined, 'p1', '?visao=terminais');
+    await screen.findByText('Nenhum terminal aberto');
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+
+    selectView('Missões');
+    expect(document.getElementById('project-panel-terminais')).toHaveAttribute('hidden');
+    expect(document.querySelector('.topo-background')).toBeNull();
+
+    selectView('Worktrees');
+    expect(document.querySelector('.topo-background')).toBeNull();
+
+    selectView('Terminais');
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+  });
+
   it('Arquivar pelo Mais ações pede confirmação e leva ao Início', async () => {
     Object.assign(api.projects, {
       archive: vi.fn(() => Promise.resolve({ ok: true, data: undefined })),
@@ -948,6 +1009,14 @@ describe('aba do projeto: missão aberta', () => {
       screen.getByRole('heading', { level: 1, name: 'Ajustar login' }),
     );
     expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
+  });
+
+  it('o fundo topográfico não aparece atrás da missão aberta, nem com os terminais vazios escondidos', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    expect(document.querySelector('.topo-background')).toBeNull();
   });
 
   it('com a missão aberta, os terminais seguem montados, escondidos', async () => {

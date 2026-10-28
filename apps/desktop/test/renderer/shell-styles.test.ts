@@ -310,7 +310,7 @@ describe('barra lateral', () => {
   });
 
   it('nomes longos são cortados com reticências, sem quebrar linha', () => {
-    for (const selector of ['.sidebar__name', '.sidebar__project']) {
+    for (const selector of ['.sidebar__name']) {
       const name = ruleDeclarations(workspaceCss, selector);
       expect(name.get('min-width'), selector).toBe('0');
       expect(name.get('overflow'), selector).toBe('hidden');
@@ -431,120 +431,18 @@ describe('contadores do cabeçalho', () => {
 });
 
 /**
- * Layout do workspace da missão (resumo fixo, banner e abas): uma coluna que ocupa a altura da página,
- * com o resumo e o banner no tamanho do conteúdo e a área das abas enchendo o que sobra. Cada painel de
- * aba rola dentro de si, para nenhum conteúdo ser cortado. Abaixo de 1000px a página rola na vertical e
- * a área das abas ganha altura própria. Este teste fica aqui, e não no renderer-styles, porque junta os
- * dois pontos de quebra da casca (a barra lateral e o workspace) num lugar só. `mediaBlock` pega o
- * primeiro bloco com a consulta; como a barra lateral também tem um bloco de 1000px, o bloco do
- * workspace é o que contém `.mission-workspace`.
+ * Peças da página da missão que seguem em app.css: o cartão de aprovação, a linha do worktree (caminho e "Copiado") e
+ * as abas em pílula (a barra de visões do projeto e as abas do painel inferior da missão).
  */
-/** O bloco `@media (max-width: 1000px)` que contém o workspace da missão, ou texto vazio se não existir. */
-function workspaceNarrowBlock(css: string): string {
-  const query = '(max-width: 1000px)';
-  let from = 0;
-  for (
-    let at = css.indexOf(`@media ${query}`, from);
-    at >= 0;
-    at = css.indexOf(`@media ${query}`, from)
-  ) {
-    const block = mediaBlock(css.slice(at), query);
-    if (block.includes('.mission-workspace')) return block;
-    from = at + 1;
-  }
-  return '';
-}
-
-describe('layout do workspace da missão', () => {
+describe('cartão de aprovação, linha do worktree e abas', () => {
   const appCss = readCss('app.css');
-  const narrow = workspaceNarrowBlock(appCss);
 
-  it('o workspace ocupa a altura da página, em coluna, e mede a largura para os contêineres', () => {
-    expect(
-      ruleDeclarations(appCss, '.app-main__content:has(> .mission-workspace)').get('height'),
-    ).toBe('100%');
-    const workspace = ruleDeclarations(appCss, '.mission-workspace');
-    expect(workspace.get('display')).toBe('flex');
-    expect(workspace.get('flex-direction')).toBe('column');
-    expect(workspace.get('height')).toBe('100%');
-    expect(workspace.get('min-height')).toBe('0');
-    expect(workspace.get('container-type')).toBe('inline-size');
-  });
-
-  it('o resumo e o banner ficam no tamanho do conteúdo, e a área das abas enche o resto', () => {
-    expect(ruleDeclarations(appCss, '.mission-summary').get('flex')).toBe('none');
-    expect(ruleDeclarations(appCss, '.decision-banner').get('flex')).toBe('none');
-    const tabs = ruleDeclarations(appCss, '.mission-tabs');
-    expect(tabs.get('flex')).toBe('1');
-    expect(tabs.get('flex-direction')).toBe('column');
-    // O piso evita espremer o painel numa janela baixa: a página rola em vez disso.
-    expect(tabs.get('min-height')).toBe('18rem');
-  });
-
-  it('cada painel de aba rola dentro de si, sem cortar o conteúdo, e o escondido some de verdade', () => {
-    const panel = ruleDeclarations(appCss, '.mission-tabpanel');
-    expect(panel.get('flex')).toBe('1');
-    expect(panel.get('min-height')).toBe('0');
-    expect(panel.get('overflow')).toBe('auto');
-    expect(ruleDeclarations(appCss, '.mission-tabpanel[hidden]').get('display')).toBe('none');
-  });
-
-  it('o painel de aba tem respiro dos dois lados, para o contorno de foco não ser cortado pela rolagem', () => {
-    // O contorno tem 2px e fica 2px afastado: o respiro lateral tem de ser maior que isso.
-    expect(ruleDeclarations(appCss, '.mission-tabpanel').get('padding')).toBe(
-      'var(--space-3) var(--space-2) var(--space-2)',
-    );
-  });
-
-  it('a região status do banner não ocupa espaço quando está vazia', () => {
-    expect(ruleDeclarations(appCss, '.decision-status').get('flex')).toBe('none');
-    expect(ruleDeclarations(appCss, '.decision-status:empty').get('margin-top')).toBe(
-      'calc(var(--space-3) * -1)',
-    );
-  });
-
-  it('o resumo é o bloco de maior peso: faixa de 3px na cor da situação, e os acentos do tom', () => {
-    const summary = ruleDeclarations(appCss, '.mission-summary');
-    expect(summary.get('border-top')).toBe('3px solid var(--summary-accent)');
-    expect(summary.get('border-radius')).toBe('var(--radius-panel)');
-    for (const tone of ['lime', 'violet', 'warn', 'red'] as const) {
-      expect(ruleDeclarations(appCss, `.mission-summary--${tone}`).get('--summary-accent')).toBe(
-        `var(--${tone})`,
-      );
-    }
-    // Tons neutros do selo (inclusive os das telas antigas): a faixa também é neutra, como o chip.
-    for (const tone of ['muted', 'orange', 'blue', 'cyan'] as const) {
-      expect(ruleDeclarations(appCss, `.mission-summary--${tone}`).get('--summary-accent')).toBe(
-        'var(--muted)',
-      );
-    }
-  });
-
-  it('o banner Aguardando você usa a borda âmbar (--warn), como o selo de aguardando', () => {
-    expect(ruleDeclarations(appCss, '.decision-banner').get('border')).toBe(
-      '1px solid var(--warn)',
-    );
+  it('o cartão de aprovação usa a borda âmbar (--warn), como o selo de aguardando', () => {
     expect(ruleDeclarations(appCss, '.decision-card').get('border')).toBe('1px solid var(--warn)');
   });
 
-  it('os três indicadores ficam lado a lado, e empilham abaixo de 900px', () => {
-    expect(ruleDeclarations(appCss, '.mission-indicators').get('grid-template-columns')).toBe(
-      'repeat(3, minmax(0, 1fr))',
-    );
-    const narrowFacts = mediaBlock(appCss, '(max-width: 900px)');
-    expect(ruleDeclarations(narrowFacts, '.mission-indicators').get('grid-template-columns')).toBe(
-      'minmax(0, 1fr)',
-    );
-  });
-
-  it('a linha do resumo quebra sem rolar de lado, e o projeto é um link ciano', () => {
-    const meta = ruleDeclarations(appCss, '.mission-summary .mission-meta');
-    expect(meta.get('display')).toBe('flex');
-    expect(meta.get('flex-wrap')).toBe('wrap');
+  it('o caminho do worktree quebra sem rolar de lado', () => {
     expect(ruleDeclarations(appCss, '.mission-meta__path').get('overflow-wrap')).toBe('anywhere');
-    expect(ruleDeclarations(appCss, '.mission-summary__project a').get('color')).toBe(
-      'var(--cyan)',
-    );
   });
 
   // A falha da cópia saiu daqui para o aviso (Toaster, Tarefa 9): sobrou só o "Copiado", em lima.
@@ -570,7 +468,6 @@ describe('layout do workspace da missão', () => {
   it('as abas não têm cor por tipo nem lima: sem --tab-accent, sem .tab--<id> e sem ponto colorido', () => {
     expect(appCss).not.toContain('--tab-accent');
     expect(appCss).not.toMatch(/\.tab--/);
-    expect(ruleDeclarations(appCss, '.mission-tabs > .tabs .tab::before').size).toBe(0);
     const rules = appCss.match(/[^{}]*\.tab\b[^{}]*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) {
@@ -582,16 +479,6 @@ describe('layout do workspace da missão', () => {
     const count = ruleDeclarations(appCss, '.tab__count');
     expect(count.get('color')).toBe('var(--muted)');
     expect(count.get('font-family')).toBe('var(--font-mono)');
-  });
-
-  it('abaixo de 1000px a página passa a rolar na vertical e a área das abas ganha altura própria', () => {
-    expect(ruleDeclarations(narrow, '.mission-workspace').get('height')).toBe('auto');
-    expect(
-      ruleDeclarations(narrow, '.app-main__content:has(> .mission-workspace)').get('height'),
-    ).toBe('auto');
-    const tabs = ruleDeclarations(narrow, '.mission-tabs');
-    expect(tabs.get('flex')).toBe('none');
-    expect(tabs.get('height')).toBe('70vh');
   });
 });
 
@@ -637,6 +524,32 @@ describe('barra de status', () => {
     expect(ruleDeclarations(statusCss, '.statusbar a:focus-visible').get('outline-offset')).toBe(
       '-2px',
     );
+  });
+
+  it('o fim da barra encolhe junto, e o projeto e os contadores cedem antes dele', () => {
+    const end = ruleDeclarations(statusCss, '.statusbar__end');
+    expect(end.get('min-width')).toBe('0');
+    expect(end.get('flex')).toBe('0 1 auto');
+    const shrink = (selector: string) =>
+      Number(ruleDeclarations(statusCss, selector).get('flex')?.split(' ')[1]);
+    const endShrink = Number(end.get('flex')?.split(' ')[1]);
+    expect(shrink('.statusbar__project')).toBeGreaterThan(endShrink);
+    expect(shrink('.statusbar .overview-counters')).toBeGreaterThan(endShrink);
+    expect(ruleDeclarations(statusCss, '.statusbar .overview-counters').get('min-width')).toBe('0');
+    expect(ruleDeclarations(statusCss, '.statusbar .overview-counters').get('overflow')).toBe(
+      'hidden',
+    );
+  });
+
+  it('"Parar todos" e a pergunta não encolhem nem quebram: o que sobra cede antes', () => {
+    expect(ruleDeclarations(statusCss, '.statusbar__end > *').get('flex-shrink')).toBe('0');
+  });
+
+  it('o uso do computador (CPU e RAM) só some em janela bem estreita, não na largura comum', () => {
+    const appCss = readCss('app.css');
+    const queries = [...appCss.matchAll(/@media \(max-width: (\d+)px\)\s*\{\s*\.system-usage/g)];
+    expect(queries).toHaveLength(1);
+    expect(Number(queries[0]?.[1])).toBeLessThanOrEqual(800);
   });
 
   it('o link do contador não é sublinhado', () => {

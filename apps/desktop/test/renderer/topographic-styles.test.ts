@@ -55,3 +55,26 @@ describe('fundo topográfico: estilos', () => {
     expect(ruleDeclarations(appCss, '.decision-card pre').get('background')).toBe('var(--bg)');
   });
 });
+
+describe('fundo topográfico: onde ele vive', () => {
+  const homeCss = readCss('home.css');
+
+  it('a faixa do topo do Início prende o fundo: posição própria, contexto de empilhamento e corte', () => {
+    const hero = ruleDeclarations(homeCss, '.home-hero');
+    expect(hero.get('position')).toBe('relative');
+    expect(hero.get('isolation')).toBe('isolate');
+    expect(hero.get('overflow')).toBe('hidden');
+  });
+
+  it('o formulário do nome, dentro da faixa, fica sobre uma base opaca', () => {
+    expect(ruleDeclarations(homeCss, '.home-hero .confirm-inline').get('background')).toBe(
+      'var(--surface)',
+    );
+  });
+
+  it('a janela não desenha mais o fundo: o brilho do app vem só do próprio .app-shell', () => {
+    expect(ruleDeclarations(readCss('workspace.css'), '.app-shell').get('background')).toBe(
+      'var(--glow-app), var(--bg)',
+    );
+  });
+});
