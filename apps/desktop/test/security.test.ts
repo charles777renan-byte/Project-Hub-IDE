@@ -464,11 +464,12 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade, perfil e aprovações, sem envio genérico', () => {
+  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade, perfil, limites e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
       'activity',
       'approvals',
+      'limits',
       'missions',
       'ping',
       'profile',
@@ -511,6 +512,7 @@ describe('buildProjectHubApi', () => {
       'subscribe',
       'subscribeUsage',
     ]);
+    expect(Object.keys(api.limits).sort()).toEqual(['get', 'refresh', 'subscribe']);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
     expect(Object.keys(api.activity)).toEqual(['daily']);
     expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);

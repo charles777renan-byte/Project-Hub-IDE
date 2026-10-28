@@ -109,6 +109,30 @@ function installApi({ projects = [], missions = {}, get, activity, displayName =
       }),
       subscribe: vi.fn(() => () => {}),
     },
+    limits: {
+      get: vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            providers: [
+              {
+                provider: 'claude',
+                windows: [
+                  {
+                    id: 'five_hour',
+                    usedPercent: 16,
+                    resetsAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
+                  },
+                ],
+                refreshing: false,
+              },
+            ],
+          },
+        }),
+      ),
+      refresh: vi.fn(),
+      subscribe: vi.fn(() => () => {}),
+    },
   };
   window.projectHub = api as unknown as ProjectHubApi;
   return { setDisplayName };
@@ -420,17 +444,16 @@ describe('HomePage', () => {
     expect(await within(panel('Missões')).findByText('Missão m1')).toBeInTheDocument();
   });
 
-  it('Uso dos agentes é só o estado vazio honesto, sem números nem barras', async () => {
+  it('Uso dos agentes mostra o cartão do Claude e "Em breve" para os outros programas', async () => {
     installApi({ projects: [project('p1')] });
 
     renderHome();
 
     const usage = panel('Uso dos agentes');
-    expect(
-      within(usage).getByText('Em breve: limites de uso do Claude Code e do Codex.'),
-    ).toBeInTheDocument();
-    expect(usage.textContent).not.toMatch(/\d/);
-    expect(usage.querySelector('progress, meter, [role="progressbar"]')).toBeNull();
+    expect(await within(usage).findByText('Uso do Claude')).toBeInTheDocument();
+    expect(await within(usage).findByText('16% usado · 84% restante')).toBeInTheDocument();
+    expect(within(usage).getByLabelText('Sessão atual, 16% usado')).toBeInTheDocument();
+    expect(within(usage).getByText('Codex e Antigravity CLI: Em breve.')).toBeInTheDocument();
   });
 
   it('a saudação não tem mais o botão de alterar o nome', async () => {

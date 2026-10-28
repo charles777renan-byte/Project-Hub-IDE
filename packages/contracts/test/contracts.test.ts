@@ -240,6 +240,7 @@ describe('responseSchemas', () => {
     const eventChannels: string[] = [
       CHANNELS.missionsEvent,
       CHANNELS.missionsUsage,
+      CHANNELS.limitsEvent,
       CHANNELS.terminalsEvent,
     ];
     const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));

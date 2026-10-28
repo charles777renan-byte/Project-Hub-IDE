@@ -5,6 +5,7 @@ import {
   resolveAgentCommand,
   resolveDatabaseFile,
   resolveDirectoryChooser,
+  resolveLimitsCommand,
   resolvePlannerCommand,
   resolveWorktreesRoot,
 } from '../src/main/composition';
@@ -291,5 +292,80 @@ describe('comando do agente nos testes (APP_AGENT_SCRIPT)', () => {
 
     expect(env).toEqual({});
     expect(resolveAgentCommand(env, real, '/app/electron')).toEqual(untouched);
+  });
+});
+
+describe('comando da leitura dos limites nos testes (APP_LIMITS_SCRIPT)', () => {
+  const real = '/real/claude';
+  const production = { command: real, commandPrefix: [], extraEnv: {}, enabled: true };
+  const disabled = { command: real, commandPrefix: [], extraEnv: {}, enabled: false };
+
+  it('fora de teste, a leitura é a real e fica ligada', () => {
+    expect(resolveLimitsCommand({}, real)).toEqual(production);
+    expect(resolveLimitsCommand({ PROJECT_HUB_ENV: 'production' }, real)).toEqual(production);
+  });
+
+  it('fora de teste, o script é ignorado', () => {
+    expect(resolveLimitsCommand({ APP_LIMITS_SCRIPT: '/e2e/fake-limits.mjs' }, real)).toEqual(
+      production,
+    );
+  });
+
+  it('com PROJECT_HUB_ENV=test e sem o gancho, a leitura fica desligada (não gasta a cota real)', () => {
+    expect(resolveLimitsCommand({ PROJECT_HUB_ENV: 'test' }, real)).toEqual(disabled);
+    expect(resolveLimitsCommand({ PROJECT_HUB_ENV: 'test', APP_LIMITS_SCRIPT: '' }, real)).toEqual(
+      disabled,
+    );
+  });
+
+  it('com PROJECT_HUB_ENV=test e script, roda o script no próprio executável como Node', () => {
+    expect(
+      resolveLimitsCommand(
+        { PROJECT_HUB_ENV: 'test', APP_LIMITS_SCRIPT: '/e2e/fake-limits.mjs' },
+        real,
+        '/app/electron',
+      ),
+    ).toEqual({
+      command: '/app/electron',
+      commandPrefix: ['/e2e/fake-limits.mjs'],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      enabled: true,
+    });
+  });
+
+  it.each(['TEST', 'true', 'testing'])(
+    'PROJECT_HUB_ENV=%j não conta como teste: a leitura é a real, sem o script',
+    (value) => {
+      expect(
+        resolveLimitsCommand(
+          { PROJECT_HUB_ENV: value, APP_LIMITS_SCRIPT: '/e2e/fake-limits.mjs' },
+          real,
+          '/app/electron',
+        ),
+      ).toEqual(production);
+    },
+  );
+
+  it('os ganchos do planejador e do agente não ligam a leitura dos limites', () => {
+    expect(
+      resolveLimitsCommand(
+        {
+          PROJECT_HUB_ENV: 'test',
+          APP_PLANNER_SCRIPT: '/e2e/fake-planner.mjs',
+          APP_AGENT_SCRIPT: '/e2e/fake-agent.mjs',
+        },
+        real,
+      ),
+    ).toEqual(disabled);
+  });
+
+  it('empacotado, APP_LIMITS_SCRIPT some junto com PROJECT_HUB_ENV (R193) e a leitura é a real', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', APP_LIMITS_SCRIPT: '/e2e/fake-limits.mjs' },
+      true,
+    );
+
+    expect(env).toEqual({});
+    expect(resolveLimitsCommand(env, real, '/app/electron')).toEqual(production);
   });
 });
