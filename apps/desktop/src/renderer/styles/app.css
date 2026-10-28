@@ -403,6 +403,9 @@ button:disabled {
 }
 
 .tab {
+  /* A pílula da aba ativa é o ::before (abaixo): a aba prende o pseudo-elemento nela e o texto passa por cima. */
+  position: relative;
+  isolation: isolate;
   border: 0;
   border-radius: var(--radius-pill);
   padding: var(--space-2) var(--space-3);
@@ -416,12 +419,31 @@ button:disabled {
   color: var(--text);
 }
 
-.tab[aria-selected='true'] {
+/*
+ * A pílula (gradiente e anel) mora num ::before que fica apagado e acende na aba ativa. Um gradiente não
+ * interpola, mas a opacidade sim: é o que deixa a troca de aba suave (a transição fica em motion.css).
+ */
+.tab::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
   background: linear-gradient(135deg, var(--field-line), var(--line));
-  color: var(--text);
-  /* Pistas além do preenchimento (WCAG 1.4.11): peso maior e anel de 1px em --muted, mais de 3:1 sobre --bg. */
-  font-weight: 700;
+  /* Pista além do preenchimento (WCAG 1.4.11): anel de 1px em --muted, mais de 3:1 sobre --bg. */
   box-shadow: inset 0 0 0 1px var(--muted);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tab[aria-selected='true']::before {
+  opacity: 1;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text);
+  /* Peso maior: a segunda pista da aba ativa, além do preenchimento. */
+  font-weight: 700;
 }
 
 /* Contagem ao lado do nome da aba (etapas, arquivos, testes): número pequeno, em mono e discreto. */

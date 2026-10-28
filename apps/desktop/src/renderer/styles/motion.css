@@ -1,0 +1,74 @@
+/*
+ * Transições das abas. O movimento do app mora neste arquivo (ligado por último no index.html); os outros
+ * CSS dizem como o elemento é, e este diz como ele chega.
+ *
+ * Custo: só `opacity` e `transform` se animam, que a placa de vídeo resolve sem refazer o layout. Isso importa
+ * porque os terminais (xterm com WebGL) ficam montados por baixo e não podem ser remedidos a cada troca de
+ * aba. Nada aqui muda largura, altura, margem nem posição. O tempo e a curva vêm dos tokens (--dur,
+ * --dur-fast e --ease), então o app inteiro tem o mesmo ritmo. Só a entrada anima; a saída é um corte
+ * seco (`hidden`), o que evita dois painéis juntos na tela. O fim do bloco desliga tudo com "reduzir
+ * movimento".
+ *
+ * `backwards` aplica o quadro inicial só até a animação começar e solta tudo no fim: nenhum transform fica
+ * pendurado depois dela (um transform ativo criaria um bloco de contenção e uma camada própria).
+ */
+
+/* Subir 4px e aparecer: painéis que rolam sozinhos, dentro de um contêiner que corta o excesso. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Só aparecer: os terminais e a página do projeto, que não devem se deslocar nem 1px. */
+@keyframes panel-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Visões do projeto (Missões, Worktrees, Configurações) e abas do painel inferior da missão. */
+.project-tab__panel:not([hidden]),
+.mission-dock__panel:not([hidden]) {
+  animation: panel-in var(--dur) var(--ease) backwards;
+}
+
+/* Terminais: o xterm mede a área, então o painel só muda de opacidade. */
+.project-tab__panel--terminais:not([hidden]) {
+  animation: panel-fade var(--dur) var(--ease) backwards;
+}
+
+/*
+ * Trocar de aba no topo (Início, projetos) monta outra página, e ela aparece. Só opacidade: a página do
+ * projeto traz os terminais, e uma página que sobe 4px dentro do `.app-main` poderia acender a barra de
+ * rolagem por um instante. Trocar de visão dentro da mesma página não monta a raiz de novo, então não repete.
+ */
+.app-main__content > * {
+  animation: panel-fade var(--dur) var(--ease) backwards;
+}
+
+/* Abas (Radix Tabs): o texto muda de cor e a pílula acende por opacidade. */
+.tab {
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+
+.tab::before {
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-tab__panel:not([hidden]),
+  .mission-dock__panel:not([hidden]),
+  .project-tab__panel--terminais:not([hidden]),
+  .app-main__content > * {
+    animation: none;
+  }
+
+  .tab,
+  .tab::before {
+    transition: none;
+  }
+}

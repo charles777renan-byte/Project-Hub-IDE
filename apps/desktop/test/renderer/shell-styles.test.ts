@@ -458,11 +458,11 @@ describe('cartão de aprovação, linha do worktree e abas', () => {
     expect(tab.get('border-radius')).toBe('var(--radius-pill)');
     expect(tab.get('background')).toBe('transparent');
     expect(tab.get('color')).toBe('var(--muted)');
-    const active = ruleDeclarations(appCss, ".tab[aria-selected='true']");
-    expect(active.get('background')).toBe(
+    // O gradiente mora na pílula (o ::before da aba), que acende na ativa para a troca poder animar.
+    expect(ruleDeclarations(appCss, '.tab::before').get('background')).toBe(
       'linear-gradient(135deg, var(--field-line), var(--line))',
     );
-    expect(active.get('color')).toBe('var(--text)');
+    expect(ruleDeclarations(appCss, ".tab[aria-selected='true']").get('color')).toBe('var(--text)');
   });
 
   it('as abas não têm cor por tipo nem lima: sem --tab-accent, sem .tab--<id> e sem ponto colorido', () => {
