@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
 import { ProjectHeader } from '../components/project/ProjectHeader';
+import { ProjectMissions } from '../components/project/ProjectMissions';
 import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
@@ -34,11 +35,11 @@ function requestedTerminal(state: unknown): string | null {
 
 /**
  * A aba do projeto (`/workspaces/:projectId?visao=...`): o cabeçalho de uma linha com as visões e, abaixo, a
- * visão escolhida. Terminais (a padrão) é o workspace de painéis; Missões é um marcador por enquanto;
- * Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais ficam sempre montados (só
- * escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz os terminais. As outras visões
- * só são montadas enquanto ativas. Projeto arquivado ou
- * removido com a aba aberta mostra a mensagem e o link para o Início.
+ * visão escolhida. Terminais (a padrão) é o workspace de painéis; Missões é a lista de missões do projeto e o
+ * formulário Nova missão; Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais
+ * ficam sempre montados (só escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz
+ * os terminais. As outras visões só são montadas enquanto ativas. Projeto arquivado ou removido com a aba
+ * aberta mostra a mensagem e o link para o Início.
  */
 export function WorkspacePage() {
   const { projectId = '' } = useParams();
@@ -71,7 +72,7 @@ export function WorkspacePage() {
         <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />
       </ProjectPanel>
       <ProjectPanel view="missoes" active={view} labelled={project !== undefined}>
-        {view === 'missoes' ? <p className="page-note">{PROJECT_TEXT.missionsSoon}</p> : null}
+        {view === 'missoes' ? <ProjectMissions projectId={projectId} project={project} /> : null}
       </ProjectPanel>
       <ProjectPanel view="worktrees" active={view} labelled={project !== undefined}>
         {view === 'worktrees' ? <WorktreesTab projectId={projectId} /> : null}

@@ -23,3 +23,6 @@ export function parseProjectView(value: string | null): ProjectView {
 export function projectPanelId(view: ProjectView): string {
   return `project-panel-${view}`;
 }
+
+/** Parâmetro da aba do projeto (`?visao=missoes&nova-missao=1`) que abre o formulário Nova missão. */
+export const NEW_MISSION_PARAM = 'nova-missao';

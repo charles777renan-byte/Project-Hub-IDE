@@ -10,7 +10,7 @@ describe('MissionForm', () => {
 
     await userEvent.type(screen.getByLabelText('Título'), 'Ajustar login');
     await userEvent.type(screen.getByLabelText('Objetivo'), 'Corrigir o login');
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(screen.getByText('Informe ao menos um critério de aceite')).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();
@@ -23,7 +23,7 @@ describe('MissionForm', () => {
     await userEvent.type(screen.getByLabelText('Título'), 'Ajustar login');
     await userEvent.type(screen.getByLabelText('Objetivo'), 'Corrigir o login');
     await userEvent.type(screen.getByLabelText('Critérios de aceite'), '   {enter}{enter}');
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(screen.getByText('Informe ao menos um critério de aceite')).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();
@@ -33,7 +33,7 @@ describe('MissionForm', () => {
     const submit = vi.fn();
     render(<MissionForm onSubmit={submit} projectHasGit />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(screen.getByText('Informe o título da missão.')).toBeInTheDocument();
     expect(screen.getByText('Informe o objetivo da missão.')).toBeInTheDocument();
@@ -53,7 +53,7 @@ describe('MissionForm', () => {
     );
     await userEvent.click(screen.getByLabelText('Esta missão altera código'));
     await userEvent.click(screen.getByLabelText('Só criar, sem abrir'));
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(submit).toHaveBeenCalledWith({
       title: 'Ajustar login',
@@ -75,12 +75,12 @@ describe('MissionForm', () => {
     const WARNING =
       'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.';
 
-    it('mostra o aviso e desabilita Criar missão, mesmo sem "altera código" marcado', () => {
+    it('mostra o aviso e desabilita Criar, mesmo sem "altera código" marcado', () => {
       render(<MissionForm onSubmit={vi.fn()} projectHasGit={false} />);
 
       expect(screen.getByRole('alert')).toHaveTextContent(WARNING);
       expect(screen.getByLabelText('Esta missão altera código')).not.toBeChecked();
-      expect(screen.getByRole('button', { name: 'Criar missão' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Criar' })).toBeDisabled();
     });
 
     it('não envia, mesmo com todos os campos preenchidos e o formulário enviado direto', async () => {
@@ -101,7 +101,7 @@ describe('MissionForm', () => {
 
       await userEvent.click(screen.getByLabelText('Esta missão altera código'));
 
-      expect(screen.getByRole('button', { name: 'Criar missão' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Criar' })).toBeDisabled();
       expect(submit).not.toHaveBeenCalled();
     });
 
@@ -110,12 +110,12 @@ describe('MissionForm', () => {
       render(<MissionForm onSubmit={submit} projectHasGit />);
 
       expect(screen.queryByText(WARNING)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Criar missão' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Criar' })).toBeEnabled();
 
       await userEvent.type(screen.getByLabelText('Título'), 'Documentar');
       await userEvent.type(screen.getByLabelText('Objetivo'), 'Escrever o guia');
       await userEvent.type(screen.getByLabelText('Critérios de aceite'), 'Guia pronto');
-      await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
       expect(submit).toHaveBeenCalledTimes(1);
     });
@@ -130,7 +130,7 @@ describe('MissionForm: validação com react-hook-form e zod', () => {
     render(<MissionForm onSubmit={submit} projectHasGit />);
 
     await userEvent.type(screen.getByLabelText('Objetivo'), 'Gravar o arquivo');
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(await screen.findByText('Informe o título da missão.')).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();
@@ -140,7 +140,7 @@ describe('MissionForm: validação com react-hook-form e zod', () => {
   it('o foco vai para o primeiro campo inválido', async () => {
     render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     await waitFor(() => expect(screen.getByLabelText('Título')).toHaveFocus());
   });
@@ -150,7 +150,7 @@ describe('MissionForm: validação com react-hook-form e zod', () => {
     render(<MissionForm onSubmit={submit} projectHasGit />);
 
     await userEvent.type(screen.getByLabelText('Título'), '   ');
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
 
     expect(await screen.findByText('Informe o título da missão.')).toBeInTheDocument();
     expect(submit).not.toHaveBeenCalled();
@@ -159,7 +159,7 @@ describe('MissionForm: validação com react-hook-form e zod', () => {
   it('depois do primeiro envio, a mensagem some assim que o campo é corrigido', async () => {
     render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Criar' }));
     expect(await screen.findByText('Informe o título da missão.')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Título'), 'Ajustar login');
@@ -167,5 +167,53 @@ describe('MissionForm: validação com react-hook-form e zod', () => {
     await waitFor(() =>
       expect(screen.queryByText('Informe o título da missão.')).not.toBeInTheDocument(),
     );
+  });
+});
+
+// Formulário compacto: sem blocos numerados e com uma linha de dica por campo.
+describe('MissionForm: estrutura compacta', () => {
+  it('não tem os blocos numerados nem os títulos de seção', () => {
+    render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
+
+    expect(screen.queryByRole('heading', { name: /O que fazer/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /Como saber que ficou pronto/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /Como o agente trabalha/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(screen.queryByText('1')).not.toBeInTheDocument();
+    expect(screen.queryByText('2')).not.toBeInTheDocument();
+  });
+
+  it('cada campo tem no máximo uma dica, ligada a ele', () => {
+    render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
+
+    for (const name of ['Título', 'Objetivo', 'Critérios de aceite']) {
+      const ids = (screen.getByLabelText(name).getAttribute('aria-describedby') ?? '')
+        .split(' ')
+        .filter((id) => id !== '');
+      expect(ids, name).toHaveLength(1);
+      expect(document.getElementById(ids[0]!)?.textContent?.length ?? 0, name).toBeGreaterThan(0);
+    }
+    // O formulário inteiro só tem a dica dos três campos e a das duas opções: nada de texto de seção.
+    expect(document.querySelectorAll('.field-hint, .check__hint')).toHaveLength(5);
+  });
+
+  it('Criar e Cancelar ficam no fim, e Cancelar chama onCancel', async () => {
+    const cancel = vi.fn();
+    render(<MissionForm onSubmit={vi.fn()} onCancel={cancel} projectHasGit />);
+
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent);
+    expect(buttons).toEqual(['Cancelar', 'Criar']);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('o foco abre no Título', async () => {
+    render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
+
+    await waitFor(() => expect(screen.getByLabelText('Título')).toHaveFocus());
   });
 });

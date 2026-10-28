@@ -386,7 +386,6 @@ export const PROJECT_TEXT = {
   removeQuestion:
     'Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão, e cadastrar a pasta de novo traz tudo de volta.',
   removeConfirm: 'Remover',
-  missionsSoon: 'As missões do projeto aparecem aqui em breve.',
   notFound: 'O projeto não foi encontrado.',
   backHome: 'Voltar ao Início',
   genericError: 'Não foi possível concluir a ação. Tente de novo.',
@@ -410,6 +409,39 @@ export const PROJECT_TEXT = {
     nicknameClear: 'Remover apelido',
     save: 'Salvar',
   },
+} as const;
+
+/** Textos da visão Missões da aba do projeto. */
+export const MISSIONS_VIEW_TEXT = {
+  createdNotice: 'Missão criada. Abra a missão e clique em Orquestrar para gerar o plano.',
+} as const;
+
+/** Textos do formulário Nova missão: uma linha de dica por campo, sem blocos numerados. */
+export const MISSION_FORM_TEXT = {
+  heading: 'Nova missão',
+  noGit:
+    'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.',
+  title: { label: 'Título', hint: 'Um nome curto, para achar a missão na lista.' },
+  objective: { label: 'Objetivo', hint: 'O que precisa ser feito e por quê.' },
+  criteria: {
+    label: 'Critérios de aceite',
+    hint: 'Um por linha, pelo menos um. Cada um vira uma etapa do plano.',
+  },
+  altersCode: {
+    label: 'Esta missão altera código',
+    hint: 'Marque se o agente vai editar arquivos do projeto.',
+  },
+  planOnly: {
+    label: 'Só criar, sem abrir',
+    hint: 'Fica na lista. O plano só é gerado quando você clica em Orquestrar.',
+  },
+  errors: {
+    title: 'Informe o título da missão.',
+    objective: 'Informe o objetivo da missão.',
+    criteria: 'Informe ao menos um critério de aceite',
+  },
+  cancel: 'Cancelar',
+  submit: 'Criar',
 } as const;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

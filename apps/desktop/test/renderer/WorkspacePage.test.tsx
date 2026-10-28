@@ -781,26 +781,45 @@ describe('aba do projeto: visões', () => {
     expect(projectsApi['setNickname']).toHaveBeenCalledWith('p1', 'App');
   });
 
-  it('?visao=missoes mostra o marcador temporário da lista de missões', async () => {
+  it('?visao=missoes mostra a lista de missões do projeto, com o estado vazio e o botão', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
     renderAt(undefined, 'p1', '?visao=missoes');
 
     expect(await screen.findByRole('tab', { name: 'Missões' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    expect(screen.getByText('As missões do projeto aparecem aqui em breve.')).toBeInTheDocument();
+    const panel = await screen.findByRole('tabpanel', { name: 'Missões' });
+    expect(await within(panel).findByText('Nenhuma missão ainda.')).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Nova missão' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
   });
 
-  it('Nova missão leva a ?visao=missoes com state.newMission', async () => {
+  it('Nova missão do cabeçalho abre o formulário na visão Missões e limpa o pedido da rota', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
     renderAt();
     await screen.findByRole('button', { name: 'Iniciar Claude Code' });
 
     await userEvent.click(screen.getByRole('button', { name: 'Nova missão' }));
 
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+    await waitFor(() => expect(current.state).toBeNull());
     expect(current.pathname).toBe('/workspaces/p1');
     expect(current.search).toBe('?visao=missoes');
-    expect(current.state).toEqual({ newMission: true });
+  });
+
+  it('Nova missão do cabeçalho com o formulário já fechado, na própria visão, abre de novo', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=missoes');
+    const panel = await screen.findByRole('tabpanel', { name: 'Missões' });
+    await within(panel).findByText('Nenhuma missão ainda.');
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Nova missão' })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'Nova missão' })[0]!);
+
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
   });
 
   it('Arquivar pelo Mais ações pede confirmação e leva ao Início', async () => {
@@ -839,7 +858,8 @@ describe('aba do projeto: visões', () => {
     expect(screen.queryByRole('tablist', { name: 'Visões do projeto' })).not.toBeInTheDocument();
   });
 
-  it('/projects/p1 redireciona para /workspaces/p1?visao=missoes e leva newMission junto', async () => {
+  it('/projects/p1 redireciona para /workspaces/p1?visao=missoes e abre o formulário da nova missão', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
     render(
       <MemoryRouter initialEntries={[{ pathname: '/projects/p1', state: { newMission: true } }]}>
         <Probe />
@@ -851,8 +871,9 @@ describe('aba do projeto: visões', () => {
       'aria-selected',
       'true',
     );
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+    await waitFor(() => expect(current.state).toBeNull());
     expect(current.pathname).toBe('/workspaces/p1');
     expect(current.search).toBe('?visao=missoes');
-    expect(current.state).toEqual({ newMission: true });
   });
 });
