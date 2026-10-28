@@ -24,7 +24,7 @@
 
 1. Missão sem nenhuma tarefa iniciada (todas pendentes) ou com tarefa `running` e sem `finishedAt` com a missão já parada (pausada, interrompida): a linha do tempo não divide por zero e a barra não cresce para sempre (Tarefa 2).
 2. Data inválida, ou `finishedAt` antes de `startedAt`: sem `NaN%`, largura mínima visível, nada fora de 0–100% (Tarefa 2).
-3. `missions.get` falha ou a missão some enquanto a aba está aberta: a linha mostra só o estado, "0 de 0", sem botão de expandir; as outras missões seguem normais (Tarefa 3, 4).
+3. `missions.get` falha ou a missão some enquanto a aba está aberta: a linha mostra só o estado (sem "N de M"), sem botão de expandir; as outras missões seguem normais (Tarefa 3, 4).
 4. Projeto com muitas missões: no máximo 20 leituras de abertas e 10 de concluídas hoje; evento de missão repetido vira uma releitura só (Tarefa 3).
 5. Janela de 900 px e teclado: sem rolagem horizontal; o botão de expandir mostra o anel de foco dentro do cartão (sem corte) e tem `aria-expanded` (Tarefas 4, 5, 6).
 
