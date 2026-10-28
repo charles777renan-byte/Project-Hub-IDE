@@ -12,6 +12,8 @@ export const MISSION_STEP_KINDS = [
 ] as const;
 /** Papel de uma tarefa no plano. Sem papel, a etapa é só apresentação (a missão roda numa sessão só). */
 export const MISSION_ROLES = ['frontend', 'backend', 'database', 'docs', 'qa', 'general'] as const;
+/** Programa que executa a tarefa. Só o Claude Code por enquanto; o banco confere os mesmos valores em `CHECK`. */
+export const MISSION_AGENTS = ['claude-code'] as const;
 export const MISSION_STEP_STATUSES = [
   'pending',
   'running',
@@ -68,7 +70,8 @@ export const PROTECTED_ACTIONS = [
 export type MissionPriority = (typeof MISSION_PRIORITIES)[number];
 export type MissionStepKind = (typeof MISSION_STEP_KINDS)[number];
 export type MissionRole = (typeof MISSION_ROLES)[number];
-export type MissionStepStatus =(typeof MISSION_STEP_STATUSES)[number];
+export type MissionAgent = (typeof MISSION_AGENTS)[number];
+export type MissionStepStatus = (typeof MISSION_STEP_STATUSES)[number];
 export type ExecutionStatus = (typeof EXECUTION_STATUSES)[number];
 export type ExitReason = (typeof EXIT_REASONS)[number];
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
@@ -114,6 +117,8 @@ export type MissionStep = {
   kind: MissionStepKind;
   status: MissionStepStatus;
   dependsOn: string[];
+  /** Programa que executa a tarefa. */
+  agent: MissionAgent;
   /** Quando existe, a etapa é uma tarefa: roda numa sessão própria, depois das que ela depende. */
   role?: MissionRole;
   startedAt?: string;

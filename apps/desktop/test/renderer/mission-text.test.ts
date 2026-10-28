@@ -187,7 +187,13 @@ describe('worktreeName', () => {
 });
 
 describe('missionTabCounts', () => {
-  const step = (id: string) => ({ id, position: 1, title: id, status: 'pending' as const });
+  const step = (id: string) => ({
+    id,
+    position: 1,
+    title: id,
+    status: 'pending' as const,
+    agent: 'claude-code' as const,
+  });
   const run = (passed: number, failed: number) =>
     event({
       eventType: 'verification.completed',
@@ -319,9 +325,16 @@ describe('formatTime', () => {
 
 describe('papel e dependência da tarefa', () => {
   const steps = [
-    { id: 'a', position: 1, title: 'A', status: 'pending' as const },
-    { id: 'b', position: 2, title: 'B', status: 'pending' as const },
-    { id: 'c', position: 3, title: 'C', status: 'pending' as const, dependsOn: ['a', 'b'] },
+    { id: 'a', position: 1, title: 'A', status: 'pending' as const, agent: 'claude-code' as const },
+    { id: 'b', position: 2, title: 'B', status: 'pending' as const, agent: 'claude-code' as const },
+    {
+      id: 'c',
+      position: 3,
+      title: 'C',
+      status: 'pending' as const,
+      agent: 'claude-code' as const,
+      dependsOn: ['a', 'b'],
+    },
   ];
 
   it('traduz o papel e deixa vazio quando a etapa não é tarefa', () => {

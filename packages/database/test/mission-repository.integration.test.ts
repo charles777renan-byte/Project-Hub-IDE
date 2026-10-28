@@ -131,6 +131,7 @@ describe('etapas do plano', () => {
       kind: 'custom',
       status: 'pending',
       dependsOn: [],
+      agent: 'claude-code',
     });
 
     repo.insertSteps([step('s1', 1), step('s2', 2)]);
@@ -284,6 +285,7 @@ describe('consultas para a interface', () => {
     kind: 'custom',
     status: 'pending',
     dependsOn: [],
+    agent: 'claude-code',
   });
 
   it('lista as missões do projeto, da atualizada mais recentemente para a mais antiga', () => {
@@ -370,6 +372,7 @@ describe('exclusão de missão', () => {
     kind: 'custom',
     status: 'failed',
     dependsOn: [],
+    agent: 'claude-code',
   });
   const audit = (aggregateType: 'mission' | 'execution' | 'project', aggregateId: string) => ({
     aggregateType,
@@ -443,6 +446,7 @@ describe('tarefas da missão', () => {
     kind: 'custom',
     status: 'pending',
     dependsOn: [],
+    agent: 'claude-code',
   });
 
   it('guarda o papel da etapa e a tarefa da tentativa, e atualiza o andamento da etapa', () => {
@@ -465,5 +469,47 @@ describe('tarefas da missão', () => {
     repo.insertSteps([step('s1', 'missao-1')]);
 
     expect(repo.listSteps('missao-1')[0]).not.toHaveProperty('role');
+  });
+
+  it('guarda o programa da tarefa e devolve na leitura', () => {
+    repo.insertMission(mission());
+    repo.replaceSteps('missao-1', [
+      {
+        id: 's1',
+        missionId: 'missao-1',
+        position: 1,
+        title: 'Passo',
+        description: '',
+        kind: 'custom',
+        status: 'pending',
+        dependsOn: [],
+        agent: 'claude-code',
+      },
+    ]);
+
+    expect(repo.listSteps('missao-1')[0]?.agent).toBe('claude-code');
+  });
+
+  it('recusa um programa fora da lista (CHECK)', () => {
+    repo.insertMission(mission());
+
+    expect(() =>
+      db.$client
+        .prepare(
+          "INSERT INTO mission_steps (id, mission_id, position, title, description, kind, status, depends_on, agent) VALUES ('s9', 'missao-1', 1, 't', '', 'custom', 'pending', '[]', 'gpt')",
+        )
+        .run(),
+    ).toThrow(/CHECK constraint failed/);
+  });
+
+  it('sem informar o programa na inserção direta, a coluna assume claude-code (DEFAULT)', () => {
+    repo.insertMission(mission());
+    db.$client
+      .prepare(
+        "INSERT INTO mission_steps (id, mission_id, position, title, description, kind, status, depends_on) VALUES ('s8', 'missao-1', 1, 't', '', 'custom', 'pending', '[]')",
+      )
+      .run();
+
+    expect(repo.listSteps('missao-1')[0]?.agent).toBe('claude-code');
   });
 });

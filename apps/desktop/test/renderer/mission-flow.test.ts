@@ -30,6 +30,7 @@ const step = (position: number, status: MissionStepDto['status']): MissionStepDt
   position,
   title: `Etapa ${position}`,
   status,
+  agent: 'claude-code',
 });
 
 const execution = (attempt: number, status: ExecutionDto['status'] = 'running'): ExecutionDto => ({

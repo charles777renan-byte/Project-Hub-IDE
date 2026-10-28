@@ -37,7 +37,7 @@ type ExecutionChanges = Partial<
   >
 >;
 type StepChanges = Partial<Pick<MissionStep, 'status' | 'startedAt' | 'finishedAt'>>;
-type ApprovalChanges =Partial<Pick<ApprovalRequest, 'status' | 'decidedAt' | 'decisionNote'>>;
+type ApprovalChanges = Partial<Pick<ApprovalRequest, 'status' | 'decidedAt' | 'decisionNote'>>;
 
 /**
  * Repositório de missões, execuções, aprovações e auditoria. Tem o mesmo formato que a porta
@@ -88,6 +88,7 @@ function toStep(row: StepRow): MissionStep {
     kind: row.kind,
     status: row.status,
     dependsOn: row.dependsOn,
+    agent: row.agent,
   };
   if (row.role !== null) step.role = row.role;
   if (row.startedAt !== null) step.startedAt = row.startedAt;
@@ -182,6 +183,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
           kind: step.kind,
           status: step.status,
           dependsOn: step.dependsOn,
+          agent: step.agent,
           role: step.role ?? null,
           startedAt: step.startedAt ?? null,
           finishedAt: step.finishedAt ?? null,

@@ -1,4 +1,5 @@
 import {
+  AGENT_VALUES,
   APPROVAL_STATUS_VALUES,
   AUDIT_ACTOR_VALUES,
   AUDIT_AGGREGATE_VALUES,
@@ -15,6 +16,7 @@ import {
   AUDIT_SEVERITIES,
   EXECUTION_STATUSES,
   EXIT_REASONS,
+  MISSION_AGENTS,
   MISSION_STATUSES,
   MISSION_STEP_STATUSES,
 } from '../../../packages/domain/src/index';
@@ -31,6 +33,7 @@ describe('listas de missão do contracts espelham o domínio', () => {
     ['gravidade', AUDIT_SEVERITY_VALUES, AUDIT_SEVERITIES],
     ['autor', AUDIT_ACTOR_VALUES, AUDIT_ACTORS],
     ['agregado', AUDIT_AGGREGATE_VALUES, AUDIT_AGGREGATE_TYPES],
+    ['programa da tarefa', AGENT_VALUES, MISSION_AGENTS],
   ])('%s', (_name, fromContracts, fromDomain) => {
     expect([...fromContracts]).toEqual([...fromDomain]);
   });

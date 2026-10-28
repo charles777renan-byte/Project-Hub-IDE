@@ -1340,6 +1340,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       kind: 'custom',
       status: 'pending',
       dependsOn: [],
+      agent: 'claude-code',
     }));
     repo.transaction(() => {
       const at = now();
