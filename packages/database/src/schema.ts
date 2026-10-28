@@ -7,6 +7,7 @@ import {
   EXIT_REASONS,
   MISSION_PRIORITIES,
   MISSION_STATUSES,
+  MISSION_ROLES,
   MISSION_STEP_KINDS,
   MISSION_STEP_STATUSES,
   PROTECTED_ACTIONS,
@@ -107,11 +108,16 @@ export const missionSteps = sqliteTable(
     kind: text('kind', { enum: MISSION_STEP_KINDS }).notNull(),
     status: text('status', { enum: MISSION_STEP_STATUSES }).notNull(),
     dependsOn: text('depends_on', { mode: 'json' }).$type<string[]>().notNull(),
+    role: text('role', { enum: MISSION_ROLES }),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),
   },
   (table) => [
     uniqueIndex('mission_steps_position_unique').on(table.missionId, table.position),
+    check(
+      'mission_steps_role_check',
+      sql`${table.role} IS NULL OR ${table.role} IN (${oneOf(MISSION_ROLES)})`,
+    ),
     check('mission_steps_kind_check', sql`${table.kind} IN (${oneOf(MISSION_STEP_KINDS)})`),
     check('mission_steps_status_check', sql`${table.status} IN (${oneOf(MISSION_STEP_STATUSES)})`),
   ],
@@ -125,6 +131,8 @@ export const executions = sqliteTable(
       .notNull()
       .references(() => missions.id, { onDelete: 'cascade' }),
     attempt: integer('attempt').notNull(),
+    /** Tarefa que a tentativa executa; vazio quando ela roda a missão inteira. Sem chave estrangeira: `replaceSteps` recria as tarefas. */
+    stepId: text('step_id'),
     status: text('status', { enum: EXECUTION_STATUSES }).notNull(),
     agentSessionId: text('agent_session_id'),
     /** Última saída do agente aplicada. Opaca: o adaptador a interpreta, para retomar de onde parou. */

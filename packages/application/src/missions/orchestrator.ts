@@ -25,6 +25,7 @@ import type {
 } from '../ports';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
+import { nextTask, taskPrompt } from './tasks';
 import { failInterruptedExecution, openExecutionsAtStart } from './startup-recovery';
 import { expirePendingApprovals, moveMission } from './transitions';
 
@@ -335,7 +336,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * Abre a tentativa: a execução `running` e a missão `running`, numa só transação.
    * A nova tentativa é o número seguinte ao maior que já existe.
    */
-  function openExecution(mission: Mission, queued?: Execution): Execution {
+  function openExecution(mission: Mission, queued?: Execution, task?: MissionStep): Execution {
     return repo.transaction(() => {
       const at = now();
       let execution: Execution;
@@ -347,13 +348,24 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
           attempt,
           status: 'running',
           startedAt: at,
+          ...(task === undefined ? {} : { stepId: task.id }),
         };
         repo.insertExecution(execution);
       } else {
         // A tentativa que estava na fila começa agora: a mesma linha, com a hora de início.
-        execution = { ...queued, status: 'running', startedAt: at };
-        repo.updateExecution(queued.id, { status: 'running', startedAt: at });
+        execution = {
+          ...queued,
+          status: 'running',
+          startedAt: at,
+          ...(task === undefined ? {} : { stepId: task.id }),
+        };
+        repo.updateExecution(queued.id, {
+          status: 'running',
+          startedAt: at,
+          ...(task === undefined ? {} : { stepId: task.id }),
+        });
       }
+      if (task !== undefined) repo.updateStep(task.id, { status: 'running', startedAt: at });
       moveMission(repo, mission.id, 'running', {
         actor: 'user',
         at,
@@ -448,6 +460,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         exitReason: outcome.exitReason,
         finishedAt: at,
       });
+      const stepId = repo.getExecution(executionId)?.stepId;
+      if (stepId !== undefined) repo.updateStep(stepId, { status: outcome.status, finishedAt: at });
       expirePendingApprovals(repo, executionId, at);
       moveMission(repo, run.missionId, outcome.missionStatus ?? outcome.status, {
         actor: outcome.actor,
@@ -542,7 +556,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     executionId: string,
     event: AgentEvent,
     summary?: WorkspaceSummary,
-  ): 'continue' | 'wait' | 'done' {
+  ): 'continue' | 'wait' | 'done' | 'chain' {
     switch (event.type) {
       case 'approval.requested':
         repo.transaction(() => {
@@ -597,7 +611,21 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         });
         return 'continue';
 
-      case 'session.completed':
+      case 'session.completed': {
+        // Terminou uma tarefa e há outra pronta: a tarefa fecha, a missão segue `running` e a próxima começa.
+        const stepId = repo.getExecution(executionId)?.stepId;
+        if (stepId !== undefined && nextTask(repo.listSteps(run.missionId), stepId) !== undefined) {
+          const at = now();
+          repo.updateExecution(executionId, {
+            status: 'succeeded',
+            exitReason: 'completed',
+            finishedAt: at,
+          });
+          repo.updateStep(stepId, { status: 'succeeded', finishedAt: at });
+          expirePendingApprovals(repo, executionId, at);
+          recordEvent(executionId, event);
+          return 'chain';
+        }
         endRun(
           run,
           executionId,
@@ -618,6 +646,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
           },
         );
         return 'done';
+      }
 
       case 'session.failed':
         endRun(
@@ -639,10 +668,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * estado em que parou. Interrompida pelo cancelamento, espera o fim gravado por ele.
    */
   async function drive(run: ActiveRun): Promise<Execution> {
-    const { iterator, executionId } = run;
-    if (iterator === undefined || executionId === undefined) {
+    if (run.iterator === undefined || run.executionId === undefined) {
       throw new Error('Execução sem sessão de agente.');
     }
+    let iterator: AsyncIterator<AgentEvent> = run.iterator;
+    let executionId: string = run.executionId;
     for (;;) {
       const pulled = await pull(run, iterator);
       if (pulled.kind === 'aborted' || run.controller.signal.aborted) {
@@ -700,6 +730,19 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         persistCursor(run, executionId);
         return result;
       });
+      if (outcome === 'chain') {
+        if (
+          !(await startNextTask(run)) ||
+          run.iterator === undefined ||
+          run.executionId === undefined
+        ) {
+          return requireExecution(executionId);
+        }
+        // A sessão seguinte tem iterador e execução próprios.
+        iterator = run.iterator;
+        executionId = run.executionId;
+        continue;
+      }
       // Resposta no terminal: o app não espera por ela, e a leitura segue até o aviso de que chegou.
       const answeredOutside =
         outcome === 'wait' &&
@@ -707,6 +750,85 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         run.session?.externalInput === true;
       if (outcome !== 'continue' && !answeredOutside) return requireExecution(executionId);
     }
+  }
+
+  /**
+   * Abre a sessão da próxima tarefa no mesmo worktree, com a missão ainda `running`. Devolve `false`
+   * quando não seguiu: a missão foi cancelada ou a tarefa não pôde começar (e então a missão falha).
+   */
+  async function startNextTask(run: ActiveRun): Promise<boolean> {
+    const mission = repo.getMission(run.missionId);
+    const steps = repo.listSteps(run.missionId);
+    const task = nextTask(steps);
+    const cwd = mission?.worktreePath;
+    if (mission === undefined || task === undefined || cwd === undefined) {
+      failChain(run);
+      return false;
+    }
+    let session: AgentSession;
+    try {
+      session = await agent.start(
+        { cwd, prompt: taskPrompt(mission, task, steps) },
+        run.controller.signal,
+      );
+    } catch (error) {
+      console.error('Não foi possível iniciar o agente da próxima tarefa:', error);
+      failChain(run);
+      return false;
+    }
+    if (run.controller.signal.aborted) {
+      await session.stop(CANCEL_REASON);
+      await run.finalized;
+      return false;
+    }
+    let execution: Execution;
+    try {
+      execution = repo.transaction(() => {
+        const at = now();
+        const attempt = Math.max(0, ...repo.listExecutions(mission.id).map((e) => e.attempt)) + 1;
+        const opened: Execution = {
+          id: newId(),
+          missionId: mission.id,
+          attempt,
+          stepId: task.id,
+          status: 'running',
+          startedAt: at,
+        };
+        repo.insertExecution(opened);
+        repo.updateStep(task.id, { status: 'running', startedAt: at });
+        repo.appendAudit({
+          aggregateType: 'execution',
+          aggregateId: opened.id,
+          eventType: 'execution.started',
+          severity: 'info',
+          actor: 'system',
+          payload: { attempt, stepId: task.id },
+          createdAt: at,
+        });
+        return opened;
+      });
+    } catch (error) {
+      console.error('Não foi possível abrir a execução da próxima tarefa:', error);
+      await session.stop('Não foi possível abrir a tentativa.');
+      failChain(run);
+      return false;
+    }
+    run.session = session;
+    run.iterator = session.events()[Symbol.asyncIterator]();
+    run.executionId = execution.id;
+    return true;
+  }
+
+  /** A próxima tarefa não pôde começar: a missão falha, e a vaga volta. */
+  function failChain(run: ActiveRun): void {
+    repo.transaction(() => {
+      moveMission(repo, run.missionId, 'failed', {
+        actor: 'system',
+        at: now(),
+        changes: { finishedAt: now() },
+      });
+    });
+    forget(run);
   }
 
   /** Roda uma chamada ao agente. Devolve `false` quando ela falha, e registra o erro. */
@@ -786,10 +908,16 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       return failure('MISSION_INVALID_STATE', 'A missão foi cancelada antes de iniciar.');
     }
 
+    // Com tarefas no plano, a sessão cuida de uma delas; sem tarefa pendente (ou sem tarefas), da missão toda.
+    const steps = repo.listSteps(mission.id);
+    const task = nextTask(steps);
     let session: AgentSession;
     try {
       session = await agent.start(
-        { cwd: workspace.cwd, prompt: promptFor(mission) },
+        {
+          cwd: workspace.cwd,
+          prompt: task === undefined ? promptFor(mission) : taskPrompt(mission, task, steps),
+        },
         run.controller.signal,
       );
     } catch (error) {
@@ -808,7 +936,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
     let execution: Execution;
     try {
-      execution = openExecution(mission, queued);
+      execution = openExecution(mission, queued, task);
     } catch (error) {
       forget(run);
       await session.stop('Não foi possível abrir a tentativa.');

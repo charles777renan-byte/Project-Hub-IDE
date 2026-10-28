@@ -113,6 +113,37 @@ export function statusIcon(status: MissionStatus): LucideIcon | undefined {
   return STATUS_ICON[status];
 }
 
+const ROLE_LABEL: Record<NonNullable<MissionStepDto['role']>, string> = {
+  frontend: 'Frontend',
+  backend: 'Backend',
+  database: 'Banco de dados',
+  docs: 'Documentação',
+  qa: 'QA',
+  general: 'Geral',
+};
+
+/** Papel da tarefa em português; vazio quando a etapa não é uma tarefa. */
+export function roleLabel(role: MissionStepDto['role']): string | undefined {
+  return role === undefined ? undefined : ROLE_LABEL[role];
+}
+
+/** "depois de 1 e 3": as tarefas que precisam terminar antes, pelo número no plano. */
+export function dependencyText(
+  step: MissionStepDto,
+  steps: readonly MissionStepDto[],
+): string | undefined {
+  const numbers = (step.dependsOn ?? [])
+    .map((id) => steps.find((other) => other.id === id)?.position)
+    .filter((position): position is number => position !== undefined);
+  if (numbers.length === 0) return undefined;
+  const list = numbers.map(String);
+  const text =
+    list.length === 1
+      ? (list[0] ?? '')
+      : `${list.slice(0, -1).join(', ')} e ${list[list.length - 1] ?? ''}`;
+  return `depois de ${text}`;
+}
+
 export function stepStatus(status: MissionStepDto['status']): { label: string; tone: Tone } {
   return STEP_STATUS[status];
 }
