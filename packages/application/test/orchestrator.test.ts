@@ -433,6 +433,180 @@ describe('planMission com o planejador', () => {
   });
 });
 
+describe('editPlanStep', () => {
+  /** Missão planned com o plano do planejador: 3 tarefas encadeadas. */
+  async function plannedHarness(): Promise<{ h: Harness; ids: string[] }> {
+    const h = harness({ planner: fakePlanner(() => OK_PLAN) });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    data(await h.orchestrator.planMission(MISSION));
+    return { h, ids: h.repo.listSteps(MISSION).map((step) => step.id) };
+  }
+
+  it('renomeia, devolve o plano novo, grava na lista seguinte e audita plan.edited', async () => {
+    const { h, ids } = await plannedHarness();
+
+    const plan = data(
+      await h.orchestrator.editPlanStep({
+        missionId: MISSION,
+        stepId: ids[1] as string,
+        edit: { op: 'rename', title: '  Corrigir a senha  ' },
+      }),
+    );
+
+    expect(plan.missionId).toBe(MISSION);
+    expect(plan.steps.map((step) => step.title)).toEqual([
+      'Ler o código',
+      'Corrigir a senha',
+      'Rodar os testes',
+    ]);
+    expect(h.repo.listSteps(MISSION)).toEqual(plan.steps);
+    expect(h.repo.listSteps(MISSION).map((step) => step.id)).toEqual(ids);
+    const edited = h.repo.audit().filter((e) => e.eventType === 'plan.edited');
+    expect(edited).toHaveLength(1);
+    expect(edited[0]).toMatchObject({
+      aggregateType: 'mission',
+      aggregateId: MISSION,
+      actor: 'user',
+      payload: { op: 'rename', title: 'Corrigir a senha' },
+    });
+    expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+  });
+
+  it('remove uma tarefa e religa as dependências na lista seguinte', async () => {
+    const { h, ids } = await plannedHarness();
+
+    data(
+      await h.orchestrator.editPlanStep({
+        missionId: MISSION,
+        stepId: ids[1] as string,
+        edit: { op: 'remove' },
+      }),
+    );
+
+    const stored = h.repo.listSteps(MISSION);
+    expect(stored.map((step) => [step.position, step.title])).toEqual([
+      [1, 'Ler o código'],
+      [2, 'Rodar os testes'],
+    ]);
+    expect(stored[1]?.dependsOn).toEqual([ids[0]]);
+    expect(h.repo.audit().find((e) => e.eventType === 'plan.edited')?.payload).toMatchObject({
+      op: 'remove',
+      title: 'Corrigir o login',
+    });
+  });
+
+  it('uma edição inválida não grava nada nem audita', async () => {
+    const { h, ids } = await plannedHarness();
+    const before = h.repo.listSteps(MISSION);
+
+    const result = await h.orchestrator.editPlanStep({
+      missionId: MISSION,
+      stepId: ids[2] as string,
+      edit: { op: 'move', toPosition: 1 },
+    });
+
+    expect(codeOf(result)).toBe('VALIDATION_FAILED');
+    expect(h.repo.listSteps(MISSION)).toEqual(before);
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.edited')).toEqual([]);
+  });
+
+  it('tarefa que não está no plano devolve VALIDATION_FAILED', async () => {
+    const { h } = await plannedHarness();
+
+    const result = await h.orchestrator.editPlanStep({
+      missionId: MISSION,
+      stepId: 'outra',
+      edit: { op: 'remove' },
+    });
+
+    expect(codeOf(result)).toBe('VALIDATION_FAILED');
+  });
+
+  it('só edita com a missão planned: em running devolve MISSION_INVALID_STATE', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture({ status: 'running' }));
+    h.repo.insertSteps([
+      {
+        id: 's1',
+        missionId: MISSION,
+        position: 1,
+        title: 'Única',
+        description: '',
+        kind: 'custom',
+        status: 'pending',
+        dependsOn: [],
+        agent: 'claude-code',
+      },
+    ]);
+
+    const result = await h.orchestrator.editPlanStep({
+      missionId: MISSION,
+      stepId: 's1',
+      edit: { op: 'rename', title: 'Outra' },
+    });
+
+    expect(codeOf(result)).toBe('MISSION_INVALID_STATE');
+    expect(h.repo.listSteps(MISSION)[0]?.title).toBe('Única');
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.edited')).toEqual([]);
+  });
+
+  it('missão em rascunho também é recusada, e missão inexistente devolve MISSION_NOT_FOUND', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    const edit = { op: 'remove' } as const;
+
+    expect(
+      codeOf(await h.orchestrator.editPlanStep({ missionId: MISSION, stepId: 's1', edit })),
+    ).toBe('MISSION_INVALID_STATE');
+    expect(
+      codeOf(await h.orchestrator.editPlanStep({ missionId: 'nao-existe', stepId: 's1', edit })),
+    ).toBe('MISSION_NOT_FOUND');
+  });
+
+  it('recusa editar enquanto o plano está sendo gerado, e o plano novo não é sobrescrito', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    let calls = 0;
+    const planner = fakePlanner(() => (++calls === 1 ? OK_PLAN : gate.promise));
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+    data(await h.orchestrator.planMission(MISSION));
+    const ids = h.repo.listSteps(MISSION).map((step) => step.id);
+
+    const replanning = h.orchestrator.planMission(MISSION, { instruction: 'de novo' });
+    const result = await h.orchestrator.editPlanStep({
+      missionId: MISSION,
+      stepId: ids[0] as string,
+      edit: { op: 'rename', title: 'Editada no meio' },
+    });
+
+    expect(codeOf(result)).toBe('MISSION_INVALID_STATE');
+    expect(result.ok ? '' : result.error.message).toBe(
+      'O plano está sendo gerado de novo. Espere terminar para editar.',
+    );
+    gate.resolve({
+      ok: true,
+      data: [{ title: 'Plano novo', description: '', role: 'general', dependsOn: [] }],
+    });
+    data(await replanning);
+    expect(h.repo.listSteps(MISSION).map((step) => step.title)).toEqual(['Plano novo']);
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.edited')).toEqual([]);
+  });
+
+  it('libera a edição depois que o planejamento termina', async () => {
+    const { h, ids } = await plannedHarness();
+
+    data(
+      await h.orchestrator.editPlanStep({
+        missionId: MISSION,
+        stepId: ids[0] as string,
+        edit: { op: 'agent', agent: 'claude-code' },
+      }),
+    );
+
+    expect(h.repo.audit().filter((e) => e.eventType === 'plan.edited')).toHaveLength(1);
+  });
+});
+
 describe('startMission', () => {
   it('iniciar antes de aprovar o plano retorna MISSION_INVALID_STATE', async () => {
     const h = harness();

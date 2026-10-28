@@ -28,6 +28,7 @@ import type {
 import { isAvailable } from '../projects/list-projects';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
+import { applyPlanEdit, planEditAudit, type PlanEdit } from './plan-edit';
 import { tasksToSteps, validatePlan } from './plan-validation';
 import { nextTask, taskPrompt } from './tasks';
 import { failInterruptedExecution, openExecutionsAtStart } from './startup-recovery';
@@ -85,6 +86,15 @@ export interface Orchestrator {
     missionId: string,
     options?: { instruction?: string },
   ): Promise<AppResult<MissionPlan>>;
+  /**
+   * Edita uma tarefa do plano (renomear, remover, reordenar ou trocar o programa) numa missão `planned`.
+   * A edição que deixaria o plano inválido é recusada sem gravar nada.
+   */
+  editPlanStep(input: {
+    missionId: string;
+    stepId: string;
+    edit: PlanEdit;
+  }): Promise<AppResult<MissionPlan>>;
   /** `planned` -> `queued`. */
   approvePlan(missionId: string): Promise<AppResult<void>>;
   /** `queued` -> `running`. Devolve a execução no estado em que o agente parou. */
@@ -1477,6 +1487,50 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     }
   }
 
+  /**
+   * Edição de uma tarefa do plano. Recusada enquanto um planejamento da missão está em andamento, para
+   * que ele não sobrescreva a edição depois. A missão e as etapas são relidas dentro da transação, e as
+   * etapas novas e a auditoria `plan.edited` são gravadas nela.
+   */
+  async function editPlanStep(input: {
+    missionId: string;
+    stepId: string;
+    edit: PlanEdit;
+  }): Promise<AppResult<MissionPlan>> {
+    const { missionId, stepId, edit } = input;
+    if (planning.has(missionId)) {
+      return failure(
+        'MISSION_INVALID_STATE',
+        'O plano está sendo gerado de novo. Espere terminar para editar.',
+      );
+    }
+    return repo.transaction((): AppResult<MissionPlan> => {
+      const mission = repo.getMission(missionId);
+      if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
+      if (mission.status !== 'planned') {
+        return failure('MISSION_INVALID_STATE', 'Só um plano ainda não iniciado pode ser editado.');
+      }
+      const current = repo.listSteps(missionId);
+      const edited = applyPlanEdit(current, stepId, edit);
+      const target = current.find((step) => step.id === stepId);
+      if (!edited.ok) return edited;
+      if (target === undefined) {
+        return failure('VALIDATION_FAILED', 'A tarefa não está mais neste plano.');
+      }
+      repo.replaceSteps(missionId, edited.data);
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: missionId,
+        eventType: 'plan.edited',
+        severity: 'info',
+        actor: 'user',
+        payload: planEditAudit(edit, target),
+        createdAt: now(),
+      });
+      return { ok: true, data: { missionId, steps: edited.data } };
+    });
+  }
+
   async function approvePlan(missionId: string): Promise<AppResult<void>> {
     const mission = repo.getMission(missionId);
     if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
@@ -1565,6 +1619,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
   return {
     planMission: gated(planMission),
+    editPlanStep: gated(editPlanStep),
     approvePlan: gated(approvePlan),
     startMission: gated(startMission),
     cancelMission: gated(cancelMission),
