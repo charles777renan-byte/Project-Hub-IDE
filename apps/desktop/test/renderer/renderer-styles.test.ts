@@ -529,6 +529,14 @@ describe('classes removidas', () => {
   });
 });
 
+describe('lateral recolhida', () => {
+  it('não desenha traço na borda: a divisória só aparece com o mouse, e o respiro da esquerda é ela', () => {
+    const css = readCss('workspace.css');
+    expect(css).not.toContain('.app-body--side-collapsed > .pane-tree__separator');
+    expect(ruleDeclarations(css, '.app-body--side-collapsed').get('padding-left')).toBe('0');
+  });
+});
+
 /**
  * Links do app não são sublinhados nem azuis do navegador (isso faz o app parecer um site): o `a` base herda a
  * cor e não tem sublinhado, e os links de ação do Progresso têm cara de botão (contorno de campo).

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Group, Panel, Separator, type Layout } from 'react-resizable-panels';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Group, Panel, Separator, usePanelRef, type Layout } from 'react-resizable-panels';
 import { useNavigate } from 'react-router';
 import { PaletaComandos } from './components/PaletaComandos';
 import { Sidebar } from './components/Sidebar';
@@ -7,6 +7,7 @@ import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { buildPaletteItems } from './palette-items';
 import { AppRoutes } from './routes';
+import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 import { useSidebarData } from './use-sidebar-data';
 
 const SIDE_STORAGE_KEY = 'project-hub:sidebar-layout';
@@ -53,6 +54,21 @@ export function App() {
   const sidebar = useSidebarData();
   const navigate = useNavigate();
   const itensPaleta = useMemo(() => buildPaletteItems(sidebar, navigate), [sidebar, navigate]);
+  // A lateral recolhida (arrastada até o fim, ou guardada assim): fica escondida, e o botão da barra superior, o
+  // Ctrl+B e a paleta a trazem de volta. O estado nasce da largura guardada e segue o painel (`onResize`).
+  const sidePanel = usePanelRef();
+  const [sideCollapsed, setSideCollapsed] = useState(() => readSideLayout()[SIDE_ID] === 0);
+  const toggleSidebar = useCallback(() => {
+    const panel = sidePanel.current;
+    if (panel === null) return;
+    if (panel.isCollapsed()) panel.expand();
+    else panel.collapse();
+  }, [sidePanel]);
+
+  useEffect(() => {
+    window.addEventListener(TOGGLE_SIDEBAR_EVENT, toggleSidebar);
+    return () => window.removeEventListener(TOGGLE_SIDEBAR_EVENT, toggleSidebar);
+  }, [toggleSidebar]);
 
   // Ctrl+K abre a paleta em qualquer tela; quem fecha é o Escape. Com a paleta aberta, o Ctrl+K já é do cmdk
   // (sobe na lista), que o marca como tratado. Dentro do terminal ele segue para o programa: no Claude Code,
@@ -74,12 +90,31 @@ export function App() {
     return () => window.removeEventListener('keydown', atalhoPaleta);
   }, []);
 
+  // Ctrl+B esconde ou mostra a lateral. Como o Ctrl+K, dentro do terminal ele segue para o programa (no tmux e no
+  // Claude Code, Ctrl+B tem função própria).
+  useEffect(() => {
+    function atalhoLateral(event: KeyboardEvent) {
+      const ctrlB =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'b';
+      if (!ctrlB || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('.terminal-view') !== null)
+        return;
+      event.preventDefault();
+      toggleSidebar();
+    }
+    window.addEventListener('keydown', atalhoLateral);
+    return () => window.removeEventListener('keydown', atalhoLateral);
+  }, [toggleSidebar]);
+
   return (
     <div className="app-shell">
       <RestoreWorkspace />
-      <TopBar />
+      <TopBar sidebarCollapsed={sideCollapsed} onToggleSidebar={toggleSidebar} />
       <Group
-        className="app-body"
+        className={sideCollapsed ? 'app-body app-body--side-collapsed' : 'app-body'}
         orientation="horizontal"
         defaultLayout={readSideLayout()}
         onLayoutChanged={saveSideLayout}
@@ -92,6 +127,8 @@ export function App() {
           maxSize="40"
           collapsible
           collapsedSize={0}
+          panelRef={sidePanel}
+          onResize={(size) => setSideCollapsed(size.inPixels === 0)}
         >
           <div className="app-side">
             <Sidebar onSearch={() => setPaletaAberta(true)} />

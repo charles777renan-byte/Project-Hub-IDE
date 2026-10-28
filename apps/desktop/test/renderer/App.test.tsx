@@ -67,7 +67,10 @@ describe('App', () => {
         </MemoryRouter>,
       );
 
-      // A barra superior vem antes da lateral: primeiro a aba fixa Início, depois o botão de abrir workspace.
+      // A barra superior vem antes da lateral: primeiro o botão da barra lateral, depois a aba fixa Início e o botão
+      // de abrir workspace.
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Ocultar barra lateral' })).toHaveFocus();
       await user.tab();
       expect(homeTab()).toHaveFocus();
       await user.tab();
