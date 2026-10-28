@@ -24,9 +24,11 @@ test('adicionar pela lateral lista o projeto, e as Configurações dele mostram 
   await openProject(page, projectName, 'Configurações');
   // O tipo e a branch padrão do cadastro (antes no cartão da lista de Projetos).
   const facts = page.getByRole('tabpanel', { name: 'Configurações' });
-  await expect(facts.getByText('Repositório Git')).toBeVisible();
   await expect(facts.getByText('Branch padrão')).toBeVisible();
-  await expect(facts.getByText('main', { exact: true })).toBeVisible();
+  await expect(facts.getByText('main · Repositório Git', { exact: true })).toBeVisible();
+  // Grupo e apelido editam em linha: só o valor e um Editar, sem campo aberto.
+  await expect(facts.getByRole('button', { name: 'Editar grupo' })).toBeVisible();
+  await expect(facts.getByRole('textbox')).toHaveCount(0);
   await expect(facts.getByText(projectName, { exact: true })).toBeVisible();
 });
 

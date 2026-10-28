@@ -661,13 +661,13 @@ describe('aba do projeto: visões', () => {
     expect(
       screen.queryByRole('button', { name: 'Abrir terminal', hidden: false }),
     ).not.toBeInTheDocument();
-    expect(await screen.findByRole('form', { name: 'Grupo do projeto' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Editar grupo' })).toBeInTheDocument();
     expect(document.getElementById('project-panel-configuracoes')).not.toHaveAttribute('hidden');
 
     selectView('Worktrees');
     expect(screen.getByTestId('terminal-view')).toBe(terminal);
     // As outras visões só existem enquanto ativas.
-    expect(screen.queryByRole('form', { name: 'Grupo do projeto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar grupo' })).not.toBeInTheDocument();
 
     selectView('Terminais');
     expect(current.search).toBe('?visao=terminais');
@@ -684,7 +684,7 @@ describe('aba do projeto: visões', () => {
     expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
 
     selectView('Configurações');
-    await screen.findByRole('form', { name: 'Grupo do projeto' });
+    await screen.findByRole('button', { name: 'Editar grupo' });
     selectView('Terminais');
 
     expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
@@ -763,8 +763,9 @@ describe('aba do projeto: visões', () => {
     });
     renderAt(undefined, 'p1', '?visao=configuracoes');
 
-    expect(await screen.findByText('main')).toBeInTheDocument();
+    expect(await screen.findByText('main · Repositório Git')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Abrir pasta' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Editar grupo' }));
     await userEvent.type(screen.getByLabelText('Grupo'), 'Trabalho');
     await userEvent.click(
       within(screen.getByRole('form', { name: 'Grupo do projeto' })).getByRole('button', {
@@ -772,6 +773,7 @@ describe('aba do projeto: visões', () => {
       }),
     );
     expect(projectsApi['setGroup']).toHaveBeenCalledWith('p1', 'Trabalho');
+    await userEvent.click(screen.getByRole('button', { name: 'Editar apelido' }));
     await userEvent.type(screen.getByLabelText('Apelido'), 'App');
     await userEvent.click(
       within(screen.getByRole('form', { name: 'Apelido do projeto' })).getByRole('button', {

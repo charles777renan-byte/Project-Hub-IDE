@@ -260,7 +260,7 @@ test('Missão criada pelo formulário: sem violação de CSP e com foco visível
   await form.getByLabel('Título').fill(MISSION.title);
   await form.getByLabel('Objetivo').fill(MISSION.objective);
   await form.getByLabel('Critérios de aceite').fill(MISSION.criterion);
-  await form.getByLabel('Esta missão altera código').check();
+  await form.getByLabel('Altera código').check();
   await expectVisibleFocus(page, 5);
 
   await form.getByRole('button', { name: 'Criar', exact: true }).click();

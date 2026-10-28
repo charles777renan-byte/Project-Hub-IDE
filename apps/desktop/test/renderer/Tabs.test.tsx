@@ -40,6 +40,18 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: 'Segunda' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('o clique foca a aba sem o anel do teclado, mesmo depois de navegar pelo Tab', async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    render(<Harness />);
+    const segunda = screen.getByRole('tab', { name: 'Segunda' });
+
+    await userEvent.click(segunda);
+
+    const primeiro = focus.mock.calls.findIndex((_, index) => focus.mock.contexts[index] === segunda);
+    expect(focus.mock.calls[primeiro]).toEqual([{ focusVisible: false }]);
+    focus.mockRestore();
+  });
+
   it('sem panelId, as abas controlam o painel "tab-panel"', () => {
     render(<Harness />);
 

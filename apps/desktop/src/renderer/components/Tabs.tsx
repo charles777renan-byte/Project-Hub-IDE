@@ -1,10 +1,20 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
+import type { MouseEvent } from 'react';
 
 /**
  * Contagem opcional de uma aba: `value` é o número curto ao lado do nome (escondido do leitor de tela)
  * e `label` é a frase que o leitor de tela lê como descrição da aba. O nome da aba não muda.
  */
 export type TabCount = { value: string; label: string };
+
+/**
+ * O Radix foca a aba por script no `mousedown`, e o Chromium herda nesse foco o modo da última navegação: se ela
+ * foi pelo teclado (Tab, um atalho), o clique acende o anel de foco. Focar antes, com `focusVisible: false`, deixa
+ * o clique sem anel; o `focus()` do Radix logo depois não muda nada, porque a aba já tem o foco.
+ */
+function focusWithoutRing(event: MouseEvent<HTMLButtonElement>) {
+  if (event.button === 0 && !event.ctrlKey) event.currentTarget.focus({ focusVisible: false });
+}
 
 /** Uma aba: o `id` é o que a página guarda, o `label` é o que a pessoa lê. */
 export type TabItem<T extends string> = { id: T; label: string; count?: TabCount };
@@ -60,6 +70,7 @@ export function Tabs<T extends string>({
               aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
               aria-describedby={tab.count === undefined ? undefined : countId}
               className={`tab tab--${tab.id}`}
+              onMouseDown={focusWithoutRing}
               onClick={
                 tab.id === active && onReselect !== undefined ? () => onReselect(tab.id) : undefined
               }
