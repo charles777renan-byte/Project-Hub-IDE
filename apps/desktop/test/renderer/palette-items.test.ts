@@ -38,12 +38,12 @@ function itemNamed(items: ReturnType<typeof buildPaletteItems>, rotulo: string) 
 }
 
 describe('buildPaletteItems', () => {
-  it('leva cada projeto ao detalhe dele e cada missão à sua tela', () => {
+  it('leva cada projeto à aba dele, na visão das missões, e cada missão à sua tela', () => {
     const navigate = vi.fn();
     const items = buildPaletteItems(COM_DADOS, navigate);
 
     itemNamed(items, 'app').executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects/p1');
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1?visao=missoes');
 
     itemNamed(items, 'Ajustar login').executar();
     expect(navigate).toHaveBeenLastCalledWith('/projects/p1/missions/m1');
@@ -102,10 +102,14 @@ describe('buildPaletteItems', () => {
     const item = itemNamed(items, 'Nova missão em app');
     expect(item.grupo).toBe('Ações');
     item.executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects/p1', { state: { newMission: true } });
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1?visao=missoes', {
+      state: { newMission: true },
+    });
 
     itemNamed(items, 'Nova missão em site').executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects/p2', { state: { newMission: true } });
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p2?visao=missoes', {
+      state: { newMission: true },
+    });
   });
 
   it('enquanto a barra carrega, sobram só as ações que não dependem de projeto', () => {

@@ -118,7 +118,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
         <Routes>
           <Route path={ROUTE_PATHS.missionDetail} element={<MissionPage />} />
-          <Route path={ROUTE_PATHS.projectDetail} element={<p>Página do projeto</p>} />
+          <Route path={ROUTE_PATHS.workspace} element={<p>Página do projeto</p>} />
         </Routes>
       </MemoryRouter>
       <Toaster />
@@ -147,7 +147,7 @@ describe('MissionPage: cabeçalho', () => {
     const summary = screen.getByRole('region', { name: 'Resumo da missão' });
     expect(within(summary).getByRole('link', { name: 'app' })).toHaveAttribute(
       'href',
-      '/projects/p1',
+      '/workspaces/p1?visao=missoes',
     );
     expect(within(summary).getByText('Aguarda aprovação do plano')).toHaveClass(
       'chip',

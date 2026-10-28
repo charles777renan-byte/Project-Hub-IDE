@@ -1,0 +1,168 @@
+/*
+ * Aba do projeto (pages/WorkspacePage.tsx, components/project/*): o cabeçalho de uma linha com o nome, as
+ * visões, Nova missão e Mais ações, e o painel da visão abaixo. Só usa tokens de cor de tokens.css (--bg,
+ * --surface, --line, --field-line, --muted e --text), sem cor literal, sem animação. Ligado depois do
+ * statusbar.css e antes do workspace.css no index.html.
+ */
+.app-main:has(.project-tab) {
+  padding: 0;
+  overflow: hidden;
+  /* Sem fundo próprio: o brilho da janela fica visível nos vãos dos painéis de terminal. */
+  background: transparent;
+}
+
+.app-main:has(.project-tab) .app-main__content {
+  max-width: none;
+  height: 100%;
+}
+
+.project-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Cabeçalho: uma linha de 40px que cede para duas quando a janela é estreita (o nome trunca primeiro). */
+.project-header {
+  flex: none;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.project-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-4);
+  min-height: 40px;
+}
+
+.project-header .project-header__title {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 24rem;
+}
+
+.project-header .project-header__title h1 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.9375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-header__name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Visões: abas sublinhadas, a ativa com o traço claro embaixo, alinhadas à base do cabeçalho. */
+.project-header .tabs {
+  flex-wrap: nowrap;
+  align-self: stretch;
+  gap: 0 var(--space-3);
+  margin: 0;
+}
+
+.project-header .tab {
+  flex: none;
+  margin: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0 var(--space-1);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.project-header .tab:hover {
+  background: transparent;
+}
+
+.project-header .tab[aria-selected='true'] {
+  border-bottom-color: var(--text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.project-header__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.project-header__actions button,
+.project-header .menu-acoes__gatilho {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.project-header .confirm-inline,
+.project-header .page-alert {
+  margin: 0 0 var(--space-2);
+}
+
+/* O painel da visão ocupa o resto da altura. Os terminais vão de borda a borda; as outras visões têm respiro e rolam. */
+.project-tab__panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.project-tab__panel--terminais {
+  overflow: hidden;
+}
+
+.project-tab__panel--missoes,
+.project-tab__panel--worktrees,
+.project-tab__panel--configuracoes {
+  padding: var(--space-4);
+  overflow: auto;
+}
+
+.project-tab .workspace-status,
+.project-tab .workspace-missing {
+  padding: var(--space-3);
+}
+
+/* Configurações: a pasta e os fatos no alto, e um formulário por linha, com o aviso de situação logo abaixo. */
+.project-settings {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 40rem;
+}
+
+.project-settings__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.project-settings__form label {
+  min-width: 5rem;
+  color: var(--muted);
+}
+
+.project-settings__form input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.project-settings .project-settings__status {
+  min-height: 1.25rem;
+  margin: calc(var(--space-2) * -1) 0 0 5.5rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}

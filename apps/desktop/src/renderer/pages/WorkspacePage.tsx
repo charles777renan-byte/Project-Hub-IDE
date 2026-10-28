@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
+import { ProjectHeader } from '../components/project/ProjectHeader';
+import { ProjectSettings } from '../components/project/ProjectSettings';
+import { WorktreesTab } from '../components/WorktreesTab';
+import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
-import { ROUTE_PATHS } from '../routes';
+import { parseProjectView, VIEW_PARAM } from '../project-views';
+import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
 import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
@@ -27,8 +32,18 @@ function requestedTerminal(state: unknown): string | null {
   return typeof id === 'string' && id !== '' ? id : null;
 }
 
+/**
+ * A aba do projeto (`/workspaces/:projectId?visao=...`): o cabeçalho de uma linha com as visões e, abaixo, a
+ * visão escolhida. Terminais (a padrão) é o workspace de painéis; Missões é um marcador por enquanto;
+ * Worktrees e Configurações mostram a lista e os formulários do projeto. Só a visão ativa fica montada: ao
+ * trocar, os terminais saem da tela e as sessões seguem vivas no processo principal. Projeto arquivado ou
+ * removido com a aba aberta mostra a mensagem e o link para o Início.
+ */
 export function WorkspacePage() {
   const { projectId = '' } = useParams();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const view = parseProjectView(params.get(VIEW_PARAM));
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -36,12 +51,39 @@ export function WorkspacePage() {
   if (sidebar.status === 'ready' && project === undefined) {
     return (
       <div className="workspace-missing">
-        <p>O projeto não foi encontrado.</p>
-        <Link to={ROUTE_PATHS.home}>Voltar ao Início</Link>
+        <p>{PROJECT_TEXT.notFound}</p>
+        <Link to={ROUTE_PATHS.home}>{PROJECT_TEXT.backHome}</Link>
       </div>
     );
   }
-  return <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />;
+  return (
+    <div className="project-tab">
+      {project === undefined ? null : (
+        <ProjectHeader
+          project={project}
+          onNewMission={() =>
+            navigate(projectViewPath(projectId, 'missoes'), { state: { newMission: true } })
+          }
+        />
+      )}
+      <div
+        role="tabpanel"
+        id="tab-panel"
+        {...(project === undefined ? {} : { 'aria-labelledby': `tab-${view}` })}
+        className={`project-tab__panel project-tab__panel--${view}`}
+      >
+        {view === 'terminais' ? (
+          <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />
+        ) : view === 'missoes' ? (
+          <p className="page-note">{PROJECT_TEXT.missionsSoon}</p>
+        ) : view === 'worktrees' ? (
+          <WorktreesTab projectId={projectId} />
+        ) : project === undefined ? null : (
+          <ProjectSettings project={project} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 function WorkspaceBody({ projectId, projectName }: { projectId: string; projectName: string }) {
@@ -104,8 +146,20 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     if (wanted === null || !ready || consumed.current === location.key) return;
     consumed.current = location.key;
     showTerminal(wanted, terminals.find((item) => item.id === wanted)?.provider);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [wanted, ready, location.key, location.pathname, showTerminal, navigate, terminals]);
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [
+    wanted,
+    ready,
+    location.key,
+    location.pathname,
+    location.search,
+    showTerminal,
+    navigate,
+    terminals,
+  ]);
 
   if (workspace.state.status === 'loading') {
     return <p className="workspace-status">Abrindo o workspace…</p>;
@@ -114,7 +168,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     return (
       <div className="workspace-missing">
         <p role="alert">{workspace.state.message}</p>
-        <Link to={ROUTE_PATHS.home}>Voltar ao Início</Link>
+        <Link to={ROUTE_PATHS.home}>{PROJECT_TEXT.backHome}</Link>
       </div>
     );
   }
