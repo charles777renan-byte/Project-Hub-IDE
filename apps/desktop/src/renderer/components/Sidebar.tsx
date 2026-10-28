@@ -424,7 +424,7 @@ function Swatch({ project }: { project: ProjectSummary }) {
   return <span aria-hidden="true" className={`swatch swatch--${colorOf(project.id)}`} />;
 }
 
-/** O projeto na grade: um bloco com a cor, o nome e os agentes. Leva ao workspace. */
+/** O projeto na grade: um bloco com a cor, o nome, o aviso de pasta indisponível e os agentes. Leva ao workspace. */
 function ProjectTile({
   project,
   sessions,
@@ -445,6 +445,7 @@ function ProjectTile({
         <span className="sidebar__name" title={project.name}>
           {project.name}
         </span>
+        {project.available ? null : <StatusChip label="pasta indisponível" tone="warn" />}
         <Avatars sessions={sessions} />
       </Link>
     </li>
@@ -453,7 +454,7 @@ function ProjectTile({
 
 /**
  * Linha de um projeto na lista: o botão que expande os cartões, a cor, o nome (um link para o workspace), os
- * ícones dos agentes e, no projeto sem Git, o chip "sem Git". Só o projeto da rota do workspace leva
+ * ícones dos agentes e os chips "sem Git" e "pasta indisponível", quando valem. Só o projeto da rota do workspace leva
  * `aria-current`. Nomes entram como texto.
  */
 function ProjectRow({
@@ -505,6 +506,7 @@ function ProjectRow({
         </Link>
         <Avatars sessions={sessions} />
         {project.repositoryKind === 'git' ? null : <StatusChip label="sem Git" tone="muted" />}
+        {project.available ? null : <StatusChip label="pasta indisponível" tone="warn" />}
       </div>
       {isOpen ? (
         <ul id={listId} className="sidebar__sessions">

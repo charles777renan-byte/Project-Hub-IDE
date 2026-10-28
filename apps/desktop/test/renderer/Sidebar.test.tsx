@@ -15,6 +15,7 @@ import {
   ADD_PROJECT_REQUEST_EVENT,
   PROJECTS_CHANGED_EVENT,
 } from '../../src/renderer/projects-events';
+import { getToasts, notify } from '../../src/renderer/notify';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
 // Barra lateral (explorador): busca, aviso do que espera a pessoa, "Adicionar projeto", espaços (lista ou
@@ -158,6 +159,7 @@ function renderSidebar(path: string, props: { onSearch?: () => void } = {}) {
 }
 
 afterEach(() => {
+  notify.clear();
   Reflect.deleteProperty(window, 'projectHub');
   window.localStorage.clear();
 });
@@ -265,6 +267,22 @@ describe('Sidebar: espaços', () => {
     expect(within(area).getAllByText('sem Git')).toHaveLength(1);
     expect(within(area).getByText('<b>Notas</b>')).toBeInTheDocument();
     expect(area.querySelector('b')).toBeNull();
+  });
+
+  it('marca em texto o projeto cuja pasta sumiu, na lista e na grade, e só ele', async () => {
+    installApi({ projects: [gitProject, { ...plainProject, available: false }] });
+    renderSidebar('/');
+
+    const area = await spaces();
+    expect(await within(area).findAllByText('pasta indisponível')).toHaveLength(1);
+    const row = within(area).getByRole('link', { name: 'Notas' }).closest('li') as HTMLElement;
+    expect(within(row).getByText('pasta indisponível')).toBeInTheDocument();
+
+    await userEvent.click(within(area).getByRole('button', { name: 'Grade' }));
+
+    expect(within(area).getAllByText('pasta indisponível')).toHaveLength(1);
+    const tile = within(area).getByRole('link', { name: /^Notas/ });
+    expect(within(tile).getByText('pasta indisponível')).toBeInTheDocument();
   });
 
   it('cada projeto leva uma marca de cor, que é a mesma sempre', async () => {
@@ -447,6 +465,81 @@ describe('Sidebar: adicionar projeto', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Esta pasta já está cadastrada.');
     expect(within(area).getByRole('link', { name: 'Project Hub' })).toBeInTheDocument();
+  });
+
+  it('pelo botão da barra, a falha aparece no alerta embaixo dele e não vira aviso', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({ ok: true, data: { path: gitProject.path } });
+    api.projects.add.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'PROJECT_ALREADY_EXISTS',
+        message: 'Esta pasta já está cadastrada.',
+        retryable: false,
+      },
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar projeto' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Esta pasta já está cadastrada.');
+    expect(getToasts()).toEqual([]);
+  });
+
+  it('pedido de fora (paleta, menu +): a falha vira aviso com a mensagem da API, sem alerta na barra', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory.mockResolvedValue({ ok: true, data: { path: gitProject.path } });
+    api.projects.add.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'PROJECT_ALREADY_EXISTS',
+        message: 'Esta pasta já está cadastrada.',
+        retryable: false,
+      },
+    });
+    renderSidebar('/');
+    await spaces();
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+
+    await waitFor(() =>
+      expect(getToasts().map((toast) => [toast.kind, toast.message])).toEqual([
+        ['error', 'Esta pasta já está cadastrada.'],
+      ]),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('pedido de fora: falha do seletor e erro geral também viram aviso', async () => {
+    const { api } = installApi();
+    api.projects.chooseDirectory
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'UNKNOWN', message: 'O seletor não abriu.', retryable: false },
+      })
+      .mockRejectedValueOnce(new Error('canal fechado'));
+    renderSidebar('/');
+    await spaces();
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+    await waitFor(() =>
+      expect(getToasts().map((toast) => toast.message)).toContain('O seletor não abriu.'),
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event(ADD_PROJECT_REQUEST_EVENT));
+    });
+    await waitFor(() =>
+      expect(getToasts().map((toast) => toast.message)).toContain(
+        'Não foi possível concluir a ação. Tente de novo.',
+      ),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('mostra a mensagem da API quando o seletor falha', async () => {
