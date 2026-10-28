@@ -7,6 +7,7 @@ import {
   formatTime,
   missionTabCounts,
   primaryActionOf,
+  ROLE_DESCRIPTIONS,
   roleLabel,
   statusIcon,
   statusTone,
@@ -346,5 +347,16 @@ describe('papel e dependência da tarefa', () => {
     expect(dependencyText({ ...steps[1]!, dependsOn: ['a'] }, steps)).toBe('depois de 1');
     expect(dependencyText(steps[2]!, steps)).toBe('depois de 1 e 2');
     expect(dependencyText(steps[0]!, steps)).toBeUndefined();
+  });
+
+  it('descreve cada papel numa linha, para o cartão do quadro do orquestrador', () => {
+    expect(ROLE_DESCRIPTIONS).toEqual({
+      frontend: 'Interface e componentes',
+      backend: 'APIs e lógica do sistema',
+      database: 'Modelagem e consultas',
+      docs: 'README e guias de uso',
+      qa: 'Testes e verificação',
+      general: 'Tarefas gerais',
+    });
   });
 });

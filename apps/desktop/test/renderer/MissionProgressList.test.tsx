@@ -48,7 +48,7 @@ describe('MissionProgressList', () => {
     expect(within(card).getByText('Em andamento · 4/5 tarefas')).toBeInTheDocument();
     expect(within(card).getByRole('link', { name: 'Missão m1' })).toHaveAttribute(
       'href',
-      '/projects/p1/missions/m1',
+      '/workspaces/p1/missoes/m1',
     );
     expect(card.querySelector('.mission-progress__count')).toHaveTextContent('5');
     const bar = within(card).getByRole('progressbar', { name: /Missão m1/ });

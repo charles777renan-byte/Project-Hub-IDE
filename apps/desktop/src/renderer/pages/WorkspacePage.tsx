@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
@@ -12,6 +12,7 @@ import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
+import { MissionPage } from './MissionPage';
 import { parseProjectView, projectPanelId, VIEW_PARAM, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
@@ -40,12 +41,17 @@ function requestedTerminal(state: unknown): string | null {
  * ficam sempre montados (só escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz
  * os terminais. As outras visões só são montadas enquanto ativas. Projeto arquivado ou removido com a aba
  * aberta mostra a mensagem e o link para o Início.
+ *
+ * Uma missão aberta (`/workspaces/:projectId/missoes/:missionId`) ocupa o painel das Missões, no lugar da
+ * lista, e o cabeçalho segue na tela com Missões como visão ativa. É a mesma rota (a do `/*`), então a
+ * página não é remontada e os terminais continuam montados, escondidos. O "← Missões" da missão volta à lista.
  */
 export function WorkspacePage() {
   const { projectId = '' } = useParams();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const view = parseProjectView(params.get(VIEW_PARAM));
+  const missionId = useMatch(ROUTE_PATHS.missionDetail)?.params.missionId;
+  const view = missionId === undefined ? parseProjectView(params.get(VIEW_PARAM)) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -63,6 +69,7 @@ export function WorkspacePage() {
       {project === undefined ? null : (
         <ProjectHeader
           project={project}
+          missionOpen={missionId !== undefined}
           onNewMission={() =>
             navigate(projectViewPath(projectId, 'missoes'), { state: { newMission: true } })
           }
@@ -71,8 +78,17 @@ export function WorkspacePage() {
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
         <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />
       </ProjectPanel>
-      <ProjectPanel view="missoes" active={view} labelled={project !== undefined}>
-        {view === 'missoes' ? <ProjectMissions projectId={projectId} project={project} /> : null}
+      <ProjectPanel
+        view="missoes"
+        active={view}
+        labelled={project !== undefined}
+        mission={missionId !== undefined}
+      >
+        {missionId !== undefined ? (
+          <MissionPage missionId={missionId} />
+        ) : view === 'missoes' ? (
+          <ProjectMissions projectId={projectId} project={project} />
+        ) : null}
       </ProjectPanel>
       <ProjectPanel view="worktrees" active={view} labelled={project !== undefined}>
         {view === 'worktrees' ? <WorktreesTab projectId={projectId} /> : null}
@@ -96,12 +112,15 @@ function ProjectPanel({
   view,
   active,
   labelled,
+  mission = false,
   children,
 }: {
   view: ProjectView;
   active: ProjectView;
   /** Com o cabeçalho na tela, a aba da visão existe e nomeia o painel. */
   labelled: boolean;
+  /** Com uma missão aberta no painel das Missões, ele não tem respiro e quem rola é a missão. */
+  mission?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -110,7 +129,7 @@ function ProjectPanel({
       id={projectPanelId(view)}
       {...(labelled ? { 'aria-labelledby': `tab-${view}` } : {})}
       hidden={view !== active}
-      className={`project-tab__panel project-tab__panel--${view}`}
+      className={`project-tab__panel project-tab__panel--${view}${mission ? ' project-tab__panel--mission' : ''}`}
     >
       {children}
     </div>

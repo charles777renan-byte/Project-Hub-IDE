@@ -1,79 +1,28 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { MissionViewDto } from '@project-hub/contracts';
 import {
   MISSION_TEXT,
-  PLAN_TEXT,
   isEnded,
-  primaryActionOf,
   statusIcon,
   statusLabel,
   statusTone,
-  verificationSummary,
   worktreeName,
-  type PrimaryAction,
 } from '../../mission-text';
 import { notify } from '../../notify';
-import { projectPath } from '../../routes';
+import { projectViewPath } from '../../routes';
 import { ConfirmInline } from '../ConfirmButton';
 import { Copy, ICON_PROPS } from '../Icon';
 import { MenuAcoes, type AcaoMenu } from '../MenuAcoes';
 import { StatusChip } from '../StatusChip';
-import type { DiffSummary } from './DiffPanel';
-
-/** Rótulo da ação principal de cada situação. */
-const PRIMARY_LABEL: Record<PrimaryAction, string> = {
-  generate_plan: MISSION_TEXT.generatePlan,
-  approve_plan: MISSION_TEXT.approvePlan,
-  start: MISSION_TEXT.start,
-  resume: MISSION_TEXT.resume,
-  retry: MISSION_TEXT.retry,
-};
 
 /** O que a pessoa lê antes de confirmar a exclusão. */
 const DELETE_QUESTION =
   'Excluir esta missão? O plano, as tentativas e o histórico saem do app. Não dá para desfazer.';
 
-type Indicator = { label: string; value: string; tone?: 'ok' | 'bad'; note?: string };
-
-/** Texto do indicador de verificação, a partir dos eventos `verification.completed`. */
-function verificationIndicator(events: MissionViewDto['events']): Indicator {
-  const summary = verificationSummary(events);
-  if (summary.kind === 'none') return { label: 'Verificação', value: 'Nenhum teste rodou' };
-  if (summary.kind === 'empty') return { label: 'Verificação', value: 'Sem verificação' };
-  return {
-    label: 'Verificação',
-    value: `${summary.passed} de ${summary.total} passaram`,
-    tone: summary.failed ? 'bad' : 'ok',
-  };
-}
-
-/**
- * Texto do indicador de arquivos alterados: "Nenhum ainda" sem worktree ou sem alteração, "—" enquanto
- * o diff do worktree não foi lido, e a contagem depois.
- */
-function changedFilesIndicator(hasWorktree: boolean, diff: DiffSummary | undefined): Indicator {
-  const label = 'Arquivos alterados';
-  if (!hasWorktree) return { label, value: 'Nenhum ainda' };
-  if (diff === undefined) return { label, value: '—' };
-  if (diff.count === 0 && !diff.truncated) return { label, value: 'Nenhum ainda' };
-  const count = `${diff.count}${diff.truncated ? '+' : ''}`;
-  return {
-    label,
-    value: `${count} ${diff.count === 1 && !diff.truncated ? 'arquivo' : 'arquivos'}`,
-  };
-}
-
-/** Texto do indicador do Git: o worktree nasce ao iniciar a missão, e push e merge pedem aprovação. */
-function gitIndicator(hasWorktree: boolean): Indicator {
-  return hasWorktree
-    ? { label: 'Git', value: 'Worktree criado', note: 'Push e merge exigem a sua aprovação.' }
-    : { label: 'Git', value: 'Não criado', note: 'O worktree nasce ao iniciar a missão.' };
-}
-
 /**
  * Fecho da missão concluída (R130): a frase final do agente e o estado do Git ao concluir, numa caixa
- * discreta abaixo dos indicadores. A verificação e os arquivos alterados já aparecem nos indicadores,
+ * discreta abaixo do cabeçalho. A verificação e os arquivos alterados já aparecem nos indicadores,
  * então não se repetem aqui. A frase vem do agente e entra como texto, nunca como HTML.
  */
 function ConclusionSummary({
@@ -114,9 +63,7 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  if (path === undefined) {
-    return <span className="mission-meta__item">worktree ainda não criado</span>;
-  }
+  if (path === undefined) return null;
 
   async function copyPath(fullPath: string) {
     try {
@@ -207,7 +154,7 @@ function SecondaryActions({
   }
 
   return (
-    <div ref={root} className="mission-summary__secondary">
+    <div ref={root} className="mission-head__secondary">
       {confirmingDelete ? (
         <ConfirmInline
           question={DELETE_QUESTION}
@@ -225,113 +172,52 @@ function SecondaryActions({
 }
 
 /**
- * Resumo fixo no topo da página da missão (seção 10.7): o projeto (link), o título, a linha com a
- * situação (chip com texto e cor), a branch e o nome curto do worktree, a ação principal que a situação
- * permite, as ações secundárias (pausar, cancelar ou excluir) no menu "Mais ações" e três indicadores
- * (verificação, arquivos alterados e Git). Com a missão concluída, mostra também o fecho da conclusão
- * (a frase final do agente e o estado do Git), sem ação principal. Este componente só mostra e chama o
- * que a página passa: o comportamento das ações fica na página.
+ * Cabeçalho da missão (seção 10.7), no formato do protótipo: o "← Missões" que volta à lista, a linha
+ * "MISSÃO · {PROJETO}", o título, o objetivo em linha menor, o selo da situação (chip com texto e cor) e
+ * "Mais ações" (pausar, cancelar ou excluir). Com o worktree criado, mostra o nome curto dele e o botão
+ * que copia o caminho. Com a missão concluída, mostra também o fecho da conclusão (a frase final do agente
+ * e o estado do Git). A ação principal fica no bloco "Sua decisão". Este componente só mostra e chama o que
+ * a página passa: o comportamento das ações fica na página.
  */
 export function MissionSummary({
   mission,
   project,
-  events,
-  diff,
   conclusion,
-  busy,
-  planning = false,
   controlBusy,
-  onGeneratePlan,
-  onApprovePlan,
-  onStart,
   onPause,
-  onResume,
-  onRetry,
   onCancel,
   onDelete,
 }: {
   mission: MissionViewDto['mission'];
   project: MissionViewDto['project'];
-  events: MissionViewDto['events'];
-  /** Contagem de arquivos do Diff, ou `undefined` enquanto o diff não foi lido. */
-  diff: DiffSummary | undefined;
   /** Resumo de conclusão. Só aparece com a missão concluída; cancelada ou com falha não tem resumo. */
   conclusion?: MissionViewDto['conclusion'];
-  /** Chamadas longas (planejar, aprovar, iniciar e tentar de novo): desabilitam a ação principal. */
-  busy: boolean;
-  /** O planejamento em curso (pode levar minutos): o Orquestrar mostra "Planejando…". */
-  planning?: boolean;
   /** Pausar, retomar, cancelar e excluir: cada uma só cobre a própria chamada. */
   controlBusy: boolean;
-  onGeneratePlan: () => void;
-  onApprovePlan: () => void;
-  onStart: () => void;
   onPause: () => void;
-  onResume: () => void;
-  onRetry: () => void;
   onCancel: () => void;
   /** Exclui a missão encerrada. Só chama depois que a pessoa confirma. */
   onDelete: () => void;
 }) {
-  const primary = primaryActionOf(mission.status);
-  const quotaId = useId();
   const tone = statusTone(mission.status);
-  const hasWorktree = mission.worktreePath !== undefined;
-  const indicators: Indicator[] = [
-    verificationIndicator(events),
-    changedFilesIndicator(hasWorktree, diff),
-    gitIndicator(hasWorktree),
-  ];
-
-  const primaryAction: Record<PrimaryAction, { run: () => void; disabled: boolean }> = {
-    generate_plan: { run: onGeneratePlan, disabled: busy },
-    approve_plan: { run: onApprovePlan, disabled: busy },
-    start: { run: onStart, disabled: busy },
-    resume: { run: onResume, disabled: controlBusy },
-    retry: { run: onRetry, disabled: busy },
-  };
 
   return (
-    <section aria-label="Resumo da missão" className={`mission-summary mission-summary--${tone}`}>
-      <div className="mission-summary__head">
-        <div className="mission-summary__title">
-          <p className="eyebrow mission-summary__project">
-            <Link to={projectPath(project.id)}>{project.name}</Link>
-          </p>
+    <section aria-label="Resumo da missão" className="mission-head">
+      <Link to={projectViewPath(project.id, 'missoes')} className="mission-head__back">
+        {MISSION_TEXT.backToMissions}
+      </Link>
+      <div className="mission-head__row">
+        <div className="mission-head__title">
+          <p className="eyebrow">{MISSION_TEXT.eyebrow(project.name)}</p>
           <h1>{mission.title}</h1>
-          <div className="mission-meta">
-            <StatusChip
-              label={statusLabel(mission.status)}
-              tone={tone}
-              icon={statusIcon(mission.status)}
-            />
-            <span className="mission-meta__item">branch {project.defaultBranch ?? 'sem Git'}</span>
-            <WorktreeMeta path={mission.worktreePath} />
-          </div>
+          <p className="mission-head__objective">{mission.objective}</p>
         </div>
-        <div className="mission-summary__actions">
-          {primary === undefined ? null : (
-            <button
-              type="button"
-              className={
-                primary === 'approve_plan'
-                  ? 'btn-decision mission-summary__primary'
-                  : 'btn-primary mission-summary__primary'
-              }
-              aria-describedby={primary === 'generate_plan' ? quotaId : undefined}
-              disabled={primaryAction[primary].disabled}
-              onClick={primaryAction[primary].run}
-            >
-              {primary === 'generate_plan' && planning
-                ? PLAN_TEXT.planning
-                : PRIMARY_LABEL[primary]}
-            </button>
-          )}
-          {primary === 'generate_plan' ? (
-            <p id={quotaId} className="plan-quota mission-summary__quota">
-              {PLAN_TEXT.quotaWarning}
-            </p>
-          ) : null}
+        <div className="mission-head__actions">
+          <StatusChip
+            label={statusLabel(mission.status)}
+            tone={tone}
+            icon={statusIcon(mission.status)}
+          />
           <SecondaryActions
             key={isEnded(mission.status) ? 'ended' : 'open'}
             status={mission.status}
@@ -342,24 +228,11 @@ export function MissionSummary({
           />
         </div>
       </div>
-      <ul className="mission-indicators" aria-label="Indicadores da missão">
-        {indicators.map((indicator) => (
-          <li
-            key={indicator.label}
-            className={
-              indicator.tone === undefined
-                ? 'mission-indicator'
-                : `mission-indicator mission-indicator--${indicator.tone}`
-            }
-          >
-            <span className="mission-indicator__label">{indicator.label}</span>
-            <span className="mission-indicator__value">{indicator.value}</span>
-            {indicator.note === undefined ? null : (
-              <span className="mission-indicator__note">{indicator.note}</span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {mission.worktreePath === undefined ? null : (
+        <p className="mission-meta">
+          <WorktreeMeta path={mission.worktreePath} />
+        </p>
+      )}
       {(mission.status === 'review' || mission.status === 'succeeded') &&
       conclusion !== undefined ? (
         <ConclusionSummary conclusion={conclusion} />

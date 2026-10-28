@@ -46,7 +46,7 @@ describe('buildPaletteItems', () => {
     expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1?visao=missoes');
 
     itemNamed(items, 'Ajustar login').executar();
-    expect(navigate).toHaveBeenLastCalledWith('/projects/p1/missions/m1');
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1/missoes/m1');
   });
 
   it('põe cada item no grupo certo', () => {

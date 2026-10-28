@@ -123,6 +123,16 @@ const ROLE_LABEL: Record<NonNullable<MissionStepDto['role']>, string> = {
   general: 'Geral',
 };
 
+/** Uma linha sobre o que cada papel faz, no cartão do quadro do orquestrador. */
+export const ROLE_DESCRIPTIONS: Record<NonNullable<MissionStepDto['role']>, string> = {
+  frontend: 'Interface e componentes',
+  backend: 'APIs e lógica do sistema',
+  database: 'Modelagem e consultas',
+  docs: 'README e guias de uso',
+  qa: 'Testes e verificação',
+  general: 'Tarefas gerais',
+};
+
 /** Papel da tarefa em português; vazio quando a etapa não é uma tarefa. */
 export function roleLabel(role: MissionStepDto['role']): string | undefined {
   return role === undefined ? undefined : ROLE_LABEL[role];
@@ -164,6 +174,11 @@ export const MISSION_TEXT = {
   decisionLink: 'Ver a decisão',
   approveReview: 'Aprovar conclusão',
   requestChanges: 'Pedir ajustes',
+  eyebrow: (project: string) => `Missão · ${project}`,
+  backToMissions: '← Missões',
+  changedFilesTitle: 'Arquivos alterados',
+  noChanges: 'Nenhuma alteração pendente.',
+  decisionTitle: 'Sua decisão',
 } as const;
 
 /** Programa que executa uma tarefa. O contrato aceita só `claude-code`; os outros são promessa da tela. */
@@ -221,7 +236,7 @@ export const PLAN_TEXT = {
   program: (title: string) => `Programa da tarefa ${title}`,
 } as const;
 
-/** Textos do quadro do orquestrador (Plano): os três níveis e o estado dos papéis. */
+/** Textos do quadro do orquestrador: os três níveis e o estado dos papéis. */
 export const BOARD_TEXT = {
   label: 'Quadro do orquestrador',
   orchestrator: 'Orquestrador principal',
@@ -229,7 +244,13 @@ export const BOARD_TEXT = {
   delivery: 'Integração e entrega',
   deliveryDescription:
     'Reúne alterações, executa verificações e apresenta o resultado para aprovação',
-  taskCount: (count: number) => (count === 1 ? '1 tarefa' : `${count} tarefas`),
+  /** Estado da integração e entrega, resumido das tarefas de todos os papéis. */
+  deliveryState: {
+    waiting: 'aguardando tarefas',
+    running: 'aguardando tarefas',
+    done: 'tarefas concluídas',
+    failed: 'bloqueada: uma tarefa falhou',
+  },
   state: {
     waiting: 'aguardando',
     running: 'em andamento',

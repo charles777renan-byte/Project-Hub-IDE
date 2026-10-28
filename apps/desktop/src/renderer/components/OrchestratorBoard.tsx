@@ -1,5 +1,5 @@
 import type { MissionStepDto } from '@project-hub/contracts';
-import { BOARD_TEXT, agentLabel, roleLabel, roleState } from '../mission-text';
+import { BOARD_TEXT, ROLE_DESCRIPTIONS, agentLabel, roleLabel, roleState } from '../mission-text';
 
 /** Um papel do quadro: as tarefas dele, na ordem do plano, e a posição da primeira. */
 type RoleGroup = {
@@ -20,14 +20,16 @@ function groupByRole(steps: readonly MissionStepDto[]): RoleGroup[] {
 }
 
 /**
- * Quadro do orquestrador, só leitura, acima da tabela do Plano: o orquestrador principal, um cartão por
- * papel que tem tarefas (nome do papel, programa e estado resumido) e a integração e entrega, ligados
- * por setas decorativas. O programa e o estado são texto; a cor só os reforça. Sem tarefa com papel,
+ * Quadro do orquestrador, só leitura, acima da tabela de tarefas: o orquestrador principal, um cartão por
+ * papel que tem tarefas, em duas colunas (nome do papel, programa à direita, uma linha sobre o papel e o
+ * estado resumido), e a integração e entrega, com "aguardando tarefas" ou o estado. As setas entre as
+ * camadas são decorativas. O programa e o estado são texto; a cor só os reforça. Sem tarefa com papel,
  * não mostra nada.
  */
 export function OrchestratorBoard({ steps }: { steps: readonly MissionStepDto[] }) {
   const groups = groupByRole(steps);
   if (groups.length === 0) return null;
+  const delivery = roleState(steps.map((step) => step.status));
 
   return (
     <section className="orchestrator-board" aria-label={BOARD_TEXT.label}>
@@ -61,13 +63,9 @@ export function OrchestratorBoard({ steps }: { steps: readonly MissionStepDto[] 
                     {agents.map((agent) => agentLabel(agent)).join(' · ')}
                   </span>
                 </div>
-                <p className="orchestrator-board__meta">
-                  <span>{BOARD_TEXT.taskCount(roleSteps.length)}</span>
-                  <span
-                    className={`orchestrator-board__status orchestrator-board__status--${state}`}
-                  >
-                    {BOARD_TEXT.state[state]}
-                  </span>
+                <p className="orchestrator-board__description">{ROLE_DESCRIPTIONS[role]}</p>
+                <p className={`orchestrator-board__status orchestrator-board__status--${state}`}>
+                  {BOARD_TEXT.state[state]}
                 </p>
               </div>
             </li>
@@ -80,6 +78,9 @@ export function OrchestratorBoard({ steps }: { steps: readonly MissionStepDto[] 
       <div className="orchestrator-board__card orchestrator-board__delivery">
         <h3>{BOARD_TEXT.delivery}</h3>
         <p>{BOARD_TEXT.deliveryDescription}</p>
+        <p className={`orchestrator-board__status orchestrator-board__status--${delivery}`}>
+          {BOARD_TEXT.deliveryState[delivery]}
+        </p>
       </div>
     </section>
   );

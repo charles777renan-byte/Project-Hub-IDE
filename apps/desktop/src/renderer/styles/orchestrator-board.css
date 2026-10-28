@@ -1,10 +1,11 @@
 /*
- * Quadro do orquestrador na aba Plano: o cartão do orquestrador, um cartão por papel e o cartão
- * tracejado de integração, ligados por setas decorativas. Ligado por <link> no index.html, depois do
+ * Quadro do orquestrador no centro da missão: o cartão do orquestrador, os cartões dos papéis em duas
+ * colunas (nome, programa à direita, uma linha sobre o papel e o estado) e o cartão tracejado de
+ * integração e entrega, ligados por setas decorativas. Ligado por <link> no index.html, depois do
  * plan.css e antes do workspace.css; só usa tokens de tokens.css e app.css, sem cor literal, sem estilo
  * escrito em texto (CSP) e sem animação. O nome do programa e o estado são texto; a cor só os reforça
  * (o laranja, --orange, é o papel do Claude). O lima fica fora: é só da ação principal. Em janela
- * estreita os cartões de papel quebram em uma coluna, sem rolagem horizontal.
+ * estreita (abaixo de 36rem de quadro) os cartões de papel caem em uma coluna, sem rolagem horizontal.
  */
 
 .orchestrator-board {
@@ -59,10 +60,10 @@
   line-height: 1;
 }
 
-/* Um cartão por papel: as colunas cabem quantas der e quebram de linha em janela estreita. */
+/* Um cartão por papel, em duas colunas; numa só quando o quadro é estreito. */
 .orchestrator-board__roles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
   width: 100%;
   margin: 0;
@@ -97,26 +98,23 @@
   color: var(--orange);
 }
 
-/* A contagem e o estado do papel ficam lado a lado, o estado com peso maior que a contagem. */
-.orchestrator-board__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
-  margin: var(--space-1) 0 0;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
-.orchestrator-board__status {
+/* O estado do papel (e da entrega) vai na linha de baixo, com mais peso que a descrição quando há o que dizer. */
+.orchestrator-board__card .orchestrator-board__status {
   color: var(--text);
   font-weight: 600;
 }
 
-.orchestrator-board__status--waiting {
+.orchestrator-board__card .orchestrator-board__status--waiting {
   color: var(--muted);
   font-weight: 400;
 }
 
-.orchestrator-board__status--failed {
+.orchestrator-board__card .orchestrator-board__status--failed {
   color: var(--danger);
+}
+
+@container (max-width: 36rem) {
+  .orchestrator-board__roles {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

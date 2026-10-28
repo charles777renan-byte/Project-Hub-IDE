@@ -208,4 +208,20 @@ describe('Tabs', () => {
 
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it('onReselect avisa o clique na aba que já está ativa; o onChange não dispara', async () => {
+    const onChange = vi.fn();
+    const onReselect = vi.fn();
+    render(
+      <Tabs label="Exemplo" tabs={TABS} active="a" onChange={onChange} onReselect={onReselect} />,
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Primeira' }));
+    expect(onReselect).toHaveBeenCalledWith('a');
+    expect(onChange).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Segunda' }));
+    expect(onReselect).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('b');
+  });
 });

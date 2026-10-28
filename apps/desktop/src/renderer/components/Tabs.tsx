@@ -30,6 +30,7 @@ export function Tabs<T extends string>({
   onChange,
   filled = false,
   panelId,
+  onReselect,
 }: {
   label: string;
   tabs: readonly TabItem<T>[];
@@ -37,6 +38,8 @@ export function Tabs<T extends string>({
   onChange: (id: T) => void;
   filled?: boolean;
   panelId?: (id: T) => string;
+  /** Clique na aba que já está ativa (o `onChange` não dispara nesse caso). Opcional. */
+  onReselect?: (id: T) => void;
 }) {
   // O Radix entrega o valor como texto; devolvemos o `id` tipado da própria lista.
   function handleValueChange(value: string) {
@@ -57,6 +60,9 @@ export function Tabs<T extends string>({
               aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
               aria-describedby={tab.count === undefined ? undefined : countId}
               className={`tab tab--${tab.id}`}
+              onClick={
+                tab.id === active && onReselect !== undefined ? () => onReselect(tab.id) : undefined
+              }
             >
               {tab.label}
               {tab.count === undefined ? null : (
