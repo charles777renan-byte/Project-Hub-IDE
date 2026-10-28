@@ -265,7 +265,7 @@ describe('ProjectDetailPage: criar missão', () => {
     expect(within(form).getByRole('button', { name: 'Criar missão' })).toBeDisabled();
   });
 
-  it('criar e planejar leva ao workspace da missão', async () => {
+  it('criar a missão leva ao workspace, em rascunho, sem gastar a cota do planejamento', async () => {
     const api = installApi([]);
     renderAt('/projects/p1');
     await screen.findByText('Comece sua primeira missão');
@@ -283,13 +283,13 @@ describe('ProjectDetailPage: criar missão', () => {
       acceptanceCriteria: ['Algo pronto'],
       altersCode: false,
     });
-    expect(api.missions.plan).toHaveBeenCalledWith('nova');
+    expect(api.missions.plan).not.toHaveBeenCalled();
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
     ).toBeInTheDocument();
   });
 
-  it('somente planejar fica na lista e avisa que o plano aguarda revisão', async () => {
+  it('somente planejar fica na lista e avisa que o plano se gera na missão, pelo Orquestrar', async () => {
     const api = installApi([]);
     renderAt('/projects/p1');
     await screen.findByText('Comece sua primeira missão');
@@ -301,8 +301,10 @@ describe('ProjectDetailPage: criar missão', () => {
     await userEvent.click(screen.getByLabelText('Somente planejar'));
     await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
 
-    expect(await screen.findByText(/Plano gerado\. Abra a missão/)).toBeInTheDocument();
-    expect(api.missions.plan).toHaveBeenCalledWith('nova');
+    expect(
+      await screen.findByText(/Missão criada\. Abra a missão e clique em Orquestrar/),
+    ).toBeInTheDocument();
+    expect(api.missions.plan).not.toHaveBeenCalled();
   });
 
   it('a falha ao criar aparece como alerta e a lista continua', async () => {

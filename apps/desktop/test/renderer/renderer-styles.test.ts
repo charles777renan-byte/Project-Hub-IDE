@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css depois do app.css e o workspace.css por último', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css e o plan.css depois do app.css e o workspace.css por último', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -57,6 +57,7 @@ describe('index.html do renderer', () => {
       './styles/xterm.css',
       './styles/app.css',
       './styles/home.css',
+      './styles/plan.css',
       './styles/workspace.css',
     ]);
   });

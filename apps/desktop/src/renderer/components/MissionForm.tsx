@@ -218,7 +218,7 @@ export function MissionForm({
           />
           <label htmlFor="mission-plan-only">Somente planejar</label>
           <p id="mission-plan-only-hint" className="check__hint">
-            Gera o plano e para aí, para você revisar antes de iniciar.
+            Cria a missão e fica na lista. O plano é gerado depois, quando você clica em Orquestrar.
           </p>
         </div>
       </section>

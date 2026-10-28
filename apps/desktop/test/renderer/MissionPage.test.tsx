@@ -57,7 +57,18 @@ function installApi(initial: MissionViewDto) {
       get: vi.fn(() => Promise.resolve<AppResult<MissionViewDto>>({ ok: true, data: current })),
       diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
       approvePlan: vi.fn(() => Promise.resolve(OK)),
-      plan: vi.fn(() => Promise.resolve({ ok: true, data: { missionId: 'm1', steps: [] } })),
+      plan: vi.fn((_missionId: string, _instruction?: string) =>
+        Promise.resolve<AppResult<{ missionId: string; steps: [] }>>({
+          ok: true,
+          data: { missionId: 'm1', steps: [] },
+        }),
+      ),
+      editPlanStep: vi.fn((_input: unknown) =>
+        Promise.resolve<AppResult<{ missionId: string; steps: [] }>>({
+          ok: true,
+          data: { missionId: 'm1', steps: [] },
+        }),
+      ),
       start: vi.fn(() => Promise.resolve({ ok: true, data: { id: 'e1' } })),
       cancel: vi.fn(() => Promise.resolve(OK)),
       pause: vi.fn(() => Promise.resolve(OK)),
@@ -514,7 +525,7 @@ describe('MissionPage: abas', () => {
     expect(screen.getByRole('tab', { name: 'Plano' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'false');
     expect(plan).toBeVisible();
-    expect(within(plan).getByRole('list', { name: 'Etapas do plano' })).toBeVisible();
+    expect(within(plan).getByRole('table', { name: 'Etapas do plano' })).toBeVisible();
     expect(screen.queryByRole('tabpanel', { name: 'Conversa' })).toBeNull();
     expect(screen.getByRole('tab', { name: 'Plano' })).toHaveAttribute('aria-controls', plan.id);
   });
@@ -692,7 +703,7 @@ describe('MissionPage: abas', () => {
  * decisão, o resumo não tem ação: o banner "Aguardando você" é o único convite.
  */
 const PRIMARY_BY_STATUS = [
-  ['draft', 'Gerar plano'],
+  ['draft', 'Orquestrar'],
   ['planned', 'Aprovar plano'],
   ['queued', 'Iniciar missão'],
   ['waiting_approval', undefined],
@@ -750,13 +761,69 @@ describe('MissionPage: resumo', () => {
     expect(screen.queryByRole('menuitem', { name: 'Pausar' })).toBeNull();
   });
 
-  it('a ação principal chama a mesma API de antes, com a mesma missão', async () => {
+  it('Orquestrar chama o planejamento da missão, sem instrução', async () => {
     const hub = installApi(viewOf({ status: 'draft' }));
     renderPage();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Gerar plano' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Orquestrar' }));
 
     await waitFor(() => expect(hub.api.missions.plan).toHaveBeenCalledWith('m1'));
+    expect(hub.api.missions.plan.mock.calls[0]).toHaveLength(1);
+  });
+
+  it('em rascunho, o aviso da cota fica junto do Orquestrar e descreve o botão', async () => {
+    installApi(viewOf({ status: 'draft' }));
+    renderPage();
+
+    const summary = await screen.findByRole('region', { name: 'Resumo da missão' });
+    expect(within(summary).getByText('Planejar usa a cota do seu Claude.')).toBeInTheDocument();
+    expect(within(summary).getByRole('button', { name: 'Orquestrar' })).toHaveAccessibleDescription(
+      'Planejar usa a cota do seu Claude.',
+    );
+  });
+
+  it('o aviso da cota não aparece onde não há planejamento', async () => {
+    installApi(viewOf({ status: 'queued' }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Resumo da missão' });
+    expect(screen.queryByText('Planejar usa a cota do seu Claude.')).toBeNull();
+  });
+
+  it('enquanto planeja, mostra "Planejando…" com o botão desabilitado, e volta ao fim', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    let finish: (result: AppResult<{ missionId: string; steps: [] }>) => void = () => undefined;
+    hub.api.missions.plan.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Orquestrar' }));
+
+    expect(await screen.findByRole('button', { name: 'Planejando…' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Orquestrar' })).toBeNull();
+    await act(async () => {
+      finish({ ok: true, data: { missionId: 'm1', steps: [] } });
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole('button', { name: 'Orquestrar' })).toBeEnabled();
+  });
+
+  it('falha do planejamento aparece como alerta e o Orquestrar segue disponível', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    hub.api.missions.plan.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'PROCESS_START_FAILED', message: 'O Claude não respondeu.', retryable: true },
+    });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Orquestrar' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O Claude não respondeu.');
+    expect(screen.getByRole('button', { name: 'Orquestrar' })).toBeEnabled();
   });
 
   it('o indicador de verificação diz "Nenhum teste rodou" quando não há verificação', async () => {
@@ -1106,15 +1173,77 @@ describe('MissionPage: plano', () => {
     expect(hub.api.missions.get.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('pedir novo plano chama o planejamento de novo, na mesma missão', async () => {
+  it('Planejar de novo sem instrução chama o planejamento da mesma missão', async () => {
     const hub = installApi(viewOf());
     renderPage();
     const plan = await openTab('Plano');
 
-    await userEvent.click(within(plan).getByRole('button', { name: 'Pedir novo plano' }));
+    await userEvent.click(within(plan).getByRole('button', { name: 'Planejar de novo' }));
 
     await waitFor(() => expect(hub.api.missions.plan).toHaveBeenCalledWith('m1'));
+    expect(hub.api.missions.plan.mock.calls[0]).toHaveLength(1);
     expect(hub.api.missions.approvePlan).not.toHaveBeenCalled();
+  });
+
+  it('Planejar de novo envia a instrução digitada', async () => {
+    const hub = installApi(viewOf());
+    renderPage();
+    const plan = await openTab('Plano');
+
+    await userEvent.type(
+      within(plan).getByRole('textbox', { name: 'Instrução para o novo plano' }),
+      'Separe o banco da API',
+    );
+    await userEvent.click(within(plan).getByRole('button', { name: 'Planejar de novo' }));
+
+    await waitFor(() =>
+      expect(hub.api.missions.plan).toHaveBeenCalledWith('m1', 'Separe o banco da API'),
+    );
+  });
+
+  it('editar uma tarefa chama editPlanStep com a missão, a tarefa e a edição, e busca a visão', async () => {
+    const hub = installApi(viewOf());
+    renderPage();
+    const plan = await openTab('Plano');
+    const loads = hub.api.missions.get.mock.calls.length;
+
+    await userEvent.click(
+      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
+    );
+    await userEvent.type(within(plan).getByRole('textbox', { name: /Novo nome/ }), ' bem{Enter}');
+
+    await waitFor(() =>
+      expect(hub.api.missions.editPlanStep).toHaveBeenCalledWith({
+        missionId: 'm1',
+        stepId: 's1',
+        edit: { op: 'rename', title: 'Login funciona bem' },
+      }),
+    );
+    await waitFor(() => expect(hub.api.missions.get.mock.calls.length).toBeGreaterThan(loads));
+  });
+
+  it('falha ao editar aparece no painel do Plano, uma vez só', async () => {
+    const hub = installApi(viewOf());
+    hub.api.missions.editPlanStep.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'A tarefa não está mais neste plano.',
+        retryable: false,
+      },
+    });
+    renderPage();
+    const plan = await openTab('Plano');
+
+    await userEvent.click(
+      within(plan).getByRole('button', { name: 'Remover tarefa Login funciona' }),
+    );
+    await userEvent.click(within(plan).getByRole('button', { name: 'Remover' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A tarefa não está mais neste plano.',
+    );
+    expect(within(plan).getByRole('alert')).toBeInTheDocument();
   });
 
   it('depois de aprovado, inicia a missão', async () => {
