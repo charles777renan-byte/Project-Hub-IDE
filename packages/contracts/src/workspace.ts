@@ -4,7 +4,7 @@ import { LAYOUT_LIMITS } from './layout-limits';
 export { LAYOUT_LIMITS };
 
 /** Programas que um painel do workspace sabe abrir. O comando de cada um fica no processo principal. */
-export const PROVIDER_IDS = ['claude', 'codex', 'gemini', 'shell'] as const;
+export const PROVIDER_IDS = ['claude', 'codex', 'antigravity', 'shell'] as const;
 export const providerIdSchema = z.enum(PROVIDER_IDS);
 export type ProviderId = z.infer<typeof providerIdSchema>;
 
