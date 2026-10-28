@@ -14,6 +14,7 @@ import { handleDecideApproval, registerApprovalHandlers } from '../src/main/ipc/
 import {
   handleCreateMission,
   handleDeleteMission,
+  handleEditPlanStep,
   handleMissionAction,
   handleMissionDiff,
   handleProvideInput,
@@ -36,6 +37,9 @@ function spyOrchestrator(): Orchestrator {
   const ok = () => Promise.resolve({ ok: true as const, data: undefined });
   return {
     planMission: vi.fn(() =>
+      Promise.resolve({ ok: true as const, data: { missionId: 'm1', steps: [] } }),
+    ),
+    editPlanStep: vi.fn(() =>
       Promise.resolve({ ok: true as const, data: { missionId: 'm1', steps: [] } }),
     ),
     approvePlan: vi.fn(ok),
@@ -147,6 +151,160 @@ describe('ações sobre a missão', () => {
 
     await handleProvideInput(orchestrator, { missionId: 'm1', text: 'sim' });
     expect(orchestrator.provideInput).toHaveBeenCalledWith({ missionId: 'm1', text: 'sim' });
+  });
+});
+
+describe('plano com instrução e edição (missions:plan:v1, missions:edit-plan:v1)', () => {
+  const TOO_LONG = 'x'.repeat(1001);
+
+  it('o canal de edição existe com a versão no nome', () => {
+    expect(CHANNELS.missionsEditPlan).toBe('missions:edit-plan:v1');
+  });
+
+  it('plan repassa a instrução aparada ao orquestrador', async () => {
+    const orchestrator = spyOrchestrator();
+
+    await handleMissionAction(orchestrator, 'plan', {
+      missionId: 'm1',
+      instruction: '  inclua testes  ',
+    });
+
+    expect(orchestrator.planMission).toHaveBeenCalledWith('m1', { instruction: 'inclua testes' });
+  });
+
+  it('plan aceita a instrução de 1000 caracteres e recusa a de 1001, sem chamar o orquestrador', () => {
+    const orchestrator = spyOrchestrator();
+
+    void handleMissionAction(orchestrator, 'plan', {
+      missionId: 'm1',
+      instruction: 'x'.repeat(1000),
+    });
+    expect(orchestrator.planMission).toHaveBeenCalledTimes(1);
+
+    expect(
+      handleMissionAction(orchestrator, 'plan', { missionId: 'm1', instruction: TOO_LONG }),
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(orchestrator.planMission).toHaveBeenCalledTimes(1);
+  });
+
+  it('plan recusa instrução que não é texto', () => {
+    const orchestrator = spyOrchestrator();
+
+    expect(
+      handleMissionAction(orchestrator, 'plan', { missionId: 'm1', instruction: 5 }),
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(orchestrator.planMission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ op: 'rename', title: 'Novo título' }],
+    [{ op: 'rename', title: 'Novo título', description: 'Mais detalhe' }],
+    [{ op: 'remove' }],
+    [{ op: 'move', toPosition: 2 }],
+    [{ op: 'agent', agent: 'claude-code' }],
+  ])('editPlanStep repassa a edição válida %j', async (edit) => {
+    const orchestrator = spyOrchestrator();
+
+    const result = await handleEditPlanStep(orchestrator, { missionId: 'm1', stepId: 's1', edit });
+
+    expect(orchestrator.editPlanStep).toHaveBeenCalledWith({
+      missionId: 'm1',
+      stepId: 's1',
+      edit,
+    });
+    expect(result).toEqual({ ok: true, data: { missionId: 'm1', steps: [] } });
+  });
+
+  it('editPlanStep apara o título e devolve o erro do orquestrador sem mudar nada', async () => {
+    const orchestrator = spyOrchestrator();
+    const refusal = {
+      ok: false as const,
+      error: { code: 'MISSION_INVALID_STATE', message: 'Só a missão planejada.', retryable: false },
+    };
+    vi.mocked(orchestrator.editPlanStep).mockResolvedValueOnce(refusal as never);
+
+    const result = await handleEditPlanStep(orchestrator, {
+      missionId: 'm1',
+      stepId: 's1',
+      edit: { op: 'rename', title: '  Título  ' },
+    });
+
+    expect(orchestrator.editPlanStep).toHaveBeenCalledWith({
+      missionId: 'm1',
+      stepId: 's1',
+      edit: { op: 'rename', title: 'Título' },
+    });
+    expect(result).toBe(refusal);
+  });
+
+  it.each([
+    ['op desconhecida', { op: 'duplicate' }],
+    ['sem op', { title: 'x' }],
+    ['título vazio', { op: 'rename', title: '   ' }],
+    ['título com mais de 120 caracteres', { op: 'rename', title: 'x'.repeat(121) }],
+    [
+      'descrição com mais de 2000 caracteres',
+      { op: 'rename', title: 'x', description: 'y'.repeat(2001) },
+    ],
+    ['posição zero', { op: 'move', toPosition: 0 }],
+    ['posição fracionária', { op: 'move', toPosition: 1.5 }],
+    ['posição negativa', { op: 'move', toPosition: -1 }],
+    ['programa desconhecido', { op: 'agent', agent: 'gpt' }],
+  ])('editPlanStep recusa %s sem chamar o orquestrador', (_name, edit) => {
+    const orchestrator = spyOrchestrator();
+
+    expect(handleEditPlanStep(orchestrator, { missionId: 'm1', stepId: 's1', edit })).toMatchObject(
+      { ok: false, error: { code: 'VALIDATION_FAILED' } },
+    );
+    expect(orchestrator.editPlanStep).not.toHaveBeenCalled();
+  });
+
+  it('editPlanStep recusa missão, tarefa ou edição ausente', () => {
+    const orchestrator = spyOrchestrator();
+
+    for (const payload of [
+      { stepId: 's1', edit: { op: 'remove' } },
+      { missionId: 'm1', edit: { op: 'remove' } },
+      { missionId: 'm1', stepId: 's1' },
+      undefined,
+    ]) {
+      expect(handleEditPlanStep(orchestrator, payload)).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    }
+    expect(orchestrator.editPlanStep).not.toHaveBeenCalled();
+  });
+
+  it('os canais do plano recusam remetente de outra origem e atendem o aplicativo (R65)', async () => {
+    const fake = fakeRegistry();
+    const orchestrator = spyOrchestrator();
+    registerMissionHandlers(fake.registry, isTrusted, {
+      orchestrator,
+      createDeps: {} as CreateMissionDeps,
+      queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
+      diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
+      deleteDeps: { repo: {}, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps,
+    });
+    const payload = { missionId: 'm1', stepId: 's1', edit: { op: 'remove' } };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const refused = await fake.call(CHANNELS.missionsEditPlan, 'https://site.invalido/', payload);
+      expect(refused).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+      expect(orchestrator.editPlanStep).not.toHaveBeenCalled();
+
+      const served = await fake.call(CHANNELS.missionsEditPlan, 'file:///app/index.html', payload);
+      expect(served).toMatchObject({ ok: true });
+      expect(orchestrator.editPlanStep).toHaveBeenCalledWith(payload);
+
+      await fake.call(CHANNELS.missionsPlan, 'file:///app/index.html', {
+        missionId: 'm1',
+        instruction: 'mais testes',
+      });
+      expect(orchestrator.planMission).toHaveBeenCalledWith('m1', { instruction: 'mais testes' });
+    } finally {
+      error.mockRestore();
+    }
   });
 });
 

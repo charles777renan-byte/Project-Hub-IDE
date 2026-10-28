@@ -21,13 +21,16 @@ import {
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolveMaxRunning,
+  resolvePlannerCommand,
   resolveWorktreesRoot,
 } from './composition';
-import { createClaudeAgent, createTerminalBackend } from './claude-agent';
+import { createClaudeAgent, createTerminalBackend, resolveExecutable } from './claude-agent';
+import { createClaudePlanner } from './claude-planner';
 import { registerActivityHandlers } from './ipc/activity';
 import { registerProfileHandlers } from './ipc/profile';
 import { registerSystemHandlers } from './ipc/system';
 import { createSystemUsageSampler } from './system-usage';
+import { buildTerminalEnv } from '../terminal-host/env';
 import { registerTerminalHandlers } from './ipc/terminals';
 import { registerWorkspaceHandlers } from './ipc/workspaces';
 import { createProviderRegistry } from './providers';
@@ -198,6 +201,19 @@ app
       env: process.env,
     };
     const terminalBackend = createTerminalBackend(terminalOptions);
+    // Planejador do Claude Code: o PATH e o ambiente filtrado são os do agente (process.env, como em
+    // `terminalOptions`), e não o `env` da aplicação, que empacotado vem sem o PATH. Em teste, um CLI falso
+    // (`APP_PLANNER_COMMAND` ou `APP_PLANNER_SCRIPT`) liga o planejador mesmo sem `APP_AGENT_ADAPTER`.
+    const plannerCommand = resolvePlannerCommand(env, resolveExecutable('claude', process.env));
+    const planner =
+      process.env['APP_AGENT_ADAPTER'] === 'claude-code' || plannerCommand.overridden
+        ? createClaudePlanner({
+            command: plannerCommand.command,
+            commandPrefix: plannerCommand.commandPrefix,
+            env: buildTerminalEnv(process.env),
+            extraEnv: plannerCommand.extraEnv,
+          })
+        : undefined;
     const services = createAppServices({
       dbFile: resolveDatabaseFile(env, app.getPath('userData')),
       platform: platformOf(process.platform),
@@ -207,6 +223,7 @@ app
       ...(process.env['APP_AGENT_ADAPTER'] === 'claude-code'
         ? { agent: createClaudeAgent(terminalOptions, terminalBackend) }
         : {}),
+      planner,
     });
     app.once('will-quit', () => {
       services.close();

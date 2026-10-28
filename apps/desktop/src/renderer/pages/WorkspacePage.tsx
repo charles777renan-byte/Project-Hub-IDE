@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
+import { ProjectHeader } from '../components/project/ProjectHeader';
+import { ProjectMissions } from '../components/project/ProjectMissions';
+import { ProjectSettings } from '../components/project/ProjectSettings';
+import { WorktreesTab } from '../components/WorktreesTab';
+import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
-import { ROUTE_PATHS } from '../routes';
+import { MissionPage } from './MissionPage';
+import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
+import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { useTerminals } from '../terminals-data';
 import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
@@ -27,8 +34,24 @@ function requestedTerminal(state: unknown): string | null {
   return typeof id === 'string' && id !== '' ? id : null;
 }
 
+/**
+ * A aba do projeto (`/workspaces/:projectId?visao=...`): o cabeçalho de uma linha com as visões e, abaixo, a
+ * visão escolhida. Terminais (a padrão) é o workspace de painéis; Missões é a lista de missões do projeto e o
+ * formulário Nova missão; Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais
+ * ficam sempre montados (só escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz
+ * os terminais. As outras visões só são montadas enquanto ativas. Projeto arquivado ou removido com a aba
+ * aberta mostra a mensagem e o link para o Início.
+ *
+ * Uma missão aberta (`/workspaces/:projectId/missoes/:missionId`) ocupa o painel das Missões, no lugar da
+ * lista, e o cabeçalho segue na tela com Missões como visão ativa. É a mesma rota (a do `/*`), então a
+ * página não é remontada e os terminais continuam montados, escondidos. O "← Missões" da missão volta à lista.
+ */
 export function WorkspacePage() {
   const { projectId = '' } = useParams();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const missionId = useMatch(ROUTE_PATHS.missionDetail)?.params.missionId;
+  const view = missionId === undefined ? projectViewFromParams(params) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -36,15 +59,98 @@ export function WorkspacePage() {
   if (sidebar.status === 'ready' && project === undefined) {
     return (
       <div className="workspace-missing">
-        <p>O projeto não foi encontrado.</p>
-        <Link to={ROUTE_PATHS.projects}>Voltar para Projetos</Link>
+        <p>{PROJECT_TEXT.notFound}</p>
+        <Link to={ROUTE_PATHS.home}>{PROJECT_TEXT.backHome}</Link>
       </div>
     );
   }
-  return <WorkspaceBody key={projectId} projectId={projectId} projectName={project?.name ?? ''} />;
+  return (
+    <div className="project-tab">
+      {project === undefined ? null : (
+        <ProjectHeader
+          project={project}
+          missionOpen={missionId !== undefined}
+          onNewMission={() =>
+            navigate(projectViewPath(projectId, 'missoes'), { state: { newMission: true } })
+          }
+        />
+      )}
+      <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
+        <WorkspaceBody
+          key={projectId}
+          projectId={projectId}
+          projectName={project?.name ?? ''}
+          visible={view === 'terminais'}
+        />
+      </ProjectPanel>
+      <ProjectPanel
+        view="missoes"
+        active={view}
+        labelled={project !== undefined}
+        mission={missionId !== undefined}
+      >
+        {missionId !== undefined ? (
+          <MissionPage missionId={missionId} />
+        ) : view === 'missoes' ? (
+          <ProjectMissions projectId={projectId} project={project} />
+        ) : null}
+      </ProjectPanel>
+      <ProjectPanel view="worktrees" active={view} labelled={project !== undefined}>
+        {view === 'worktrees' ? <WorktreesTab projectId={projectId} /> : null}
+      </ProjectPanel>
+      <ProjectPanel view="configuracoes" active={view} labelled={project !== undefined}>
+        {view === 'configuracoes' && project !== undefined ? (
+          <ProjectSettings project={project} />
+        ) : null}
+      </ProjectPanel>
+    </div>
+  );
 }
 
-function WorkspaceBody({ projectId, projectName }: { projectId: string; projectName: string }) {
+/**
+ * O painel de uma visão (`role="tabpanel"`, o `aria-controls` da aba dela). Os quatro existem sempre; só o da
+ * visão ativa aparece (`hidden` nos outros). O conteúdo de cada um é montado só quando a visão está ativa,
+ * menos os terminais: o dono dele os mantém montados, para que uma espiada em Configurações não derrube os
+ * painéis, o xterm e o estado do workspace.
+ */
+function ProjectPanel({
+  view,
+  active,
+  labelled,
+  mission = false,
+  children,
+}: {
+  view: ProjectView;
+  active: ProjectView;
+  /** Com o cabeçalho na tela, a aba da visão existe e nomeia o painel. */
+  labelled: boolean;
+  /** Com uma missão aberta no painel das Missões, ele não tem respiro e quem rola é a missão. */
+  mission?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="tabpanel"
+      id={projectPanelId(view)}
+      {...(labelled ? { 'aria-labelledby': `tab-${view}` } : {})}
+      hidden={view !== active}
+      className={`project-tab__panel project-tab__panel--${view}${mission ? ' project-tab__panel--mission' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function WorkspaceBody({
+  projectId,
+  projectName,
+  visible,
+}: {
+  projectId: string;
+  projectName: string;
+  /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
+  visible: boolean;
+}) {
   const workspace = useWorkspace(projectId);
 
   const { terminals, loaded, reload } = useTerminals();
@@ -104,8 +210,20 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     if (wanted === null || !ready || consumed.current === location.key) return;
     consumed.current = location.key;
     showTerminal(wanted, terminals.find((item) => item.id === wanted)?.provider);
-    navigate(location.pathname, { replace: true, state: null });
-  }, [wanted, ready, location.key, location.pathname, showTerminal, navigate, terminals]);
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [
+    wanted,
+    ready,
+    location.key,
+    location.pathname,
+    location.search,
+    showTerminal,
+    navigate,
+    terminals,
+  ]);
 
   if (workspace.state.status === 'loading') {
     return <p className="workspace-status">Abrindo o workspace…</p>;
@@ -114,7 +232,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
     return (
       <div className="workspace-missing">
         <p role="alert">{workspace.state.message}</p>
-        <Link to={ROUTE_PATHS.projects}>Voltar para Projetos</Link>
+        <Link to={ROUTE_PATHS.home}>{PROJECT_TEXT.backHome}</Link>
       </div>
     );
   }
@@ -283,7 +401,7 @@ function WorkspaceBody({ projectId, projectName }: { projectId: string; projectN
           </div>
         ) : shown === null ? (
           <div className="workspace__empty">
-            <TopographicBackground />
+            {visible ? <TopographicBackground /> : null}
             <EmptyState
               icon={SquareTerminal}
               title="Nenhum terminal aberto"

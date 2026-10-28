@@ -17,6 +17,13 @@ export {
   type OrchestratorDeps,
 } from './missions/orchestrator';
 export { planFromCriteria, type MissionPlanStep } from './missions/plan';
+export { applyPlanEdit, type PlanEdit } from './missions/plan-edit';
+export {
+  MAX_PLAN_TASKS,
+  tasksToSteps,
+  validatePlan,
+  type PlannedTask,
+} from './missions/plan-validation';
 export {
   createMission,
   type CreateMissionDeps,
@@ -43,6 +50,7 @@ export type {
   GitDetector,
   MissionChanges,
   MissionRepository,
+  Planner,
   ProjectRepository,
   SettingsRepository,
   TerminalErrorCode,

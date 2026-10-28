@@ -4,6 +4,7 @@ import {
   applicationEnvironment,
   resolveDatabaseFile,
   resolveDirectoryChooser,
+  resolvePlannerCommand,
   resolveWorktreesRoot,
 } from '../src/main/composition';
 
@@ -131,5 +132,92 @@ describe('ambiente do aplicativo empacotado (R193)', () => {
     const env = applicationEnvironment(testEnvironment, true);
 
     expect(resolveWorktreesRoot(env, '/home/ana')).toBe('/raiz-dos-worktrees');
+  });
+});
+
+describe('comando do planejador nos testes (APP_PLANNER_COMMAND e APP_PLANNER_SCRIPT)', () => {
+  const real = '/real/claude';
+  const untouched = { command: real, commandPrefix: [], extraEnv: {}, overridden: false };
+
+  it('com PROJECT_HUB_ENV=test e comando preenchido, o comando de teste vale', () => {
+    expect(
+      resolvePlannerCommand(
+        { PROJECT_HUB_ENV: 'test', APP_PLANNER_COMMAND: '/falso/claude' },
+        real,
+      ),
+    ).toEqual({ command: '/falso/claude', commandPrefix: [], extraEnv: {}, overridden: true });
+  });
+
+  it('sem PROJECT_HUB_ENV=test, o comando de teste é ignorado', () => {
+    expect(resolvePlannerCommand({ APP_PLANNER_COMMAND: '/falso' }, real)).toEqual(untouched);
+    expect(
+      resolvePlannerCommand({ PROJECT_HUB_ENV: 'production', APP_PLANNER_COMMAND: '/falso' }, real),
+    ).toEqual(untouched);
+  });
+
+  it('comando vazio ou ausente, mesmo em teste, deixa o comando padrão', () => {
+    expect(
+      resolvePlannerCommand({ PROJECT_HUB_ENV: 'test', APP_PLANNER_COMMAND: '' }, real),
+    ).toEqual(untouched);
+    expect(resolvePlannerCommand({ PROJECT_HUB_ENV: 'test' }, real)).toEqual(untouched);
+  });
+
+  it('com PROJECT_HUB_ENV=test e script, roda o script no próprio executável como Node', () => {
+    expect(
+      resolvePlannerCommand(
+        { PROJECT_HUB_ENV: 'test', APP_PLANNER_SCRIPT: '/e2e/fake.mjs' },
+        real,
+        '/app/electron',
+      ),
+    ).toEqual({
+      command: '/app/electron',
+      commandPrefix: ['/e2e/fake.mjs'],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      overridden: true,
+    });
+  });
+
+  it('o script vence o comando de teste quando os dois existem', () => {
+    const resolved = resolvePlannerCommand(
+      { PROJECT_HUB_ENV: 'test', APP_PLANNER_SCRIPT: '/e2e/fake.mjs', APP_PLANNER_COMMAND: '/x' },
+      real,
+      '/app/electron',
+    );
+
+    expect(resolved.command).toBe('/app/electron');
+    expect(resolved.commandPrefix).toEqual(['/e2e/fake.mjs']);
+  });
+
+  it.each(['production', 'development', 'TEST', ''])(
+    'PROJECT_HUB_ENV=%j não libera o script de teste',
+    (value) => {
+      expect(
+        resolvePlannerCommand(
+          { PROJECT_HUB_ENV: value, APP_PLANNER_SCRIPT: '/e2e/fake.mjs' },
+          real,
+          '/app/electron',
+        ),
+      ).toEqual(untouched);
+    },
+  );
+
+  it('script vazio, mesmo em teste, deixa o comando padrão', () => {
+    expect(
+      resolvePlannerCommand({ PROJECT_HUB_ENV: 'test', APP_PLANNER_SCRIPT: '' }, real),
+    ).toEqual(untouched);
+  });
+
+  it('empacotado, APP_PLANNER_COMMAND e APP_PLANNER_SCRIPT somem junto com PROJECT_HUB_ENV (R193)', () => {
+    const env = applicationEnvironment(
+      {
+        PROJECT_HUB_ENV: 'test',
+        APP_PLANNER_COMMAND: '/falso',
+        APP_PLANNER_SCRIPT: '/e2e/fake.mjs',
+      },
+      true,
+    );
+
+    expect(env).toEqual({});
+    expect(resolvePlannerCommand(env, real, '/app/electron')).toEqual(untouched);
   });
 });

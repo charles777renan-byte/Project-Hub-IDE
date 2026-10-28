@@ -46,6 +46,7 @@ export function ConfirmInline({
  */
 export function ConfirmButton({
   label,
+  ariaLabel,
   question,
   confirmLabel,
   disabled = false,
@@ -53,6 +54,8 @@ export function ConfirmButton({
   onConfirm,
 }: {
   label: string;
+  /** Nome acessível do botão inicial, quando precisa dizer mais que o texto (por exemplo, o alvo da ação). */
+  ariaLabel?: string;
   /** O que vai acontecer, dito antes da confirmação. */
   question: string;
   confirmLabel: string;
@@ -67,6 +70,7 @@ export function ConfirmButton({
       <button
         type="button"
         className="btn-danger"
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setAsking(true)}
       >

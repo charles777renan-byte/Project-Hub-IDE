@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 // A janela vem do subpath sem zod: o barrel dos contratos puxaria o zod para o bundle do renderer.
 import { ACTIVITY_WINDOW_DAYS } from '@project-hub/contracts/activity-window';
 import type { ActivityDay } from '@project-hub/contracts';
+import { HOME_TEXT } from '../../mission-text';
 
 const LOAD_ERROR = 'Não foi possível carregar a atividade.';
 
@@ -70,10 +71,11 @@ function eventsLabel(count: number): string {
 type State = { status: 'loading' } | { status: 'error' } | { status: 'ready'; days: ActivityDay[] };
 
 /**
- * Atividade dos últimos 90 dias, um quadrado por dia, em colunas de semana (domingo a sábado) com os
- * rótulos seg, qua e sex à esquerda. A fonte são os eventos de missão (`activity.daily`). O nível entra
- * por classe (`activity-level--0` a `--4`), nunca por estilo escrito. Banco sem evento mostra os 90 dias
- * vazios e uma frase; se a consulta falha, só este bloco mostra a mensagem. `today` existe para o teste.
+ * Atividade dos últimos 90 dias em faixa compacta: uma linha de resumo (total de eventos e sequência
+ * atual) e o mapa, um quadrado por dia, em colunas de semana (domingo a sábado) com os rótulos seg, qua e
+ * sex à esquerda. A fonte são os eventos de missão (`activity.daily`). O nível entra por classe
+ * (`activity-level--0` a `--4`), nunca por estilo escrito. Banco sem evento mostra uma linha só, sem o mapa
+ * vazio; se a consulta falha, só este bloco mostra a mensagem. `today` existe para o teste.
  */
 export function ActivityHeatmap({ today }: { today?: Date }) {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -98,7 +100,6 @@ export function ActivityHeatmap({ today }: { today?: Date }) {
 
   let head = null;
   let body;
-  let foot = null;
   if (state.status === 'loading') {
     body = (
       <p className="activity__note" role="status">
@@ -114,70 +115,61 @@ export function ActivityHeatmap({ today }: { today?: Date }) {
   } else {
     const moment = today ?? new Date();
     const dates = windowDays(ACTIVITY_WINDOW_DAYS, moment);
-    const levels = levelsFor(state.days, ACTIVITY_WINDOW_DAYS, moment);
     const byDate = new Map(state.days.map(({ date, count }) => [date, count]));
     const total = dates.reduce((sum, day) => sum + (byDate.get(dateKey(day)) ?? 0), 0);
-    const blanks = leadingBlanks(ACTIVITY_WINDOW_DAYS, moment);
-    const streak = currentStreak(state.days, moment);
-    const summary =
-      total === 0
-        ? `Nenhum evento de missão nos últimos ${ACTIVITY_WINDOW_DAYS} dias.`
-        : `${eventsLabel(total)} de missão nos últimos ${ACTIVITY_WINDOW_DAYS} dias.`;
-    head = (
-      <div className="activity__summary">
-        <div>
-          <p className="activity__total">
-            <span className="activity__number">{total}</span>
-            <span className="activity__unit">eventos de missão</span>
-          </p>
-          <p className="activity__period">últimos {ACTIVITY_WINDOW_DAYS} dias · dia local</p>
-        </div>
-        <span className="home-badge">{ACTIVITY_WINDOW_DAYS} dias</span>
-      </div>
-    );
-    body = (
-      <>
-        <div className="activity-grid" role="img" aria-label={summary}>
-          {/* Primeira coluna: os rótulos de dia (uma linha por dia da semana). */}
-          {ROW_LABELS.map((label, row) => (
-            <span key={`label-${row}`} className="activity-grid__label" aria-hidden="true">
-              {label}
-            </span>
-          ))}
-          {/* A primeira semana começa no domingo: os dias antes do primeiro entram como espaços em branco. */}
-          {Array.from({ length: blanks }, (_, index) => (
-            <span key={`blank-${index}`} className="activity-cell activity-cell--blank" />
-          ))}
-          {dates.map((day, index) => {
-            const key = dateKey(day);
-            const level = levels[index] ?? 0;
-            const current = index === dates.length - 1 ? ' activity-cell--today' : '';
-            return (
-              <span
-                key={key}
-                className={`activity-cell activity-level--${level}${current}`}
-                title={`${TITLE_FORMAT.format(day)}: ${eventsLabel(byDate.get(key) ?? 0)}`}
-              />
-            );
-          })}
-        </div>
-        {total === 0 ? <p className="activity__note">{summary}</p> : null}
-      </>
-    );
-    foot = (
-      <div className="activity__foot">
-        <p className="activity__streak">
-          sequência atual: {streak} {streak === 1 ? 'dia' : 'dias'}
+    if (total === 0) {
+      body = <p className="activity__note">{HOME_TEXT.activityEmpty(ACTIVITY_WINDOW_DAYS)}</p>;
+    } else {
+      const levels = levelsFor(state.days, ACTIVITY_WINDOW_DAYS, moment);
+      const blanks = leadingBlanks(ACTIVITY_WINDOW_DAYS, moment);
+      const streak = currentStreak(state.days, moment);
+      const summary = `${eventsLabel(total)} de missão nos últimos ${ACTIVITY_WINDOW_DAYS} dias.`;
+      head = (
+        <p className="activity__summary">
+          <span className="activity__number">{total}</span>
+          <span className="activity__unit">eventos de missão</span>
+          <span className="activity__period">nos últimos {ACTIVITY_WINDOW_DAYS} dias</span>
+          <span className="activity__streak">
+            sequência atual: {streak} {streak === 1 ? 'dia' : 'dias'}
+          </span>
         </p>
-        <div className="activity-legend" aria-hidden="true">
-          <span>menos</span>
-          {[0, 1, 2, 3, 4].map((level) => (
-            <span key={level} className={`activity-cell activity-level--${level}`} />
-          ))}
-          <span>mais</span>
+      );
+      body = (
+        <div className="activity__map">
+          <div className="activity-grid" role="img" aria-label={summary}>
+            {/* Primeira coluna: os rótulos de dia (uma linha por dia da semana). */}
+            {ROW_LABELS.map((label, row) => (
+              <span key={`label-${row}`} className="activity-grid__label" aria-hidden="true">
+                {label}
+              </span>
+            ))}
+            {/* A primeira semana começa no domingo: os dias antes do primeiro entram como espaços em branco. */}
+            {Array.from({ length: blanks }, (_, index) => (
+              <span key={`blank-${index}`} className="activity-cell activity-cell--blank" />
+            ))}
+            {dates.map((day, index) => {
+              const key = dateKey(day);
+              const level = levels[index] ?? 0;
+              const current = index === dates.length - 1 ? ' activity-cell--today' : '';
+              return (
+                <span
+                  key={key}
+                  className={`activity-cell activity-level--${level}${current}`}
+                  title={`${TITLE_FORMAT.format(day)}: ${eventsLabel(byDate.get(key) ?? 0)}`}
+                />
+              );
+            })}
+          </div>
+          <div className="activity-legend" aria-hidden="true">
+            <span>menos</span>
+            {[0, 1, 2, 3, 4].map((level) => (
+              <span key={level} className={`activity-cell activity-level--${level}`} />
+            ))}
+            <span>mais</span>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
   return (
@@ -187,7 +179,6 @@ export function ActivityHeatmap({ today }: { today?: Date }) {
       </h2>
       {head}
       {body}
-      {foot}
     </section>
   );
 }

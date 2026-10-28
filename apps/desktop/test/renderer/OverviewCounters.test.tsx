@@ -6,14 +6,14 @@ import type {
   ProjectHubApi,
   ProjectSummary,
 } from '@project-hub/contracts';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OverviewCounters } from '../../src/renderer/components/OverviewCounters';
 import { useOverview } from '../../src/renderer/use-overview';
 
 /**
- * Contadores globais do cabeçalho (Tarefa 7 do plano da interface do workspace): "N executando" conta
- * as missões `running`, e "N aguarda você" conta `planned`, `waiting_approval` e `waiting_input`, de
- * todos os projetos. A API do preload é falsa; cada teste monta os projetos e as missões.
+ * Contadores globais da barra de status: "N executando" conta as missões `running`, "N aguarda você"
+ * conta `planned`, `waiting_approval` e `waiting_input`, e "N falharam" conta as que falharam, de todos os projetos. A API do preload é falsa; cada teste monta os projetos e as missões.
  */
 
 type MissionStatus = MissionDto['status'];
@@ -97,6 +97,11 @@ function installApi(
   };
 }
 
+/** Os contadores são links para o Início filtrado: precisam de um roteador. */
+function renderCounters() {
+  return render(<OverviewCounters />, { wrapper: MemoryRouter });
+}
+
 afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
 });
@@ -112,7 +117,7 @@ describe('OverviewCounters', () => {
           },
     );
 
-    render(<OverviewCounters />);
+    renderCounters();
 
     expect(await screen.findByText('1 executando')).toBeInTheDocument();
     expect(screen.getByText('2 aguarda você')).toBeInTheDocument();
@@ -126,7 +131,7 @@ describe('OverviewCounters', () => {
         data: [mission('m1', 'p1', status), mission('m2', 'p1', 'running')],
       }));
 
-      render(<OverviewCounters />);
+      renderCounters();
 
       // A missão em execução serve de marca: quando ela aparece, a leitura já chegou.
       expect(await screen.findByText('1 executando')).toBeInTheDocument();
@@ -135,14 +140,14 @@ describe('OverviewCounters', () => {
   );
 
   it.each(['draft', 'queued', 'paused', 'succeeded', 'failed', 'cancelled'] as const)(
-    'a missão em "%s" não entra em nenhum dos dois contadores',
+    'a missão em "%s" não entra nos contadores de executando nem de aguarda você',
     async (status) => {
       installApi([project('p1')], () => ({
         ok: true,
         data: [mission('m1', 'p1', status), mission('m2', 'p1', 'running')],
       }));
 
-      render(<OverviewCounters />);
+      renderCounters();
 
       expect(await screen.findByText('1 executando')).toBeInTheDocument();
       expect(screen.getByText('0 aguarda você')).toBeInTheDocument();
@@ -153,7 +158,7 @@ describe('OverviewCounters', () => {
     let current: MissionDto[] = [mission('m1', 'p1', 'planned')];
     const { api, emit } = installApi([project('p1')], () => ({ ok: true, data: current }));
 
-    render(<OverviewCounters />);
+    renderCounters();
     expect(await screen.findByText('1 aguarda você')).toBeInTheDocument();
 
     current = [mission('m1', 'p1', 'running')];
@@ -176,7 +181,7 @@ describe('OverviewCounters', () => {
           },
     );
 
-    render(<OverviewCounters />);
+    renderCounters();
 
     expect(await screen.findByText('1 executando')).toBeInTheDocument();
     expect(screen.getByText('1 aguarda você')).toBeInTheDocument();
@@ -187,7 +192,7 @@ describe('OverviewCounters', () => {
       projectId === 'p1' ? 'reject' : { ok: true, data: [mission('m1', 'p2', 'running')] },
     );
 
-    render(<OverviewCounters />);
+    renderCounters();
 
     expect(await screen.findByText('1 executando')).toBeInTheDocument();
     expect(screen.getByText('0 aguarda você')).toBeInTheDocument();
@@ -199,7 +204,7 @@ describe('OverviewCounters', () => {
       data: [mission('m1', 'p1', 'running')],
     }));
 
-    const { unmount } = render(<OverviewCounters />);
+    const { unmount } = renderCounters();
     expect(await screen.findByText('1 executando')).toBeInTheDocument();
     expect(unsubscribe).not.toHaveBeenCalled();
 
@@ -208,13 +213,13 @@ describe('OverviewCounters', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('põe os dois contadores numa região aria-live="polite", cada um com a sua cor', async () => {
+  it('põe os contadores numa região aria-live="polite", cada um com a sua cor', async () => {
     installApi([project('p1')], () => ({
       ok: true,
       data: [mission('m1', 'p1', 'running'), mission('m2', 'p1', 'planned')],
     }));
 
-    render(<OverviewCounters />);
+    renderCounters();
 
     const running = await screen.findByText('1 executando');
     expect(running.closest('.overview-counters')).toHaveAttribute('aria-live', 'polite');
@@ -228,6 +233,33 @@ describe('OverviewCounters', () => {
     );
   });
 
+  it('cada contador é um link para o Início filtrado por estado, e o de falhas conta as missões que falharam', async () => {
+    installApi([project('p1')], () => ({
+      ok: true,
+      data: [
+        mission('m1', 'p1', 'running'),
+        mission('m2', 'p1', 'planned'),
+        mission('m3', 'p1', 'failed'),
+        mission('m4', 'p1', 'failed'),
+      ],
+    }));
+
+    renderCounters();
+
+    expect(await screen.findByRole('link', { name: '1 executando' })).toHaveAttribute(
+      'href',
+      '/?estado=running',
+    );
+    expect(screen.getByRole('link', { name: '1 aguarda você' })).toHaveAttribute(
+      'href',
+      '/?estado=attention',
+    );
+    expect(screen.getByRole('link', { name: '2 falharam' })).toHaveAttribute(
+      'href',
+      '/?estado=failed',
+    );
+  });
+
   it('antes da primeira leitura, mostra traço e não zero, que pareceria um dado', () => {
     window.projectHub = {
       ping: vi.fn(),
@@ -235,14 +267,15 @@ describe('OverviewCounters', () => {
       missions: { list: vi.fn(), subscribe: vi.fn(() => () => {}) },
     } as unknown as ProjectHubApi;
 
-    render(<OverviewCounters />);
+    renderCounters();
 
     expect(screen.getByText('— executando')).toBeInTheDocument();
     expect(screen.getByText('— aguarda você')).toBeInTheDocument();
+    expect(screen.getByText('— falharam')).toBeInTheDocument();
   });
 
   it('sem a API do preload, mostra traço e não quebra', () => {
-    render(<OverviewCounters />);
+    renderCounters();
 
     expect(screen.getByText('— executando')).toBeInTheDocument();
     expect(screen.getByText('— aguarda você')).toBeInTheDocument();

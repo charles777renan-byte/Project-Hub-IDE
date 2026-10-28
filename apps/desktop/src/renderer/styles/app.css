@@ -57,9 +57,9 @@ p {
 }
 
 /*
- * Fundo topográfico (TopographicBackground): um canvas que cobre a janela, atrás de tudo. Superfícies
- * opacas (cartões, barra lateral) escondem as linhas; só as translúcidas (--surface-glass) deixam elas aparecerem.
- * Não recebe cliques.
+ * Fundo topográfico (TopographicBackground): um canvas que cobre o pai posicionado (a faixa do topo do Início e o
+ * cartão do estado vazio dos terminais), atrás do conteúdo dele. Nunca fica atrás de listas, tabelas, formulários ou
+ * terminais. Não recebe cliques.
  */
 .topo-background {
   position: absolute;
@@ -184,22 +184,9 @@ button:disabled {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
-/* Ação com aparência de link, usada no aviso da missão. */
-.btn-link {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: var(--brand);
-  text-decoration: underline;
-}
-
 .page-alert {
   color: var(--red);
   font-weight: 600;
-}
-
-.page-note {
-  color: var(--text);
 }
 
 .muted {
@@ -400,6 +387,15 @@ button:disabled {
   margin: 0 0 var(--space-4);
 }
 
+/*
+ * Depois de um clique numa aba, o Radix deixa a própria barra como uma parada do Tab (tabindex 0) com
+ * `outline: none` inline. O !important é o que vence esse estilo inline, para a parada ter o anel de foco do app.
+ */
+.tabs:focus-visible {
+  outline: 2px solid var(--focus) !important;
+  outline-offset: 2px;
+}
+
 .tab {
   border: 0;
   border-radius: var(--radius-pill);
@@ -436,7 +432,7 @@ button:disabled {
   font-size: 0.8125rem;
 }
 
-/* Listas de cartões: projetos e missões. */
+/* Lista de cartões (a lista de worktrees do projeto). */
 .card-list {
   display: grid;
   gap: var(--space-3);
@@ -445,7 +441,6 @@ button:disabled {
   list-style: none;
 }
 
-.project-card,
 .mission-card {
   padding: var(--space-3);
   border: 1px solid var(--line);
@@ -453,30 +448,13 @@ button:disabled {
   background: var(--surface-glass);
 }
 
-.project-card h2 a {
-  color: var(--cyan);
-  text-decoration: none;
-}
-
 .mission-card a {
   color: inherit;
   text-decoration: none;
 }
 
-.project-card h2 a:hover,
 .mission-card h2 a:hover {
   text-decoration: underline;
-}
-
-.project-card h2 {
-  margin: 0 0 var(--space-1);
-  font-size: 1.125rem;
-}
-
-.project-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
 .project-path {
@@ -486,175 +464,21 @@ button:disabled {
   font-size: 0.8125rem;
 }
 
-.project-unavailable {
-  margin-top: var(--space-1);
-  color: var(--red);
-  font-weight: 600;
-}
-
-/* Cartão de missão: borda violeta quando espera decisão, barra amarela de progresso quando roda. */
+/* Cartão de missão (a lista de worktrees reaproveita). */
 .mission-card {
   display: grid;
   gap: var(--space-2);
-}
-
-.mission-card--attention {
-  border-color: var(--violet);
 }
 
 .mission-card h2 {
   font-size: 1.0625rem;
 }
 
-.mission-card-action {
-  color: var(--violet);
-  font-weight: 700;
-}
-
-.progress {
-  position: relative;
-  height: 3px;
-  overflow: hidden;
-  background: var(--line);
-}
-
-.progress--running::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 40%;
-  background: var(--yellow);
-  animation: progress-slide 1.6s ease-in-out infinite;
-}
-
-@keyframes progress-slide {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(250%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .progress--running::after {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
-  }
-}
-
-/*
- * Resumo da missão (components/workspace/MissionSummary.tsx): é o bloco de maior peso da página. Uma
- * faixa de 3px no topo na cor da situação (--summary-accent: lima roda ou concluiu, âmbar espera a pessoa,
- * vermelho falhou, neutro no resto, inclusive a pausa). À esquerda, o projeto (link ciano), o título e a linha com o
- * chip, a branch e o nome curto do worktree; à direita, a ação principal em lima e as secundárias,
- * discretas. Abaixo, os três indicadores e, com a missão concluída, a caixa do fecho. Quebra de linha
- * sem rolar de lado: as ações passam para a linha de baixo em janela estreita.
- */
-.mission-summary {
-  --summary-accent: var(--muted);
-  display: grid;
-  flex: none;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
-  border-top: 3px solid var(--summary-accent);
-  border-radius: var(--radius-panel);
-  background: var(--surface-glass);
-}
-
-.mission-summary--lime {
-  --summary-accent: var(--lime);
-}
-
-.mission-summary--violet {
-  --summary-accent: var(--violet);
-}
-
-.mission-summary--warn {
-  --summary-accent: var(--warn);
-}
-
 /* Tons neutros do selo (muted, e orange, blue e cyan das telas antigas): faixa neutra, como o chip. */
-.mission-summary--muted,
-.mission-summary--orange,
-.mission-summary--blue,
-.mission-summary--cyan {
-  --summary-accent: var(--muted);
-}
-
-.mission-summary--red {
-  --summary-accent: var(--red);
-}
-
-.mission-summary .eyebrow,
-.mission-summary .mission-meta,
-.mission-summary h1 {
-  margin: 0;
-}
-
 /* Título à esquerda e ações à direita; as ações quebram para a linha de baixo quando falta espaço. */
-.mission-summary__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-3);
-}
-
-.mission-summary__title {
-  display: grid;
-  flex: 1 1 24rem;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
 /* O projeto, acima do título: link ciano (a cor dos projetos), em mono. */
-.mission-summary__project a {
-  color: var(--cyan);
-}
-
-.mission-summary h1 {
-  min-width: 0;
-  font-size: var(--text-xl);
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-}
-
-.mission-summary__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin-left: auto;
-}
-
-.mission-summary__primary {
-  padding: var(--space-2) var(--space-4);
-}
-
 /* Pausar, cancelar e excluir: botões menores e neutros (excluir em vermelho), para a ação principal ser a única em destaque. */
-.mission-summary__secondary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.mission-summary__secondary button {
-  padding: 0.25rem var(--space-2);
-  font-size: 0.8125rem;
-}
-
 /* Linha do resumo: o chip da situação, a branch e o worktree (nome curto e o botão de copiar o caminho). */
-.mission-summary .mission-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin-top: var(--space-1);
-}
-
 .mission-meta__item {
   display: inline-flex;
   flex-wrap: wrap;
@@ -681,52 +505,6 @@ button:disabled {
   color: var(--lime);
 }
 
-/* Indicadores: verificação, arquivos alterados e Git, em três colunas (empilham abaixo de 900px). */
-.mission-indicators {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2) var(--space-3);
-  margin: 0;
-  padding: var(--space-3) 0 0;
-  border-top: 1px solid var(--line);
-  list-style: none;
-}
-
-.mission-indicator {
-  display: grid;
-  align-content: start;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.mission-indicator__label {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.mission-indicator__value {
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.mission-indicator--ok .mission-indicator__value {
-  color: var(--lime);
-}
-
-.mission-indicator--bad .mission-indicator__value {
-  color: var(--red);
-}
-
-.mission-indicator__note {
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
 .mission-meta {
   color: var(--muted);
   font-family: var(--font-mono);
@@ -734,7 +512,6 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.mission-actions,
 .inline-actions {
   display: flex;
   flex-wrap: wrap;
@@ -747,26 +524,6 @@ button:disabled {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-}
-
-/* Projetos arquivados: nome, caminho e o botão Restaurar, uma linha por projeto. */
-.archived-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.archived-list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-3);
-}
-
-.archived-list__name {
-  font-weight: 600;
 }
 
 /* Painel Terminal: o comando em ciano, a saída em fonte monoespaçada e com quebra de linha. */
@@ -794,69 +551,6 @@ button:disabled {
 
 .terminal-log__output--failed {
   color: var(--red);
-}
-
-/* Plano: passos numerados e o cartão de decisão. */
-.plan-steps {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-4);
-  padding: 0;
-  list-style: none;
-}
-
-/*
- * Em painel estreito, o chip de estado desce para baixo do texto, alinhado com ele. Em painel largo
- * (a partir de 24rem), o chip fica à direita, na mesma linha. A coluna do texto encolhe e quebra linha:
- * sem isso o passo mais largo que o painel rola de lado.
- */
-.plan-steps {
-  container-type: inline-size;
-}
-
-.plan-step {
-  display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--line);
-  background: var(--surface-glass);
-}
-
-.plan-step > span:not(.chip) {
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-
-.plan-step > .chip {
-  grid-column: 2;
-  justify-self: start;
-}
-
-@container (min-width: 24rem) {
-  .plan-step {
-    grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .plan-step > .chip {
-    grid-column: auto;
-    justify-self: auto;
-  }
-}
-
-.plan-step-number {
-  font-family: var(--font-mono);
-  color: var(--blue);
-  font-weight: 700;
-}
-
-.plan-step-agent {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
 }
 
 /* Cartão de decisão: âmbar (--warn, "aguarda você"), para aprovação do plano e de ação protegida. */
@@ -969,64 +663,6 @@ button:disabled {
   resize: vertical;
 }
 
-/* Cabeçalho do formulário de missão e a explicação de cada caixa de marcar. */
-.form-head__title {
-  margin: 0;
-  font-size: 1.125rem;
-}
-
-.form-head__hint {
-  margin: var(--space-1) 0 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-/* Formulário de missão em seções, e as opções como cartões que se marcam. */
-.form-section {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-glass);
-}
-
-.form-section__title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: 1rem;
-}
-
-.form-section__num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 1px solid var(--field-line);
-  border-radius: 50%;
-  color: var(--muted);
-  font-size: 0.6875rem;
-}
-
-.form-section__hint {
-  margin: calc(var(--space-2) * -1) 0 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.option-card {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.option-card:has(input:checked) {
-  border-color: var(--muted);
-}
-
 .check {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1068,147 +704,6 @@ button:disabled {
   color: var(--muted);
 }
 
-/* Cabeçalho do projeto: nome, etiqueta da branch e pasta à esquerda, e o menu de ações no canto. */
-.project-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.project-head__main {
-  min-width: 0;
-}
-
-/* O gatilho do menu fica compacto e numa linha só, também em janela estreita. */
-.project-head .menu-acoes__gatilho {
-  flex: none;
-  padding: var(--space-1) var(--space-3);
-  font-size: 0.8125rem;
-  white-space: nowrap;
-}
-
-.project-head__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
-
-.branch-chip {
-  padding: 2px var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
-.project-head__actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* Visão geral: contadores no alto, e as listas ao lado do cartão do repositório. */
-.project-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: start;
-}
-
-@media (max-width: 52rem) {
-  .project-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.project-grid__main,
-.project-grid__side {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.panel-card {
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-glass);
-}
-
-.panel-card--attention {
-  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
-}
-
-.panel-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.panel-card__title {
-  margin: 0 0 var(--space-2);
-  font-size: 1rem;
-}
-
-.panel-card__head .panel-card__title {
-  margin-bottom: var(--space-2);
-}
-
-.link-button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.8125rem;
-  text-decoration: underline;
-}
-
-.mission-rows {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mission-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--line);
-}
-
-.mission-row:first-child {
-  border-top: 0;
-}
-
-.mission-row__text {
-  min-width: 0;
-}
-
-.mission-row__text a {
-  color: var(--text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.mission-row__text a:hover {
-  text-decoration: underline;
-}
-
-.mission-row__text p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
 /* A pasta do projeto: o nome, com os botões Abrir e Copiar caminho embaixo. O caminho inteiro fica na dica. */
 .project-folder {
   display: grid;
@@ -1244,84 +739,6 @@ button:disabled {
   font-size: 0.8125rem;
 }
 
-/* Abas do projeto: sublinhadas, a ativa com o traço claro embaixo. Só nesta página; as outras abas seguem em pílula. */
-.project-tabs .tabs {
-  flex-wrap: wrap;
-  gap: 0 var(--space-4);
-  margin: var(--space-3) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.project-tabs .tab {
-  flex: none;
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: var(--space-2) 0;
-  white-space: nowrap;
-}
-
-.project-tabs .tab:hover {
-  background: transparent;
-}
-
-.project-tabs .tab[aria-selected='true'] {
-  border-bottom-color: var(--text);
-  background: transparent;
-  box-shadow: none;
-}
-
-/* Aba Missões: título, contagem e o botão Criar missão à direita. */
-.missions-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.missions-toolbar__title {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.missions-toolbar__count {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.missions-toolbar .btn-primary {
-  margin-left: auto;
-}
-
-/* Estado vazio da aba Missões: convite e os três passos, num cartão tracejado. */
-.missions-empty {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px dashed var(--field-line);
-  border-radius: var(--radius);
-}
-
-.missions-empty__title {
-  margin: 0;
-  font-weight: 600;
-}
-
-.missions-empty__hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.missions-empty__steps {
-  margin: var(--space-1) 0 0;
-  padding-left: var(--space-4);
-  color: var(--text);
-  font-size: 0.8125rem;
-}
-
 .workspace-panel {
   max-width: 48rem;
 }
@@ -1338,13 +755,14 @@ button:disabled {
 
 /* Selo de pílula (.chip, com a cor do estado em .chip--lime e .chip--violet); aqui só o não quebrar. */
 .overview-counter {
+  text-decoration: none;
   white-space: nowrap;
 }
 
 /*
- * Uso do computador e "Parar todos" no cabeçalho (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
- * discreto em --muted. Em janela estreita ele some primeiro, para os contadores não perderem lugar. A pergunta
- * de "Parar todos" cabe na altura da barra: botões baixos, sem quebra de linha.
+ * Uso do computador e "Parar todos" na barra de status (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
+ * discreto em --muted. Só em janela bem estreita (800px ou menos) ele some, para os contadores não perderem lugar. A pergunta
+ * de "Parar todos" cabe na altura da barra (as regras dela estão em statusbar.css).
  */
 .system-usage {
   display: flex;
@@ -1354,244 +772,12 @@ button:disabled {
   white-space: nowrap;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 800px) {
   .system-usage {
     display: none;
   }
 }
 
-.topbar__status .confirm-inline {
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-.topbar__status .btn-danger,
-.topbar__status .confirm-inline button {
-  height: 24px;
-  padding: 0 var(--space-2);
-  font-size: 0.6875rem;
-  line-height: 22px;
-}
-
-/*
- * Workspace da missão (pages/MissionPage.tsx): uma coluna com o resumo fixo no topo, o banner
- * "Aguardando você" (só com decisão pendente), e a área das abas, que enche a altura que sobra da
- * página. Cada painel de aba rola dentro de si, então nenhum conteúdo é cortado e a página não cresce
- * com o número de eventos. A área das abas tem piso de 18rem: numa janela baixa a página passa a rolar
- * na vertical, em vez de espremer o painel. Abaixo de 1000px (sem barra lateral) a página rola e a área
- * das abas ganha uma altura própria, de 70vh.
- */
-.app-main__content:has(> .mission-workspace) {
-  height: 100%;
-}
-
-.mission-workspace {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  height: 100%;
-  min-height: 0;
-  container-type: inline-size;
-}
-
-.mission-workspace > p {
-  margin: 0;
-}
-
-/*
- * Região `status` que fica montada em volta do banner. Vazia, não ocupa espaço: a margem negativa
- * desfaz o vão que o `gap` do workspace abriria para ela.
- */
-.decision-status {
-  flex: none;
-}
-
-.decision-status:empty {
-  margin-top: calc(var(--space-3) * -1);
-}
-
-/*
- * Banner "Aguardando você" (components/workspace/DecisionBanner.tsx): borda violeta, os itens pendentes
- * em lista compacta e o botão que leva à Conversa. A lista rola quando há muitos itens.
- */
-.decision-banner {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--warn);
-  border-radius: var(--radius-panel);
-  background: var(--surface-glass);
-}
-
-.decision-banner__title {
-  margin: 0;
-  color: var(--warn);
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
-.decision-banner__items {
-  display: grid;
-  flex: 1 1 16rem;
-  gap: var(--space-1);
-  max-height: 6rem;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-  font-size: 0.875rem;
-  overflow-wrap: anywhere;
-}
-
-.decision-banner__kind {
-  margin-right: var(--space-2);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/*
- * Fluxo da missão (components/workspace/MissionFlow.tsx): cinco etapas lado a lado, com a forma do estado (✓ ◐ ○ ✕)
- * além da cor. A etapa em curso ganha o contorno em --muted (mais de 3:1 sobre o fundo); o problema, o contorno e a
- * marca em --danger; o resto fica em --line. O lima não entra aqui: é reservado ao item ativo e ao botão principal.
- * Em largura estreita (container do workspace), as etapas empilham.
- */
-.mission-flow {
-  display: grid;
-  flex: none;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mission-flow__node {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-
-.mission-flow__node--current {
-  box-shadow: inset 0 0 0 1px var(--muted);
-}
-
-.mission-flow__node--problem {
-  box-shadow: inset 0 0 0 1px var(--danger);
-}
-
-.mission-flow__mark {
-  flex: none;
-  width: 1rem;
-  color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  text-align: center;
-}
-
-.mission-flow__node--current .mission-flow__mark {
-  color: var(--text);
-}
-
-.mission-flow__node--problem .mission-flow__mark {
-  color: var(--danger);
-}
-
-.mission-flow__text {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.mission-flow__text strong {
-  color: var(--text);
-  font-size: 0.8125rem;
-}
-
-.mission-flow__node--pending .mission-flow__text strong {
-  color: var(--muted);
-}
-
-.mission-flow__detail {
-  color: var(--muted);
-  font-size: 0.75rem;
-  overflow-wrap: anywhere;
-}
-
-@container (max-width: 56rem) {
-  .mission-flow {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@container (max-width: 30rem) {
-  .mission-flow {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/*
- * Abas da missão: a barra de abas (pílulas uniformes, com a contagem depois do nome) e os painéis, sem moldura: o conteúdo é mais calmo que o
- * resumo. Painel escondido some de verdade (`hidden`), mesmo com `display` definido na classe.
- */
-.mission-tabs {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 18rem;
-}
-
-.mission-tabs > .tabs {
-  flex: none;
-  margin: 0;
-}
-
-.mission-tabs > .tabs .tab {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* O respiro dos lados deixa o contorno de foco (2px, afastado 2px) inteiro nos controles rente à borda. */
-.mission-tabpanel {
-  flex: 1;
-  min-height: 0;
-  padding: var(--space-3) var(--space-2) var(--space-2);
-  overflow: auto;
-}
-
-.mission-tabpanel[hidden] {
-  display: none;
-}
-
-.mission-tabpanel:focus-visible {
-  outline-offset: -2px;
-}
-
-/* Conversa: quando a missão pede a decisão, o foco vem para cá; o contorno fica por dentro. */
-.mission-focus:focus-visible {
-  outline-offset: -2px;
-}
-
-/* Plano: o convite para revisar as etapas e o botão de pedir outro plano, abaixo da lista. */
-.plan-review {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-2);
-}
-
-/* Critérios de aceite, na aba Testes: um título pequeno, sem moldura, abaixo das verificações. */
 .acceptance {
   margin-top: var(--space-4);
 }
@@ -1744,26 +930,9 @@ button:disabled {
 }
 
 @media (max-width: 1000px) {
-  .app-main__content:has(> .mission-workspace) {
-    height: auto;
-  }
-
-  .mission-workspace {
-    height: auto;
-  }
-
-  .mission-tabs {
-    flex: none;
-    height: 70vh;
-    min-height: 20rem;
-  }
 }
 
-/* Abaixo de 900px os três indicadores do resumo empilham, um por linha. */
 @media (max-width: 900px) {
-  .mission-indicators {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* Critérios de aceite: uma linha por critério, com a marca "○ não verificado" embaixo. */
@@ -1788,35 +957,6 @@ button:disabled {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.75rem;
-}
-
-/* Abas Visão geral e Repositório do projeto (Tarefa 9). */
-.project-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.project-counts li {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 7rem;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.project-counts__value {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.project-counts__label {
-  color: var(--muted);
-  font-size: 0.8125rem;
 }
 
 .project-facts {
@@ -1883,9 +1023,8 @@ button:disabled {
 }
 
 /*
- * Fecho da missão concluída, dentro do resumo da missão (R130), abaixo dos indicadores: uma caixa
- * discreta, no fundo da página, com a frase final em destaque e o estado do Git em muted. O seletor
- * composto da frase vence a margem que `.app-main p` dá aos parágrafos.
+ * Fecho da missão concluída, dentro do bloco "Sua decisão" (components/mission/DecisionBlock.tsx): uma caixa
+ * discreta, no fundo da página, com a frase final e o estado do Git em muted. A frase é ajustada em mission.css.
  */
 .conclusion {
   display: grid;
@@ -1894,13 +1033,6 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--bg);
-}
-
-.mission-summary .conclusion__summary {
-  max-width: none;
-  margin: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
 }
 
 .conclusion__facts {
@@ -1912,10 +1044,6 @@ button:disabled {
   list-style: none;
   color: var(--muted);
   font-size: 0.8125rem;
-}
-
-.conclusion__item--failed {
-  color: var(--red);
 }
 
 .terminal-view {

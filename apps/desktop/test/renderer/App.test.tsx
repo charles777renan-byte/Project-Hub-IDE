@@ -1,104 +1,94 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectHubApi } from '@project-hub/contracts';
 import { App } from '../../src/renderer/App';
+
+/** A aba fixa Início da barra superior. */
+function homeTab(): HTMLElement {
+  const header = document.querySelector<HTMLElement>('header.topbar');
+  expect(header).not.toBeNull();
+  return within(header as HTMLElement).getByRole('link', { name: 'Início' });
+}
 
 // O aplicativo usa HashRouter (o renderer roda de file:// em produção). Os testes usam
 // MemoryRouter, que não depende do endereço da janela.
 describe('App', () => {
-  it('mostra navegação com Início e Projetos', () => {
+  it('a lateral não tem navegação principal: Início é a aba fixa da barra superior', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('link', { name: 'Início' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Projetos' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Principal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Projetos' })).not.toBeInTheDocument();
+    expect(homeTab()).toBeInTheDocument();
   });
 
-  it('abre a página de Projetos ao clicar', async () => {
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
-    await userEvent.click(screen.getByRole('link', { name: 'Projetos' }));
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument();
-  });
-
-  it('abre em Início e marca esse link como a página atual', () => {
+  it('abre em Início e marca essa aba como a página atual', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Início' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Projetos' })).not.toHaveAttribute('aria-current');
+    expect(homeTab()).toHaveAttribute('aria-current', 'page');
   });
 
-  it('passa a marcar Projetos como a página atual depois do clique', async () => {
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
-    await userEvent.click(screen.getByRole('link', { name: 'Projetos' }));
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Início' })).not.toHaveAttribute('aria-current');
-    expect(screen.queryByRole('heading', { name: 'Início' })).not.toBeInTheDocument();
-  });
-
-  it('abre direto em Projetos quando a rota é /projects', () => {
+  it('a rota antiga /projects cai em Início', () => {
     render(
       <MemoryRouter initialEntries={['/projects']}>
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Projetos' })).not.toBeInTheDocument();
+    expect(homeTab()).toHaveAttribute('aria-current', 'page');
   });
 
-  it('agrupa os links numa navegação com nome e deixa o conteúdo em main', () => {
+  it('deixa o conteúdo em main', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    const navigation = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(navigation).getAllByRole('link')).toHaveLength(2);
     expect(within(screen.getByRole('main')).getByRole('heading', { name: 'Início' })).toBeVisible();
   });
 
-  it('chega aos controles com Tab, na ordem da tela, e abre a página com Enter', async () => {
+  it('chega aos controles com Tab, na ordem da tela, e aciona Adicionar projeto com Enter', async () => {
+    const chooseDirectory = vi.fn(() => Promise.resolve({ ok: true, data: null }));
+    window.projectHub = { projects: { chooseDirectory } } as unknown as ProjectHubApi;
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    try {
+      render(
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>,
+      );
 
-    // A barra superior vem antes da navegação.
-    await user.tab();
-    expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('link', { name: 'Início' })).toHaveFocus();
-    await user.tab();
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveFocus();
+      // A barra superior vem antes da lateral: primeiro a aba fixa Início, depois o botão de abrir workspace.
+      await user.tab();
+      expect(homeTab()).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toHaveFocus();
 
-    await user.keyboard('{Enter}');
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument();
-    // O foco continua no link que a pessoa acionou.
-    expect(screen.getByRole('link', { name: 'Projetos' })).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(chooseDirectory).toHaveBeenCalledTimes(1);
+      // O foco continua no botão que a pessoa acionou.
+      expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toHaveFocus();
+    } finally {
+      Reflect.deleteProperty(window, 'projectHub');
+    }
   });
 });
 
 // Barra superior (Tarefa 6 do plano do workspace multiagente): marca, abas dos workspaces, botão de
-// abrir e o espaço à direita para os contadores. A navegação principal fica na coluna lateral.
+// abrir e o espaço à direita para os contadores.
 describe('barra superior', () => {
   // Os painéis (<header> do Panel) também contam como banner no testing-library; a barra do app é achada pela classe.
   function topBar(): HTMLElement {
@@ -143,20 +133,16 @@ describe('barra superior', () => {
     },
   );
 
-  it('não leva a navegação principal, que fica na barra lateral, acima dos espaços', () => {
+  it('a barra lateral não leva navegação principal, só a busca e o explorador de projetos', () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    const navigation = screen.getByRole('navigation', { name: 'Principal' });
-    expect(topBar().contains(navigation)).toBe(false);
-    const sidebar = navigation.closest('.sidebar');
-    expect(sidebar).not.toBeNull();
-    expect(sidebar?.closest('.app-side')).not.toBeNull();
-    // A navegação fica dentro da barra, antes dos espaços.
-    expect(sidebar?.contains(navigation)).toBe(true);
-    expect(screen.getAllByRole('navigation', { name: 'Principal' })).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'Principal' })).not.toBeInTheDocument();
+    const sidebar = screen.getByRole('complementary', { name: 'Projetos e missões' });
+    expect(sidebar.closest('.app-side')).not.toBeNull();
+    expect(topBar().contains(sidebar)).toBe(false);
   });
 
   it('a divisória da barra lateral tem nome', () => {
@@ -181,78 +167,51 @@ describe('barra superior', () => {
     expect(mark).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('mostra no canto direito o que vier em headerStatus', () => {
+  it('a aba Início é a primeira da barra e marca a rota raiz como a atual', () => {
     render(
       <MemoryRouter>
-        <App headerStatus={<span>2 executando</span>} />
+        <App />
       </MemoryRouter>,
     );
-    const status = topBar().querySelector('.topbar__status');
-    expect(status).toHaveTextContent('2 executando');
+    const home = within(topBar()).getAllByRole('link')[0];
+    expect(home).toHaveTextContent('Início');
+    expect(home).toHaveAttribute('aria-current', 'page');
   });
 
-  it.each([
-    ['sem headerStatus', undefined],
-    ['com headerStatus nulo', null],
-  ])('%s, não deixa um espaço vazio na barra', (_caso, headerStatus) => {
+  it('não leva mais os contadores, que foram para a barra de status', () => {
     render(
       <MemoryRouter>
-        <App headerStatus={headerStatus} />
+        <App />
       </MemoryRouter>,
     );
     expect(topBar().querySelector('.topbar__status')).toBeNull();
+    expect(within(topBar()).queryByText(/executando/)).toBeNull();
   });
 
-  it('o fundo topográfico aparece fora da rota do workspace e some nela', () => {
-    const first = render(
+  it('o fundo topográfico não cobre mais a janela: fica só no topo do Início', () => {
+    render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     );
-    expect(document.querySelector('.topo-background')).not.toBeNull();
-    first.unmount();
+    const background = document.querySelector('.topo-background');
+    expect(background).not.toBeNull();
+    expect(background?.parentElement).toHaveClass('home-hero');
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+    // Nada de fundo atrás da barra lateral, da barra de status nem das listas do Início.
+    expect(document.querySelector('.app-shell > .topo-background')).toBeNull();
+    expect(document.querySelector('.home-columns .topo-background')).toBeNull();
+  });
+
+  it('a janela da aba do projeto não tem fundo topográfico por trás da casca', () => {
     render(
       <MemoryRouter initialEntries={['/workspaces/p1']}>
         <App />
       </MemoryRouter>,
     );
-    expect(document.querySelector('.topo-background')).toBeNull();
-    // Sem página até a Tarefa 9, mas a casca continua de pé.
+    expect(document.querySelector('.app-shell > .topo-background')).toBeNull();
     expect(document.querySelector('header.topbar')).not.toBeNull();
     expect(screen.getByRole('main')).toBeInTheDocument();
-  });
-});
-
-// A página de Projetos chama a API do preload ao abrir. Aqui ela responde com lista vazia; o
-// comportamento da página está em ProjectsPage.test.tsx.
-describe('página de Projetos', () => {
-  beforeEach(() => {
-    window.projectHub = {
-      ping: () => Promise.resolve({ ok: true, data: 'pong' }),
-      projects: {
-        list: () => Promise.resolve({ ok: true, data: [] }),
-        listArchived: () => Promise.resolve({ ok: true, data: [] }),
-        chooseDirectory: () => Promise.resolve({ ok: true, data: null }),
-        add: () => Promise.reject(new Error('add não é chamado nesta página')),
-      },
-    } as unknown as ProjectHubApi;
-  });
-
-  afterEach(() => {
-    Reflect.deleteProperty(window, 'projectHub');
-  });
-
-  it('mostra o botão Adicionar projeto habilitado, ao lado do título', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects']}>
-        <App />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Adicionar projeto' })).toBeEnabled();
-    expect(
-      await screen.findByText('Nenhum projeto ainda. Adicione uma pasta para começar.'),
-    ).toBeInTheDocument();
   });
 });
 
@@ -284,16 +243,52 @@ describe('paleta de comandos (Ctrl+K)', () => {
   });
 
   it('escolher uma ação leva à tela e fecha a paleta', async () => {
+    window.projectHub = {
+      projects: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        listArchived: () => Promise.resolve({ ok: true, data: [] }),
+      },
+      missions: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        subscribe: () => () => undefined,
+      },
+      workspaces: { list: () => Promise.resolve({ ok: true, data: [] }) },
+    } as unknown as ProjectHubApi;
     const user = userEvent.setup();
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
-    await user.keyboard('{Control>}k{/Control}');
-    await user.type(screen.getByRole('combobox'), 'Ir para Projetos{Enter}');
-    expect(screen.getByRole('heading', { level: 1, name: 'Projetos' })).toBeInTheDocument();
-    expect(screen.queryByRole('combobox')).toBeNull();
+    try {
+      // Sem o projeto p1, a rota do workspace mostra só o aviso e o link de volta ao Início.
+      render(
+        <MemoryRouter initialEntries={['/workspaces/p1']}>
+          <App />
+        </MemoryRouter>,
+      );
+      await screen.findByText('O projeto não foi encontrado.');
+      await user.keyboard('{Control>}k{/Control}');
+      await user.type(screen.getByRole('combobox'), 'Ir para Início{Enter}');
+      expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
+      expect(screen.queryByRole('combobox')).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, 'projectHub');
+    }
+  });
+
+  it('a ação Adicionar projeto abre o seletor de pasta e fecha a paleta', async () => {
+    const chooseDirectory = vi.fn(() => Promise.resolve({ ok: true, data: null }));
+    window.projectHub = { projects: { chooseDirectory } } as unknown as ProjectHubApi;
+    const user = userEvent.setup();
+    try {
+      render(
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>,
+      );
+      await user.keyboard('{Control>}k{/Control}');
+      await user.type(screen.getByRole('combobox'), 'Adicionar projeto{Enter}');
+      expect(chooseDirectory).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('combobox')).toBeNull();
+    } finally {
+      Reflect.deleteProperty(window, 'projectHub');
+    }
   });
 
   it('dentro do terminal, Ctrl+K segue para o programa e não abre a paleta', async () => {
@@ -321,4 +316,49 @@ describe('paleta de comandos (Ctrl+K)', () => {
     expect(screen.getByRole('dialog', { name: 'Paleta de comandos' })).toBeVisible();
     expect(screen.getByRole('combobox')).toHaveFocus();
   });
+});
+
+// Barra de status: o rodapé da janela aparece em todas as rotas, abaixo do corpo, com os contadores.
+describe('barra de status', () => {
+  beforeEach(() => {
+    window.projectHub = {
+      projects: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        listArchived: () => Promise.resolve({ ok: true, data: [] }),
+      },
+      missions: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+        subscribe: () => () => undefined,
+      },
+      workspaces: {
+        list: () => Promise.resolve({ ok: true, data: [] }),
+      },
+    } as unknown as ProjectHubApi;
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'projectHub');
+  });
+
+  it.each(['/', '/projects', '/projects/p1', '/workspaces/p1'])(
+    'existe na rota %s, com os contadores como links, e vem depois do corpo da janela',
+    async (route) => {
+      render(
+        <MemoryRouter initialEntries={[route]}>
+          <App />
+        </MemoryRouter>,
+      );
+      const footer = screen.getByRole('contentinfo', { name: 'Barra de status' });
+      expect(await within(footer).findByRole('link', { name: '0 executando' })).toHaveAttribute(
+        'href',
+        '/?estado=running',
+      );
+      expect(within(footer).getAllByRole('link')).toHaveLength(3);
+      const shell = footer.parentElement as HTMLElement;
+      expect(shell).toHaveClass('app-shell');
+      expect(document.querySelector('.app-body')?.compareDocumentPosition(footer)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    },
+  );
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MissionDiffDto, MissionDiffFileDto } from '@project-hub/contracts';
+import { MISSION_TEXT } from '../../mission-text';
 import { PanelEmpty } from '../Panel';
 import { Tabs, type TabItem } from '../Tabs';
 import { ArtifactsPanel } from './ArtifactsPanel';
@@ -136,9 +137,7 @@ function ChangesView({
   return (
     <div className="diff">
       {truncatedFiles ? (
-        <p className="diff__note">
-          Mostrando os primeiros {files.length} arquivos. Há mais alterações no worktree.
-        </p>
+        <p className="diff__note">{MISSION_TEXT.truncatedFiles(files.length)}</p>
       ) : null}
       <ul className="diff__files" aria-label="Arquivos alterados">
         {files.map((file) => (

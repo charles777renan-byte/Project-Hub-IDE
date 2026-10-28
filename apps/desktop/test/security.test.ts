@@ -498,6 +498,7 @@ describe('buildProjectHubApi', () => {
       'create',
       'delete',
       'diff',
+      'editPlanStep',
       'get',
       'list',
       'pause',
@@ -809,6 +810,46 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     const result = await api.missions.get('m1');
 
     expect(calls).toEqual([[CHANNELS.missionsGet, { missionId: 'm1' }]]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    vi.restoreAllMocks();
+  });
+
+  it('missions.plan leva a instrução opcional e missions.editPlanStep leva a edição, cada um no seu canal', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const plan = { missionId: 'm1', steps: [] };
+    const api = buildProjectHubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: plan });
+    }, noEvents);
+    const edit = { missionId: 'm1', stepId: 's1', edit: { op: 'move' as const, toPosition: 2 } };
+
+    await expect(api.missions.plan('m1')).resolves.toEqual({ ok: true, data: plan });
+    await expect(api.missions.plan('m1', 'inclua testes')).resolves.toEqual({
+      ok: true,
+      data: plan,
+    });
+    await expect(api.missions.editPlanStep(edit)).resolves.toEqual({ ok: true, data: plan });
+
+    expect(calls).toEqual([
+      [CHANNELS.missionsPlan, { missionId: 'm1' }],
+      [CHANNELS.missionsPlan, { missionId: 'm1', instruction: 'inclua testes' }],
+      [CHANNELS.missionsEditPlan, edit],
+    ]);
+  });
+
+  it('missions.editPlanStep recusa um plano fora do contrato (R28)', async () => {
+    const api = buildProjectHubApi(
+      () => Promise.resolve({ ok: true, data: { missionId: 'm1', steps: [{ id: 1 }] } }),
+      noEvents,
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await api.missions.editPlanStep({
+      missionId: 'm1',
+      stepId: 's1',
+      edit: { op: 'remove' },
+    });
+
     expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
     vi.restoreAllMocks();
   });

@@ -1,4 +1,9 @@
-import type { MissionDto, MissionEventDto, MissionStepDto } from '@project-hub/contracts';
+import type {
+  MissionDto,
+  MissionEventDto,
+  MissionStepDto,
+  MissionViewDto,
+} from '@project-hub/contracts';
 import { differenceInMinutes, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -13,6 +18,7 @@ import {
   ShieldQuestionMark,
   type LucideIcon,
 } from './components/Icon';
+import type { ProjectView } from './project-views';
 
 /**
  * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda a
@@ -69,7 +75,7 @@ const NEEDS_ATTENTION: readonly MissionStatus[] = [
 ];
 
 const SITUATION: Record<MissionStatus, string> = {
-  draft: 'Ainda sem plano. Gere o plano para começar.',
+  draft: 'Ainda sem plano. Clique em Orquestrar para começar.',
   planned: 'O plano está pronto e espera a sua aprovação.',
   queued: 'Plano aprovado. Aguarda o início.',
   running: 'O agente está trabalhando nas etapas.',
@@ -122,6 +128,16 @@ const ROLE_LABEL: Record<NonNullable<MissionStepDto['role']>, string> = {
   general: 'Geral',
 };
 
+/** Uma linha sobre o que cada papel faz, no cartão do quadro do orquestrador. */
+export const ROLE_DESCRIPTIONS: Record<NonNullable<MissionStepDto['role']>, string> = {
+  frontend: 'Interface e componentes',
+  backend: 'APIs e lógica do sistema',
+  database: 'Modelagem e consultas',
+  docs: 'README e guias de uso',
+  qa: 'Testes e verificação',
+  general: 'Tarefas gerais',
+};
+
 /** Papel da tarefa em português; vazio quando a etapa não é uma tarefa. */
 export function roleLabel(role: MissionStepDto['role']): string | undefined {
   return role === undefined ? undefined : ROLE_LABEL[role];
@@ -152,32 +168,146 @@ export function isEnded(status: MissionStatus): boolean {
   return ENDED.includes(status);
 }
 
-/** Textos das ações e do aviso da missão (resumo, banner e abas da missão). */
+/** Textos das ações da missão (resumo, bloco "Sua decisão" e abas da missão). */
 export const MISSION_TEXT = {
   pause: 'Pausar',
   resume: 'Retomar',
   retry: 'Tentar de novo',
-  generatePlan: 'Gerar plano',
+  generatePlan: 'Orquestrar',
   approvePlan: 'Aprovar plano',
   start: 'Iniciar missão',
-  decisionLink: 'Ver a decisão',
   approveReview: 'Aprovar conclusão',
   requestChanges: 'Pedir ajustes',
+  eyebrow: (project: string) => `Missão · ${project}`,
+  backToMissions: '← Missões',
+  changedFilesTitle: 'Arquivos alterados',
+  noChanges: 'Nenhuma alteração pendente.',
+  /** Aviso da lista de arquivos cortada pelo limite, no singular e no plural. */
+  truncatedFiles: (count: number) =>
+    `${count === 1 ? 'Mostrando o primeiro arquivo.' : `Mostrando os primeiros ${count} arquivos.`} Há mais alterações no worktree.`,
+  decisionTitle: 'Sua decisão',
 } as const;
 
-/**
- * Estados que pedem uma decisão da pessoa: a aprovação de uma ação protegida e a resposta do agente
- * ficam na aba Conversa, e o banner "Aguardando você" aparece em todas as abas. O foco vai para o
- * lugar da decisão (R182).
- */
-const DECISION_IN_CONVERSATION: readonly MissionStatus[] = [
-  'waiting_approval',
-  'waiting_input',
-  'review',
+/** Textos do bloco "Sua decisão": a frase de cada situação e os controles das decisões. */
+export const DECISION_TEXT = {
+  draft: 'Peça ao Orquestrador para montar o plano da missão.',
+  planned: 'Revise as tarefas e aprove o plano.',
+  plannedReassurance: 'Nada muda no código antes da sua aprovação.',
+  queued: 'Inicie a missão para o Orquestrador distribuir as tarefas entre os agentes.',
+  running: 'O Orquestrador está acompanhando as tarefas.',
+  paused: 'A missão está pausada. Retome para continuar.',
+  answerPromptFallback: 'O agente aguarda a sua resposta.',
+  sendAnswer: 'Enviar resposta',
+  feedbackLabel: 'O que ajustar',
+  /** Anúncio para o leitor de tela quando uma decisão chega: um item por decisão pendente. */
+  announce: {
+    approval: (title: string) => `Aguardando você: aprovação, ${title}.`,
+    input: 'Aguardando você: o agente espera uma resposta.',
+    review: 'Aguardando você: a conclusão espera a sua revisão.',
+  },
+} as const;
+
+/** Programa que executa uma tarefa. O contrato aceita só `claude-code`; os outros são promessa da tela. */
+export type AgentId = MissionStepDto['agent'];
+
+/** Nome curto do programa em cada tarefa, como na tabela do Orquestrador. */
+const AGENT_LABEL: Record<AgentId, string> = {
+  'claude-code': 'Claude',
+};
+
+/** Nome do programa da tarefa. */
+export function agentLabel(agent: AgentId): string {
+  return AGENT_LABEL[agent];
+}
+
+/** Programas do seletor: só Claude vale hoje; Codex e Gemini aparecem desabilitados, "em breve". */
+export const AGENT_CHOICES: readonly { value: string; label: string; available: boolean }[] = [
+  { value: 'claude-code', label: 'Claude', available: true },
+  { value: 'codex', label: 'Codex', available: false },
+  { value: 'gemini', label: 'Gemini', available: false },
 ];
 
-export function needsDecisionInConversation(status: MissionStatus): boolean {
-  return DECISION_IN_CONVERSATION.includes(status);
+/** Textos do Plano (tabela de tarefas, edição e novo plano). Os nomes acessíveis levam o título da tarefa. */
+export const PLAN_TEXT = {
+  quotaWarning: 'Planejar usa a cota do seu Claude.',
+  planning: 'Planejando…',
+  planningHint: 'O Claude está montando o plano. Isso pode levar alguns minutos.',
+  replan: 'Planejar de novo',
+  instructionLabel: 'Instrução para o novo plano',
+  instructionHint: 'Opcional. Diga o que o plano novo deve mudar.',
+  empty: 'Ainda não há plano. Clique em Orquestrar para gerar as tarefas.',
+  reviewHint: 'Revise as tarefas. Nenhuma alteração é feita no código antes da sua aprovação.',
+  tableLabel: 'Etapas do plano',
+  columns: { task: 'Tarefa', agent: 'Agente', status: 'Status' },
+  soon: 'em breve',
+  save: 'Salvar',
+  cancel: 'Cancelar',
+  renameButton: 'Renomear',
+  moveUpButton: 'Subir',
+  moveDownButton: 'Descer',
+  removeButton: 'Remover',
+  rename: (title: string) => `Renomear tarefa ${title}`,
+  newName: (title: string) => `Novo nome da tarefa ${title}`,
+  newDescription: (title: string) => `Nova descrição da tarefa ${title}`,
+  saveName: (title: string) => `Salvar alterações da tarefa ${title}`,
+  showDescriptionButton: 'Ver descrição',
+  hideDescriptionButton: 'Ocultar',
+  showDescription: (title: string) => `Ver descrição da tarefa ${title}`,
+  hideDescription: (title: string) => `Ocultar descrição da tarefa ${title}`,
+  cancelRename: (title: string) => `Cancelar renomear tarefa ${title}`,
+  remove: (title: string) => `Remover tarefa ${title}`,
+  removeQuestion: (title: string) => `Remover a tarefa ${title} do plano?`,
+  moveUp: (title: string) => `Subir tarefa ${title}`,
+  moveDown: (title: string) => `Descer tarefa ${title}`,
+  program: (title: string) => `Programa da tarefa ${title}`,
+} as const;
+
+/** Textos do quadro do orquestrador: os três níveis e o estado dos papéis. */
+export const BOARD_TEXT = {
+  label: 'Quadro do orquestrador',
+  orchestrator: 'Orquestrador principal',
+  orchestratorDescription: 'Analisa o pedido, planeja tarefas e acompanha os resultados',
+  delivery: 'Integração e entrega',
+  deliveryDescription:
+    'Reúne alterações, executa verificações e apresenta o resultado para aprovação',
+  /** Estado da integração e entrega, resumido das tarefas de todos os papéis. */
+  deliveryState: {
+    waiting: 'aguardando tarefas',
+    running: 'aguardando tarefas',
+    done: 'tarefas concluídas',
+    failed: 'bloqueada: uma tarefa falhou',
+  },
+  state: {
+    waiting: 'aguardando',
+    running: 'em andamento',
+    done: 'concluído',
+    failed: 'falhou',
+  },
+} as const;
+
+/** Estado de um papel no quadro, resumido das tarefas dele. */
+export type RoleState = keyof typeof BOARD_TEXT.state;
+
+/**
+ * Estado de um papel a partir do estado das suas tarefas: qualquer falha vence; depois, qualquer tarefa
+ * em andamento; com todas concluídas, concluído; o resto (pendente, bloqueada, ignorada) é aguardando.
+ */
+export function roleState(statuses: readonly MissionStepDto['status'][]): RoleState {
+  if (statuses.includes('failed')) return 'failed';
+  if (statuses.includes('running')) return 'running';
+  if (statuses.length > 0 && statuses.every((status) => status === 'succeeded')) return 'done';
+  return 'waiting';
+}
+
+/**
+ * Estados em que a missão espera uma decisão que só a pessoa toma: a aprovação de uma ação protegida,
+ * a resposta do agente e a revisão da conclusão. Os controles ficam no bloco "Sua decisão", e o foco
+ * vai para ele (R182).
+ */
+const AWAITING_DECISION: readonly MissionStatus[] = ['waiting_approval', 'waiting_input', 'review'];
+
+export function needsDecision(status: MissionStatus): boolean {
+  return AWAITING_DECISION.includes(status);
 }
 
 /** A ação principal que o resumo da missão oferece, quando a situação pede uma. */
@@ -195,7 +325,7 @@ const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
 /**
  * Uma única ação principal por situação. Em execução e concluída a missão não espera nada da pessoa,
  * e ficam só as ações secundárias (pausar, cancelar ou excluir). Nas situações que esperam a decisão
- * (aprovação ou resposta) o resumo não tem ação principal: o banner "Aguardando você" é o único convite.
+ * (aprovação, resposta ou revisão) não há ação principal: o bloco "Sua decisão" mostra os controles da decisão.
  */
 export function primaryActionOf(status: MissionStatus): PrimaryAction | undefined {
   return PRIMARY_ACTION[status];
@@ -216,9 +346,163 @@ export function situationOf(status: MissionStatus): string {
   return SITUATION[status];
 }
 
+/**
+ * A frase do bloco "Sua decisão" para a situação. Rascunho, planejada, na fila, em execução e pausada têm
+ * frase própria; nas demais vale a frase da situação, então o bloco nunca fica só com o título.
+ */
+export function decisionTextOf(status: MissionStatus): string {
+  switch (status) {
+    case 'draft':
+      return DECISION_TEXT.draft;
+    case 'planned':
+      return DECISION_TEXT.planned;
+    case 'queued':
+      return DECISION_TEXT.queued;
+    case 'running':
+      return DECISION_TEXT.running;
+    case 'paused':
+      return DECISION_TEXT.paused;
+    default:
+      return SITUATION[status];
+  }
+}
+
 export function requiredActionOf(status: MissionStatus): string | undefined {
   return REQUIRED_ACTION[status];
 }
+
+/**
+ * Rótulos curtos do estado nas listas com progresso (Início e Missões do projeto): "Em andamento",
+ * "Aguardando aprovação", "Aguardando início". Os estados que o protótipo não mostra usam o rótulo
+ * de `statusLabel`.
+ */
+const BOARD_LABEL: Partial<Record<MissionStatus, string>> = {
+  planned: 'Aguardando aprovação do plano',
+  queued: 'Aguardando início',
+  running: 'Em andamento',
+  waiting_approval: 'Aguardando aprovação',
+  waiting_input: 'Aguardando resposta',
+  review: 'Aguardando revisão',
+};
+
+export function boardStatusLabel(status: MissionStatus): string {
+  return BOARD_LABEL[status] ?? STATUS[status].label;
+}
+
+/**
+ * Filtro por estado das listas de missões, o mesmo dos contadores da barra de status (`?estado=`):
+ * `running` é "Em execução", `attention` é o que espera a pessoa (`needsAttention`) e `failed` é "Falhou".
+ */
+export type MissionStatusFilter = 'running' | 'attention' | 'failed';
+
+export const STATUS_FILTERS: readonly MissionStatusFilter[] = ['running', 'attention', 'failed'];
+
+/** O valor de `?estado=` como filtro; valor desconhecido (ou ausente) vale como sem filtro. */
+export function parseStatusFilter(value: string | null): MissionStatusFilter | undefined {
+  return STATUS_FILTERS.find((filter) => filter === value);
+}
+
+export function matchesStatusFilter(status: MissionStatus, filter: MissionStatusFilter): boolean {
+  if (filter === 'running') return status === 'running';
+  if (filter === 'failed') return status === 'failed';
+  return needsAttention(status);
+}
+
+/** Textos do Início e das listas de missões com progresso. */
+export const HOME_TEXT = {
+  needsYou: 'Precisa de você',
+  needsYouEmpty: 'Nada espera por você.',
+  needsYouUnread: (missionTitle: string) =>
+    `Não foi possível carregar a aprovação de ${missionTitle}.`,
+  loading: 'Carregando…',
+  missions: 'Missões',
+  missionsEmpty: 'Nenhuma missão ainda.',
+  missionsEmptyFiltered: 'Nenhuma missão neste estado.',
+  missionsError: 'Não foi possível carregar as missões.',
+  filterGroup: 'Filtrar missões por estado',
+  filterClear: 'Limpar filtro',
+  filterLabel: {
+    running: 'Executando',
+    attention: 'Aguarda você',
+    failed: 'Falharam',
+  } satisfies Record<MissionStatusFilter, string>,
+  tasks: (done: number, total: number) => `${done}/${total} tarefas`,
+  progressLabel: (title: string, done: number, total: number) =>
+    `Progresso de ${title}: ${done} de ${total} tarefas`,
+  activityEmpty: (days: number) => `Nenhuma atividade nos últimos ${days} dias.`,
+} as const;
+
+/** Textos da aba do projeto: a barra de visões, as ações do projeto e as configurações. */
+export const PROJECT_TEXT = {
+  viewsLabel: 'Visões do projeto',
+  viewLabel: {
+    terminais: 'Terminais',
+    missoes: 'Missões',
+    worktrees: 'Worktrees',
+    configuracoes: 'Configurações',
+  } satisfies Record<ProjectView, string>,
+  newMission: 'Nova missão',
+  moreActions: 'Mais ações',
+  archive: 'Arquivar projeto',
+  archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
+  archiveConfirm: 'Arquivar',
+  remove: 'Remover da lista',
+  removeQuestion: 'Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão.',
+  removeConfirm: 'Remover',
+  notFound: 'O projeto não foi encontrado.',
+  backHome: 'Voltar ao Início',
+  genericError: 'Não foi possível concluir a ação. Tente de novo.',
+  settings: {
+    folder: 'Pasta',
+    kind: 'Tipo',
+    gitKind: 'Repositório Git',
+    noGitKind: 'Sem Git',
+    branch: 'Branch padrão',
+    group: 'Grupo',
+    groupForm: 'Grupo do projeto',
+    groupStatus: 'Situação do grupo',
+    groupPlaceholder: 'Trabalho, Pessoal…',
+    groupSaved: 'Grupo salvo.',
+    groupClear: 'Tirar do grupo',
+    nickname: 'Apelido',
+    nicknameForm: 'Apelido do projeto',
+    nicknameStatus: 'Situação do apelido',
+    nicknamePlaceholder: 'ex.: Re_Zero',
+    nicknameSaved: 'Apelido salvo.',
+    nicknameClear: 'Remover apelido',
+    save: 'Salvar',
+    cancel: 'Cancelar',
+    edit: 'Editar',
+    none: 'Nenhum',
+  },
+} as const;
+
+/** Textos do formulário Nova missão: uma linha de dica por campo, sem blocos numerados. */
+export const MISSION_FORM_TEXT = {
+  heading: 'Nova missão',
+  noGit:
+    'Este projeto não é um repositório Git, e toda missão roda num worktree. Inicialize o Git na pasta para criar missões aqui.',
+  title: { label: 'Título', placeholder: 'Título (opcional: sai da primeira linha do objetivo)' },
+  objective: {
+    label: 'Objetivo',
+    placeholder: 'O que o agente deve fazer? Ex.: aceitar login com a conta Google além de e-mail e senha.',
+  },
+  criteria: {
+    label: 'Pronto quando',
+    input: 'Critérios de aceite',
+    placeholder: 'Digite um critério e aperte Enter',
+    remove: 'Remover critério',
+  },
+  altersCode: { label: 'Altera código' },
+  errors: {
+    objective: 'Informe o objetivo da missão.',
+    criteria: 'Informe ao menos um critério de aceite',
+  },
+  cancel: 'Cancelar',
+  submit: 'Criar',
+  submitAndOrchestrate: 'Criar e orquestrar',
+  quota: 'Orquestrar usa a cota do seu Claude.',
+} as const;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -620,4 +904,19 @@ export function formatTime(iso: string): string {
   if (minutes >= 1 && minutes < 60) return `há ${minutes} min`;
   if (isSameDay(date, now)) return format(date, 'HH:mm', { locale: ptBR });
   return format(date, 'dd/MM HH:mm', { locale: ptBR });
+}
+
+/**
+ * O anúncio do leitor de tela quando a missão passa a esperar a pessoa: uma frase por aprovação pendente,
+ * mais a da resposta ou a da revisão. Vazio quando nada espera uma decisão (a região fica montada, vazia).
+ */
+export function decisionAnnouncement(
+  view: Pick<MissionViewDto, 'mission' | 'pendingApprovals'>,
+): string {
+  const lines = view.pendingApprovals.map((approval) =>
+    DECISION_TEXT.announce.approval(approval.title),
+  );
+  if (view.mission.status === 'waiting_input') lines.push(DECISION_TEXT.announce.input);
+  if (view.mission.status === 'review') lines.push(DECISION_TEXT.announce.review);
+  return lines.join(' ');
 }

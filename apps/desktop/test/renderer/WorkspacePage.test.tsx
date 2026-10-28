@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import type {
@@ -12,7 +12,7 @@ import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
-import { ROUTE_PATHS } from '../../src/renderer/routes';
+import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
 // O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador.
 vi.mock('../../src/renderer/components/terminals/TerminalView', () => ({
@@ -86,10 +86,14 @@ const api = {
   missions: { list: vi.fn() },
 };
 
-let current: { pathname: string; state: unknown } = { pathname: '', state: null };
+let current: { pathname: string; search: string; state: unknown } = {
+  pathname: '',
+  search: '',
+  state: null,
+};
 function Probe() {
   const location = useLocation();
-  current = { pathname: location.pathname, state: location.state };
+  current = { pathname: location.pathname, search: location.search, state: location.state };
   return null;
 }
 
@@ -99,16 +103,16 @@ function tree() {
       <Probe />
       <Routes>
         <Route path={ROUTE_PATHS.workspace} element={<WorkspacePage />} />
-        <Route path="/projects" element={<p>lista de projetos</p>} />
+        <Route path="/" element={<p>página inicial</p>} />
       </Routes>
     </>
   );
 }
 
-function renderAt(state?: unknown, projectId = 'p1') {
+function renderAt(state?: unknown, projectId = 'p1', search = '') {
   return render(
     <>
-      <MemoryRouter initialEntries={[{ pathname: `/workspaces/${projectId}`, state }]}>
+      <MemoryRouter initialEntries={[{ pathname: `/workspaces/${projectId}`, search, state }]}>
         {tree()}
       </MemoryRouter>
       <Toaster />
@@ -406,10 +410,10 @@ describe('WorkspacePage', () => {
     expect(screen.queryByText('A sessão terminou.')).not.toBeInTheDocument();
   });
 
-  it('projeto inexistente mostra a mensagem com link para a lista', async () => {
+  it('projeto inexistente mostra a mensagem com link para o Início', async () => {
     renderAt(undefined, 'outro');
     expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /projetos/i })).toHaveAttribute('href', '/projects');
+    expect(screen.getByRole('link', { name: /início/i })).toHaveAttribute('href', '/');
   });
 
   describe('abrir e fechar painéis (revisão final)', () => {
@@ -517,7 +521,7 @@ describe('modo "um painel por vez"', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
 
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
     expect(pane('Claude Code')).toBeInTheDocument();
     expect(pane('Codex')).toBeInTheDocument();
     expect(pane('PowerShell')).toBeInTheDocument();
@@ -542,7 +546,7 @@ describe('modo "um painel por vez"', () => {
       within(pane('PowerShell') as HTMLElement).getByRole('button', { name: 'Voltar à grade' }),
     );
 
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
     expect(pane('Claude Code')).toBeInTheDocument();
   });
 
@@ -553,7 +557,7 @@ describe('modo "um painel por vez"', () => {
 
     await userEvent.dblClick(head);
 
-    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
     expect(pane('Claude Code')).not.toBeInTheDocument();
   });
 
@@ -603,6 +607,519 @@ describe('modo "um painel por vez"', () => {
 
     await waitFor(() => expect(pane('Codex')).toBeInTheDocument());
     expect(pane('PowerShell')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('tablist', { name: 'Painéis abertos' })).getAllByRole('tab'),
+    ).toHaveLength(2);
+  });
+});
+
+describe('aba do projeto: visões', () => {
+  const view = (name: string) => screen.getByRole('tab', { name });
+  // O jsdom não tem geometria: o react-resizable-panels acha que todo ponteiro cai numa divisória e cancela o
+  // pointerdown de qualquer controle da página. Por isso as abas e o menu do cabeçalho aqui são acionados pelo
+  // teclado (foco ativa a aba; Enter abre o menu e escolhe o item).
+  const selectView = (name: string) => act(() => view(name).focus());
+  const projectsApi = api.projects as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+  it('abre em Terminais, com o workspace de painéis e a barra de visões acima', async () => {
+    renderAt();
+
+    expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+    const tabs = screen.getByRole('tablist', { name: 'Visões do projeto' });
+    expect(within(tabs).getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('heading', { level: 1, name: 'app' })).toBeInTheDocument();
+  });
+
+  it('?visao=terminais é a mesma visão do padrão', async () => {
+    renderAt(undefined, 'p1', '?visao=terminais');
+
+    expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+  });
+
+  it('trocar de visão muda ?visao= e esconde os terminais sem desmontá-los, e voltar não recarrega o workspace', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderAt();
+    const terminal = await screen.findByTestId('terminal-view');
+    const terminaisPanel = document.getElementById('project-panel-terminais');
+    expect(terminaisPanel).not.toHaveAttribute('hidden');
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+
+    selectView('Configurações');
+    expect(current.search).toBe('?visao=configuracoes');
+    // Continua na árvore, com o mesmo nó (o xterm não é refeito), só escondido.
+    expect(screen.getByTestId('terminal-view', { exact: true })).toBe(terminal);
+    expect(terminaisPanel).toHaveAttribute('hidden');
+    expect(terminaisPanel).toContainElement(terminal);
+    expect(
+      screen.queryByRole('button', { name: 'Abrir terminal', hidden: false }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Editar grupo' })).toBeInTheDocument();
+    expect(document.getElementById('project-panel-configuracoes')).not.toHaveAttribute('hidden');
+
+    selectView('Worktrees');
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    // As outras visões só existem enquanto ativas.
+    expect(screen.queryByRole('button', { name: 'Editar grupo' })).not.toBeInTheDocument();
+
+    selectView('Terminais');
+    expect(current.search).toBe('?visao=terminais');
+    expect(terminaisPanel).not.toHaveAttribute('hidden');
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('o modo "um painel por vez" sobrevive a uma ida às Configurações e volta', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+
+    selectView('Configurações');
+    await screen.findByRole('button', { name: 'Editar grupo' });
+    selectView('Terminais');
+
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grade' })).toBeInTheDocument();
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('o painel da visão é o tabpanel das abas da barra, nomeado pela aba ativa', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=worktrees');
+    await screen.findByRole('tab', { name: 'Worktrees' });
+
+    const panel = document.getElementById('project-panel-worktrees');
+    expect(panel).toHaveAttribute('role', 'tabpanel');
+    expect(panel).toHaveAttribute('aria-labelledby', 'tab-worktrees');
+    expect(panel).not.toHaveAttribute('hidden');
+    // Cada aba controla um painel que existe; os das outras visões ficam escondidos.
+    for (const name of ['terminais', 'missoes', 'worktrees', 'configuracoes']) {
+      const tab = document.getElementById(`tab-${name}`);
+      const controlled = document.getElementById(tab?.getAttribute('aria-controls') ?? '');
+      expect(controlled, name).toHaveAttribute('role', 'tabpanel');
+      expect(controlled?.hasAttribute('hidden'), name).toBe(name !== 'worktrees');
+    }
+  });
+
+  it('?visao=worktrees lista os worktrees, sem título repetido', async () => {
+    Object.assign(api, {
+      worktrees: {
+        list: vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            data: [
+              {
+                missionId: 'm1',
+                missionTitle: 'Ajustar login',
+                status: 'failed',
+                path: 'C:\\worktrees\\app\\m1',
+                branch: 'ph/m1-ajustar-login',
+              },
+            ],
+          }),
+        ),
+      },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=worktrees');
+
+    expect(await screen.findByText('ph/m1-ajustar-login')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Worktrees do projeto' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Worktrees/ })).not.toBeInTheDocument();
+    expect(view('Worktrees')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('?visao=configuracoes mostra pasta, branch, grupo e apelido, e salva grupo e apelido pela API', async () => {
+    const ok = () => Promise.resolve({ ok: true, data: undefined });
+    Object.assign(api.projects, {
+      setGroup: vi.fn(ok),
+      setNickname: vi.fn(ok),
+      openFolder: vi.fn(ok),
+    });
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: 'p1',
+          name: 'app',
+          path: 'C:\\Projetos\\app',
+          repositoryKind: 'git',
+          available: true,
+          defaultBranch: 'main',
+        },
+      ],
+    });
+    renderAt(undefined, 'p1', '?visao=configuracoes');
+
+    expect(await screen.findByText('main · Repositório Git')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir pasta' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Editar grupo' }));
+    await userEvent.type(screen.getByLabelText('Grupo'), 'Trabalho');
+    await userEvent.click(
+      within(screen.getByRole('form', { name: 'Grupo do projeto' })).getByRole('button', {
+        name: 'Salvar',
+      }),
+    );
+    expect(projectsApi['setGroup']).toHaveBeenCalledWith('p1', 'Trabalho');
+    await userEvent.click(screen.getByRole('button', { name: 'Editar apelido' }));
+    await userEvent.type(screen.getByLabelText('Apelido'), 'App');
+    await userEvent.click(
+      within(screen.getByRole('form', { name: 'Apelido do projeto' })).getByRole('button', {
+        name: 'Salvar',
+      }),
+    );
+    expect(projectsApi['setNickname']).toHaveBeenCalledWith('p1', 'App');
+  });
+
+  it('?visao=missoes mostra a lista de missões do projeto, com o estado vazio e o botão', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=missoes');
+
+    expect(await screen.findByRole('tab', { name: 'Missões' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const panel = await screen.findByRole('tabpanel', { name: 'Missões' });
+    expect(await within(panel).findByText('Nenhuma missão ainda.')).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+  });
+
+  it('Nova missão do cabeçalho abre o formulário na visão Missões e limpa o pedido da rota', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nova missão' }));
+
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+    await waitFor(() => expect(current.state).toBeNull());
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(current.search).toBe('?visao=missoes');
+  });
+
+  it('Nova missão do cabeçalho com o formulário já fechado, na própria visão, abre de novo', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=missoes');
+    const panel = await screen.findByRole('tabpanel', { name: 'Missões' });
+    await within(panel).findByText('Nenhuma missão ainda.');
+
+    await userEvent.click(screen.getAllByRole('button', { name: 'Nova missão' })[0]!);
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'Nova missão' })[0]!);
+
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+  });
+
+  it('?nova-missao=1 sem ?visao= abre a visão Missões com o formulário', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?nova-missao=1');
+
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Missões' })).toHaveAttribute('aria-selected', 'true');
+    // O pedido sai da rota, e a visão fica escrita nela (senão voltaria para Terminais).
+    await waitFor(() => expect(current.search).toBe('?visao=missoes'));
+    expect(screen.getByRole('tab', { name: 'Missões' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+  });
+
+  it('o fundo topográfico não aparece na aba do projeto com terminais, nas Missões nem nas outras visões', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    const first = renderAt(undefined, 'p1', '?visao=terminais');
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(document.querySelector('.topo-background')).toBeNull();
+    first.unmount();
+
+    for (const search of ['?visao=missoes', '?visao=worktrees', '?visao=configuracoes']) {
+      const view = renderAt(undefined, 'p1', search);
+      await screen.findByRole('tablist', { name: 'Visões do projeto' });
+      expect(document.querySelector('.topo-background')).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it('o fundo topográfico só aparece no estado vazio dos terminais, dentro dele', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    renderAt(undefined, 'p1', '?visao=terminais');
+
+    const empty = (await screen.findByText('Nenhum terminal aberto')).closest('.workspace__empty');
+    expect(empty).not.toBeNull();
+    expect(empty?.querySelector('.topo-background')).not.toBeNull();
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+  });
+
+  it('com os terminais vazios mas escondidos (outra visão), o fundo topográfico não fica montado', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    renderAt(undefined, 'p1', '?visao=terminais');
+    await screen.findByText('Nenhum terminal aberto');
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+
+    selectView('Missões');
+    expect(document.getElementById('project-panel-terminais')).toHaveAttribute('hidden');
+    expect(document.querySelector('.topo-background')).toBeNull();
+
+    selectView('Worktrees');
+    expect(document.querySelector('.topo-background')).toBeNull();
+
+    selectView('Terminais');
+    expect(document.querySelectorAll('.topo-background')).toHaveLength(1);
+  });
+
+  it('Arquivar pelo Mais ações pede confirmação e leva ao Início', async () => {
+    Object.assign(api.projects, {
+      archive: vi.fn(() => Promise.resolve({ ok: true, data: undefined })),
+    });
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    act(() => screen.getByRole('button', { name: 'Mais ações' }).focus());
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('menuitem', { name: 'Arquivar projeto' });
+    await userEvent.keyboard('{Enter}');
+    expect(projectsApi['archive']).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByText('página inicial')).toBeInTheDocument();
+    expect(projectsApi['archive']).toHaveBeenCalledWith('p1');
+  });
+
+  it('o pedido de terminal da barra lateral mantém a visão da rota ao limpar o estado', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderAt({ showTerminal: 't1' }, 'p1', '?visao=terminais');
+
+    await screen.findByTestId('terminal-view');
+    await waitFor(() => expect(current.state).toBeNull());
+    expect(current.search).toBe('?visao=terminais');
+  });
+
+  it('projeto ausente, em qualquer visão, mostra a mensagem com o link para o Início', async () => {
+    renderAt(undefined, 'outro', '?visao=configuracoes');
+
+    expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voltar ao Início' })).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('tablist', { name: 'Visões do projeto' })).not.toBeInTheDocument();
+  });
+
+  it('/projects/p1 redireciona para /workspaces/p1?visao=missoes e abre o formulário da nova missão', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/projects/p1', state: { newMission: true } }]}>
+        <Probe />
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('tab', { name: 'Missões' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(await screen.findByRole('form', { name: 'Nova missão' })).toBeInTheDocument();
+    await waitFor(() => expect(current.state).toBeNull());
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(current.search).toBe('?visao=missoes');
+  });
+});
+
+describe('aba do projeto: missão aberta', () => {
+  const MISSION_VIEW = {
+    mission: {
+      id: 'm1',
+      projectId: 'p1',
+      title: 'Ajustar login',
+      objective: 'Corrigir o login',
+      status: 'draft',
+      altersCode: false,
+      acceptanceCriteria: [],
+      createdAt: '2026-10-20T09:00:00.000Z',
+      updatedAt: '2026-10-20T09:00:00.000Z',
+    },
+    project: { id: 'p1', name: 'app', path: 'x', defaultBranch: 'main' },
+    steps: [],
+    executions: [],
+    pendingApprovals: [],
+    events: [],
+  };
+  let go: (to: string) => void = () => undefined;
+  function Nav() {
+    const navigate = useNavigate();
+    go = (to) => navigate(to);
+    return null;
+  }
+
+  function renderMission(initial = '/workspaces/p1/missoes/m1') {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, {
+      get: vi.fn(() => Promise.resolve({ ok: true, data: MISSION_VIEW })),
+      diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
+      subscribe: vi.fn(() => () => undefined),
+    });
+    return render(
+      <>
+        <MemoryRouter initialEntries={[initial]}>
+          <Nav />
+          {tree()}
+        </MemoryRouter>
+        <Toaster />
+      </>,
+    );
+  }
+
+  it('a missão abre dentro da aba do projeto: o cabeçalho segue na tela, com Missões como visão ativa', async () => {
+    renderMission();
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'app' })).toBeInTheDocument();
+    const tabs = screen.getByRole('tablist', { name: 'Visões do projeto' });
+    expect(within(tabs).getByRole('tab', { name: 'Missões' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(tabs).getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    // A missão ocupa o painel das Missões, no lugar da lista.
+    const panel = document.getElementById('project-panel-missoes');
+    expect(panel).not.toHaveAttribute('hidden');
+    expect(panel).toHaveClass('project-tab__panel--mission');
+    expect(panel).toContainElement(
+      screen.getByRole('heading', { level: 1, name: 'Ajustar login' }),
+    );
+    expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
+  });
+
+  it('com a missão aberta, o cabeçalho do projeto não repete Nova missão nem Mais ações: sobra o Mais ações da missão', async () => {
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    const header = document.querySelector('.project-header') as HTMLElement;
+    expect(within(header).queryByRole('button', { name: 'Nova missão' })).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Mais ações' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nova missão' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Mais ações' })).toHaveLength(1);
+  });
+
+  it('o fundo topográfico não aparece atrás da missão aberta, nem com os terminais vazios escondidos', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    expect(document.querySelector('.topo-background')).toBeNull();
+  });
+
+  it('com a missão aberta, os terminais seguem montados, escondidos', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderMission();
+
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+    const terminal = await screen.findByTestId('terminal-view');
+    expect(document.getElementById('project-panel-terminais')).toHaveAttribute('hidden');
+    expect(document.getElementById('project-panel-terminais')).toContainElement(terminal);
+  });
+
+  it('abrir a missão e voltar por "← Missões" não recarrega o workspace nem refaz o terminal', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderMission('/workspaces/p1');
+    const terminal = await screen.findByTestId('terminal-view');
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+
+    act(() => go('/workspaces/p1/missoes/m1'));
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+    expect(current.pathname).toBe('/workspaces/p1/missoes/m1');
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+
+    await userEvent.click(screen.getByRole('link', { name: '← Missões' }));
+
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(current.search).toBe('?visao=missoes');
+    // A lista de missões do projeto voltou ao painel (o botão do cabeçalho também se chama "Nova missão").
+    const panel = document.getElementById('project-panel-missoes') as HTMLElement;
+    expect(await within(panel).findByRole('button', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('escolher Missões de novo, com a missão aberta, volta à lista de missões', async () => {
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Missões' }));
+
+    await waitFor(() => expect(current.pathname).toBe('/workspaces/p1'));
+    expect(current.search).toBe('?visao=missoes');
+  });
+
+  it('escolher outra visão com a missão aberta leva a ela', async () => {
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    act(() => screen.getByRole('tab', { name: 'Terminais' }).focus());
+
+    await waitFor(() => expect(current.search).toBe('?visao=terminais'));
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('a rota antiga da missão redireciona para a missão dentro da aba do projeto', async () => {
+    Object.assign(api.missions, {
+      get: vi.fn(() => Promise.resolve({ ok: true, data: MISSION_VIEW })),
+      diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
+      subscribe: vi.fn(() => () => undefined),
+    });
+    render(
+      <MemoryRouter initialEntries={['/projects/p1/missions/m1']}>
+        <Probe />
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).toBeInTheDocument();
+    expect(current.pathname).toBe('/workspaces/p1/missoes/m1');
+  });
+
+  it('missionPath monta o endereço da missão na aba do projeto', () => {
+    expect(missionPath('p1', 'm1')).toBe('/workspaces/p1/missoes/m1');
+    expect(missionPath('a b', 'm/1')).toBe('/workspaces/a%20b/missoes/m%2F1');
+  });
+
+  it('projeto ausente, com a missão na rota, mostra a mensagem com o link para o Início', async () => {
+    renderMission('/workspaces/outro/missoes/m1');
+
+    expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Ajustar login' })).toBeNull();
   });
 });

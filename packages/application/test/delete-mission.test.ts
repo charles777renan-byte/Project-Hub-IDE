@@ -40,6 +40,7 @@ function filledMissions(status: Mission['status'], overrides: Partial<Mission> =
       kind: 'analysis',
       status: 'failed',
       dependsOn: [],
+      agent: 'claude-code',
     },
   ]);
   missions.insertExecution({ id: 'e1', missionId: 'm-failed', attempt: 1, status: 'failed' });

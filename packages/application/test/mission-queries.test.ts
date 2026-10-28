@@ -81,6 +81,7 @@ describe('getMissionView', () => {
         kind: 'custom',
         status: 'running',
         dependsOn: [],
+        agent: 'claude-code',
       },
     ]);
     const execution: Execution = { id: 'e1', missionId: 'm1', attempt: 1, status: 'running' };
@@ -118,6 +119,7 @@ describe('getMissionView', () => {
       defaultBranch: 'main',
     });
     expect(result.data.steps.map((s) => s.title)).toEqual(['Login funciona']);
+    expect(result.data.steps.map((s) => s.agent)).toEqual(['claude-code']);
     expect(result.data.executions.map((e) => e.id)).toEqual(['e1']);
     expect(result.data.pendingApprovals.map((a) => a.id)).toEqual(['a1']);
     expect(result.data.events.map((e) => e.eventType)).toEqual(['mission.status_changed']);

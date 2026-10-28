@@ -245,7 +245,7 @@ test.describe('fontes locais', () => {
       });
     });
     await page.reload();
-    await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Início', exact: true })).toBeVisible();
 
     // O app construído carrega por `loadFile`, ou seja, `file://`, como o aplicativo empacotado. O
     // servidor de desenvolvimento (`loadURL`) não é exercitado por este teste.
@@ -286,7 +286,7 @@ test.describe('fontes locais', () => {
       const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
       return fonts.map(({ familyName, isCustomFont }) => ({ familyName, isCustomFont }));
     };
-    const sansFonts = await platformFonts('nav[aria-label="Principal"] a');
+    const sansFonts = await platformFonts('.topbar__home a');
     expect(sansFonts.length).toBeGreaterThan(0);
     expect(sansFonts.every(({ isCustomFont }) => isCustomFont)).toBe(true);
     expect(sansFonts.map(({ familyName }) => familyName)).toEqual(
@@ -428,9 +428,9 @@ test.describe('navegação', () => {
     // conferência usa `evaluate`: depois de uma navegação cancelada, o Playwright ainda espera por
     // ela nas ações com localizador.
     expect(page.url()).toBe(startUrl);
-    expect(
-      await page.evaluate(() => document.querySelector('nav[aria-label="Principal"]') !== null),
-    ).toBe(true);
+    expect(await page.evaluate(() => document.querySelector('.topbar__home a') !== null)).toBe(
+      true,
+    );
     expect(await page.evaluate(() => window.projectHub.ping())).toEqual({
       ok: true,
       data: 'pong',

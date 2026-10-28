@@ -1,53 +1,37 @@
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { MISSION_FORM_TEXT } from '../mission-text';
 
-/** Valores do formulário de missão. Os critérios chegam já separados, um por linha não vazia. */
+/** Valores do formulário de missão. `orchestrate` pede o plano logo depois de criar. */
 export type MissionFormValues = {
   title: string;
   objective: string;
   acceptanceCriteria: string[];
   altersCode: boolean;
-  planOnly: boolean;
+  orchestrate: boolean;
 };
 
-const NO_GIT_WARNING =
-  'Este projeto não é um repositório Git. Toda missão roda num worktree, e o worktree precisa de Git. Inicialize o Git na pasta para criar missões aqui.';
+/** Tamanho máximo do título tirado da primeira linha do objetivo. */
+const DERIVED_TITLE_MAX = 80;
 
-/** Os critérios são uma caixa de texto: uma linha por critério, e as linhas em branco não contam. */
-function splitCriteria(text: string): string[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '');
+/** O título que vale: o digitado ou, vazio, a primeira linha do objetivo (cortada em 80 caracteres). */
+export function titleFrom(title: string, objective: string): string {
+  const typed = title.trim();
+  if (typed !== '') return typed;
+  const firstLine = objective.trim().split('\n')[0]?.trim() ?? '';
+  return firstLine.length > DERIVED_TITLE_MAX
+    ? `${firstLine.slice(0, DERIVED_TITLE_MAX).trimEnd()}…`
+    : firstLine;
 }
 
-// O zod compila cada schema com `new Function` para validar mais rápido. A CSP do app não tem
-// 'unsafe-eval', então cada compilação vira uma violação `script-src eval`. `jitless` desliga a compilação e
-// precisa valer antes de o primeiro schema ser criado, por isso fica aqui, acima de `missionFormSchema`.
-z.config({ jitless: true });
+type Errors = { objective?: string; criteria?: string };
 
 /**
- * Regras do formulário. `trim()` vem antes da checagem de tamanho: título ou objetivo só com espaços é vazio.
- * As mensagens são as de sempre, sem mudar uma letra.
- */
-const missionFormSchema = z.object({
-  title: z.string().trim().min(1, 'Informe o título da missão.'),
-  objective: z.string().trim().min(1, 'Informe o objetivo da missão.'),
-  criteria: z
-    .string()
-    .refine((text) => splitCriteria(text).length > 0, 'Informe ao menos um critério de aceite'),
-  altersCode: z.boolean(),
-  planOnly: z.boolean(),
-});
-
-type MissionFormFields = z.infer<typeof missionFormSchema>;
-
-/**
- * Formulário de criação de missão (seção 10.6, com os campos do contrato, R162). Título, objetivo e
- * pelo menos um critério de aceite são obrigatórios: sem eles, a mensagem aparece e nada é enviado. A
- * validação é do react-hook-form com o zod (`missionFormSchema`); o foco vai para o primeiro campo com erro.
- * Depois do primeiro envio, a mensagem de um campo acompanha o que a pessoa digita.
+ * Nova missão como um compositor só, no estilo da caixa de pedido de uma IDE de agentes: o objetivo é o texto
+ * principal, o título é opcional (vazio, sai da primeira linha do objetivo) e os critérios de aceite viram uma
+ * lista de itens — digita, Enter adiciona, e cada item tem o próprio botão de remover. O que ficou digitado no
+ * campo de critério, sem Enter, conta no envio. No rodapé, a opção "Altera código", Cancelar, Criar (abre a
+ * missão em rascunho) e Criar e orquestrar (abre e já pede o plano, que usa a cota do Claude). Objetivo e pelo
+ * menos um critério são obrigatórios: sem eles, a mensagem aparece junto do campo e o foco vai para ele.
  */
 export function MissionForm({
   onSubmit,
@@ -59,179 +43,201 @@ export function MissionForm({
   /** Toda missão roda num worktree, e o worktree exige Git (R160, R214): sem Git, o formulário não cria a missão. */
   projectHasGit: boolean;
 }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<MissionFormFields>({
-    resolver: zodResolver(missionFormSchema),
-    defaultValues: { title: '', objective: '', criteria: '', altersCode: false, planOnly: false },
-  });
+  const [title, setTitle] = useState('');
+  const [objective, setObjective] = useState('');
+  const [criteria, setCriteria] = useState<string[]>([]);
+  const [draft, setDraft] = useState('');
+  const [altersCode, setAltersCode] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
+  const [submitted, setSubmitted] = useState(false);
+  const objectiveRef = useRef<HTMLTextAreaElement>(null);
+  const draftRef = useRef<HTMLInputElement>(null);
+  const quotaId = useId();
+
+  // O compositor abre pronto para escrever o objetivo, que é o que importa.
+  useEffect(() => {
+    objectiveRef.current?.focus();
+  }, []);
 
   const blockedByGit = !projectHasGit;
 
-  function enviar(values: MissionFormFields) {
+  function allCriteria(): string[] {
+    const pending = draft.trim();
+    return pending === '' || criteria.includes(pending) ? criteria : [...criteria, pending];
+  }
+
+  function validate(nextObjective: string, nextCriteria: string[]): Errors {
+    return {
+      ...(nextObjective.trim() === '' ? { objective: MISSION_FORM_TEXT.errors.objective } : {}),
+      ...(nextCriteria.length === 0 ? { criteria: MISSION_FORM_TEXT.errors.criteria } : {}),
+    };
+  }
+
+  function addCriterion() {
+    const text = draft.trim();
+    if (text === '') return;
+    const next = criteria.includes(text) ? criteria : [...criteria, text];
+    setCriteria(next);
+    setDraft('');
+    if (submitted) setErrors(validate(objective, next));
+  }
+
+  function removeCriterion(index: number) {
+    const next = criteria.filter((_, position) => position !== index);
+    setCriteria(next);
+    if (submitted) setErrors(validate(objective, next));
+    draftRef.current?.focus();
+  }
+
+  function onDraftKey(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    addCriterion();
+  }
+
+  function send(orchestrate: boolean) {
     if (blockedByGit) return;
+    setSubmitted(true);
+    const finalCriteria = allCriteria();
+    const found = validate(objective, finalCriteria);
+    setErrors(found);
+    if (found.objective !== undefined) {
+      objectiveRef.current?.focus();
+      return;
+    }
+    if (found.criteria !== undefined) {
+      draftRef.current?.focus();
+      return;
+    }
+    setCriteria(finalCriteria);
+    setDraft('');
     void onSubmit({
-      title: values.title,
-      objective: values.objective,
-      acceptanceCriteria: splitCriteria(values.criteria),
-      altersCode: values.altersCode,
-      planOnly: values.planOnly,
+      title: titleFrom(title, objective),
+      objective: objective.trim(),
+      acceptanceCriteria: finalCriteria,
+      altersCode,
+      orchestrate,
     });
   }
 
   return (
-    <form className="form" aria-label="Nova missão" onSubmit={handleSubmit(enviar)} noValidate>
-      <div className="form-head">
-        <h2 className="form-head__title">Nova missão</h2>
-        <p className="form-head__hint">
-          Diga o que o agente deve fazer e como você vai saber que deu certo.
-        </p>
-      </div>
+    <form
+      className="mission-form"
+      aria-label={MISSION_FORM_TEXT.heading}
+      onSubmit={(event) => {
+        event.preventDefault();
+        send(false);
+      }}
+      noValidate
+    >
+      <h2 className="mission-form__title">{MISSION_FORM_TEXT.heading}</h2>
 
       {blockedByGit ? (
         <p role="alert" className="page-alert">
-          {NO_GIT_WARNING}
+          {MISSION_FORM_TEXT.noGit}
         </p>
       ) : null}
 
-      <section className="form-section">
-        <h3 className="form-section__title">
-          <span className="form-section__num" aria-hidden="true">
-            1
-          </span>
-          O que fazer
-        </h3>
-        <p className="form-section__hint">Dê um nome curto e explique o objetivo.</p>
-        <div className="field">
-          <label htmlFor="mission-title">Título</label>
-          <p id="mission-title-hint" className="field-hint">
-            Um nome curto, para achar a missão na lista.
+      <div className="composer">
+        <input
+          className="composer__title"
+          type="text"
+          aria-label={MISSION_FORM_TEXT.title.label}
+          placeholder={MISSION_FORM_TEXT.title.placeholder}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <textarea
+          ref={objectiveRef}
+          className="composer__objective"
+          rows={4}
+          aria-label={MISSION_FORM_TEXT.objective.label}
+          placeholder={MISSION_FORM_TEXT.objective.placeholder}
+          aria-invalid={errors.objective !== undefined}
+          aria-describedby={errors.objective === undefined ? undefined : 'mission-objective-error'}
+          value={objective}
+          onChange={(event) => {
+            setObjective(event.target.value);
+            if (submitted) setErrors(validate(event.target.value, allCriteria()));
+          }}
+        />
+        {errors.objective === undefined ? null : (
+          <p id="mission-objective-error" className="field-error">
+            {errors.objective}
           </p>
+        )}
+
+        <div className="composer__criteria">
+          <p id="mission-criteria-label" className="composer__label">
+            {MISSION_FORM_TEXT.criteria.label}
+          </p>
+          {criteria.length === 0 ? null : (
+            <ul className="composer__chips" aria-labelledby="mission-criteria-label">
+              {criteria.map((criterion, index) => (
+                <li key={criterion} className="composer__chip">
+                  <span>{criterion}</span>
+                  <button
+                    type="button"
+                    className="composer__chip-remove"
+                    aria-label={`${MISSION_FORM_TEXT.criteria.remove} ${criterion}`}
+                    onClick={() => removeCriterion(index)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <input
-            id="mission-title"
+            ref={draftRef}
+            className="composer__add"
             type="text"
-            placeholder="Ajustar o login com Google"
-            aria-invalid={errors.title !== undefined}
-            aria-describedby={
-              errors.title === undefined
-                ? 'mission-title-hint'
-                : 'mission-title-hint mission-title-error'
-            }
-            {...register('title')}
-          />
-          {errors.title === undefined ? null : (
-            <p id="mission-title-error" className="field-error">
-              {errors.title.message}
-            </p>
-          )}
-        </div>
-
-        <div className="field">
-          <label htmlFor="mission-objective">Objetivo</label>
-          <p id="mission-objective-hint" className="field-hint">
-            O que precisa ser feito e por quê. Quanto mais claro, melhor o resultado.
-          </p>
-          <textarea
-            id="mission-objective"
-            rows={3}
-            placeholder="Hoje o login só aceita e-mail e senha. Quero entrar também com a conta Google."
-            aria-invalid={errors.objective !== undefined}
-            aria-describedby={
-              errors.objective === undefined
-                ? 'mission-objective-hint'
-                : 'mission-objective-hint mission-objective-error'
-            }
-            {...register('objective')}
-          />
-          {errors.objective === undefined ? null : (
-            <p id="mission-objective-error" className="field-error">
-              {errors.objective.message}
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="form-section">
-        <h3 className="form-section__title">
-          <span className="form-section__num" aria-hidden="true">
-            2
-          </span>
-          Como saber que ficou pronto
-        </h3>
-        <p className="form-section__hint">Cada critério vira uma etapa do plano.</p>
-        <div className="field">
-          <label htmlFor="mission-criteria">Critérios de aceite</label>
-          <p id="mission-criteria-hint" className="field-hint">
-            Como você vai saber que ficou pronto. Um critério por linha, pelo menos um.
-          </p>
-          <textarea
-            id="mission-criteria"
-            rows={4}
-            placeholder={
-              'O botão Entrar com Google aparece na tela de login\nOs testes do login passam'
-            }
+            aria-label={MISSION_FORM_TEXT.criteria.input}
+            placeholder={MISSION_FORM_TEXT.criteria.placeholder}
             aria-invalid={errors.criteria !== undefined}
-            aria-describedby={
-              errors.criteria === undefined
-                ? 'mission-criteria-hint'
-                : 'mission-criteria-hint mission-criteria-error'
-            }
-            {...register('criteria')}
+            aria-describedby={errors.criteria === undefined ? undefined : 'mission-criteria-error'}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onDraftKey}
           />
           {errors.criteria === undefined ? null : (
             <p id="mission-criteria-error" className="field-error">
-              {errors.criteria.message}
+              {errors.criteria}
             </p>
           )}
         </div>
-      </section>
 
-      <section className="form-section">
-        <h3 className="form-section__title">
-          <span className="form-section__num" aria-hidden="true">
-            3
-          </span>
-          Como o agente trabalha
-        </h3>
-        <p className="form-section__hint">Escolha o que o agente pode fazer.</p>
-        <div className="check option-card">
-          <input
-            id="mission-alters-code"
-            type="checkbox"
-            aria-describedby="mission-alters-code-hint"
-            {...register('altersCode')}
-          />
-          <label htmlFor="mission-alters-code">Esta missão altera código</label>
-          <p id="mission-alters-code-hint" className="check__hint">
-            Marque se o agente vai editar arquivos do projeto.
-          </p>
-        </div>
-
-        <div className="check option-card">
-          <input
-            id="mission-plan-only"
-            type="checkbox"
-            aria-describedby="mission-plan-only-hint"
-            {...register('planOnly')}
-          />
-          <label htmlFor="mission-plan-only">Somente planejar</label>
-          <p id="mission-plan-only-hint" className="check__hint">
-            Gera o plano e para aí, para você revisar antes de iniciar.
-          </p>
-        </div>
-      </section>
-
-      <div className="form-actions">
-        <button type="submit" className="btn-primary" disabled={blockedByGit}>
-          Criar missão
-        </button>
-        {onCancel === undefined ? null : (
-          <button type="button" onClick={onCancel}>
-            Cancelar
+        <div className="composer__footer">
+          <label className="composer__option">
+            <input
+              type="checkbox"
+              checked={altersCode}
+              onChange={(event) => setAltersCode(event.target.checked)}
+            />
+            {MISSION_FORM_TEXT.altersCode.label}
+          </label>
+          <span className="composer__spacer" />
+          {onCancel === undefined ? null : (
+            <button type="button" className="btn-ghost" onClick={onCancel}>
+              {MISSION_FORM_TEXT.cancel}
+            </button>
+          )}
+          <button type="submit" className="btn-secondary" disabled={blockedByGit}>
+            {MISSION_FORM_TEXT.submit}
           </button>
-        )}
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={blockedByGit}
+            aria-describedby={quotaId}
+            onClick={() => send(true)}
+          >
+            {MISSION_FORM_TEXT.submitAndOrchestrate}
+          </button>
+        </div>
+        <p id={quotaId} className="composer__quota">
+          {MISSION_FORM_TEXT.quota}
+        </p>
       </div>
     </form>
   );

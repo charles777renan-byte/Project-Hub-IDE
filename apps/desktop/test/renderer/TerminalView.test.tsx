@@ -27,6 +27,11 @@ const fake = vi.hoisted(() => ({
   /** Terminal e área em que ele foi aberto, para conferir o gancho de teste. */
   instance: undefined as object | undefined,
   openedIn: undefined as HTMLElement | undefined,
+  /** Medidas da tela do xterm; 0 x 0 é o terminal aberto numa área escondida, que ainda não mediu a célula. */
+  screenWidth: 640,
+  screenHeight: 384,
+  /** Todos os terminais criados no teste, cada um com a sua saída. */
+  all: [] as { written: string[] }[],
 }));
 
 vi.mock('@xterm/addon-webgl', () => ({
@@ -48,19 +53,21 @@ vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    written: string[] = [];
     options: Record<string, unknown> = {};
     constructor(options: Record<string, unknown>) {
       fake.options = options;
       fake.runtimeOptions = this.options;
       fake.instance = this;
+      fake.all.push(this);
     }
     open(host: HTMLElement) {
       fake.openedIn = host;
       // A tela do xterm, com as medidas de uma célula de 8 x 16 (640 x 384 para 80 x 24).
       const screen = document.createElement('div');
       screen.className = 'xterm-screen';
-      Object.defineProperty(screen, 'clientWidth', { value: 640 });
-      Object.defineProperty(screen, 'clientHeight', { value: 384 });
+      Object.defineProperty(screen, 'clientWidth', { get: () => fake.screenWidth });
+      Object.defineProperty(screen, 'clientHeight', { get: () => fake.screenHeight });
       host.append(screen);
     }
     loadAddon() {
@@ -81,6 +88,7 @@ vi.mock('@xterm/xterm', () => ({
     }
     write(data: string) {
       fake.writes.push(data);
+      this.written.push(data);
     }
     reset() {
       fake.resets += 1;
@@ -105,6 +113,7 @@ let terminals: Record<string, ReturnType<typeof vi.fn>>;
 
 beforeEach(() => {
   fake.writes = [];
+  fake.all = [];
   fake.resets = 0;
   fake.disposed = 0;
   fake.typed = undefined;
@@ -121,6 +130,8 @@ beforeEach(() => {
   fake.contextLoss = undefined;
   fake.instance = undefined;
   fake.openedIn = undefined;
+  fake.screenWidth = 640;
+  fake.screenHeight = 384;
   emit = undefined;
   vi.stubGlobal(
     'ResizeObserver',
@@ -226,6 +237,155 @@ describe('TerminalView', () => {
     expect(terminals['resize']).toHaveBeenCalledTimes(1);
     expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
     view.unmount();
+  });
+});
+
+describe('TerminalView: aberto numa área escondida', () => {
+  function sizeHost() {
+    const host = fake.openedIn as HTMLElement;
+    Object.defineProperty(host, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(host, 'clientHeight', { value: 320, configurable: true });
+  }
+
+  /** ResizeObserver que guarda o que observa e deixa o teste disparar o aviso. */
+  function captureObservers() {
+    const observed: Element[] = [];
+    let notify: () => void = () => {};
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          notify = callback;
+        }
+        observe(target: Element) {
+          observed.push(target);
+        }
+        disconnect() {}
+      },
+    );
+    return { observed, fire: () => notify() };
+  }
+
+  /** requestAnimationFrame manual: os quadros só rodam quando o teste manda. */
+  function captureFrames() {
+    const frames = new Map<number, () => void>();
+    let next = 1;
+    vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+      frames.set(next, callback);
+      return next++;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    return {
+      pending: () => frames.size,
+      run: () => {
+        const due = [...frames.values()];
+        frames.clear();
+        due.forEach((callback) => callback());
+      },
+    };
+  }
+
+  it('observa também a tela do xterm, para ajustar quando ele mede a célula depois de a área aparecer', async () => {
+    const { observed, fire } = captureObservers();
+    captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+    expect(observed).toContain(fake.openedIn);
+    expect(observed).toContain(fake.openedIn?.querySelector('.xterm-screen'));
+
+    // A área aparece, mas a célula ainda não foi medida: nada de tamanho ao processo.
+    fire();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminals['resize']).not.toHaveBeenCalled();
+
+    // O xterm mede (a tela passa a medir 640 x 384) e o observador da tela avisa: ajusta uma vez, no tamanho real.
+    fake.screenWidth = 640;
+    fake.screenHeight = 384;
+    fire();
+    expect(terminals['resize']).toHaveBeenCalledTimes(1);
+    expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
+    expect((fake.instance as { cols: number }).cols).toBe(100);
+    view.unmount();
+  });
+
+  it('sem aviso do observador, tenta de novo a cada quadro até o xterm medir, e para quando ajusta', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    expect(frames.pending()).toBe(1);
+
+    frames.run();
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    expect(frames.pending()).toBe(1);
+
+    fake.screenWidth = 640;
+    fake.screenHeight = 384;
+    frames.run();
+    expect(terminals['resize']).toHaveBeenCalledTimes(1);
+    expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
+    expect(frames.pending()).toBe(0);
+    view.unmount();
+  });
+
+  it('com a área ainda escondida (menor que o mínimo), não manda tamanho nem fica tentando', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    const host = fake.openedIn as HTMLElement;
+    Object.defineProperty(host, 'clientWidth', { value: 0, configurable: true });
+    Object.defineProperty(host, 'clientHeight', { value: 0, configurable: true });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    expect(frames.pending()).toBe(0);
+    view.unmount();
+  });
+
+  it('desiste depois de 30 tentativas', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    for (let attempt = 0; attempt < 40; attempt += 1) frames.run();
+
+    expect(frames.pending()).toBe(0);
+    expect(terminals['resize']).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('desmontar cancela o quadro pendente', async () => {
+    captureObservers();
+    const frames = captureFrames();
+    fake.screenWidth = 0;
+    fake.screenHeight = 0;
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(frames.pending()).toBe(1);
+
+    view.unmount();
+
+    expect(frames.pending()).toBe(0);
   });
 });
 
@@ -488,5 +648,135 @@ describe('fitTerminal', () => {
     expect(fitTerminal(term, host(640, 384, 0, 0))).toBeUndefined();
     expect(term.resize).not.toHaveBeenCalled();
     expect(fitTerminal(term, host(640, 384, 48, 24))).toEqual({ cols: 6, rows: 1 });
+  });
+});
+
+describe('fitTerminal: escala fracionária', () => {
+  /** Área de 1402px; a tela do xterm mede round(colunas * 6,4), como numa escala de 125%. */
+  function fractionalHost(term: { cols: number; rows: number }) {
+    const element = document.createElement('div');
+    const screen = document.createElement('div');
+    screen.className = 'xterm-screen';
+    Object.defineProperty(screen, 'clientWidth', { get: () => Math.round(term.cols * 6.4) });
+    Object.defineProperty(screen, 'clientHeight', { get: () => term.rows * 16 });
+    Object.defineProperty(element, 'clientWidth', { value: 1402 });
+    Object.defineProperty(element, 'clientHeight', { value: 384 });
+    element.append(screen);
+    return element;
+  }
+
+  function terminal(cols: number) {
+    const term = {
+      cols,
+      rows: 24,
+      resize(nextCols: number, nextRows: number) {
+        term.cols = nextCols;
+        term.rows = nextRows;
+      },
+    };
+    return term;
+  }
+
+  it('1402px com a tela em 1402px e 219 colunas: nada muda (a divisão em ponto flutuante dava 218)', () => {
+    const term = terminal(219);
+
+    expect(fitTerminal(term, fractionalHost(term))).toBeUndefined();
+    expect(term.cols).toBe(219);
+  });
+
+  it('com 218 colunas (tela em 1395px) vai a 219 e fica: aplicar o ajuste de novo é estável', () => {
+    const term = terminal(218);
+    const host = fractionalHost(term);
+
+    expect(fitTerminal(term, host)).toEqual({ cols: 219, rows: 24 });
+    for (let i = 0; i < 5; i += 1) expect(fitTerminal(term, host)).toBeUndefined();
+    expect(term.cols).toBe(219);
+  });
+});
+
+describe('TerminalView: o mesmo terminal em duas visões', () => {
+  function instances() {
+    return fake.all as { written: string[] }[];
+  }
+
+  it('assina uma única vez e entrega a saída a cada visão uma só vez', () => {
+    const first = render(<TerminalView terminalId="t1" />);
+    const second = render(<TerminalView terminalId="t1" />);
+
+    expect(terminals['subscribe']).toHaveBeenCalledTimes(1);
+    expect(terminals['onEvent']).toHaveBeenCalledTimes(1);
+    emit?.({ type: 'data', terminalId: 't1', data: 'oi' });
+
+    expect(instances().map((term) => term.written)).toEqual([['oi'], ['oi']]);
+    first.unmount();
+    second.unmount();
+  });
+
+  it('a visão que abre depois recebe a tela atual (replay e saída ao vivo), sem assinar de novo', () => {
+    const first = render(<TerminalView terminalId="t1" />);
+    emit?.({ type: 'data', terminalId: 't1', data: 'a' });
+    emit?.({ type: 'data', terminalId: 't1', data: 'b' });
+
+    const second = render(<TerminalView terminalId="t1" />);
+    emit?.({ type: 'data', terminalId: 't1', data: 'c' });
+
+    expect(terminals['subscribe']).toHaveBeenCalledTimes(1);
+    expect(instances().map((term) => term.written)).toEqual([
+      ['a', 'b', 'c'],
+      ['a', 'b', 'c'],
+    ]);
+    first.unmount();
+    second.unmount();
+  });
+
+  it('fechar uma visão não solta a assinatura: a outra segue recebendo; a última a solta uma vez', () => {
+    const pane = render(<TerminalView terminalId="t1" />);
+    const mission = render(<TerminalView terminalId="t1" />);
+
+    mission.unmount();
+    expect(terminals['unsubscribe']).not.toHaveBeenCalled();
+    emit?.({ type: 'data', terminalId: 't1', data: 'depois' });
+    expect(instances()[0]?.written).toEqual(['depois']);
+
+    pane.unmount();
+    expect(terminals['unsubscribe']).toHaveBeenCalledTimes(1);
+    expect(terminals['unsubscribe']).toHaveBeenCalledWith('t1');
+    expect(emit).toBeUndefined();
+  });
+
+  it('depois de soltar tudo, abrir de novo assina de novo, com a tela vazia', () => {
+    render(<TerminalView terminalId="t1" />).unmount();
+    expect(terminals['subscribe']).toHaveBeenCalledTimes(1);
+
+    const again = render(<TerminalView terminalId="t1" />);
+
+    expect(terminals['subscribe']).toHaveBeenCalledTimes(2);
+    expect(instances()[1]?.written).toEqual([]);
+    again.unmount();
+  });
+
+  it('o reinício zera o que uma visão nova recebe', () => {
+    const first = render(<TerminalView terminalId="t1" />);
+    emit?.({ type: 'data', terminalId: 't1', data: 'velho' });
+    emit?.({ type: 'restart', terminalId: 't1' });
+    emit?.({ type: 'data', terminalId: 't1', data: 'novo' });
+
+    const second = render(<TerminalView terminalId="t1" />);
+
+    expect(instances()[1]?.written).toEqual(['novo']);
+    first.unmount();
+    second.unmount();
+  });
+
+  it('guarda só o fim da saída quando passa de 2 MiB', () => {
+    const first = render(<TerminalView terminalId="t1" />);
+    const chunk = 'x'.repeat(1024 * 1024);
+    for (let i = 0; i < 5; i += 1) emit?.({ type: 'data', terminalId: 't1', data: chunk });
+
+    const second = render(<TerminalView terminalId="t1" />);
+
+    expect(instances()[1]?.written).toHaveLength(2);
+    first.unmount();
+    second.unmount();
   });
 });

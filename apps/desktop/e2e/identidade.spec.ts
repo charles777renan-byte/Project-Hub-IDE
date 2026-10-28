@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { addGitProject, openProject, orchestrate, viewTab, type ProjectViewName } from './missions';
 import { expectOpenSessions, expectTerminalToContain } from './terminals';
 
 // Identidade visual (Tarefa 10), na janela real do Electron construído: em cada tela principal não há
@@ -8,7 +9,6 @@ import { expectOpenSessions, expectTerminalToContain } from './terminals';
 // controles com um anel de foco visível em cada um. Só roda no Windows, onde o shell do teste é o PowerShell.
 test.skip(process.platform !== 'win32', 'o shell do teste é o PowerShell');
 
-const BAR_NAME = 'Projetos e missões';
 const MAX_TABS = 60;
 
 const MISSION = {
@@ -27,7 +27,7 @@ async function installViolationListener(page: Page): Promise<void> {
     });
   });
   await page.reload();
-  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Início', exact: true })).toBeVisible();
 }
 
 /**
@@ -134,19 +134,19 @@ async function tabThroughControls(page: Page): Promise<FocusReport> {
   return { count, missing };
 }
 
+/**
+ * Vai a uma visão da aba do projeto clicando na aba, como a pessoa faz. O clique deixa o contêiner das abas
+ * (`div.tabs`) como uma parada do Tab na volta seguinte pela página: ela tem de mostrar o anel de foco.
+ */
+async function openView(page: Page, view: ProjectViewName): Promise<void> {
+  await viewTab(page, view).click();
+  await expect(viewTab(page, view)).toHaveAttribute('aria-selected', 'true');
+}
+
 async function expectVisibleFocus(page: Page, minimum: number): Promise<void> {
   const report = await tabThroughControls(page);
   expect(report.count, 'o Tab percorre os controles da tela').toBeGreaterThanOrEqual(minimum);
   expect(report.missing, 'controles sem anel de foco visível').toEqual([]);
-}
-
-async function addProject(page: Page, projectName: string): Promise<void> {
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Projetos' })
-    .click();
-  await page.getByRole('button', { name: 'Adicionar projeto' }).click();
-  await expect(page.getByRole('heading', { name: projectName })).toBeVisible();
 }
 
 /** Abre mais um PowerShell pela barra e espera o prompt da sessão nova. */
@@ -175,10 +175,7 @@ async function endShell(page: Page): Promise<void> {
 test('Início: sem violação de CSP e com foco visível em cada controle', async ({ launchApp }) => {
   const { page } = await launchApp();
   await installViolationListener(page);
-  await page
-    .getByRole('navigation', { name: 'Principal' })
-    .getByRole('link', { name: 'Início' })
-    .click();
+  await page.getByRole('link', { name: 'Início', exact: true }).click();
   await expect(page.getByRole('main')).toBeVisible();
 
   await expectNoViolations(page);
@@ -224,17 +221,25 @@ test('o filtro de CSP do teste não esconde violações que não são do xterm',
   expect(await cspViolations(page)).toEqual({ foreignStyles: [], others: [] });
 });
 
-test('Projetos: sem violação de CSP e com foco visível em cada controle', async ({
+test('Aba do projeto (Missões, Worktrees e Configurações): sem violação de CSP e com foco visível em cada controle', async ({
   launchApp,
   gitRepo,
 }) => {
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
   await installViolationListener(page);
-  await addProject(page, projectName);
+  await addGitProject(page, projectName);
+  // A tela Projetos não existe mais: o projeto abre na aba dele, e cada visão é uma tela a conferir.
+  await openProject(page, projectName, 'Terminais');
+  await openView(page, 'Missões');
 
   await expectNoViolations(page);
   await expectVisibleFocus(page, 5);
+  for (const view of ['Worktrees', 'Configurações'] as const) {
+    await openView(page, view);
+    await expectNoViolations(page);
+    await expectVisibleFocus(page, 5);
+  }
   await expectNoViolations(page);
 });
 
@@ -245,24 +250,23 @@ test('Missão criada pelo formulário: sem violação de CSP e com foco visível
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
   await installViolationListener(page);
-  await addProject(page, projectName);
-  await page.getByRole('main').getByRole('link', { name: projectName }).click();
-  await expect(page.getByText('Branch: main')).toBeVisible();
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  await openView(page, 'Missões');
 
-  await page.getByRole('main').getByRole('button', { name: 'Nova missão' }).click();
+  await page.getByRole('button', { name: 'Nova missão' }).first().click();
   const form = page.getByRole('form', { name: 'Nova missão' });
   // O formulário aberto também é uma tela: o foco passa por campos, caixa e botões.
   await form.getByLabel('Título').fill(MISSION.title);
   await form.getByLabel('Objetivo').fill(MISSION.objective);
   await form.getByLabel('Critérios de aceite').fill(MISSION.criterion);
-  await form.getByLabel('Esta missão altera código').check();
+  await form.getByLabel('Altera código').check();
   await expectVisibleFocus(page, 5);
 
-  await form.getByRole('button', { name: 'Criar missão' }).click();
+  await form.getByRole('button', { name: 'Criar', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
-  await expect(
-    page.getByRole('main').getByText('Aguarda aprovação do plano', { exact: true }),
-  ).toBeVisible();
+  // A missão nasce em rascunho; Orquestrar gera o plano, e a tela com o plano pronto também fica sem violação.
+  await orchestrate(page);
 
   await expectNoViolations(page);
   await expectVisibleFocus(page, 5);
@@ -276,11 +280,8 @@ test('Workspace com o PowerShell: sem violação de CSP e com foco visível, at�
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
   await installViolationListener(page);
-  await addProject(page, projectName);
-  await page
-    .getByRole('complementary', { name: BAR_NAME })
-    .getByRole('link', { name: projectName, exact: true })
-    .click();
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
   // O workspace novo, vazio e com a barra: sem violação e com foco visível nos botões da barra.
   await expect(page.getByRole('button', { name: 'Abrir terminal' })).toBeVisible();
   await expect(page.getByText('Nenhum terminal aberto')).toBeVisible();

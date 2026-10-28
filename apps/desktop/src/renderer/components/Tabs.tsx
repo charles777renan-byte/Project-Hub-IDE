@@ -1,10 +1,20 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
+import type { MouseEvent } from 'react';
 
 /**
  * Contagem opcional de uma aba: `value` é o número curto ao lado do nome (escondido do leitor de tela)
  * e `label` é a frase que o leitor de tela lê como descrição da aba. O nome da aba não muda.
  */
 export type TabCount = { value: string; label: string };
+
+/**
+ * O Radix foca a aba por script no `mousedown`, e o Chromium herda nesse foco o modo da última navegação: se ela
+ * foi pelo teclado (Tab, um atalho), o clique acende o anel de foco. Focar antes, com `focusVisible: false`, deixa
+ * o clique sem anel; o `focus()` do Radix logo depois não muda nada, porque a aba já tem o foco.
+ */
+function focusWithoutRing(event: MouseEvent<HTMLButtonElement>) {
+  if (event.button === 0 && !event.ctrlKey) event.currentTarget.focus({ focusVisible: false });
+}
 
 /** Uma aba: o `id` é o que a página guarda, o `label` é o que a pessoa lê. */
 export type TabItem<T extends string> = { id: T; label: string; count?: TabCount };
@@ -19,8 +29,8 @@ export type TabItem<T extends string> = { id: T; label: string; count?: TabCount
  * sem ele, o painel é o `tab-panel` (uma página com um painel só). Uma aba com `count` mostra o número
  * depois do nome e ganha a frase da contagem como descrição (`aria-describedby`).
  *
- * A raiz do Radix vira a própria barra (`asChild`), sem `div` extra: o CSS da missão depende de a barra
- * ser filha direta do contêiner (`.mission-tabs > .tabs`). Os ids `tab-<id>` e o `aria-controls` ficam
+ * A raiz do Radix vira a própria barra (`asChild`), sem `div` extra: o CSS do painel inferior da missão depende de a barra
+ * ser filha direta do contêiner (`.mission-dock > .tabs`). Os ids `tab-<id>` e o `aria-controls` ficam
  * os mesmos de antes, porque os painéis apontam para eles por `aria-labelledby`.
  */
 export function Tabs<T extends string>({
@@ -30,6 +40,7 @@ export function Tabs<T extends string>({
   onChange,
   filled = false,
   panelId,
+  onReselect,
 }: {
   label: string;
   tabs: readonly TabItem<T>[];
@@ -37,6 +48,8 @@ export function Tabs<T extends string>({
   onChange: (id: T) => void;
   filled?: boolean;
   panelId?: (id: T) => string;
+  /** Clique na aba que já está ativa (o `onChange` não dispara nesse caso). Opcional. */
+  onReselect?: (id: T) => void;
 }) {
   // O Radix entrega o valor como texto; devolvemos o `id` tipado da própria lista.
   function handleValueChange(value: string) {
@@ -57,6 +70,10 @@ export function Tabs<T extends string>({
               aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
               aria-describedby={tab.count === undefined ? undefined : countId}
               className={`tab tab--${tab.id}`}
+              onMouseDown={focusWithoutRing}
+              onClick={
+                tab.id === active && onReselect !== undefined ? () => onReselect(tab.id) : undefined
+              }
             >
               {tab.label}
               {tab.count === undefined ? null : (
