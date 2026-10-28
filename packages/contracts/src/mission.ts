@@ -29,6 +29,7 @@ export const STEP_STATUS_VALUES = [
   'skipped',
 ] as const;
 export const ROLE_VALUES = ['frontend', 'backend', 'database', 'docs', 'qa', 'general'] as const;
+export const AGENT_VALUES = ['claude-code'] as const;
 export const EXECUTION_STATUS_VALUES = [
   'queued',
   'running',
@@ -118,6 +119,8 @@ export const missionStepDtoSchema = z.object({
   status: z.enum(STEP_STATUS_VALUES),
   /** Papel da tarefa. Sem ele, a etapa é só apresentação. */
   role: z.enum(ROLE_VALUES).optional(),
+  /** Programa que executa a tarefa. */
+  agent: z.enum(AGENT_VALUES),
   description: z.string().optional(),
   /** Ids das tarefas que precisam terminar antes. */
   dependsOn: z.array(z.string()).optional(),

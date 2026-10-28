@@ -1274,6 +1274,7 @@ describe('tarefas do plano, em sequência', () => {
       kind: 'custom' as const,
       status: 'pending' as const,
       dependsOn,
+      agent: 'claude-code' as const,
       role: 'general' as const,
     };
   }

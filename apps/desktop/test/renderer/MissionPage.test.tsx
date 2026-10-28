@@ -36,7 +36,9 @@ function viewOf(
       ...overrides,
     },
     project: { id: 'p1', name: 'app', path: 'C:\\app', defaultBranch: 'main' },
-    steps: [{ id: 's1', position: 1, title: 'Login funciona', status: 'pending' }],
+    steps: [
+      { id: 's1', position: 1, title: 'Login funciona', status: 'pending', agent: 'claude-code' },
+    ],
     executions: [],
     pendingApprovals: [],
     events: [],
@@ -455,8 +457,8 @@ describe('MissionPage: abas', () => {
         { status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' },
         {
           steps: [
-            { id: 's1', position: 1, title: 'Primeira', status: 'succeeded' },
-            { id: 's2', position: 2, title: 'Segunda', status: 'running' },
+            { id: 's1', position: 1, title: 'Primeira', status: 'succeeded', agent: 'claude-code' },
+            { id: 's2', position: 2, title: 'Segunda', status: 'running', agent: 'claude-code' },
           ],
           events: [verificationEvent('v1', 1, { command: 'pnpm test', passed: 12, failed: 2 })],
         },
