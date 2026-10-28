@@ -1011,6 +1011,17 @@ describe('aba do projeto: missão aberta', () => {
     expect(screen.queryByRole('form', { name: 'Nova missão' })).not.toBeInTheDocument();
   });
 
+  it('com a missão aberta, o cabeçalho do projeto não repete Nova missão nem Mais ações: sobra o Mais ações da missão', async () => {
+    renderMission();
+    await screen.findByRole('heading', { level: 1, name: 'Ajustar login' });
+
+    const header = document.querySelector('.project-header') as HTMLElement;
+    expect(within(header).queryByRole('button', { name: 'Nova missão' })).toBeNull();
+    expect(within(header).queryByRole('button', { name: 'Mais ações' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Nova missão' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Mais ações' })).toHaveLength(1);
+  });
+
   it('o fundo topográfico não aparece atrás da missão aberta, nem com os terminais vazios escondidos', async () => {
     api.workspaces.open.mockResolvedValue({ ok: true, data: { ...dto(padrao()), layout: null } });
     renderMission();

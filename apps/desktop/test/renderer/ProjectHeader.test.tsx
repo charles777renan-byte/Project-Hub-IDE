@@ -348,6 +348,28 @@ describe('ProjectHeader: com uma missão aberta', () => {
     );
   });
 
+  it('não mostra Nova missão nem Mais ações (a missão tem os próprios controles); sem missão aberta, eles voltam', () => {
+    installApi();
+    const open = render(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <ProjectHeader project={project} onNewMission={vi.fn()} missionOpen />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Nova missão' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mais ações' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Missões' })).toBeInTheDocument();
+
+    open.rerender(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <ProjectHeader project={project} onNewMission={vi.fn()} missionOpen={false} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Nova missão' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mais ações' })).toBeInTheDocument();
+  });
+
   it('escolher Missões de novo leva à lista de missões', async () => {
     installApi();
     renderAt('/workspaces/p1', { missionOpen: true });

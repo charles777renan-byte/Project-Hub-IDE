@@ -43,7 +43,8 @@ async function closeProjectWorkspace(projectId: string) {
 
 /**
  * Cabeçalho da aba do projeto, numa linha só: o nome (e o apelido, se houver), a barra de visões, o botão
- * Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação). A visão ativa vem de
+ * Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação); com uma missão aberta,
+ * os dois somem (a missão tem os seus controles). A visão ativa vem de
  * `?visao=` na rota; escolher uma aba troca só esse parâmetro, substituindo a entrada do histórico (cada seta de
  * aba não empilha um passo). O painel da visão é do chamador: as abas apontam para o `project-panel-<visão>` de cada
  * visão. Arquivar ou remover só sai da tela quando a ação dá certo, e então fecha também a aba do workspace do
@@ -109,29 +110,31 @@ export function ProjectHeader({
               }
             : {})}
         />
-        <div className="project-header__actions">
-          <button type="button" className="btn-primary" onClick={onNewMission}>
-            {PROJECT_TEXT.newMission}
-          </button>
-          <MenuAcoes
-            rotulo={PROJECT_TEXT.moreActions}
-            acoes={[
-              {
-                rotulo: PROJECT_TEXT.archive,
-                desabilitada: leaving,
-                onSelecionar: () => setPending('archive'),
-              },
-              {
-                rotulo: PROJECT_TEXT.remove,
-                perigosa: true,
-                desabilitada: leaving,
-                onSelecionar: () => setPending('remove'),
-              },
-            ]}
-          />
-        </div>
+        {missionOpen ? null : (
+          <div className="project-header__actions">
+            <button type="button" className="btn-primary" onClick={onNewMission}>
+              {PROJECT_TEXT.newMission}
+            </button>
+            <MenuAcoes
+              rotulo={PROJECT_TEXT.moreActions}
+              acoes={[
+                {
+                  rotulo: PROJECT_TEXT.archive,
+                  desabilitada: leaving,
+                  onSelecionar: () => setPending('archive'),
+                },
+                {
+                  rotulo: PROJECT_TEXT.remove,
+                  perigosa: true,
+                  desabilitada: leaving,
+                  onSelecionar: () => setPending('remove'),
+                },
+              ]}
+            />
+          </div>
+        )}
       </div>
-      {pending === 'archive' ? (
+      {!missionOpen && pending === 'archive' ? (
         <ConfirmInline
           focusBack
           question={PROJECT_TEXT.archiveQuestion}
@@ -141,7 +144,7 @@ export function ProjectHeader({
           onCancel={() => setPending(null)}
         />
       ) : null}
-      {pending === 'remove' ? (
+      {!missionOpen && pending === 'remove' ? (
         <ConfirmInline
           focusBack
           question={PROJECT_TEXT.removeQuestion}

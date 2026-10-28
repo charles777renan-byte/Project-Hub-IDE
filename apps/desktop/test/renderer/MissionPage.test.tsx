@@ -1899,6 +1899,60 @@ describe('MissionPage: pausa, retomada e nova tentativa (R180, R181)', () => {
   });
 });
 
+describe('MissionPage: Sua decisão à vista ao abrir', () => {
+  let scrollIntoView: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  });
+
+  it.each(['draft', 'planned', 'queued', 'paused', 'failed'] as const)(
+    'abrir a missão %s rola até o bloco Sua decisão uma vez, sem mover o foco',
+    async (status) => {
+      installApi(viewOf({ status }));
+      renderPage();
+
+      const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(scrollIntoView.mock.contexts[0]).toBe(decision);
+      expect(decision.contains(document.activeElement)).toBe(false);
+    },
+  );
+
+  it.each(['running', 'succeeded'] as const)(
+    'a missão %s não espera nada da pessoa: não rola',
+    async (status) => {
+      installApi(viewOf({ status }));
+      renderPage();
+
+      await screen.findByRole('region', { name: 'Sua decisão' });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    },
+  );
+
+  it('recargas e eventos depois da abertura não rolam de novo', async () => {
+    const hub = installApi(viewOf({ status: 'planned' }));
+    renderPage();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+
+    hub.setView(viewOf({ status: 'queued' }));
+    hub.emit({ eventType: 'mission.status_changed', payload: { from: 'planned', to: 'queued' } });
+    await screen.findByRole('button', { name: /Iniciar/ });
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('MissionPage: foco da decisão (R182)', () => {
   /** Verdadeiro quando o foco está dentro do elemento dado (ou no próprio elemento). */
   function focusIsIn(element: HTMLElement): boolean {
