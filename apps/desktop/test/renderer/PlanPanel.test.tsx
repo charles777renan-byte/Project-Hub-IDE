@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MissionDto, MissionStepDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
@@ -226,6 +226,37 @@ describe('PlanPanel: edição das tarefas', () => {
 
     expect(screen.queryByRole('button', { name: 'Subir tarefa Montar a tela' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Descer tarefa Montar a tela' })).toHaveFocus();
+  });
+
+  it('Enter no campo de renomear não envia nada enquanto outra chamada está em curso', async () => {
+    const user = userEvent.setup();
+    const props = {
+      mission: missionOf('planned'),
+      steps: STEPS,
+      planning: false,
+      onEditStep: vi.fn(),
+      onRequestNewPlan: vi.fn(),
+    };
+    const { rerender } = render(<PlanPanel {...props} busy={false} />);
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    await user.type(screen.getByRole('textbox', { name: /Novo nome/ }), ' nova');
+    rerender(<PlanPanel {...props} busy />);
+    const field = screen.getByRole('textbox', { name: /Novo nome/ });
+    expect(field).toBeDisabled();
+    fireEvent.keyDown(field, { key: 'Enter' });
+
+    expect(props.onEditStep).not.toHaveBeenCalled();
+  });
+
+  it('enquanto planeja, mesmo sem busy, os controles das tarefas ficam desabilitados', () => {
+    setup({ planning: true, busy: false });
+
+    expect(screen.getByRole('button', { name: 'Renomear tarefa Criar API' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remover tarefa Criar API' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Subir tarefa Montar a tela' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Descer tarefa Criar API' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Programa da tarefa Criar API' })).toBeDisabled();
   });
 
   it('depois de salvar ou cancelar o nome, o foco volta ao botão Renomear', async () => {

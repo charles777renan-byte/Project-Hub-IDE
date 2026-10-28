@@ -812,6 +812,17 @@ describe('MissionPage: resumo', () => {
     expect(await screen.findByRole('button', { name: 'Orquestrar' })).toBeEnabled();
   });
 
+  it('dois cliques seguidos no Orquestrar chamam o planejamento uma vez só', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    hub.api.missions.plan.mockImplementationOnce(() => new Promise(() => undefined));
+    renderPage();
+    const button = await screen.findByRole('button', { name: 'Orquestrar' });
+
+    await userEvent.dblClick(button);
+
+    expect(hub.api.missions.plan).toHaveBeenCalledTimes(1);
+  });
+
   it('falha do planejamento aparece como alerta e o Orquestrar segue disponível', async () => {
     const hub = installApi(viewOf({ status: 'draft' }));
     hub.api.missions.plan.mockResolvedValueOnce({
@@ -1183,6 +1194,43 @@ describe('MissionPage: plano', () => {
     await waitFor(() => expect(hub.api.missions.plan).toHaveBeenCalledWith('m1'));
     expect(hub.api.missions.plan.mock.calls[0]).toHaveLength(1);
     expect(hub.api.missions.approvePlan).not.toHaveBeenCalled();
+  });
+
+  it('enquanto o novo plano é gerado, as tarefas não podem ser editadas', async () => {
+    const hub = installApi(viewOf());
+    hub.api.missions.plan.mockImplementationOnce(() => new Promise(() => undefined));
+    renderPage();
+    const plan = await openTab('Plano');
+
+    await userEvent.click(within(plan).getByRole('button', { name: 'Planejar de novo' }));
+
+    expect(await within(plan).findByRole('button', { name: 'Planejando…' })).toBeDisabled();
+    expect(
+      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
+    ).toBeDisabled();
+    expect(
+      within(plan).getByRole('button', { name: 'Remover tarefa Login funciona' }),
+    ).toBeDisabled();
+    expect(hub.api.missions.editPlanStep).not.toHaveBeenCalled();
+  });
+
+  it('se o novo plano falha, as tarefas anteriores continuam na tela, editáveis', async () => {
+    const hub = installApi(viewOf());
+    hub.api.missions.plan.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'PROCESS_START_FAILED', message: 'O Claude não respondeu.', retryable: true },
+    });
+    renderPage();
+    const plan = await openTab('Plano');
+
+    await userEvent.click(within(plan).getByRole('button', { name: 'Planejar de novo' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O Claude não respondeu.');
+    expect(within(plan).getByText('Login funciona')).toBeInTheDocument();
+    expect(
+      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
+    ).toBeEnabled();
+    expect(within(plan).getByRole('button', { name: 'Planejar de novo' })).toBeEnabled();
   });
 
   it('Planejar de novo envia a instrução digitada', async () => {
