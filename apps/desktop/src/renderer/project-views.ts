@@ -7,7 +7,13 @@
 export const VIEW_PARAM = 'visao';
 
 /** As visões da aba do projeto, na ordem da barra. */
-export const PROJECT_VIEWS = ['terminais', 'missoes', 'worktrees', 'configuracoes'] as const;
+export const PROJECT_VIEWS = [
+  'terminais',
+  'missoes',
+  'progresso',
+  'worktrees',
+  'configuracoes',
+] as const;
 
 export type ProjectView = (typeof PROJECT_VIEWS)[number];
 

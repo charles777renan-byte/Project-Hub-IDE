@@ -7,6 +7,7 @@ import {
   missionSummary,
   openProject,
   orchestrate,
+  viewTab,
 } from './missions';
 
 // Fluxo de orquestração pela interface real (fatia 2 do orquestrador): a missão nasce em rascunho, o
@@ -195,5 +196,62 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   await expect(
     page.getByRole('progressbar', { name: `Progresso de ${MISSION.title}: 2 de 2 tarefas` }),
   ).toBeVisible();
+
+  // A aba Progresso reúne a missão concluída no grupo "Concluídas hoje", com a barra cheia (2 de 2 tarefas), e
+  // o link "Abrir missão" leva de volta a ela.
+  await viewTab(page, 'Progresso').click();
+  await expect(viewTab(page, 'Progresso')).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/\?visao=progresso$/);
+  await expect(page.getByRole('heading', { level: 2, name: /^Concluídas hoje/ })).toBeVisible();
+  const missionRow = page
+    .getByRole('main')
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('link', { name: 'Abrir missão' }) })
+    .filter({ hasText: MISSION.title });
+  await expect(
+    missionRow.getByRole('img', { name: /\d de \d tarefas concluídas/ }),
+  ).toHaveAccessibleName('2 de 2 tarefas concluídas');
+
+  // Foco pelo teclado: o botão de expandir da linha chega por Tab (então vale :focus-visible) e mostra o anel.
+  const toggle = missionRow.getByRole('button', { name: new RegExp(MISSION.title) });
+  await toggle.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(toggle).toBeFocused();
+  await expect
+    .poll(() =>
+      toggle.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0;
+      }),
+    )
+    .toBe(true);
+
+  // Janela estreita (900 px): o painel da aba não rola na horizontal.
+  const panel = page.getByRole('tabpanel', { name: 'Progresso' });
+  await launched.app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setSize(900, 700);
+  });
+  try {
+    await expect
+      .poll(() => page.evaluate(() => window.innerWidth), {
+        message: 'a janela encolheu para 900 px',
+      })
+      .toBeLessThanOrEqual(900);
+    await expect(panel).toBeVisible();
+    await expect
+      .poll(() => panel.evaluate((element) => element.scrollWidth - element.clientWidth), {
+        message: 'o painel Progresso não rola na horizontal a 900 px',
+      })
+      .toBeLessThanOrEqual(0);
+  } finally {
+    await launched.app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1360, 840);
+    });
+  }
+
+  await missionRow.getByRole('link', { name: 'Abrir missão' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
+  await expect(missionSummary(page).getByText('Concluída', { exact: true })).toBeVisible();
   await launched.close();
 });
