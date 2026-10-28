@@ -1342,6 +1342,38 @@ button:disabled {
 }
 
 /*
+ * Uso do computador e "Parar todos" no cabeçalho (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
+ * discreto em --muted. Em janela estreita ele some primeiro, para os contadores não perderem lugar. A pergunta
+ * de "Parar todos" cabe na altura da barra: botões baixos, sem quebra de linha.
+ */
+.system-usage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .system-usage {
+    display: none;
+  }
+}
+
+.topbar__status .confirm-inline {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.topbar__status .btn-danger,
+.topbar__status .confirm-inline button {
+  height: 24px;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  line-height: 22px;
+}
+
+/*
  * Workspace da missão (pages/MissionPage.tsx): uma coluna com o resumo fixo no topo, o banner
  * "Aguardando você" (só com decisão pendente), e a área das abas, que enche a altura que sobra da
  * página. Cada painel de aba rola dentro de si, então nenhum conteúdo é cortado e a página não cresce
@@ -1422,6 +1454,91 @@ button:disabled {
   font-size: 0.6875rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/*
+ * Fluxo da missão (components/workspace/MissionFlow.tsx): cinco etapas lado a lado, com a forma do estado (✓ ◐ ○ ✕)
+ * além da cor. A etapa em curso ganha o contorno em --muted (mais de 3:1 sobre o fundo); o problema, o contorno e a
+ * marca em --danger; o resto fica em --line. O lima não entra aqui: é reservado ao item ativo e ao botão principal.
+ * Em largura estreita (container do workspace), as etapas empilham.
+ */
+.mission-flow {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mission-flow__node {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.mission-flow__node--current {
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+
+.mission-flow__node--problem {
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.mission-flow__mark {
+  flex: none;
+  width: 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+.mission-flow__node--current .mission-flow__mark {
+  color: var(--text);
+}
+
+.mission-flow__node--problem .mission-flow__mark {
+  color: var(--danger);
+}
+
+.mission-flow__text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.mission-flow__text strong {
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.mission-flow__node--pending .mission-flow__text strong {
+  color: var(--muted);
+}
+
+.mission-flow__detail {
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 56rem) {
+  .mission-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 30rem) {
+  .mission-flow {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /*

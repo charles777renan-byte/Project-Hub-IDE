@@ -75,10 +75,13 @@ export type MissionChanges = Partial<
   Pick<Mission, 'status' | 'startedAt' | 'finishedAt' | 'worktreeId' | 'worktreePath' | 'updatedAt'>
 >;
 
-export type ExecutionChanges = Partial<
+export type StepChanges = Partial<Pick<MissionStep, 'status' | 'startedAt' | 'finishedAt'>>;
+
+export type ExecutionChanges =Partial<
   Pick<
     Execution,
     | 'status'
+    | 'stepId'
     | 'agentSessionId'
     | 'agentCursor'
     | 'startedAt'
@@ -108,6 +111,8 @@ export interface MissionRepository {
   listSteps(missionId: string): MissionStep[];
   /** Troca o plano: apaga as etapas da missão e grava as novas, na mesma transação do chamador. */
   replaceSteps(missionId: string, steps: MissionStep[]): void;
+  /** Atualiza o andamento de uma etapa (status e horas). */
+  updateStep(id: string, changes: StepChanges): void;
   insertExecution(execution: Execution): void;
   updateExecution(id: string, changes: ExecutionChanges): void;
   getExecution(id: string): Execution | undefined;

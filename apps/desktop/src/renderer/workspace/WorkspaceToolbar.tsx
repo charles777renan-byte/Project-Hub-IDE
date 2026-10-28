@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { Hint } from '../components/Hint';
-import { ChevronDown, ICON_PROPS, Plus } from '../components/Icon';
+import { ChevronDown, ICON_PROPS, LayoutGrid, Plus } from '../components/Icon';
 
 export const LIMIT_HINT = 'Limite de 12 painéis';
 
@@ -28,6 +28,9 @@ export function WorkspaceToolbar({
   busy,
   limitReached = false,
   focusToken = 0,
+  soloMode = false,
+  canSolo = false,
+  onToggleSolo,
   onOpen,
 }: {
   providers: readonly ProviderInfo[];
@@ -36,6 +39,11 @@ export function WorkspaceToolbar({
   limitReached?: boolean;
   /** Cada valor novo (maior que 0) leva o foco ao botão, ex.: depois de fechar o último painel. */
   focusToken?: number;
+  /** O modo "um painel por vez" está ligado: o botão "Abas" fica apertado. */
+  soloMode?: boolean;
+  /** Há painel para mostrar sozinho; sem ele o botão fica desabilitado. */
+  canSolo?: boolean;
+  onToggleSolo?(): void;
   onOpen(provider: ProviderId): void;
 }) {
   const [open, setOpen] = useState(false);
@@ -132,6 +140,20 @@ export function WorkspaceToolbar({
         </Hint>
       ) : (
         trigger
+      )}
+      {onToggleSolo === undefined ? null : (
+        <Hint label="Mostra um painel por vez, com uma aba para cada um (Ctrl+Alt+setas troca de aba)">
+          <button
+            type="button"
+            className="btn-secondary workspace__open"
+            aria-pressed={soloMode}
+            disabled={!canSolo}
+            onClick={onToggleSolo}
+          >
+            <LayoutGrid {...ICON_PROPS} />
+            Abas
+          </button>
+        </Hint>
       )}
       {open ? (
         <ul role="menu" aria-label="Abrir terminal" className="workspace__menu">

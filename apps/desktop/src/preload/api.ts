@@ -16,6 +16,7 @@ import {
   type MissionPlanDto,
   type MissionViewDto,
   type ProfileDto,
+  type SystemUsageDto,
   type ProjectHubApi,
   type ProjectSummary,
   type ProviderId,
@@ -176,6 +177,9 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     profile: {
       get: () => call<ProfileDto>(CHANNELS.profileGet),
       setDisplayName: (name: string | null) => call<void>(CHANNELS.profileSetDisplayName, { name }),
+    },
+    system: {
+      usage: () => call<SystemUsageDto>(CHANNELS.systemUsage),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

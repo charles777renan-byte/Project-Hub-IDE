@@ -67,4 +67,6 @@ export const CHANNELS = {
   /** Perfil local: o nome da saudação do Início. Só leitura. */
   profileGet: 'profile:get:v1',
   profileSetDisplayName: 'profile:set-display-name:v1',
+  /** Uso do processador e da memória do computador, para o cabeçalho. Só leitura. */
+  systemUsage: 'system:usage:v1',
 } as const;

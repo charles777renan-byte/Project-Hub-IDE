@@ -27,6 +27,7 @@ type ExecutionChanges = Partial<
   Pick<
     Execution,
     | 'status'
+    | 'stepId'
     | 'agentSessionId'
     | 'agentCursor'
     | 'startedAt'
@@ -35,7 +36,8 @@ type ExecutionChanges = Partial<
     | 'finishedAt'
   >
 >;
-type ApprovalChanges = Partial<Pick<ApprovalRequest, 'status' | 'decidedAt' | 'decisionNote'>>;
+type StepChanges = Partial<Pick<MissionStep, 'status' | 'startedAt' | 'finishedAt'>>;
+type ApprovalChanges =Partial<Pick<ApprovalRequest, 'status' | 'decidedAt' | 'decisionNote'>>;
 
 /**
  * Repositório de missões, execuções, aprovações e auditoria. Tem o mesmo formato que a porta
@@ -49,6 +51,7 @@ export interface MissionRepository {
   insertSteps(steps: MissionStep[]): void;
   listSteps(missionId: string): MissionStep[];
   replaceSteps(missionId: string, steps: MissionStep[]): void;
+  updateStep(id: string, changes: StepChanges): void;
   insertExecution(execution: Execution): void;
   updateExecution(id: string, changes: ExecutionChanges): void;
   getExecution(id: string): Execution | undefined;
@@ -86,6 +89,7 @@ function toStep(row: StepRow): MissionStep {
     status: row.status,
     dependsOn: row.dependsOn,
   };
+  if (row.role !== null) step.role = row.role;
   if (row.startedAt !== null) step.startedAt = row.startedAt;
   if (row.finishedAt !== null) step.finishedAt = row.finishedAt;
   return step;
@@ -136,6 +140,7 @@ function toExecution(row: ExecutionRow): Execution {
     attempt: row.attempt,
     status: row.status,
   };
+  if (row.stepId !== null) execution.stepId = row.stepId;
   if (row.agentSessionId !== null) execution.agentSessionId = row.agentSessionId;
   if (row.agentCursor !== null) execution.agentCursor = row.agentCursor;
   if (row.exitReason !== null) execution.exitReason = row.exitReason;
@@ -177,6 +182,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
           kind: step.kind,
           status: step.status,
           dependsOn: step.dependsOn,
+          role: step.role ?? null,
           startedAt: step.startedAt ?? null,
           finishedAt: step.finishedAt ?? null,
         })),
@@ -276,12 +282,24 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
       insertStepRows(steps);
     },
 
+    updateStep(id, changes) {
+      db.update(missionSteps)
+        .set({
+          status: changes.status,
+          startedAt: changes.startedAt,
+          finishedAt: changes.finishedAt,
+        })
+        .where(eq(missionSteps.id, id))
+        .run();
+    },
+
     insertExecution(execution) {
       db.insert(executions)
         .values({
           id: execution.id,
           missionId: execution.missionId,
           attempt: execution.attempt,
+          stepId: execution.stepId ?? null,
           status: execution.status,
           agentSessionId: execution.agentSessionId ?? null,
           agentCursor: execution.agentCursor ?? null,
@@ -297,6 +315,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
       db.update(executions)
         .set({
           status: changes.status,
+          stepId: changes.stepId,
           agentSessionId: changes.agentSessionId,
           agentCursor: changes.agentCursor,
           startedAt: changes.startedAt,

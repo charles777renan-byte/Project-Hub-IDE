@@ -98,6 +98,9 @@ export function TerminalView({
     termRef.current = term;
     let disposed = false;
     const refit = () => {
+      // Uma montagem desfeita (o StrictMode do desenvolvimento monta, desfaz e monta de novo) não pode mais mandar
+      // tamanho ao processo: o `.then(refit)` da assinatura dela ainda chega depois da limpeza.
+      if (disposed) return;
       const size = fitTerminal(term, host);
       if (size !== undefined) void api.resize(terminalId, size.cols, size.rows);
     };

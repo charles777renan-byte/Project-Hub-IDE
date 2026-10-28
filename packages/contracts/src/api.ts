@@ -1,5 +1,6 @@
 import type { ActivityDay } from './activity';
 import type { ProfileDto } from './profile';
+import type { SystemUsageDto } from './system';
 import type { AddProjectInput, ProjectSummary } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
@@ -137,6 +138,10 @@ export type ProjectHubApi = {
     get(): Promise<AppResult<ProfileDto>>;
     /** Guarda o nome (até 40 caracteres, depois de aparar). `null` ou vazio tira o nome. */
     setDisplayName(name: string | null): Promise<AppResult<void>>;
+  };
+  system: {
+    /** Uso do processador e da memória do computador. O processador é medido entre duas leituras. */
+    usage(): Promise<AppResult<SystemUsageDto>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

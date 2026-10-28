@@ -64,6 +64,13 @@
       "when": 1792979858120,
       "tag": "0008_configuracoes_do_app",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793146120364,
+      "tag": "0009_tarefas_da_missao",
+      "breakpoints": true
     }
   ]
 }
