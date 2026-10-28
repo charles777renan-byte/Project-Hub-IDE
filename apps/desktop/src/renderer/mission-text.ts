@@ -438,6 +438,7 @@ export const PROJECT_TEXT = {
   viewLabel: {
     terminais: 'Terminais',
     missoes: 'Missões',
+    progresso: 'Progresso',
     worktrees: 'Worktrees',
     configuracoes: 'Configurações',
   } satisfies Record<ProjectView, string>,
