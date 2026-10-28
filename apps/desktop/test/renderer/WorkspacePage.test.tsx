@@ -725,6 +725,48 @@ describe('aba do projeto: visões', () => {
     }
   });
 
+  it('?visao=progresso traz o resumo e a lista de missões do projeto, e as outras visões não montam', async () => {
+    api.missions.list.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: 'm1',
+          projectId: 'p1',
+          title: 'Ajustar login',
+          objective: 'Corrigir o login',
+          status: 'running',
+          altersCode: false,
+          acceptanceCriteria: [],
+          createdAt: '2026-10-20T09:00:00.000Z',
+          updatedAt: '2026-10-20T09:00:00.000Z',
+        },
+      ],
+    });
+    Object.assign(api.missions, {
+      get: vi.fn(() => Promise.resolve({ ok: false, error: { code: 'X', message: 'x' } })),
+      subscribe: vi.fn(() => () => undefined),
+    });
+    renderAt(undefined, 'p1', '?visao=progresso');
+
+    const panel = await screen.findByRole('tabpanel', { name: 'Progresso' });
+    expect(
+      await within(panel).findByRole('heading', { level: 2, name: 'Em andamento' }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Ajustar login/ })).toBeInTheDocument();
+    expect(within(panel).getByRole('complementary', { name: 'Atividade recente' })).toBeVisible();
+    // As outras visões não montam o conteúdo (a lista de missões do projeto, worktrees e configurações).
+    for (const name of ['missoes', 'worktrees', 'configuracoes']) {
+      expect(document.getElementById(`project-panel-${name}`), name).toBeEmptyDOMElement();
+    }
+  });
+
+  it('fora de ?visao=progresso a aba Progresso não monta a lista', async () => {
+    renderAt(undefined, 'p1', '?visao=missoes');
+    await screen.findByRole('tab', { name: 'Progresso' });
+    expect(screen.queryByRole('complementary', { name: 'Atividade recente' })).toBeNull();
+    expect(document.getElementById('project-panel-progresso')).toHaveAttribute('hidden');
+  });
+
   it('?visao=worktrees lista os worktrees, sem título repetido', async () => {
     Object.assign(api, {
       worktrees: {

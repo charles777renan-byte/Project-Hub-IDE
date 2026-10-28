@@ -36,4 +36,29 @@ export const PROGRESS_TEXT = {
   linkLabel: (action: string, title: string) => `${action}: ${title}`,
   /** Tarefa sem horário registrado que não está na fila. */
   noTime: '—',
+  /** Nome do grupo de botões do resumo. */
+  summaryLabel: 'Resumo do progresso',
+  /** Frase de apoio de cada contador do resumo. */
+  summaryNote: {
+    running: (tasks: number) =>
+      `${tasks} ${tasks === 1 ? 'tarefa rodando' : 'tarefas rodando'} agora`,
+    attention: (missions: number) =>
+      `${missions} ${missions === 1 ? 'missão espera' : 'missões esperam'} por você`,
+    failed: (missions: number) =>
+      `${missions} ${missions === 1 ? 'missão parou' : 'missões pararam'} com falha`,
+    /** `duration` vem pronto (`1 h 52 min`); sem tempo registrado, só as tarefas. */
+    done: (tasks: number, duration: string | undefined) =>
+      `${tasks} ${tasks === 1 ? 'tarefa' : 'tarefas'}${duration === undefined ? '' : `, ${duration}`}`,
+  },
+  /** Atividade recente: título da coluna e frases dos eventos. */
+  feedTitle: 'Atividade recente',
+  feedEmpty: 'Nada aconteceu ainda.',
+  feedStarted: (task: string) => `${task} começou`,
+  feedSucceeded: (task: string) => `${task} terminou`,
+  feedFailed: (task: string) => `${task} falhou`,
+  feedPlan: 'Plano pronto',
+  feedInMission: (title: string) => `em ${title}`,
+  /** Nenhuma missão nos grupos da aba, e o link para a lista completa. */
+  empty: 'Nada em andamento. As missões novas aparecem aqui.',
+  seeAll: 'Ver todas as missões',
 } as const;
