@@ -705,11 +705,23 @@ describe('aba do projeto: visões', () => {
     expect(panel).toHaveAttribute('aria-labelledby', 'tab-worktrees');
     expect(panel).not.toHaveAttribute('hidden');
     // Cada aba controla um painel que existe; os das outras visões ficam escondidos.
-    for (const name of ['terminais', 'missoes', 'worktrees', 'configuracoes']) {
+    for (const name of ['terminais', 'missoes', 'progresso', 'worktrees', 'configuracoes']) {
       const tab = document.getElementById(`tab-${name}`);
       const controlled = document.getElementById(tab?.getAttribute('aria-controls') ?? '');
       expect(controlled, name).toHaveAttribute('role', 'tabpanel');
       expect(controlled?.hasAttribute('hidden'), name).toBe(name !== 'worktrees');
+    }
+  });
+
+  it('?visao=progresso mostra só o painel Progresso, com a aba selecionada', async () => {
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=progresso');
+
+    const panel = await screen.findByRole('tabpanel', { name: 'Progresso' });
+    expect(panel).not.toHaveAttribute('hidden');
+    expect(screen.getByRole('tab', { name: 'Progresso' })).toHaveAttribute('aria-selected', 'true');
+    for (const name of ['terminais', 'missoes', 'worktrees', 'configuracoes']) {
+      expect(document.getElementById(`project-panel-${name}`), name).toHaveAttribute('hidden');
     }
   });
 

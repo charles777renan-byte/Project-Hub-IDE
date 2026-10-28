@@ -95,6 +95,10 @@ export function WorkspacePage() {
           <ProjectMissions projectId={projectId} project={project} />
         ) : null}
       </ProjectPanel>
+      <ProjectPanel view="progresso" active={view} labelled={project !== undefined}>
+        {/* A tarefa que cria o ProjectProgress monta aqui, só com a visão ativa. */}
+        {null}
+      </ProjectPanel>
       <ProjectPanel view="worktrees" active={view} labelled={project !== undefined}>
         {view === 'worktrees' ? <WorktreesTab projectId={projectId} /> : null}
       </ProjectPanel>
@@ -108,7 +112,7 @@ export function WorkspacePage() {
 }
 
 /**
- * O painel de uma visão (`role="tabpanel"`, o `aria-controls` da aba dela). Os quatro existem sempre; só o da
+ * O painel de uma visão (`role="tabpanel"`, o `aria-controls` da aba dela). Os cinco existem sempre; só o da
  * visão ativa aparece (`hidden` nos outros). O conteúdo de cada um é montado só quando a visão está ativa,
  * menos os terminais: o dono dele os mantém montados, para que uma espiada em Configurações não derrube os
  * painéis, o xterm e o estado do workspace.
