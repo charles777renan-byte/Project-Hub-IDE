@@ -1,5 +1,6 @@
 import {
   CHANNELS,
+  limitsDtoSchema,
   missionEventDtoSchema,
   missionUsageEventDtoSchema,
   terminalEventSchema,
@@ -12,6 +13,7 @@ import {
   type EditPlanStepInput,
   type ExecutionDto,
   type LayoutNode,
+  type LimitsDto,
   type MissionDiffDto,
   type MissionDto,
   type MissionEventDto,
@@ -201,6 +203,22 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     },
     system: {
       usage: () => call<SystemUsageDto>(CHANNELS.systemUsage),
+    },
+    limits: {
+      get: () => call<LimitsDto>(CHANNELS.limitsGet),
+      refresh: () => call<LimitsDto>(CHANNELS.limitsRefresh),
+      subscribe: (listener: (limits: LimitsDto) => void) =>
+        subscribe(CHANNELS.limitsEvent, (payload) => {
+          const parsed = limitsDtoSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.limitsEvent}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

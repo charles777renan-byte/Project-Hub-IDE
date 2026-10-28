@@ -1,4 +1,5 @@
 import type { ActivityDay } from './activity';
+import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
 import type { SystemUsageDto } from './system';
 import type { AddProjectInput, ProjectSummary } from './project';
@@ -154,6 +155,17 @@ export type ProjectHubApi = {
   system: {
     /** Uso do processador e da memória do computador. O processador é medido entre duas leituras. */
     usage(): Promise<AppResult<SystemUsageDto>>;
+  };
+  limits: {
+    /** Limites da assinatura dos programas, da última leitura guardada. Não faz leitura nova. */
+    get(): Promise<AppResult<LimitsDto>>;
+    /**
+     * Pede uma leitura nova. O processo principal limita a frequência: um pedido logo depois de outra leitura
+     * devolve o estado que já tem. Espera a leitura terminar.
+     */
+    refresh(): Promise<AppResult<LimitsDto>>;
+    /** Assina as mudanças dos limites. Cada evento chega validado. Devolve a função que cancela a assinatura. */
+    subscribe(listener: (limits: LimitsDto) => void): () => void;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

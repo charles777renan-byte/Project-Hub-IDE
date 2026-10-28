@@ -472,7 +472,17 @@ describe('cores do Início (home.css)', () => {
   });
 
   it.each([
-    ['--accent', ['.activity-cell--today', ...FILL('lime')]],
+    [
+      '--accent',
+      [
+        '.activity-cell--today',
+        ...FILL('lime'),
+        // Preenchimento da barra de limites do Claude (<meter>), nos três estados do WebKit.
+        '.claude-limits__bar::-webkit-meter-optimum-value',
+        '.claude-limits__bar::-webkit-meter-suboptimum-value',
+        '.claude-limits__bar::-webkit-meter-even-less-good-value',
+      ],
+    ],
     ['--warn', FILL('warn')],
     ['--danger', FILL('red')],
   ])('%s só aparece onde tem papel', (token, allowed) => {
