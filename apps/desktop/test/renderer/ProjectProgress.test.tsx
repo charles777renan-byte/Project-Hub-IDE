@@ -152,10 +152,9 @@ describe('ProjectProgress', () => {
     expect(
       await screen.findByText('Nada em andamento. As missões novas aparecem aqui.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Ver todas as missões' })).toHaveAttribute(
-      'href',
-      '/workspaces/p1?visao=missoes',
-    );
+    const seeAll = screen.getByRole('link', { name: 'Ver todas as missões' });
+    expect(seeAll).toHaveAttribute('href', '/workspaces/p1?visao=missoes');
+    expect(seeAll).toHaveClass('progress-empty__action');
     expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
     expect(screen.getByText('Nada aconteceu ainda.')).toBeInTheDocument();
   });

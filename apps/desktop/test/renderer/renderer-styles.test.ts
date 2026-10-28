@@ -528,3 +528,25 @@ describe('classes removidas', () => {
     expect(text).not.toContain('decisionLink');
   });
 });
+
+/**
+ * Links do app não são sublinhados nem azuis do navegador (isso faz o app parecer um site): o `a` base herda a
+ * cor e não tem sublinhado, e os links de ação do Progresso têm cara de botão (contorno de campo).
+ */
+describe('links sem cara de site', () => {
+  it('o `a` base herda a cor e não é sublinhado', () => {
+    const base = ruleDeclarations(readCss('app.css'), 'a');
+    expect(base.get('color')).toBe('inherit');
+    expect(base.get('text-decoration')).toBe('none');
+  });
+
+  it.each(['.progress-empty__action', '.progress-row__link'])(
+    '%s tem contorno de campo, sem sublinhado',
+    (selector) => {
+      const rule = ruleDeclarations(readCss('progress.css'), selector);
+      expect(rule.get('border')).toBe('1px solid var(--field-line)');
+      expect(rule.get('text-decoration')).toBe('none');
+      expect(rule.get('color')).toBe('var(--text)');
+    },
+  );
+});

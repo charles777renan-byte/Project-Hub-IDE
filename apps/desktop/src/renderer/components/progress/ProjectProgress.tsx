@@ -51,7 +51,9 @@ export function ProjectProgress({
           project === undefined ? null : (
             <div className="progress-empty">
               <p>{PROGRESS_TEXT.empty}</p>
-              <Link to={projectViewPath(projectId, 'missoes')}>{PROGRESS_TEXT.seeAll}</Link>
+              <Link to={projectViewPath(projectId, 'missoes')} className="progress-empty__action">
+                {PROGRESS_TEXT.seeAll}
+              </Link>
             </div>
           )
         ) : shown.length === 0 ? (

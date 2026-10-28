@@ -244,9 +244,17 @@
   flex: none;
   margin-right: var(--space-2);
   padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--field-line);
   border-radius: var(--radius);
+  color: var(--text);
   font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
   white-space: nowrap;
+}
+
+.progress-row__link:hover {
+  background: var(--surface-2);
 }
 
 .progress-row__link:focus-visible {
@@ -486,6 +494,22 @@
   align-items: center;
   gap: var(--space-3);
   color: var(--muted);
+}
+
+/* A ação do estado vazio tem cara de botão secundário, não de link de página. */
+.progress-empty__action {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.progress-empty__action:hover {
+  background: var(--surface-2);
 }
 
 @media (max-width: 900px) {
