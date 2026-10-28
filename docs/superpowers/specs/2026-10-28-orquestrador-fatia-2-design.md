@@ -75,3 +75,5 @@ Como reordenar na tela (arrastar ou botões), nome dos canais e do contrato, tex
 5. A aba de progresso das missões vira a peça seguinte, com desenho próprio.
 6. Orquestrar continua exigindo pelo menos um critério de aceite, como `planMission` já exige hoje. O planejador recebe o objetivo e os critérios.
 7. O aviso de cota é um texto fixo: o app não tem dado de uso do Claude (`usageReporting` é falso), então não mostra número.
+
+**Atualização de 2026-10-28:** o item 7 ficou para trás. O gasto de tokens da fase 1 do plano `docs/superpowers/plans/2026-10-28-gasto-de-tokens.md` lê os transcripts do Claude Code e mostra o gasto por execução. O aviso de cota segue como texto fixo até a fase 2 (limites de assinatura). Ver `brain/decisoes/decisao-gasto-de-tokens.md`.
