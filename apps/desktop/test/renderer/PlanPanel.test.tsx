@@ -176,19 +176,19 @@ describe('PlanPanel: edição das tarefas', () => {
     expect(onEditStep).toHaveBeenLastCalledWith('s1', { op: 'move', toPosition: 2 });
   });
 
-  it('o seletor de programa tem Claude marcado e Codex e Gemini desabilitados, "em breve"', () => {
+  it('o seletor de programa tem Claude marcado e Codex e Antigravity desabilitados, "em breve"', () => {
     setup();
 
     const select = screen.getByRole('combobox', { name: 'Programa da tarefa Criar API' });
     const claude = within(select).getByRole('option', { name: 'Claude' });
     const codex = within(select).getByRole('option', { name: /Codex/ });
-    const gemini = within(select).getByRole('option', { name: /Gemini/ });
+    const antigravity = within(select).getByRole('option', { name: /Antigravity/ });
     expect(claude).toBeEnabled();
     expect(claude).toHaveProperty('selected', true);
     expect(codex).toBeDisabled();
     expect(codex).toHaveTextContent('em breve');
-    expect(gemini).toBeDisabled();
-    expect(gemini).toHaveTextContent('em breve');
+    expect(antigravity).toBeDisabled();
+    expect(antigravity).toHaveTextContent('em breve');
   });
 
   it('com a página ocupada, os controles das tarefas ficam desabilitados', () => {
