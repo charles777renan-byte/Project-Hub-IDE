@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css e o mission.css depois do app.css e o workspace.css por último', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css, o mission.css e o progress.css depois do app.css e o workspace.css por último', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -62,6 +62,7 @@ describe('index.html do renderer', () => {
       './styles/statusbar.css',
       './styles/project.css',
       './styles/mission.css',
+      './styles/progress.css',
       './styles/workspace.css',
     ]);
   });
@@ -152,6 +153,7 @@ describe('fontes locais', () => {
       'statusbar.css',
       'project.css',
       'mission.css',
+      'progress.css',
       'workspace.css',
     ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
@@ -392,6 +394,66 @@ describe('selos de estado em pílula', () => {
   it('o selo não tem hover: é informação, não controle', () => {
     expect(appCss).not.toMatch(/\.chip[^{]*:hover/);
     expect(workspaceCss).not.toMatch(/\.state-mark[^{]*:hover/);
+  });
+});
+
+/**
+ * Aba Progresso (progress.css): a forma que a tela exige. O cartão corta o que passa do arredondamento
+ * (`overflow: hidden`), então o anel de foco do botão de expandir tem de ficar por dentro
+ * (`outline-offset: -2px`), ou o corte o esconderia. Nenhuma regra faz a página rolar para o lado.
+ */
+describe('forma da aba Progresso (progress.css)', () => {
+  const css = readCss('progress.css');
+  const rule = (selector: string) => ruleDeclarations(css, selector);
+
+  it('o cartão da missão corta o excesso e o botão de expandir tem o anel por dentro', () => {
+    expect(rule('.progress-row').get('overflow')).toBe('hidden');
+    expect(rule('.progress-row__toggle:focus-visible').get('outline-offset')).toBe('-2px');
+  });
+
+  it('as colunas e o texto do botão podem encolher (min-width: 0)', () => {
+    for (const selector of ['.progress__main', '.progress__aside', '.progress-row__toggle']) {
+      expect(rule(selector).get('min-width'), selector).toBe('0');
+    }
+  });
+
+  it('o painel da visão tem respiro e rola por dentro', () => {
+    expect(rule('.project-tab__panel--progresso').get('overflow')).toBe('auto');
+  });
+
+  it('o preenchimento tem classe por estado, e a tarefa pendente é só contorno', () => {
+    expect(rule('.progress-bar--succeeded').get('fill')).toBe('var(--muted)');
+    expect(rule('.progress-bar--running').get('fill')).toBe('var(--blue)');
+    expect(rule('.progress-bar--failed').get('fill')).toBe('var(--danger)');
+    expect(rule('.progress-seg--succeeded').get('background')).toBe('var(--muted)');
+    expect(rule('.progress-seg--running').get('background')).toBe('var(--blue)');
+    expect(rule('.progress-seg--failed').get('background')).toBe('var(--danger)');
+    const pending = rule('.progress-seg--pending');
+    expect(pending.get('border')).toBe('1px solid var(--muted)');
+    expect(pending.get('background')).toBe('transparent');
+  });
+
+  it('a borda do cartão pede atenção em --warn e falha em --danger; o resto é --line', () => {
+    expect(rule('.progress-row').get('border')).toBe('1px solid var(--line)');
+    expect(rule('.progress-row--attention').get('border-color')).toBe('var(--warn)');
+    expect(rule('.progress-row--failed').get('border-color')).toBe('var(--danger)');
+  });
+
+  it('a linha do "agora" é tracejada em --blue', () => {
+    const now = rule('.progress-now');
+    expect(now.get('stroke')).toBe('var(--blue)');
+    expect(now.get('stroke-dasharray')).toBeDefined();
+  });
+
+  it('até 1100px a atividade passa para baixo da coluna principal', () => {
+    expect(rule('.progress').get('grid-template-columns')).toBe('minmax(0, 1fr)');
+    const wide = mediaBlock(css, '(min-width: 1101px)');
+    expect(ruleDeclarations(wide, '.progress').get('grid-template-columns')).toMatch(/minmax/);
+  });
+
+  it('até 900px a coluna "Papel · programa" some da tabela', () => {
+    const narrow = mediaBlock(css, '(max-width: 900px)');
+    expect(ruleDeclarations(narrow, '.progress-table__role').get('display')).toBe('none');
   });
 });
 
