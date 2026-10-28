@@ -232,3 +232,31 @@ test('o terminal montado por baixo não muda de tamanho enquanto a visão Termin
     await expectOpenSessions(page, 0);
   }
 });
+
+test('abrir um terminal faz o painel crescer e aparecer; fechar o encolhe antes de ele sair', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.skip(process.platform !== 'win32', 'o shell do teste é o PowerShell');
+  test.setTimeout(120_000);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  await anotarAnimacoes(page);
+
+  const pane = page.getByRole('region', { name: 'Painel PowerShell' });
+  await page.getByRole('button', { name: 'Abrir terminal' }).click();
+  await page.getByRole('menuitem', { name: /PowerShell/ }).click();
+  await expect(pane).toHaveCount(1);
+  await expect.poll(() => animacoesDesdeAAnotacao(page)).toContain('pane-in');
+  await expectTerminalToContain(pane.locator('.terminal-view'), 'PS ', { timeout: 30_000 });
+
+  await page.evaluate(() => {
+    window.__animacoes = [];
+  });
+  await pane.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await expect.poll(() => animacoesDesdeAAnotacao(page)).toContain('pane-out');
+  await expect(pane).toHaveCount(0);
+  await expectOpenSessions(page, 0);
+});
