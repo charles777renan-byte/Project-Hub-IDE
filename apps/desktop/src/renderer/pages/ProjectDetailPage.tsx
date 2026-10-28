@@ -109,7 +109,7 @@ export function ProjectDetailPage() {
     void load();
   }, [load]);
 
-  // O botão + Nova missão da lateral chega aqui pedindo o formulário aberto (`state.newMission`).
+  // A paleta (Nova missão em ...) chega aqui pedindo o formulário aberto (`state.newMission`).
   useEffect(() => {
     const requested = (location.state as { newMission?: boolean } | null)?.newMission === true;
     if (!requested) return;
