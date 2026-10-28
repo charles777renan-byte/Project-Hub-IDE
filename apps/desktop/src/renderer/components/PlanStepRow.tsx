@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import type { MissionStepDto, PlanEditInput } from '@project-hub/contracts';
 import {
   AGENT_CHOICES,
@@ -11,13 +11,21 @@ import {
 import { ConfirmButton } from './ConfirmButton';
 import { StatusChip } from './StatusChip';
 
+/** Limites do título e da descrição de uma tarefa (os mesmos do contrato e da aplicação). */
+const TITLE_MAX = 120;
+const DESCRIPTION_MAX = 2000;
+/** Descrição maior que isto (ou com várias linhas) fica recolhida atrás de "Ver descrição". */
+const DESCRIPTION_PREVIEW_CHARS = 160;
+const DESCRIPTION_PREVIEW_LINES = 3;
+
 /** Para onde a pessoa mandou a tarefa: o foco acompanha o movimento quando o botão usado some. */
 type MoveIntent = 'up' | 'down';
 
 /**
  * Uma linha da tabela de tarefas do Plano (TAREFA, AGENTE, STATUS). Com `editable`, a linha ganha as
- * ações da edição (renomear, subir, descer, remover) e o seletor de programa. O nome acessível de cada
- * controle leva o título da tarefa. A linha só mostra e avisa o que a pessoa pediu: quem aplica a edição
+ * ações da edição (renomear, subir, descer, remover) e o seletor de programa. A descrição da tarefa, que
+ * vai ao prompt do agente executor, aparece embaixo do título (recolhida quando é longa) e se edita junto
+ * com o título. O nome acessível de cada controle leva o título da tarefa. A linha só mostra e avisa o que a pessoa pediu: quem aplica a edição
  * é o processo principal, e a lista nova volta pela página.
  */
 export function PlanStepRow({
@@ -40,6 +48,9 @@ export function PlanStepRow({
 }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(step.title);
+  const [description, setDescription] = useState(step.description ?? '');
+  const [expanded, setExpanded] = useState(false);
+  const descriptionId = useId();
   const renameRef = useRef<HTMLButtonElement>(null);
   const upRef = useRef<HTMLButtonElement>(null);
   const downRef = useRef<HTMLButtonElement>(null);
@@ -68,10 +79,17 @@ export function PlanStepRow({
   const detail = [role, after].filter((part) => part !== undefined).join(' · ');
   const chip = stepStatus(step.status);
   const trimmed = name.trim();
-  const canSave = trimmed !== '' && trimmed !== step.title;
+  const currentDescription = (step.description ?? '').trim();
+  const descriptionChanged = description.trim() !== currentDescription;
+  const canSave = trimmed !== '' && (trimmed !== step.title || descriptionChanged);
+  const storedDescription = step.description?.trim() ?? '';
+  const longDescription =
+    storedDescription.length > DESCRIPTION_PREVIEW_CHARS ||
+    storedDescription.split(/\r?\n/).length > DESCRIPTION_PREVIEW_LINES;
 
   function startRename() {
     setName(step.title);
+    setDescription(step.description ?? '');
     setRenaming(true);
   }
   function closeRename() {
@@ -81,11 +99,17 @@ export function PlanStepRow({
   function saveRename() {
     // Enter no campo não passa pelo botão desabilitado: com outra chamada em curso, nada é enviado.
     if (!canSave || busy) return;
-    onEdit({ op: 'rename', title: trimmed });
+    // A descrição só vai quando mudou: sem ela, a edição deixa a descrição da tarefa como está.
+    onEdit({
+      op: 'rename',
+      title: trimmed,
+      ...(descriptionChanged ? { description: description.trim() } : {}),
+    });
     closeRename();
   }
-  function onRenameKey(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'Enter') {
+  function onRenameKey(event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    // Na descrição, Enter é quebra de linha: só o campo do título salva com Enter.
+    if (event.key === 'Enter' && event.currentTarget instanceof HTMLInputElement) {
       event.preventDefault();
       saveRename();
     } else if (event.key === 'Escape') {
@@ -109,10 +133,19 @@ export function PlanStepRow({
                 type="text"
                 aria-label={PLAN_TEXT.newName(step.title)}
                 value={name}
-                maxLength={120}
+                maxLength={TITLE_MAX}
                 disabled={busy}
                 autoFocus
                 onChange={(event) => setName(event.target.value)}
+                onKeyDown={onRenameKey}
+              />
+              <textarea
+                rows={4}
+                aria-label={PLAN_TEXT.newDescription(step.title)}
+                value={description}
+                maxLength={DESCRIPTION_MAX}
+                disabled={busy}
+                onChange={(event) => setDescription(event.target.value)}
                 onKeyDown={onRenameKey}
               />
               <button
@@ -136,6 +169,36 @@ export function PlanStepRow({
             <span className="plan-row__title">{step.title}</span>
           )}
           {detail === '' ? null : <span className="plan-row__detail">{detail}</span>}
+          {renaming || storedDescription === '' ? null : (
+            <>
+              <p
+                id={descriptionId}
+                className={
+                  longDescription && !expanded
+                    ? 'plan-row__description plan-row__description--clamped'
+                    : 'plan-row__description'
+                }
+              >
+                {storedDescription}
+              </p>
+              {longDescription ? (
+                <button
+                  type="button"
+                  className="btn-ghost plan-row__toggle"
+                  aria-expanded={expanded}
+                  aria-controls={descriptionId}
+                  aria-label={
+                    expanded
+                      ? PLAN_TEXT.hideDescription(step.title)
+                      : PLAN_TEXT.showDescription(step.title)
+                  }
+                  onClick={() => setExpanded((value) => !value)}
+                >
+                  {expanded ? PLAN_TEXT.hideDescriptionButton : PLAN_TEXT.showDescriptionButton}
+                </button>
+              ) : null}
+            </>
+          )}
           {editable ? (
             <span className="plan-actions">
               <button

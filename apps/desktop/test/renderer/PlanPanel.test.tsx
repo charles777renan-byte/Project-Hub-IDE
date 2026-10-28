@@ -95,7 +95,7 @@ describe('PlanPanel: edição das tarefas', () => {
     expect(field).toHaveValue('Criar API');
     await user.clear(field);
     await user.type(field, 'Criar a API de login');
-    await user.click(screen.getByRole('button', { name: 'Salvar nome da tarefa Criar API' }));
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações da tarefa Criar API' }));
 
     expect(onEditStep).toHaveBeenCalledTimes(1);
     expect(onEditStep).toHaveBeenCalledWith('s1', { op: 'rename', title: 'Criar a API de login' });
@@ -131,7 +131,7 @@ describe('PlanPanel: edição das tarefas', () => {
     const { onEditStep } = setup();
 
     await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
-    const save = screen.getByRole('button', { name: 'Salvar nome da tarefa Criar API' });
+    const save = screen.getByRole('button', { name: 'Salvar alterações da tarefa Criar API' });
     expect(save).toBeDisabled();
     await user.clear(screen.getByRole('textbox', { name: /Novo nome/ }));
     expect(save).toBeDisabled();
@@ -267,6 +267,202 @@ describe('PlanPanel: edição das tarefas', () => {
     await user.click(screen.getByRole('button', { name: 'Cancelar renomear tarefa Criar API' }));
 
     expect(screen.getByRole('button', { name: 'Renomear tarefa Criar API' })).toHaveFocus();
+  });
+});
+
+const LONG_DESCRIPTION =
+  'Implementar o endpoint de login com validação de e-mail e senha, devolvendo o token da sessão e ' +
+  'registrando a tentativa na auditoria. Cobrir os erros de credencial inválida e de conta bloqueada, ' +
+  'e documentar o contrato da resposta no arquivo de rotas.';
+
+describe('PlanPanel: descrição das tarefas', () => {
+  const withDescriptions = (): MissionStepDto[] => [
+    { ...STEPS[0]!, description: 'Fazer a API de login.' },
+    { ...STEPS[1]!, description: LONG_DESCRIPTION },
+    STEPS[2]!,
+  ];
+
+  it('mostra a descrição de cada tarefa, e nada para a que não tem', () => {
+    setup({ steps: withDescriptions() });
+
+    expect(screen.getByText('Fazer a API de login.')).toBeInTheDocument();
+    expect(screen.getByText(LONG_DESCRIPTION)).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /Escrever testes/ });
+    expect(row.querySelector('.plan-row__description')).toBeNull();
+  });
+
+  it('a descrição curta aparece inteira, sem botão de recolher', () => {
+    setup({ steps: withDescriptions() });
+
+    expect(screen.queryByRole('button', { name: /descrição da tarefa Criar API/ })).toBeNull();
+  });
+
+  it('a descrição longa começa recolhida; Ver descrição abre e Ocultar fecha, com o título no nome', async () => {
+    const user = userEvent.setup();
+    setup({ steps: withDescriptions() });
+    const text = screen.getByText(LONG_DESCRIPTION);
+    expect(text).toHaveClass('plan-row__description--clamped');
+
+    const show = screen.getByRole('button', { name: 'Ver descrição da tarefa Montar a tela' });
+    expect(show).toHaveTextContent('Ver descrição');
+    expect(show).toHaveAttribute('aria-expanded', 'false');
+    expect(show).toHaveAttribute('aria-controls', text.id);
+    await user.click(show);
+
+    expect(text).not.toHaveClass('plan-row__description--clamped');
+    const hide = screen.getByRole('button', { name: 'Ocultar descrição da tarefa Montar a tela' });
+    expect(hide).toHaveTextContent('Ocultar');
+    expect(hide).toHaveAttribute('aria-expanded', 'true');
+    await user.click(hide);
+    expect(text).toHaveClass('plan-row__description--clamped');
+  });
+
+  it('com a missão fora do estado planejado, a descrição aparece e continua só leitura', () => {
+    setup({ mission: missionOf('running'), steps: withDescriptions() });
+
+    expect(screen.getByText('Fazer a API de login.')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Renomear/ })).toBeNull();
+  });
+
+  it('editar só a descrição envia o título atual com a descrição nova', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    const field = screen.getByRole('textbox', { name: 'Nova descrição da tarefa Criar API' });
+    expect(field).toHaveValue('Fazer a API de login.');
+    expect(field).toHaveAttribute('maxlength', '2000');
+    await user.clear(field);
+    await user.type(field, '  Nova descrição.  ');
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações da tarefa Criar API' }));
+
+    expect(onEditStep).toHaveBeenCalledTimes(1);
+    expect(onEditStep).toHaveBeenCalledWith('s1', {
+      op: 'rename',
+      title: 'Criar API',
+      description: 'Nova descrição.',
+    });
+  });
+
+  it('editar título e descrição envia os dois; apagar a descrição envia texto vazio', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    await user.type(screen.getByRole('textbox', { name: /Novo nome/ }), ' v2');
+    await user.clear(screen.getByRole('textbox', { name: /Nova descrição/ }));
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações da tarefa Criar API' }));
+
+    expect(onEditStep).toHaveBeenCalledWith('s1', {
+      op: 'rename',
+      title: 'Criar API v2',
+      description: '',
+    });
+  });
+
+  it('editar só o título não envia a descrição', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    await user.type(screen.getByRole('textbox', { name: /Novo nome/ }), ' v2');
+    await user.click(screen.getByRole('button', { name: 'Salvar alterações da tarefa Criar API' }));
+
+    expect(onEditStep).toHaveBeenCalledTimes(1);
+    const edit = onEditStep.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(edit).toEqual({ op: 'rename', title: 'Criar API v2' });
+    expect('description' in edit).toBe(false);
+  });
+
+  it('escrever uma descrição numa tarefa que não tinha envia a descrição', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Escrever testes' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Nova descrição da tarefa Escrever testes' }),
+      'Cobrir o login.',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Salvar alterações da tarefa Escrever testes' }),
+    );
+
+    expect(onEditStep).toHaveBeenCalledWith('s3', {
+      op: 'rename',
+      title: 'Escrever testes',
+      description: 'Cobrir o login.',
+    });
+  });
+
+  it('salvar fica desabilitado sem mudança, com só espaços a mais e com título vazio', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    const save = screen.getByRole('button', { name: 'Salvar alterações da tarefa Criar API' });
+    expect(save).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: /Nova descrição/ }), '   ');
+    expect(save).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: /Nova descrição/ }), 'x');
+    expect(save).toBeEnabled();
+    await user.clear(screen.getByRole('textbox', { name: /Novo nome/ }));
+    expect(save).toBeDisabled();
+    expect(onEditStep).not.toHaveBeenCalled();
+  });
+
+  it('Enter no título salva; Enter na descrição é quebra de linha e não salva', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    await user.type(screen.getByRole('textbox', { name: /Nova descrição/ }), '{Enter}outra linha');
+    expect(onEditStep).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox', { name: /Nova descrição/ })).toHaveValue(
+      'Fazer a API de login.\noutra linha',
+    );
+    await user.type(screen.getByRole('textbox', { name: /Novo nome/ }), ' v2{Enter}');
+
+    expect(onEditStep).toHaveBeenCalledWith('s1', {
+      op: 'rename',
+      title: 'Criar API v2',
+      description: 'Fazer a API de login.\noutra linha',
+    });
+  });
+
+  it('Esc na descrição cancela sem enviar nada', async () => {
+    const user = userEvent.setup();
+    const { onEditStep } = setup({ steps: withDescriptions() });
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    await user.type(screen.getByRole('textbox', { name: /Nova descrição/ }), ' mais{Escape}');
+
+    expect(onEditStep).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox', { name: /Nova descrição/ })).toBeNull();
+  });
+
+  it.each([
+    ['ocupada', { busy: true, planning: false }],
+    ['planejando', { busy: false, planning: true }],
+  ] as const)('com a página %s, a descrição não aceita edição nem envio', async (_name, locked) => {
+    const user = userEvent.setup();
+    const props = {
+      mission: missionOf('planned'),
+      steps: withDescriptions(),
+      onEditStep: vi.fn(),
+      onRequestNewPlan: vi.fn(),
+    };
+    const { rerender } = render(<PlanPanel {...props} busy={false} planning={false} />);
+
+    await user.click(screen.getByRole('button', { name: 'Renomear tarefa Criar API' }));
+    await user.type(screen.getByRole('textbox', { name: /Nova descrição/ }), ' mais');
+    rerender(<PlanPanel {...props} {...locked} />);
+    const field = screen.getByRole('textbox', { name: /Nova descrição/ });
+
+    expect(field).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Salvar alterações/ })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole('textbox', { name: /Novo nome/ }), { key: 'Enter' });
+    expect(props.onEditStep).not.toHaveBeenCalled();
   });
 });
 

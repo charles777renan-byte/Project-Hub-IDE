@@ -22,6 +22,9 @@ const FIRST_PLAN = {
   frontend: 'Construir a tela de login',
 };
 const RENAMED_FRONTEND = 'Construir a tela de entrada';
+const FRONTEND_DESCRIPTION = 'Criar a página com e-mail e senha. Pronto quando liga na API.';
+const RENAMED_FRONTEND_DESCRIPTION =
+  'Criar a página de entrada. Pronto quando mostra o erro de senha.';
 const SECOND_PLAN = {
   requirements: 'Plano novo: levantar requisitos',
   docs: 'Plano novo: documentar o uso',
@@ -76,12 +79,20 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
     page.getByRole('button', { name: `Descer tarefa ${FIRST_PLAN.frontend}` }),
   ).toHaveCount(0);
 
-  // 4. Renomeia a tarefa do frontend.
+  // 4. A descrição da tarefa do frontend (que vai ao agente) aparece; renomeia a tarefa e troca a descrição.
+  await expect(table.getByText(FRONTEND_DESCRIPTION)).toBeVisible();
   await page.getByRole('button', { name: `Renomear tarefa ${FIRST_PLAN.frontend}` }).click();
   await page.getByLabel(`Novo nome da tarefa ${FIRST_PLAN.frontend}`).fill(RENAMED_FRONTEND);
-  await page.getByRole('button', { name: `Salvar nome da tarefa ${FIRST_PLAN.frontend}` }).click();
+  await page
+    .getByLabel(`Nova descrição da tarefa ${FIRST_PLAN.frontend}`)
+    .fill(RENAMED_FRONTEND_DESCRIPTION);
+  await page
+    .getByRole('button', { name: `Salvar alterações da tarefa ${FIRST_PLAN.frontend}` })
+    .click();
   await expect(row(RENAMED_FRONTEND)).toBeVisible();
   await expect(row(FIRST_PLAN.frontend)).toHaveCount(0);
+  await expect(table.getByText(RENAMED_FRONTEND_DESCRIPTION)).toBeVisible();
+  await expect(table.getByText(FRONTEND_DESCRIPTION)).toHaveCount(0);
 
   // 5. Remove a tarefa do backend, depois da confirmação (Voltar desfaz o pedido).
   await page.getByRole('button', { name: `Remover tarefa ${FIRST_PLAN.backend}` }).click();

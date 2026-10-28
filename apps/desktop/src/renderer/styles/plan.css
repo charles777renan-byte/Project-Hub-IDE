@@ -97,7 +97,8 @@ select.plan-agent {
   gap: var(--space-2);
 }
 
-.plan-row__rename input {
+.plan-row__rename input,
+.plan-row__rename textarea {
   flex: 1 1 10rem;
   min-width: 0;
   padding: var(--space-1) var(--space-2);
@@ -106,6 +107,33 @@ select.plan-agent {
   background: var(--surface);
   color: var(--text);
   font: inherit;
+}
+
+/* Descrição da tarefa, que vai ao prompt do agente: texto corrido, recolhido em poucas linhas quando longo. */
+.plan-row__description {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: pre-line;
+}
+
+.plan-row__description--clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.plan-row__toggle {
+  justify-self: start;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* A descrição ocupa a linha inteira do formulário de renomear; os botões vêm depois dela. */
+.plan-row__rename textarea {
+  flex: 1 1 100%;
+  resize: vertical;
 }
 
 /* Renomear, subir, descer e remover: botões pequenos, quebrando linha em painel estreito. */
