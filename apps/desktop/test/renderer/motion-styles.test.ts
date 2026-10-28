@@ -100,6 +100,8 @@ describe('painel de terminal abrindo e fechando', () => {
     const animation = ruleDeclarations(motionCss, PANE_LEAVING).get('animation') ?? '';
     expect(animation).toContain('pane-out');
     expect(animation).toContain('forwards');
+    // A saída acelera: com a curva da entrada (que desacelera), o painel sumiria no primeiro quadro.
+    expect(animation).toContain('var(--ease-exit)');
     expect(animation).not.toContain('infinite');
   });
 
@@ -146,7 +148,7 @@ describe('custo e consistência', () => {
     expect(values.length).toBeGreaterThan(0);
     for (const value of values) {
       expect(value).toMatch(/var\(--dur(?:-fast)?\)/);
-      expect(value).toContain('var(--ease)');
+      expect(value).toMatch(/var\(--ease(?:-exit)?\)/);
       expect(value).not.toMatch(/\b\d+(?:\.\d+)?m?s\b/);
     }
   });

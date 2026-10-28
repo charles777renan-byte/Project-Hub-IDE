@@ -31,7 +31,8 @@
 /*
  * Painel de terminal abrindo e fechando: cresce de 96% enquanto aparece, e encolhe enquanto some. A escala não muda
  * a área que o xterm mede, então ele não é remedido no meio. A saída é a exceção ao corte seco: o painel fica na
- * tela até o fim dela (`forwards` segura o último quadro) e só então sai do layout (pane-motion.ts).
+ * tela até o fim dela (`forwards` segura o último quadro) e só então sai do layout (pane-motion.ts). A entrada
+ * desacelera (--ease) e a saída acelera (--ease-exit): com a curva da entrada, o painel sumiria no primeiro quadro.
  */
 @keyframes pane-in {
   from {
@@ -52,7 +53,7 @@
 }
 
 .pane-tree__leaf[data-motion='leaving'] {
-  animation: pane-out var(--dur) var(--ease) forwards;
+  animation: pane-out var(--dur) var(--ease-exit) forwards;
 }
 
 /* Visões do projeto (Missões, Worktrees, Configurações) e abas do painel inferior da missão. */
