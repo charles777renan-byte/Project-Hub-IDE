@@ -253,7 +253,10 @@ describe('WorkspacePage', () => {
         'aria-disabled',
         'true',
       );
-      expect(screen.getByRole('menuitem', { name: /Codex/ })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('menuitem', { name: /Codex/ })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
     });
 
     it('clicar em Claude Code chama addPane e mostra o painel novo', async () => {
@@ -289,7 +292,9 @@ describe('WorkspacePage', () => {
       await userEvent.click(trigger);
       expect(api.workspaces.addPane).toHaveBeenCalledTimes(1);
       await act(async () => finish({ ok: true, data: dto(leaf('n', 'claude')) }));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeEnabled());
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeEnabled(),
+      );
     });
   });
 
@@ -487,5 +492,117 @@ describe('WorkspacePage', () => {
       expect(await screen.findByTestId('terminal-view')).toHaveTextContent('t1');
       expect(screen.queryByText('Nenhum terminal aberto')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('modo "um painel por vez"', () => {
+  const pane = (name: string) => screen.queryByRole('region', { name: `Painel ${name}` });
+
+  it('"Abas" mostra só o painel ativo com uma aba por painel, e "Grade" mostra todos de novo', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+
+    const tabs = screen.getByRole('tablist', { name: 'Painéis abertos' });
+    expect(within(tabs).getAllByRole('tab')).toHaveLength(3);
+    expect(within(tabs).getByRole('tab', { name: /Claude Code/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(pane('Claude Code')).toBeInTheDocument();
+    expect(pane('Codex')).not.toBeInTheDocument();
+    expect(pane('PowerShell')).not.toBeInTheDocument();
+    expect(api.workspaces.saveLayout).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(pane('Claude Code')).toBeInTheDocument();
+    expect(pane('Codex')).toBeInTheDocument();
+    expect(pane('PowerShell')).toBeInTheDocument();
+  });
+
+  it('Maximizar painel mostra só aquele painel, e o mesmo botão volta à grade', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar PowerShell' });
+
+    await userEvent.click(
+      within(pane('PowerShell') as HTMLElement).getByRole('button', { name: 'Maximizar painel' }),
+    );
+
+    expect(pane('PowerShell')).toBeInTheDocument();
+    expect(pane('Claude Code')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /PowerShell/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+
+    await userEvent.click(
+      within(pane('PowerShell') as HTMLElement).getByRole('button', { name: 'Voltar à grade' }),
+    );
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(pane('Claude Code')).toBeInTheDocument();
+  });
+
+  it('duplo clique no cabeçalho do painel maximiza', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar PowerShell' });
+    const head = (pane('PowerShell') as HTMLElement).querySelector('.pane__head') as HTMLElement;
+
+    await userEvent.dblClick(head);
+
+    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(pane('Claude Code')).not.toBeInTheDocument();
+  });
+
+  it('clicar numa aba mostra aquele painel', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+
+    await userEvent.click(screen.getByRole('tab', { name: /Codex/ }));
+
+    expect(pane('Codex')).toBeInTheDocument();
+    expect(pane('Claude Code')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Codex/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('Ctrl+Alt com as setas troca de aba, com volta nas pontas', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    screen.getByRole('tab', { name: /Claude Code/ }).focus();
+
+    await userEvent.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}');
+    expect(pane('Codex')).toBeInTheDocument();
+
+    await userEvent.keyboard('{Control>}{Alt>}{ArrowLeft}{ArrowLeft}{/Alt}{/Control}');
+    expect(pane('PowerShell')).toBeInTheDocument();
+  });
+
+  it('fechar o painel mostrado passa para o vizinho', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    api.workspaces.removePane.mockResolvedValue({
+      ok: true,
+      data: dto(
+        arrangeLeaves([leaf('a', 'claude'), leaf('b', 'codex')], () => crypto.randomUUID()) ??
+          leaf('a', 'claude'),
+      ),
+    });
+    renderAt();
+    await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    await userEvent.click(screen.getByRole('tab', { name: /PowerShell/ }));
+
+    await userEvent.click(
+      within(pane('PowerShell') as HTMLElement).getByRole('button', { name: 'Fechar painel' }),
+    );
+
+    await waitFor(() => expect(pane('Codex')).toBeInTheDocument());
+    expect(pane('PowerShell')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
   });
 });

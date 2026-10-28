@@ -1270,8 +1270,9 @@
   line-height: 18px;
 }
 
-/* Fechar o painel é um X sem texto: a área é de 24px e o passe do mouse só clareia o fundo. */
-.pane__actions .pane__close {
+/* Fechar e maximizar o painel são botões só de ícone: a área é de 24px e o passe do mouse só clareia o fundo. */
+.pane__actions .pane__close,
+.pane__actions .pane__maximize {
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -1284,12 +1285,14 @@
   line-height: 0;
 }
 
-.pane__actions .pane__close:hover:not(:disabled) {
+.pane__actions .pane__close:hover:not(:disabled),
+.pane__actions .pane__maximize:hover:not(:disabled) {
   background: var(--line);
   color: var(--text);
 }
 
-.pane__close svg {
+.pane__close svg,
+.pane__maximize svg {
   display: block;
   flex: none;
 }
@@ -1511,6 +1514,115 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+/*
+ * Modo "um painel por vez" (workspace/PaneTabs.tsx e WorkspacePage.tsx): a faixa de abas em cima e, embaixo, o
+ * painel mostrado ocupando o resto. A faixa tem a superfície da barra do workspace. A aba selecionada leva um traço
+ * de 2px em --text embaixo (o lima é reservado ao item ativo da navegação e ao botão principal) e o texto claro.
+ */
+.workspace__solo {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace__solo-pane {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-tabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.pane-tabs__list {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pane-tabs__tab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 14rem;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pane-tabs__tab:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.pane-tabs__tab[aria-selected='true'] {
+  background: var(--bg);
+  box-shadow: inset 0 -2px 0 var(--text);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.pane-tabs__tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.pane-tabs__tab svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.pane-tabs__number {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pane-tabs__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-tabs__grid {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.pane-tabs__grid svg {
+  display: block;
+  flex: none;
 }
 
 .workspace__empty {

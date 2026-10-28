@@ -1,5 +1,5 @@
 import type { MissionDto, MissionStepDto } from '@project-hub/contracts';
-import { stepStatus } from '../mission-text';
+import { dependencyText, roleLabel, stepStatus } from '../mission-text';
 import { StatusChip } from './StatusChip';
 
 /**
@@ -27,12 +27,17 @@ export function PlanPanel({
         <ol className="plan-steps" aria-label="Etapas do plano">
           {steps.map((step) => {
             const chip = stepStatus(step.status);
+            const role = roleLabel(step.role);
+            const after = dependencyText(step, steps);
             return (
               <li key={step.id} className="plan-step">
                 <span className="plan-step-number">{step.position}</span>
                 <span>
                   {step.title}
-                  <span className="plan-step-agent"> · Agente simulado</span>
+                  <span className="plan-step-agent">
+                    {role === undefined ? ' · Agente simulado' : ` · ${role}`}
+                    {after === undefined ? '' : ` · ${after}`}
+                  </span>
                 </span>
                 <StatusChip label={chip.label} tone={chip.tone} />
               </li>

@@ -474,6 +474,7 @@ describe('buildProjectHubApi', () => {
       'profile',
       'projects',
       'providers',
+      'system',
       'terminals',
       'workspaces',
       'worktrees',

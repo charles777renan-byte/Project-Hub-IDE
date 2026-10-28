@@ -3,9 +3,11 @@ import * as Icons from '../../src/renderer/components/Icon';
 import type { MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
+  dependencyText,
   formatTime,
   missionTabCounts,
   primaryActionOf,
+  roleLabel,
   statusIcon,
   statusTone,
   stepStatus,
@@ -312,5 +314,24 @@ describe('formatTime', () => {
 
   it('um horário ilegível volta como veio, sem quebrar a tela', () => {
     expect(formatTime('não é data')).toBe('não é data');
+  });
+});
+
+describe('papel e dependência da tarefa', () => {
+  const steps = [
+    { id: 'a', position: 1, title: 'A', status: 'pending' as const },
+    { id: 'b', position: 2, title: 'B', status: 'pending' as const },
+    { id: 'c', position: 3, title: 'C', status: 'pending' as const, dependsOn: ['a', 'b'] },
+  ];
+
+  it('traduz o papel e deixa vazio quando a etapa não é tarefa', () => {
+    expect(roleLabel('database')).toBe('Banco de dados');
+    expect(roleLabel(undefined)).toBeUndefined();
+  });
+
+  it('descreve as dependências pelo número no plano', () => {
+    expect(dependencyText({ ...steps[1]!, dependsOn: ['a'] }, steps)).toBe('depois de 1');
+    expect(dependencyText(steps[2]!, steps)).toBe('depois de 1 e 2');
+    expect(dependencyText(steps[0]!, steps)).toBeUndefined();
   });
 });

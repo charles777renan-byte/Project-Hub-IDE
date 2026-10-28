@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { render } from '@testing-library/react';
 import type { AppResult, ProjectHubApi, TerminalEvent } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -186,6 +187,45 @@ describe('TerminalView', () => {
     expect(terminals['unsubscribe']).toHaveBeenCalledWith('t1');
     expect(fake.disposed).toBe(1);
     expect(emit).toBeUndefined();
+  });
+
+  /** A área mede 800 x 320: com a célula de 8 x 16 do terminal falso, cabem 100 x 20. */
+  function sizeHost() {
+    const host = fake.openedIn as HTMLElement;
+    Object.defineProperty(host, 'clientWidth', { value: 800, configurable: true });
+    Object.defineProperty(host, 'clientHeight', { value: 320, configurable: true });
+  }
+
+  it('o ajuste que chega depois de a montagem ser desfeita não manda tamanho ao processo', async () => {
+    let subscribed: (result: AppResult<undefined>) => void = () => {};
+    terminals['subscribe']?.mockReturnValue(new Promise((resolve) => (subscribed = resolve)));
+    const view = render(<TerminalView terminalId="t1" />);
+    sizeHost();
+
+    view.unmount();
+    subscribed(OK);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(terminals['resize']).not.toHaveBeenCalled();
+  });
+
+  it('com a montagem dupla do StrictMode, só a montagem viva manda o tamanho', async () => {
+    const view = render(
+      <StrictMode>
+        <TerminalView terminalId="t1" />
+      </StrictMode>,
+    );
+    sizeHost();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Montou, desfez e montou de novo: dois terminais criados, um descartado, e um único aviso de tamanho.
+    expect(fake.disposed).toBe(1);
+    expect(terminals['resize']).toHaveBeenCalledTimes(1);
+    expect(terminals['resize']).toHaveBeenCalledWith('t1', 100, 20);
+    view.unmount();
   });
 });
 
