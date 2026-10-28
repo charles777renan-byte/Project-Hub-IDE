@@ -32,7 +32,7 @@ function statePhrase(item: ProgressMission): string {
   if (tasks.length === 0) return fallback;
   switch (group) {
     case 'running':
-      return current?.status === 'running'
+      return mission.status === 'running' && current?.status === 'running'
         ? PROGRESS_TEXT.runningTask(roleLabel(current.role) ?? '', agentLabel(current.agent))
         : fallback;
     case 'failed': {
@@ -69,7 +69,8 @@ export function MissionProgressRow({
   const open = expanded && hasTasks;
   const action = group === 'attention' ? requiredActionOf(mission.status) : undefined;
   const linkText = action ?? PROGRESS_TEXT.openMission;
-  const running = tasks.some((task) => task.status === 'running');
+  // Pausada ou à espera, a etapa segue `running` sem que nada execute: só a missão `running` conta.
+  const running = mission.status === 'running' && tasks.some((task) => task.status === 'running');
   const Chevron = open ? ChevronDown : ChevronRight;
   const stateClass =
     group === 'attention' || group === 'failed'

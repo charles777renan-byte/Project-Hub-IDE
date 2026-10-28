@@ -461,6 +461,19 @@ describe('contadores', () => {
     expect(runningTaskCount(items)).toBe(3);
   });
 
+  it('runningTaskCount ignora missão pausada ou à espera cuja etapa segue como running', () => {
+    const paused: ProgressMission = {
+      ...item('running', [step('p', { status: 'running' })], 'm5'),
+      mission: mission({ id: 'm5', status: 'paused' }),
+    };
+    const waiting: ProgressMission = {
+      ...item('attention', [step('w', { status: 'running' })], 'm6'),
+      mission: mission({ id: 'm6', status: 'waiting_approval' }),
+    };
+    expect(runningTaskCount([paused, waiting])).toBe(0);
+    expect(runningTaskCount([...items, paused, waiting])).toBe(3);
+  });
+
   it('doneTodaySummary soma tarefas e tempo do grupo concluído', () => {
     expect(doneTodaySummary(items)).toEqual({ tasks: 3, ms: 25 * MIN });
     expect(doneTodaySummary([running])).toEqual({ tasks: 0, ms: 0 });
