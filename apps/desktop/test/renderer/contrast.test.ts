@@ -282,7 +282,9 @@ describe('cores do chrome do workspace', () => {
     // A aba ativa usa o fundo da página (--bg). O anel de 1px em --muted é a marca do estado além do peso
     // do texto, e precisa de 3:1 sobre o fundo (WCAG 1.4.11).
     const background = tokens.get('--bg') ?? '';
-    expect(contrastRatio(tokens.get('--text') ?? '', background)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(contrastRatio(tokens.get('--text') ?? '', background)).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
     expect(contrastRatio(tokens.get('--muted') ?? '', background)).toBeGreaterThanOrEqual(3);
   });
 
@@ -335,6 +337,85 @@ describe('cores do chrome do workspace', () => {
       for (const input of inputs) {
         expect(NEUTRAL.has(input), `${name} usa ${input}`).toBe(true);
       }
+    }
+  });
+});
+
+/**
+ * Aba Plano (plan.css) e quadro do orquestrador (orchestrator-board.css): só tokens de tokens.css e
+ * app.css, sem cor literal, sem animação. O programa é texto e a cor só o reforça; cada cor de programa
+ * (hoje o laranja do Claude) passa de 4,5:1 como texto e de 3:1 como borda sobre o fundo e o cartão
+ * (WCAG 1.4.3 e 1.4.11). O lima (--accent) fica fora desses dois arquivos.
+ */
+describe.each(['plan.css', 'orchestrator-board.css'])('cores de %s', (name) => {
+  const css = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles', name),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ALLOWED = new Set([
+    '--bg',
+    '--surface',
+    '--surface-2',
+    '--surface-glass',
+    '--line',
+    '--field-line',
+    '--muted',
+    '--text',
+    '--blue',
+    '--orange',
+    '--brand',
+    '--danger',
+    '--board-line',
+  ]);
+  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+
+  it('só usa var() de tokens permitidos', () => {
+    const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((token) => !ALLOWED.has(token) && !NOT_COLOR.test(token))).toEqual([]);
+  });
+
+  it('não escreve cor literal, não usa o lima e não tem animação nem estilo inline', () => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
+    expect(css).not.toContain('var(--accent)');
+    expect(css).not.toMatch(/\b(?:animation|transition)\b/);
+  });
+});
+
+describe('cores dos programas no quadro do orquestrador', () => {
+  const PROGRAM_COLORS = ['--orange'] as const;
+  const BORDERS = ['--brand', ...PROGRAM_COLORS] as const;
+
+  it.each(PROGRAM_COLORS)(
+    'o nome do programa em %s passa de 4,5:1 sobre o cartão e o fundo',
+    (color) => {
+      const text = tokens.get(color) ?? '';
+      for (const surface of ['--surface', '--bg']) {
+        expect(
+          contrastRatio(text, tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    },
+  );
+
+  it.each(BORDERS)('a borda do cartão em %s passa de 3:1 sobre o fundo e o cartão', (color) => {
+    const border = tokens.get(color) ?? '';
+    for (const surface of ['--surface', '--bg']) {
+      expect(
+        contrastRatio(border, tokens.get(surface) ?? ''),
+        `${color} sobre ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('o estado "falhou" (--danger) e o texto neutro passam de 4,5:1 sobre o cartão', () => {
+    const surface = tokens.get('--surface') ?? '';
+    for (const color of ['--danger', '--text', '--muted']) {
+      expect(contrastRatio(tokens.get(color) ?? '', surface), color).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
     }
   });
 });

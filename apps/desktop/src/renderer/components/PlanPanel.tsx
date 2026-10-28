@@ -1,14 +1,15 @@
 import { useId, useState } from 'react';
 import type { MissionDto, MissionStepDto, PlanEditInput } from '@project-hub/contracts';
 import { PLAN_TEXT } from '../mission-text';
+import { OrchestratorBoard } from './OrchestratorBoard';
 import { PlanStepRow } from './PlanStepRow';
 
 /** Limite da instrução do novo plano, o mesmo do contrato (`planMissionInputSchema`). */
 const INSTRUCTION_MAX = 1000;
 
 /**
- * Aba Plano do workspace da missão (seção 10.7, RF-MIS-003): a tabela de tarefas (TAREFA, AGENTE,
- * STATUS). Com a missão planejada, a pessoa revisa e edita as tarefas (renomear, mover, remover e trocar
+ * Aba Plano do workspace da missão (seção 10.7, RF-MIS-003): o quadro do orquestrador (quando há
+ * tarefas com papel, só leitura) e a tabela de tarefas (TAREFA, AGENTE, STATUS). Com a missão planejada, a pessoa revisa e edita as tarefas (renomear, mover, remover e trocar
  * o programa) e pode pedir outro plano, com uma instrução opcional. Fora desse estado a tabela é só
  * leitura. Gerar o plano (Orquestrar) e aprovar ficam no resumo da missão, no topo da página. Planejar
  * usa a cota do Claude, por isso só acontece num clique, com o aviso ao lado. Enquanto o plano não é
@@ -56,6 +57,8 @@ export function PlanPanel({
           {error}
         </p>
       )}
+
+      <OrchestratorBoard steps={steps} />
 
       {steps.length === 0 ? (
         <p className="empty">{PLAN_TEXT.empty}</p>

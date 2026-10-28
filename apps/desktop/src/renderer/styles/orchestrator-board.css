@@ -1,0 +1,122 @@
+/*
+ * Quadro do orquestrador na aba Plano: o cartão do orquestrador, um cartão por papel e o cartão
+ * tracejado de integração, ligados por setas decorativas. Ligado por <link> no index.html, depois do
+ * plan.css e antes do workspace.css; só usa tokens de tokens.css e app.css, sem cor literal, sem estilo
+ * escrito em texto (CSP) e sem animação. O nome do programa e o estado são texto; a cor só os reforça
+ * (o laranja, --orange, é o papel do Claude). O lima fica fora: é só da ação principal. Em janela
+ * estreita os cartões de papel quebram em uma coluna, sem rolagem horizontal.
+ */
+
+.orchestrator-board {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-4);
+}
+
+.orchestrator-board__card {
+  --board-line: var(--field-line);
+
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--board-line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.orchestrator-board__card h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.orchestrator-board__card p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* O orquestrador e a integração ficam centrados, com largura de leitura. */
+.orchestrator-board__lead,
+.orchestrator-board__delivery {
+  max-width: 32rem;
+}
+
+.orchestrator-board__lead {
+  --board-line: var(--brand);
+}
+
+/* Integração e entrega: o contorno tracejado diz que é uma etapa final, ainda sem tarefa própria. */
+.orchestrator-board__delivery {
+  border-style: dashed;
+}
+
+/* Setas entre as três camadas: só enfeite, o texto dos cartões já diz a ordem. */
+.orchestrator-board__arrow {
+  color: var(--muted);
+  line-height: 1;
+}
+
+/* Um cartão por papel: as colunas cabem quantas der e quebram de linha em janela estreita. */
+.orchestrator-board__roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.orchestrator-board__roles > li {
+  display: grid;
+  min-width: 0;
+}
+
+.orchestrator-board__card--claude-code {
+  --board-line: var(--orange);
+}
+
+.orchestrator-board__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+
+.orchestrator-board__program {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.orchestrator-board__program--claude-code {
+  color: var(--orange);
+}
+
+/* A contagem e o estado do papel ficam lado a lado, o estado com peso maior que a contagem. */
+.orchestrator-board__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.orchestrator-board__status {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.orchestrator-board__status--waiting {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.orchestrator-board__status--failed {
+  color: var(--danger);
+}

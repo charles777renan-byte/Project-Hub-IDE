@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css e o plan.css depois do app.css e o workspace.css por último', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css e o orchestrator-board.css depois do app.css e o workspace.css por último', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -58,6 +58,7 @@ describe('index.html do renderer', () => {
       './styles/app.css',
       './styles/home.css',
       './styles/plan.css',
+      './styles/orchestrator-board.css',
       './styles/workspace.css',
     ]);
   });
@@ -139,7 +140,14 @@ describe('fontes locais', () => {
   });
 
   it('não importa nem referencia endereço de fora em nenhum CSS do renderer', () => {
-    for (const name of ['fonts.css', 'tokens.css', 'app.css', 'workspace.css']) {
+    for (const name of [
+      'fonts.css',
+      'tokens.css',
+      'app.css',
+      'plan.css',
+      'orchestrator-board.css',
+      'workspace.css',
+    ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
         /\/\*[\s\S]*?\*\//g,
         '',
