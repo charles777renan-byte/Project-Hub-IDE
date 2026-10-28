@@ -7,6 +7,7 @@ import {
   missionSummary,
   openProject,
   orchestrate,
+  viewTab,
 } from './missions';
 
 // Fluxo de orquestração pela interface real (fatia 2 do orquestrador): a missão nasce em rascunho, o
@@ -195,5 +196,23 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   await expect(
     page.getByRole('progressbar', { name: `Progresso de ${MISSION.title}: 2 de 2 tarefas` }),
   ).toBeVisible();
+
+  // A aba Progresso reúne a missão concluída no grupo "Concluídas hoje", com a barra cheia (2 de 2 tarefas), e
+  // o link "Abrir missão" leva de volta a ela.
+  await viewTab(page, 'Progresso').click();
+  await expect(viewTab(page, 'Progresso')).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/\?visao=progresso$/);
+  await expect(page.getByRole('heading', { level: 2, name: /^Concluídas hoje/ })).toBeVisible();
+  const missionRow = page
+    .getByRole('main')
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('link', { name: 'Abrir missão' }) })
+    .filter({ hasText: MISSION.title });
+  await expect(
+    missionRow.getByRole('img', { name: /\d de \d tarefas concluídas/ }),
+  ).toHaveAccessibleName('2 de 2 tarefas concluídas');
+  await missionRow.getByRole('link', { name: 'Abrir missão' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: MISSION.title })).toBeVisible();
+  await expect(missionSummary(page).getByText('Concluída', { exact: true })).toBeVisible();
   await launched.close();
 });
