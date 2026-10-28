@@ -246,6 +246,13 @@ describe('botões, campos e anel de foco', () => {
     expect(rule('button:disabled').get('cursor')).toBe('not-allowed');
   });
 
+  it('a barra de abas, parada do Tab depois de um clique, tem anel de foco que vence o outline inline do Radix', () => {
+    const ring = rule('.tabs:focus-visible');
+    // O Radix põe `outline: none` inline na barra; só o !important o vence.
+    expect(ring.get('outline')).toBe('2px solid var(--focus) !important');
+    expect(ring.get('outline-offset')).toBe('2px');
+  });
+
   it('o botão principal é lima cheio com texto --accent-ink; aprovar tem a mesma aparência', () => {
     const primary = rule('.btn-primary');
     expect(primary.get('background')).toBe('var(--accent)');

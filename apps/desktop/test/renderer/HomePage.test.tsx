@@ -167,7 +167,8 @@ describe('HomePage', () => {
     expect(screen.queryByText('Projetos recentes')).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Nova missão' })).not.toBeInTheDocument();
     expect(document.querySelector('.stat-pills, .stat-pill, .recent-projects__grid')).toBeNull();
-    expect(screen.queryByText('Executando')).not.toBeInTheDocument();
+    // "Executando" agora também é o nome de um chip de estado; o que sumiu foi o rótulo do bloco de número.
+    expect(screen.queryByText('Executando', { selector: ':not(button)' })).not.toBeInTheDocument();
   });
 
   it('monta as faixas na ordem: saudação, Precisa de você, Missões, Atividade e Uso dos agentes', async () => {
@@ -319,6 +320,21 @@ describe('HomePage', () => {
     ).toEqual(['Missão m3', 'Missão m4']);
   });
 
+  it('os chips de estado têm os mesmos nomes dos contadores: Executando, Aguarda você e Falharam', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Missão m1' });
+    const chips = within(missions)
+      .getAllByRole('button')
+      .map((button) => button.textContent);
+    expect(chips).toEqual(expect.arrayContaining(['Executando', 'Aguarda você', 'Falharam']));
+    expect(chips).not.toContain('Em andamento');
+    expect(chips).not.toContain('Esperam você');
+  });
+
   it('um chip de estado filtra a lista e clicar de novo no chip ativo limpa o filtro', async () => {
     const user = userEvent.setup();
     installApi({ projects: [project('p1')], missions: MIXED });
@@ -327,11 +343,11 @@ describe('HomePage', () => {
 
     const missions = panel('Missões');
     await within(missions).findByRole('link', { name: 'Missão m1' });
-    await user.click(within(missions).getByRole('button', { name: 'Em andamento' }));
+    await user.click(within(missions).getByRole('button', { name: 'Executando' }));
     expect(screen.getByTestId('where')).toHaveTextContent('/?estado=running');
     await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(1));
 
-    await user.click(within(missions).getByRole('button', { name: 'Em andamento' }));
+    await user.click(within(missions).getByRole('button', { name: 'Executando' }));
     await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(5));
   });
 
