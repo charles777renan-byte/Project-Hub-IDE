@@ -421,10 +421,6 @@
   font-size: var(--text-xs);
 }
 
-.progress-axis__line {
-  stroke: var(--line);
-}
-
 .progress-now {
   stroke: var(--blue);
   stroke-width: 1;
