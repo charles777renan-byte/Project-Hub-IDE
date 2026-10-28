@@ -28,6 +28,7 @@ export const STEP_STATUS_VALUES = [
   'failed',
   'skipped',
 ] as const;
+export const ROLE_VALUES = ['frontend', 'backend', 'database', 'docs', 'qa', 'general'] as const;
 export const EXECUTION_STATUS_VALUES = [
   'queued',
   'running',
@@ -115,6 +116,13 @@ export const missionStepDtoSchema = z.object({
   position: z.number(),
   title: z.string(),
   status: z.enum(STEP_STATUS_VALUES),
+  /** Papel da tarefa. Sem ele, a etapa é só apresentação. */
+  role: z.enum(ROLE_VALUES).optional(),
+  description: z.string().optional(),
+  /** Ids das tarefas que precisam terminar antes. */
+  dependsOn: z.array(z.string()).optional(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
 });
 export type MissionStepDto = z.infer<typeof missionStepDtoSchema>;
 
@@ -128,6 +136,8 @@ export const executionDtoSchema = z.object({
   id: z.string(),
   missionId: z.string(),
   attempt: z.number(),
+  /** Tarefa que a tentativa executa; vazio quando ela roda a missão inteira. */
+  stepId: z.string().optional(),
   status: z.enum(EXECUTION_STATUS_VALUES),
   exitReason: z.enum(EXIT_REASON_VALUES).optional(),
 });

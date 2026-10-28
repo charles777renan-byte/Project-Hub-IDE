@@ -1262,3 +1262,94 @@ describe('revisão da conclusão', () => {
     expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
   });
 });
+
+describe('tarefas do plano, em sequência', () => {
+  function task(id: string, position: number, dependsOn: string[] = []) {
+    return {
+      id,
+      missionId: MISSION,
+      position,
+      title: `Tarefa ${id}`,
+      description: '',
+      kind: 'custom' as const,
+      status: 'pending' as const,
+      dependsOn,
+      role: 'general' as const,
+    };
+  }
+
+  it('roda uma sessão por tarefa, na ordem, no mesmo worktree, e a missão só vai a review no fim', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps([task('a', 1), task('b', 2, ['a']), task('c', 3, ['b'])]);
+
+    const last = data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.agent.starts).toHaveLength(3);
+    expect(h.agent.starts.map((s) => s.prompt)).toEqual([
+      expect.stringContaining('Tarefa a'),
+      expect.stringContaining('Tarefa b'),
+      expect.stringContaining('Tarefa c'),
+    ]);
+    expect(h.agent.starts[2]?.prompt).toContain('Tarefas já concluídas');
+    expect(new Set(h.agent.starts.map((s) => s.cwd)).size).toBe(1);
+    expect(h.worktrees.created).toHaveLength(1);
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'succeeded', 'succeeded']);
+    const executions = h.repo.listExecutions(MISSION);
+    expect(executions.map((e) => [e.attempt, e.stepId, e.status])).toEqual([
+      [1, 'a', 'succeeded'],
+      [2, 'b', 'succeeded'],
+      [3, 'c', 'succeeded'],
+    ]);
+    expect(last.id).toBe(executions[2]?.id);
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+  });
+
+  it('só começa uma tarefa depois das que ela depende, mesmo fora de ordem no plano', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps([task('a', 1, ['b']), task('b', 2)]);
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.repo.listExecutions(MISSION).map((e) => e.stepId)).toEqual(['b', 'a']);
+  });
+
+  it('falha numa tarefa: a missão falha e as seguintes não começam', async () => {
+    const h = harness({ scripts: [[], [{ kind: 'fail', message: 'quebrou' }]] });
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps([task('a', 1), task('b', 2, ['a']), task('c', 3, ['b'])]);
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.agent.starts).toHaveLength(2);
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'failed', 'pending']);
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+  });
+
+  it('nova tentativa recomeça na tarefa que falhou, sem repetir as concluídas', async () => {
+    const h = harness({ scripts: [[], [{ kind: 'fail', message: 'quebrou' }]] });
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps([task('a', 1), task('b', 2, ['a'])]);
+    data(await h.orchestrator.startMission(MISSION));
+
+    data(await h.orchestrator.retryMission(MISSION));
+
+    expect(h.agent.starts).toHaveLength(3);
+    expect(h.agent.starts[2]?.prompt).toContain('Tarefa b');
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'succeeded']);
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+  });
+
+  it('etapas sem papel continuam numa sessão só, com o objetivo da missão', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps([task('a', 1), task('b', 2)].map(({ role: _role, ...plain }) => plain));
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.agent.starts).toHaveLength(1);
+    expect(h.agent.starts[0]?.prompt).toBe('Corrigir o login');
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['pending', 'pending']);
+  });
+});

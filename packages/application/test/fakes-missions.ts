@@ -67,6 +67,9 @@ export function fakeMissionRepository(): FakeMissionRepository {
     replaceSteps(missionId, steps) {
       state.steps = [...state.steps.filter((step) => step.missionId !== missionId), ...copy(steps)];
     },
+    updateStep(id, changes) {
+      state.steps = state.steps.map((step) => (step.id === id ? { ...step, ...changes } : step));
+    },
     insertExecution(execution) {
       state.executions.set(execution.id, copy(execution));
     },

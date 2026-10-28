@@ -87,24 +87,17 @@ describe('migração da revisão (0005)', () => {
       updatedAt: T0,
     };
     before.insertMission(mission);
-    before.replaceSteps('missao-1', [
-      {
-        id: 's1',
-        missionId: 'missao-1',
-        position: 1,
-        title: 'Passo',
-        description: '',
-        kind: 'custom',
-        status: 'pending',
-        dependsOn: [],
-      },
-    ]);
-    before.insertExecution({
-      id: 'exec-1',
-      missionId: 'missao-1',
-      attempt: 1,
-      status: 'running',
-    });
+    // As colunas de tarefa (0009) ainda não existem neste banco: etapa e tentativa entram por SQL.
+    legacy.$client
+      .prepare(
+        "INSERT INTO mission_steps (id, mission_id, position, title, description, kind, status, depends_on) VALUES ('s1', 'missao-1', 1, 'Passo', '', 'custom', 'pending', '[]')",
+      )
+      .run();
+    legacy.$client
+      .prepare(
+        "INSERT INTO executions (id, mission_id, attempt, status) VALUES ('exec-1', 'missao-1', 1, 'running')",
+      )
+      .run();
     before.appendAudit({
       aggregateType: 'mission',
       aggregateId: 'missao-1',

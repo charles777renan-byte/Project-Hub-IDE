@@ -432,3 +432,38 @@ describe('exclusão de missão', () => {
     expect(auditRows('p1')).toEqual([{ event_type: 'evento.teste', sequence: 1 }]);
   });
 });
+
+describe('tarefas da missão', () => {
+  const step = (id: string, missionId: string): MissionStep => ({
+    id,
+    missionId,
+    position: 1,
+    title: 'Tarefa',
+    description: '',
+    kind: 'custom',
+    status: 'pending',
+    dependsOn: [],
+  });
+
+  it('guarda o papel da etapa e a tarefa da tentativa, e atualiza o andamento da etapa', () => {
+    repo.insertMission(mission());
+    repo.insertSteps([{ ...step('s1', 'missao-1'), role: 'backend' }]);
+    repo.insertExecution(execution({ stepId: 's1' }));
+
+    repo.updateStep('s1', { status: 'running', startedAt: T0 });
+
+    expect(repo.listSteps('missao-1')[0]).toMatchObject({
+      role: 'backend',
+      status: 'running',
+      startedAt: T0,
+    });
+    expect(repo.getExecution('exec-1')?.stepId).toBe('s1');
+  });
+
+  it('etapa sem papel volta sem a chave role', () => {
+    repo.insertMission(mission());
+    repo.insertSteps([step('s1', 'missao-1')]);
+
+    expect(repo.listSteps('missao-1')[0]).not.toHaveProperty('role');
+  });
+});

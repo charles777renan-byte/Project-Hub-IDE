@@ -10,6 +10,8 @@ export const MISSION_STEP_KINDS = [
   'review',
   'custom',
 ] as const;
+/** Papel de uma tarefa no plano. Sem papel, a etapa é só apresentação (a missão roda numa sessão só). */
+export const MISSION_ROLES = ['frontend', 'backend', 'database', 'docs', 'qa', 'general'] as const;
 export const MISSION_STEP_STATUSES = [
   'pending',
   'running',
@@ -65,7 +67,8 @@ export const PROTECTED_ACTIONS = [
 
 export type MissionPriority = (typeof MISSION_PRIORITIES)[number];
 export type MissionStepKind = (typeof MISSION_STEP_KINDS)[number];
-export type MissionStepStatus = (typeof MISSION_STEP_STATUSES)[number];
+export type MissionRole = (typeof MISSION_ROLES)[number];
+export type MissionStepStatus =(typeof MISSION_STEP_STATUSES)[number];
 export type ExecutionStatus = (typeof EXECUTION_STATUSES)[number];
 export type ExitReason = (typeof EXIT_REASONS)[number];
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
@@ -111,6 +114,8 @@ export type MissionStep = {
   kind: MissionStepKind;
   status: MissionStepStatus;
   dependsOn: string[];
+  /** Quando existe, a etapa é uma tarefa: roda numa sessão própria, depois das que ela depende. */
+  role?: MissionRole;
   startedAt?: string;
   finishedAt?: string;
 };
@@ -121,6 +126,8 @@ export type Execution = {
   missionId: string;
   attempt: number;
   status: ExecutionStatus;
+  /** Tarefa que esta tentativa executa. Vazio na tentativa que roda a missão inteira. */
+  stepId?: string;
   agentSessionId?: string;
   /** Última saída do agente que a aplicação aplicou. Opaca: só o adaptador a interpreta. */
   agentCursor?: string;
