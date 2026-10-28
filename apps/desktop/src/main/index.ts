@@ -26,6 +26,8 @@ import {
 import { createClaudeAgent, createTerminalBackend } from './claude-agent';
 import { registerActivityHandlers } from './ipc/activity';
 import { registerProfileHandlers } from './ipc/profile';
+import { registerSystemHandlers } from './ipc/system';
+import { createSystemUsageSampler } from './system-usage';
 import { registerTerminalHandlers } from './ipc/terminals';
 import { registerWorkspaceHandlers } from './ipc/workspaces';
 import { createProviderRegistry } from './providers';
@@ -227,6 +229,7 @@ app
       now: () => new Date(),
     });
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
+    registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     const providers = createProviderRegistry({
       env: process.env,
       platform: process.platform,

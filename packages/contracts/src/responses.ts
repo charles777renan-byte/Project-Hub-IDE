@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { activityDailyResponseSchema } from './activity';
 import { CHANNELS } from './channels';
 import { profileDtoSchema } from './profile';
+import { systemUsageDtoSchema } from './system';
 import { projectSummarySchema } from './project';
 import {
   MISSION_STATUS_VALUES,
@@ -84,4 +85,5 @@ export const responseSchemas = {
   [CHANNELS.activityDaily]: appResultSchema(activityDailyResponseSchema),
   [CHANNELS.profileGet]: appResultSchema(profileDtoSchema),
   [CHANNELS.profileSetDisplayName]: appResultSchema(z.undefined()),
+  [CHANNELS.systemUsage]: appResultSchema(systemUsageDtoSchema),
 } as const;
