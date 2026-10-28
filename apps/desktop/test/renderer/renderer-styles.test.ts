@@ -466,3 +466,11 @@ describe('classes removidas', () => {
     expect(text).not.toContain('decisionLink');
   });
 });
+
+describe('lateral recolhida', () => {
+  it('não desenha traço na borda: a divisória só aparece com o mouse, e o respiro da esquerda é ela', () => {
+    const css = readCss('workspace.css');
+    expect(css).not.toContain('.app-body--side-collapsed > .pane-tree__separator');
+    expect(ruleDeclarations(css, '.app-body--side-collapsed').get('padding-left')).toBe('0');
+  });
+});
