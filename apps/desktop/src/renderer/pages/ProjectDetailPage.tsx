@@ -54,7 +54,7 @@ type LoadState =
 /**
  * Detalhe de um projeto (seção 10.5, R167): nome, pasta e branch no cabeçalho, e a aba Missões com
  * os cartões e a criação. A criação deixa a missão em rascunho (o plano só nasce no Orquestrar, que usa a
- * cota do Claude); com "Somente planejar", a página fica na lista, e sem a opção abre o workspace.
+ * cota do Claude); com "Só criar, sem abrir", a página fica na lista, e sem a opção abre o workspace.
  */
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams();
@@ -123,7 +123,7 @@ export function ProjectDetailPage() {
 
   /**
    * Cria a missão em rascunho e segue para o workspace, onde a pessoa clica em Orquestrar. O plano usa a
-   * cota do Claude, então nunca é gerado aqui. Com "Somente planejar", a página fica na lista.
+   * cota do Claude, então nunca é gerado aqui. Com "Só criar, sem abrir", a página fica na lista.
    */
   async function createMission(values: MissionFormValues) {
     setActionError(null);

@@ -298,7 +298,7 @@ describe('ProjectDetailPage: criar missão', () => {
     await userEvent.type(screen.getByLabelText('Título'), 'Nova missão');
     await userEvent.type(screen.getByLabelText('Objetivo'), 'Fazer algo');
     await userEvent.type(screen.getByLabelText('Critérios de aceite'), 'Algo pronto');
-    await userEvent.click(screen.getByLabelText('Somente planejar'));
+    await userEvent.click(screen.getByLabelText('Só criar, sem abrir'));
     await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
 
     expect(

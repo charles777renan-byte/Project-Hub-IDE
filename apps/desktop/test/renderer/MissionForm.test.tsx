@@ -52,7 +52,7 @@ describe('MissionForm', () => {
       'Login funciona{enter}  {enter}Testes passam',
     );
     await userEvent.click(screen.getByLabelText('Esta missão altera código'));
-    await userEvent.click(screen.getByLabelText('Somente planejar'));
+    await userEvent.click(screen.getByLabelText('Só criar, sem abrir'));
     await userEvent.click(screen.getByRole('button', { name: 'Criar missão' }));
 
     expect(submit).toHaveBeenCalledWith({
@@ -68,7 +68,7 @@ describe('MissionForm', () => {
     render(<MissionForm onSubmit={vi.fn()} projectHasGit />);
 
     expect(screen.getByLabelText('Esta missão altera código')).not.toBeChecked();
-    expect(screen.getByLabelText('Somente planejar')).not.toBeChecked();
+    expect(screen.getByLabelText('Só criar, sem abrir')).not.toBeChecked();
   });
 
   describe('projeto sem Git', () => {

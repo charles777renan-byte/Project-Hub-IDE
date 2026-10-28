@@ -216,9 +216,10 @@ export function MissionForm({
             aria-describedby="mission-plan-only-hint"
             {...register('planOnly')}
           />
-          <label htmlFor="mission-plan-only">Somente planejar</label>
+          <label htmlFor="mission-plan-only">Só criar, sem abrir</label>
           <p id="mission-plan-only-hint" className="check__hint">
-            Cria a missão e fica na lista. O plano é gerado depois, quando você clica em Orquestrar.
+            Cria a missão e fica na lista, sem abrir o workspace. O plano é gerado depois, quando
+            você clica em Orquestrar.
           </p>
         </div>
       </section>
