@@ -492,56 +492,14 @@ button:disabled {
   font-weight: 600;
 }
 
-/* Cartão de missão: borda violeta quando espera decisão, barra amarela de progresso quando roda. */
+/* Cartão de missão (a lista de worktrees reaproveita). */
 .mission-card {
   display: grid;
   gap: var(--space-2);
 }
 
-.mission-card--attention {
-  border-color: var(--violet);
-}
-
 .mission-card h2 {
   font-size: 1.0625rem;
-}
-
-.mission-card-action {
-  color: var(--violet);
-  font-weight: 700;
-}
-
-.progress {
-  position: relative;
-  height: 3px;
-  overflow: hidden;
-  background: var(--line);
-}
-
-.progress--running::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 40%;
-  background: var(--yellow);
-  animation: progress-slide 1.6s ease-in-out infinite;
-}
-
-@keyframes progress-slide {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(250%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .progress--running::after {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
-  }
 }
 
 /*
@@ -886,64 +844,6 @@ button:disabled {
   resize: vertical;
 }
 
-/* Cabeçalho do formulário de missão e a explicação de cada caixa de marcar. */
-.form-head__title {
-  margin: 0;
-  font-size: 1.125rem;
-}
-
-.form-head__hint {
-  margin: var(--space-1) 0 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-/* Formulário de missão em seções, e as opções como cartões que se marcam. */
-.form-section {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-glass);
-}
-
-.form-section__title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: 1rem;
-}
-
-.form-section__num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 1px solid var(--field-line);
-  border-radius: 50%;
-  color: var(--muted);
-  font-size: 0.6875rem;
-}
-
-.form-section__hint {
-  margin: calc(var(--space-2) * -1) 0 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.option-card {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.option-card:has(input:checked) {
-  border-color: var(--muted);
-}
-
 .check {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -985,24 +885,8 @@ button:disabled {
   color: var(--muted);
 }
 
-/* Cabeçalho do projeto: nome, etiqueta da branch e pasta à esquerda, e o menu de ações no canto. */
-.project-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
 .project-head__main {
   min-width: 0;
-}
-
-/* O gatilho do menu fica compacto e numa linha só, também em janela estreita. */
-.project-head .menu-acoes__gatilho {
-  flex: none;
-  padding: var(--space-1) var(--space-3);
-  font-size: 0.8125rem;
-  white-space: nowrap;
 }
 
 .project-head__meta {
@@ -1013,97 +897,11 @@ button:disabled {
   margin-top: var(--space-1);
 }
 
-.branch-chip {
-  padding: 2px var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-}
-
 .project-head__actions {
   display: flex;
   flex: none;
   align-items: center;
   gap: var(--space-2);
-}
-
-/* Visão geral: contadores no alto, e as listas ao lado do cartão do repositório. */
-.project-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: start;
-}
-
-@media (max-width: 52rem) {
-  .project-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.project-grid__main,
-.project-grid__side {
-  display: grid;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.panel-card {
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-glass);
-}
-
-.panel-card--attention {
-  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
-}
-
-.panel-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.panel-card__title {
-  margin: 0 0 var(--space-2);
-  font-size: 1rem;
-}
-
-.panel-card__head .panel-card__title {
-  margin-bottom: var(--space-2);
-}
-
-.link-button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.8125rem;
-  text-decoration: underline;
-}
-
-.mission-rows {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mission-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
-  border-top: 1px solid var(--line);
-}
-
-.mission-row:first-child {
-  border-top: 0;
 }
 
 .mission-row__text {
@@ -1158,84 +956,6 @@ button:disabled {
 
 .project-folder__feedback {
   color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-/* Abas do projeto: sublinhadas, a ativa com o traço claro embaixo. Só nesta página; as outras abas seguem em pílula. */
-.project-tabs .tabs {
-  flex-wrap: wrap;
-  gap: 0 var(--space-4);
-  margin: var(--space-3) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.project-tabs .tab {
-  flex: none;
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  padding: var(--space-2) 0;
-  white-space: nowrap;
-}
-
-.project-tabs .tab:hover {
-  background: transparent;
-}
-
-.project-tabs .tab[aria-selected='true'] {
-  border-bottom-color: var(--text);
-  background: transparent;
-  box-shadow: none;
-}
-
-/* Aba Missões: título, contagem e o botão Criar missão à direita. */
-.missions-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.missions-toolbar__title {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.missions-toolbar__count {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.missions-toolbar .btn-primary {
-  margin-left: auto;
-}
-
-/* Estado vazio da aba Missões: convite e os três passos, num cartão tracejado. */
-.missions-empty {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px dashed var(--field-line);
-  border-radius: var(--radius);
-}
-
-.missions-empty__title {
-  margin: 0;
-  font-weight: 600;
-}
-
-.missions-empty__hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.missions-empty__steps {
-  margin: var(--space-1) 0 0;
-  padding-left: var(--space-4);
-  color: var(--text);
   font-size: 0.8125rem;
 }
 
@@ -1685,35 +1405,6 @@ button:disabled {
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 0.75rem;
-}
-
-/* Abas Visão geral e Repositório do projeto (Tarefa 9). */
-.project-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.project-counts li {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 7rem;
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.project-counts__value {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.project-counts__label {
-  color: var(--muted);
-  font-size: 0.8125rem;
 }
 
 .project-facts {

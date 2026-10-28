@@ -170,3 +170,67 @@
   color: var(--muted);
   font-size: 0.8125rem;
 }
+
+/*
+ * Missões: a lista com progresso (.mission-progress*, de home.css) e o formulário Nova missão, compacto e sem
+ * moldura: título, três campos com uma dica cada, duas opções e Cancelar e Criar no fim.
+ */
+.project-missions {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  max-width: 56rem;
+}
+
+.project-missions:focus {
+  outline: none;
+}
+
+.project-missions p {
+  margin: 0;
+}
+
+/* O aviso fica montado desde o início (região de anúncio); sem texto, não ocupa espaço. */
+.project-missions__notice {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.project-missions__notice:empty {
+  display: none;
+}
+
+.project-missions__note {
+  color: var(--muted);
+}
+
+.project-missions__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+}
+
+.mission-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.mission-form .mission-form__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.mission-form .field {
+  gap: 2px;
+}
+
+.mission-form .field-hint,
+.mission-form .check__hint {
+  margin: 0;
+}
+
+.mission-form .form-actions {
+  justify-content: flex-end;
+}
