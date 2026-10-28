@@ -18,7 +18,10 @@ export const CHANNELS = {
   missionsGet: 'missions:get:v1',
   /** Alterações do worktree da missão em relação ao HEAD (Tarefa 10 da interface). */
   missionsDiff: 'missions:diff:v1',
+  /** Gera o plano ou o refaz; a instrução opcional é o pedido de ajuste da pessoa. */
   missionsPlan: 'missions:plan:v1',
+  /** Edita uma tarefa do plano antes de a missão iniciar. Devolve o plano inteiro. */
+  missionsEditPlan: 'missions:edit-plan:v1',
   missionsApprovePlan: 'missions:approve-plan:v1',
   missionsStart: 'missions:start:v1',
   missionsCancel: 'missions:cancel:v1',

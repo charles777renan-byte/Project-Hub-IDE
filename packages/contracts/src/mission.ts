@@ -74,6 +74,40 @@ export const listMissionsInputSchema = z.object({ projectId: z.string().min(1) }
 /** Entrada dos canais que agem numa missão só (plan, approve-plan, start, cancel, get). */
 export const missionIdInputSchema = z.object({ missionId: z.string().min(1) });
 
+/**
+ * Entrada de `missions:plan:v1`. A instrução é o pedido de ajuste ao refazer o plano; sem ela, vale o
+ * formato antigo, só com o id da missão.
+ */
+export const planMissionInputSchema = z.object({
+  missionId: z.string().min(1),
+  instruction: z.string().trim().max(1000).optional(),
+});
+export type PlanMissionInput = z.infer<typeof planMissionInputSchema>;
+
+/**
+ * Edição de uma tarefa do plano. Espelha o `PlanEdit` da aplicação (o contracts não a importa, R2); o
+ * teste `apps/desktop/test/mission-contract.test.ts` confere que as duas formas batem.
+ */
+export const planEditSchema = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('rename'),
+    title: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(2000).optional(),
+  }),
+  z.object({ op: z.literal('remove') }),
+  z.object({ op: z.literal('move'), toPosition: z.number().int().min(1) }),
+  z.object({ op: z.literal('agent'), agent: z.enum(AGENT_VALUES) }),
+]);
+export type PlanEditInput = z.infer<typeof planEditSchema>;
+
+/** Entrada de `missions:edit-plan:v1`: a tarefa do plano e o que fazer com ela. */
+export const editPlanStepInputSchema = z.object({
+  missionId: z.string().min(1),
+  stepId: z.string().min(1),
+  edit: planEditSchema,
+});
+export type EditPlanStepInput = z.infer<typeof editPlanStepInputSchema>;
+
 /** Entrada de `missions:provide-input:v1`: a resposta do usuário ao pedido de entrada do agente. */
 export const provideInputSchema = z.object({
   missionId: z.string().min(1),
