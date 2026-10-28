@@ -639,18 +639,57 @@ describe('aba do projeto: visões', () => {
     expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
   });
 
-  it('trocar de visão muda ?visao= e tira os terminais da tela; voltar a Terminais os traz de volta', async () => {
+  it('trocar de visão muda ?visao= e esconde os terminais sem desmontá-los, e voltar não recarrega o workspace', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
     renderAt();
-    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    const terminal = await screen.findByTestId('terminal-view');
+    const terminaisPanel = document.getElementById('project-panel-terminais');
+    expect(terminaisPanel).not.toHaveAttribute('hidden');
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
 
     selectView('Configurações');
     expect(current.search).toBe('?visao=configuracoes');
-    expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+    // Continua na árvore, com o mesmo nó (o xterm não é refeito), só escondido.
+    expect(screen.getByTestId('terminal-view', { exact: true })).toBe(terminal);
+    expect(terminaisPanel).toHaveAttribute('hidden');
+    expect(terminaisPanel).toContainElement(terminal);
+    expect(
+      screen.queryByRole('button', { name: 'Abrir terminal', hidden: false }),
+    ).not.toBeInTheDocument();
     expect(await screen.findByRole('form', { name: 'Grupo do projeto' })).toBeInTheDocument();
+    expect(document.getElementById('project-panel-configuracoes')).not.toHaveAttribute('hidden');
+
+    selectView('Worktrees');
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    // As outras visões só existem enquanto ativas.
+    expect(screen.queryByRole('form', { name: 'Grupo do projeto' })).not.toBeInTheDocument();
 
     selectView('Terminais');
     expect(current.search).toBe('?visao=terminais');
-    expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+    expect(terminaisPanel).not.toHaveAttribute('hidden');
+    expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+  });
+
+  it('o modo "um painel por vez" sobrevive a uma ida às Configurações e volta', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+
+    selectView('Configurações');
+    await screen.findByRole('form', { name: 'Grupo do projeto' });
+    selectView('Terminais');
+
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Grade' })).toBeInTheDocument();
+    expect(api.workspaces.open).toHaveBeenCalledTimes(1);
   });
 
   it('o painel da visão é o tabpanel das abas da barra, nomeado pela aba ativa', async () => {
@@ -661,10 +700,17 @@ describe('aba do projeto: visões', () => {
     renderAt(undefined, 'p1', '?visao=worktrees');
     await screen.findByRole('tab', { name: 'Worktrees' });
 
-    const panel = document.getElementById('tab-panel');
+    const panel = document.getElementById('project-panel-worktrees');
     expect(panel).toHaveAttribute('role', 'tabpanel');
     expect(panel).toHaveAttribute('aria-labelledby', 'tab-worktrees');
-    expect(view('Worktrees')).toHaveAttribute('aria-controls', 'tab-panel');
+    expect(panel).not.toHaveAttribute('hidden');
+    // Cada aba controla um painel que existe; os das outras visões ficam escondidos.
+    for (const name of ['terminais', 'missoes', 'worktrees', 'configuracoes']) {
+      const tab = document.getElementById(`tab-${name}`);
+      const controlled = document.getElementById(tab?.getAttribute('aria-controls') ?? '');
+      expect(controlled, name).toHaveAttribute('role', 'tabpanel');
+      expect(controlled?.hasAttribute('hidden'), name).toBe(name !== 'worktrees');
+    }
   });
 
   it('?visao=worktrees lista os worktrees, sem título repetido', async () => {

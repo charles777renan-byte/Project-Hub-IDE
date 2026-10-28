@@ -18,3 +18,8 @@ export const DEFAULT_PROJECT_VIEW: ProjectView = 'terminais';
 export function parseProjectView(value: string | null): ProjectView {
   return PROJECT_VIEWS.find((view) => view === value) ?? DEFAULT_PROJECT_VIEW;
 }
+
+/** O id do painel de uma visão: o `aria-controls` da aba dela e o `id` do `role="tabpanel"`. */
+export function projectPanelId(view: ProjectView): string {
+  return `project-panel-${view}`;
+}

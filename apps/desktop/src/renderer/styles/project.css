@@ -120,6 +120,10 @@
   min-height: 0;
 }
 
+.project-tab__panel[hidden] {
+  display: none;
+}
+
 .project-tab__panel--terminais {
   overflow: hidden;
 }
