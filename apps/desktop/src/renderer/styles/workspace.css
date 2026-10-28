@@ -1486,19 +1486,9 @@
 /*
  * Página do workspace: barra para abrir terminais acima da área de painéis. A barra é compacta e usa botões
  * secundários (o lima fica para a ação principal, ativo e foco). Sem painéis, a área mostra o estado vazio
- * num cartão. Espelha as regras da árvore de painéis: sem padding na página e o brilho da janela nos vãos.
+ * num cartão. A página sem padding e com o brilho da janela nos vãos é a da aba do projeto (`.app-main:has(.project-tab)`,
+ * em project.css).
  */
-.app-main:has(.workspace) {
-  padding: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
-.app-main:has(.workspace) .app-main__content {
-  max-width: none;
-  height: 100%;
-}
-
 .workspace {
   display: flex;
   flex-direction: column;

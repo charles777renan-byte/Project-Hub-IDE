@@ -12,7 +12,7 @@ import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
-import { ROUTE_PATHS } from '../../src/renderer/routes';
+import { AppRoutes, ROUTE_PATHS } from '../../src/renderer/routes';
 
 // O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador.
 vi.mock('../../src/renderer/components/terminals/TerminalView', () => ({
@@ -86,10 +86,14 @@ const api = {
   missions: { list: vi.fn() },
 };
 
-let current: { pathname: string; state: unknown } = { pathname: '', state: null };
+let current: { pathname: string; search: string; state: unknown } = {
+  pathname: '',
+  search: '',
+  state: null,
+};
 function Probe() {
   const location = useLocation();
-  current = { pathname: location.pathname, state: location.state };
+  current = { pathname: location.pathname, search: location.search, state: location.state };
   return null;
 }
 
@@ -105,10 +109,10 @@ function tree() {
   );
 }
 
-function renderAt(state?: unknown, projectId = 'p1') {
+function renderAt(state?: unknown, projectId = 'p1', search = '') {
   return render(
     <>
-      <MemoryRouter initialEntries={[{ pathname: `/workspaces/${projectId}`, state }]}>
+      <MemoryRouter initialEntries={[{ pathname: `/workspaces/${projectId}`, search, state }]}>
         {tree()}
       </MemoryRouter>
       <Toaster />
@@ -517,7 +521,7 @@ describe('modo "um painel por vez"', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
 
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
     expect(pane('Claude Code')).toBeInTheDocument();
     expect(pane('Codex')).toBeInTheDocument();
     expect(pane('PowerShell')).toBeInTheDocument();
@@ -542,7 +546,7 @@ describe('modo "um painel por vez"', () => {
       within(pane('PowerShell') as HTMLElement).getByRole('button', { name: 'Voltar à grade' }),
     );
 
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
     expect(pane('Claude Code')).toBeInTheDocument();
   });
 
@@ -553,7 +557,7 @@ describe('modo "um painel por vez"', () => {
 
     await userEvent.dblClick(head);
 
-    expect(screen.getByRole('tablist')).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
     expect(pane('Claude Code')).not.toBeInTheDocument();
   });
 
@@ -603,6 +607,206 @@ describe('modo "um painel por vez"', () => {
 
     await waitFor(() => expect(pane('Codex')).toBeInTheDocument());
     expect(pane('PowerShell')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('tablist', { name: 'Painéis abertos' })).getAllByRole('tab'),
+    ).toHaveLength(2);
+  });
+});
+
+describe('aba do projeto: visões', () => {
+  const view = (name: string) => screen.getByRole('tab', { name });
+  // O jsdom não tem geometria: o react-resizable-panels acha que todo ponteiro cai numa divisória e cancela o
+  // pointerdown de qualquer controle da página. Por isso as abas e o menu do cabeçalho aqui são acionados pelo
+  // teclado (foco ativa a aba; Enter abre o menu e escolhe o item).
+  const selectView = (name: string) => act(() => view(name).focus());
+  const projectsApi = api.projects as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+  it('abre em Terminais, com o workspace de painéis e a barra de visões acima', async () => {
+    renderAt();
+
+    expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+    const tabs = screen.getByRole('tablist', { name: 'Visões do projeto' });
+    expect(within(tabs).getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('heading', { level: 1, name: 'app' })).toBeInTheDocument();
+  });
+
+  it('?visao=terminais é a mesma visão do padrão', async () => {
+    renderAt(undefined, 'p1', '?visao=terminais');
+
+    expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+  });
+
+  it('trocar de visão muda ?visao= e tira os terminais da tela; voltar a Terminais os traz de volta', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    selectView('Configurações');
+    expect(current.search).toBe('?visao=configuracoes');
+    expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('form', { name: 'Grupo do projeto' })).toBeInTheDocument();
+
+    selectView('Terminais');
+    expect(current.search).toBe('?visao=terminais');
+    expect(await screen.findByRole('button', { name: 'Iniciar Claude Code' })).toBeEnabled();
+  });
+
+  it('o painel da visão é o tabpanel das abas da barra, nomeado pela aba ativa', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=worktrees');
+    await screen.findByRole('tab', { name: 'Worktrees' });
+
+    const panel = document.getElementById('tab-panel');
+    expect(panel).toHaveAttribute('role', 'tabpanel');
+    expect(panel).toHaveAttribute('aria-labelledby', 'tab-worktrees');
+    expect(view('Worktrees')).toHaveAttribute('aria-controls', 'tab-panel');
+  });
+
+  it('?visao=worktrees lista os worktrees, sem título repetido', async () => {
+    Object.assign(api, {
+      worktrees: {
+        list: vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            data: [
+              {
+                missionId: 'm1',
+                missionTitle: 'Ajustar login',
+                status: 'failed',
+                path: 'C:\\worktrees\\app\\m1',
+                branch: 'ph/m1-ajustar-login',
+              },
+            ],
+          }),
+        ),
+      },
+    });
+    Object.assign(api.missions, { subscribe: vi.fn(() => () => undefined) });
+    renderAt(undefined, 'p1', '?visao=worktrees');
+
+    expect(await screen.findByText('ph/m1-ajustar-login')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Worktrees do projeto' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Worktrees/ })).not.toBeInTheDocument();
+    expect(view('Worktrees')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('?visao=configuracoes mostra pasta, branch, grupo e apelido, e salva grupo e apelido pela API', async () => {
+    const ok = () => Promise.resolve({ ok: true, data: undefined });
+    Object.assign(api.projects, {
+      setGroup: vi.fn(ok),
+      setNickname: vi.fn(ok),
+      openFolder: vi.fn(ok),
+    });
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: 'p1',
+          name: 'app',
+          path: 'C:\\Projetos\\app',
+          repositoryKind: 'git',
+          available: true,
+          defaultBranch: 'main',
+        },
+      ],
+    });
+    renderAt(undefined, 'p1', '?visao=configuracoes');
+
+    expect(await screen.findByText('main')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir pasta' })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Grupo'), 'Trabalho');
+    await userEvent.click(
+      within(screen.getByRole('form', { name: 'Grupo do projeto' })).getByRole('button', {
+        name: 'Salvar',
+      }),
+    );
+    expect(projectsApi['setGroup']).toHaveBeenCalledWith('p1', 'Trabalho');
+    await userEvent.type(screen.getByLabelText('Apelido'), 'App');
+    await userEvent.click(
+      within(screen.getByRole('form', { name: 'Apelido do projeto' })).getByRole('button', {
+        name: 'Salvar',
+      }),
+    );
+    expect(projectsApi['setNickname']).toHaveBeenCalledWith('p1', 'App');
+  });
+
+  it('?visao=missoes mostra o marcador temporário da lista de missões', async () => {
+    renderAt(undefined, 'p1', '?visao=missoes');
+
+    expect(await screen.findByRole('tab', { name: 'Missões' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('As missões do projeto aparecem aqui em breve.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+  });
+
+  it('Nova missão leva a ?visao=missoes com state.newMission', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Nova missão' }));
+
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(current.search).toBe('?visao=missoes');
+    expect(current.state).toEqual({ newMission: true });
+  });
+
+  it('Arquivar pelo Mais ações pede confirmação e leva ao Início', async () => {
+    Object.assign(api.projects, {
+      archive: vi.fn(() => Promise.resolve({ ok: true, data: undefined })),
+    });
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    act(() => screen.getByRole('button', { name: 'Mais ações' }).focus());
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('menuitem', { name: 'Arquivar projeto' });
+    await userEvent.keyboard('{Enter}');
+    expect(projectsApi['archive']).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Arquivar' }));
+
+    expect(await screen.findByText('página inicial')).toBeInTheDocument();
+    expect(projectsApi['archive']).toHaveBeenCalledWith('p1');
+  });
+
+  it('o pedido de terminal da barra lateral mantém a visão da rota ao limpar o estado', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderAt({ showTerminal: 't1' }, 'p1', '?visao=terminais');
+
+    await screen.findByTestId('terminal-view');
+    await waitFor(() => expect(current.state).toBeNull());
+    expect(current.search).toBe('?visao=terminais');
+  });
+
+  it('projeto ausente, em qualquer visão, mostra a mensagem com o link para o Início', async () => {
+    renderAt(undefined, 'outro', '?visao=configuracoes');
+
+    expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voltar ao Início' })).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('tablist', { name: 'Visões do projeto' })).not.toBeInTheDocument();
+  });
+
+  it('/projects/p1 redireciona para /workspaces/p1?visao=missoes e leva newMission junto', async () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/projects/p1', state: { newMission: true } }]}>
+        <Probe />
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('tab', { name: 'Missões' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(current.pathname).toBe('/workspaces/p1');
+    expect(current.search).toBe('?visao=missoes');
+    expect(current.state).toEqual({ newMission: true });
   });
 });

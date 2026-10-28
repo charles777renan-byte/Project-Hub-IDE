@@ -13,6 +13,7 @@ import {
   ShieldQuestionMark,
   type LucideIcon,
 } from './components/Icon';
+import type { ProjectView } from './project-views';
 
 /**
  * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda a
@@ -365,6 +366,50 @@ export const HOME_TEXT = {
   progressLabel: (title: string, done: number, total: number) =>
     `Progresso de ${title}: ${done} de ${total} tarefas`,
   activityEmpty: (days: number) => `Nenhuma atividade nos últimos ${days} dias.`,
+} as const;
+
+/** Textos da aba do projeto: a barra de visões, as ações do projeto e as configurações. */
+export const PROJECT_TEXT = {
+  viewsLabel: 'Visões do projeto',
+  viewLabel: {
+    terminais: 'Terminais',
+    missoes: 'Missões',
+    worktrees: 'Worktrees',
+    configuracoes: 'Configurações',
+  } satisfies Record<ProjectView, string>,
+  newMission: 'Nova missão',
+  moreActions: 'Mais ações',
+  archive: 'Arquivar projeto',
+  archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
+  archiveConfirm: 'Arquivar',
+  remove: 'Remover da lista',
+  removeQuestion:
+    'Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão, e cadastrar a pasta de novo traz tudo de volta.',
+  removeConfirm: 'Remover',
+  missionsSoon: 'As missões do projeto aparecem aqui em breve.',
+  notFound: 'O projeto não foi encontrado.',
+  backHome: 'Voltar ao Início',
+  genericError: 'Não foi possível concluir a ação. Tente de novo.',
+  settings: {
+    folder: 'Pasta',
+    kind: 'Tipo',
+    gitKind: 'Repositório Git',
+    noGitKind: 'Sem Git',
+    branch: 'Branch padrão',
+    group: 'Grupo',
+    groupForm: 'Grupo do projeto',
+    groupStatus: 'Situação do grupo',
+    groupPlaceholder: 'Trabalho, Pessoal…',
+    groupSaved: 'Grupo salvo.',
+    groupClear: 'Tirar do grupo',
+    nickname: 'Apelido',
+    nicknameForm: 'Apelido do projeto',
+    nicknameStatus: 'Situação do apelido',
+    nicknamePlaceholder: 'ex.: Re_Zero',
+    nicknameSaved: 'Apelido salvo.',
+    nicknameClear: 'Remover apelido',
+    save: 'Salvar',
+  },
 } as const;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

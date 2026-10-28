@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css depois do app.css e o workspace.css por último', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css e o project.css depois do app.css e o workspace.css por último', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -60,6 +60,7 @@ describe('index.html do renderer', () => {
       './styles/plan.css',
       './styles/orchestrator-board.css',
       './styles/statusbar.css',
+      './styles/project.css',
       './styles/workspace.css',
     ]);
   });
@@ -148,6 +149,7 @@ describe('fontes locais', () => {
       'plan.css',
       'orchestrator-board.css',
       'statusbar.css',
+      'project.css',
       'workspace.css',
     ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
