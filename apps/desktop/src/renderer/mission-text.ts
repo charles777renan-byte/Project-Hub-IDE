@@ -215,6 +215,37 @@ export const PLAN_TEXT = {
   program: (title: string) => `Programa da tarefa ${title}`,
 } as const;
 
+/** Textos do quadro do orquestrador (Plano): os três níveis e o estado dos papéis. */
+export const BOARD_TEXT = {
+  label: 'Quadro do orquestrador',
+  orchestrator: 'Orquestrador principal',
+  orchestratorDescription: 'Analisa o pedido, planeja tarefas e acompanha os resultados',
+  delivery: 'Integração e entrega',
+  deliveryDescription:
+    'Reúne alterações, executa verificações e apresenta o resultado para aprovação',
+  taskCount: (count: number) => (count === 1 ? '1 tarefa' : `${count} tarefas`),
+  state: {
+    waiting: 'aguardando',
+    running: 'em andamento',
+    done: 'concluído',
+    failed: 'falhou',
+  },
+} as const;
+
+/** Estado de um papel no quadro, resumido das tarefas dele. */
+export type RoleState = keyof typeof BOARD_TEXT.state;
+
+/**
+ * Estado de um papel a partir do estado das suas tarefas: qualquer falha vence; depois, qualquer tarefa
+ * em andamento; com todas concluídas, concluído; o resto (pendente, bloqueada, ignorada) é aguardando.
+ */
+export function roleState(statuses: readonly MissionStepDto['status'][]): RoleState {
+  if (statuses.includes('failed')) return 'failed';
+  if (statuses.includes('running')) return 'running';
+  if (statuses.length > 0 && statuses.every((status) => status === 'succeeded')) return 'done';
+  return 'waiting';
+}
+
 /**
  * Estados que pedem uma decisão da pessoa: a aprovação de uma ação protegida e a resposta do agente
  * ficam na aba Conversa, e o banner "Aguardando você" aparece em todas as abas. O foco vai para o
