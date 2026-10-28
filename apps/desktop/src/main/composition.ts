@@ -14,6 +14,7 @@ import {
   type MissionDiffDeps,
   type MissionQueryDeps,
   type Orchestrator,
+  type Planner,
   type Platform,
   type ProfileDeps,
   type ProjectLifecycleDeps,
@@ -85,6 +86,8 @@ export type AppServicesOptions = {
   maxRunningMissions?: number | undefined;
   /** Agente das missões. Sem ele, vale o agente simulado. */
   agent?: OrchestratorDeps['agent'] | undefined;
+  /** Planejador das tarefas do plano. Sem ele, o plano sai com um passo por critério de aceite. */
+  planner?: Planner | undefined;
 };
 
 /**
@@ -162,6 +165,17 @@ export function resolveDirectoryChooser<Args extends unknown[]>(
 }
 
 /**
+ * Comando do planejador nos testes de ponta a ponta. Só com `PROJECT_HUB_ENV=test` e
+ * `APP_PLANNER_COMMAND` preenchida o comando de teste vale (um CLI falso no lugar do `claude`). Em
+ * qualquer outro caso, a variável é ignorada e vale `defaultCommand`. Empacotado, as duas variáveis já
+ * foram retiradas por `applicationEnvironment`.
+ */
+export function resolvePlannerCommand(env: NodeJS.ProcessEnv, defaultCommand: string): string {
+  const testCommand = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_PLANNER_COMMAND'] : undefined;
+  return testCommand === undefined || testCommand === '' ? defaultCommand : testCommand;
+}
+
+/**
  * Liga as portas dos casos de uso às implementações reais (composição do processo principal). Abre
  * o banco, aplica as migrações e trata as execuções que ficaram abertas antes de devolver os
  * serviços (seção 15.7). Se a migração falha, o banco é fechado antes do erro subir: no Windows, o
@@ -183,6 +197,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const newId = () => randomUUID();
 
   const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
+  const fs = { isDirectory: createIsDirectory() };
   const orchestrator = createOrchestrator({
     repo,
     projects,
@@ -193,11 +208,12 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     agent: options.agent ?? createDemoAgent(),
     ...(options.maxRunningMissions === undefined ? {} : { maxRunning: options.maxRunningMissions }),
     diff,
+    fs,
+    ...(options.planner === undefined ? {} : { planner: options.planner }),
     now,
     newId,
   });
   // A recuperação das execuções abertas roda dentro do orquestrador (reanexa ou fecha, e anda com a fila).
-  const fs = { isDirectory: createIsDirectory() };
   return {
     repo: projects,
     git: createGitDetector(),
@@ -222,6 +238,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       },
     },
     close: () => {
+      // Antes do banco: aborta o planejador que estiver rodando, para o processo `claude` não sobreviver ao app.
+      orchestrator.dispose();
       db.$client.close();
     },
   };

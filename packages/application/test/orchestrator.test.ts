@@ -2,6 +2,7 @@ import type { AppResult, MissionDiffDto } from '@project-hub/contracts';
 import type { AuditEvent, Execution, Mission } from '@project-hub/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { createOrchestrator, type Orchestrator } from '../src/missions/orchestrator';
+import { failure } from '../src/result';
 import { fakeRepository } from './fakes';
 import { fakeAgent, type FakeAgent, type FakeStep } from './fake-agent';
 import {
@@ -387,6 +388,65 @@ describe('planMission com o planejador', () => {
     expect(codeOf(result)).toBe('MISSION_NOT_FOUND');
     expect(h.repo.listSteps(MISSION)).toEqual([]);
     expect(h.repo.audit()).toEqual([]);
+  });
+
+  it('dispose aborta o planejamento em andamento e a missão fica como estava', async () => {
+    let seen: AbortSignal | undefined;
+    const planner = fakePlanner(
+      (input) =>
+        new Promise<AppResult<PlannedTask[]>>((resolve) => {
+          seen = input.signal;
+          input.signal.addEventListener(
+            'abort',
+            () => resolve(failure('AGENT_UNAVAILABLE', 'O planejamento foi cancelado.')),
+            { once: true },
+          );
+        }),
+    );
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const pending = h.orchestrator.planMission(MISSION);
+    await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+    expect(seen?.aborted).toBe(false);
+    h.orchestrator.dispose();
+    const result = await pending;
+
+    expect(seen?.aborted).toBe(true);
+    expect(codeOf(result)).toBe('AGENT_UNAVAILABLE');
+    expect(h.repo.getMission(MISSION)?.status).toBe('draft');
+    expect(h.repo.listSteps(MISSION)).toEqual([]);
+    // Com o app fechando, o banco pode já estar fechado: nada é gravado, nem o plan.failed.
+    expect(h.repo.audit()).toEqual([]);
+  });
+
+  it('dispose com o plano já proposto: descarta o plano e não grava', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    const planner = fakePlanner(() => gate.promise);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    const pending = h.orchestrator.planMission(MISSION);
+    await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+    h.orchestrator.dispose();
+    gate.resolve(OK_PLAN);
+    const result = await pending;
+
+    expect(codeOf(result)).toBe('AGENT_UNAVAILABLE');
+    expect(h.repo.getMission(MISSION)?.status).toBe('draft');
+    expect(h.repo.listSteps(MISSION)).toEqual([]);
+    expect(h.repo.audit()).toEqual([]);
+  });
+
+  it('dispose é idempotente e não faz nada sem planejamento em andamento', () => {
+    const h = harness({ planner: fakePlanner(() => OK_PLAN) });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    expect(() => {
+      h.orchestrator.dispose();
+      h.orchestrator.dispose();
+    }).not.toThrow();
+    expect(h.repo.getMission(MISSION)?.status).toBe('draft');
   });
 
   it('pasta do projeto indisponível: erro e o planejador não é chamado', async () => {
