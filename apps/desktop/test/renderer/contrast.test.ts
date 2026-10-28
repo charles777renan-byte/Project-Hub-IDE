@@ -573,10 +573,15 @@ describe('cores da aba Progresso (progress.css)', () => {
     },
   );
 
-  it.each(['--warn', '--danger'])('o texto em %s passa de 4,5:1 sobre o cartão', (color) => {
-    expect(
-      contrastRatio(tokens.get(color) ?? '', tokens.get('--surface') ?? ''),
-      color,
-    ).toBeGreaterThanOrEqual(MIN_CONTRAST);
-  });
+  it.each(['--warn', '--danger'])(
+    'o texto em %s passa de 4,5:1 sobre o cartão e sobre a linha expandida',
+    (color) => {
+      for (const surface of ['--surface', '--surface-2']) {
+        expect(
+          contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    },
+  );
 });
