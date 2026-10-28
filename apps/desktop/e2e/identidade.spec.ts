@@ -135,12 +135,11 @@ async function tabThroughControls(page: Page): Promise<FocusReport> {
 }
 
 /**
- * Vai a uma visão da aba do projeto pelo teclado (o foco na aba ativa a visão), e não pelo clique. O clique do
- * mouse numa aba deixa o próprio contêiner das abas (`div.tabs`) como uma parada do Tab, sem anel de foco, na
- * volta seguinte pela página: um detalhe do componente de abas que este teste de foco não mede.
+ * Vai a uma visão da aba do projeto clicando na aba, como a pessoa faz. O clique deixa o contêiner das abas
+ * (`div.tabs`) como uma parada do Tab na volta seguinte pela página: ela tem de mostrar o anel de foco.
  */
 async function openView(page: Page, view: ProjectViewName): Promise<void> {
-  await viewTab(page, view).focus();
+  await viewTab(page, view).click();
   await expect(viewTab(page, view)).toHaveAttribute('aria-selected', 'true');
 }
 

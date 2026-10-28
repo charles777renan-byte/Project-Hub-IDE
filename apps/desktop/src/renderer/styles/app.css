@@ -387,6 +387,15 @@ button:disabled {
   margin: 0 0 var(--space-4);
 }
 
+/*
+ * Depois de um clique numa aba, o Radix deixa a própria barra como uma parada do Tab (tabindex 0) com
+ * `outline: none` inline. O !important é o que vence esse estilo inline, para a parada ter o anel de foco do app.
+ */
+.tabs:focus-visible {
+  outline: 2px solid var(--focus) !important;
+  outline-offset: 2px;
+}
+
 .tab {
   border: 0;
   border-radius: var(--radius-pill);

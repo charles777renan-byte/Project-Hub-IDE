@@ -422,8 +422,8 @@ export const HOME_TEXT = {
   filterGroup: 'Filtrar missões por estado',
   filterClear: 'Limpar filtro',
   filterLabel: {
-    running: 'Em andamento',
-    attention: 'Esperam você',
+    running: 'Executando',
+    attention: 'Aguarda você',
     failed: 'Falharam',
   } satisfies Record<MissionStatusFilter, string>,
   tasks: (done: number, total: number) => `${done}/${total} tarefas`,

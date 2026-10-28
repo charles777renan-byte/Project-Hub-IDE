@@ -57,13 +57,13 @@ test('a barra de status mostra os contadores, e clicar num deles filtra o Iníci
   await waiting.click();
   await expect(page).toHaveURL(/#\/\?estado=attention$/);
   const missions = page.getByRole('region', { name: 'Missões' });
-  await expect(missions.getByRole('button', { name: 'Esperam você' })).toHaveAttribute(
+  await expect(missions.getByRole('button', { name: 'Aguarda você' })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
   await expect(missions.getByRole('link', { name: MISSION.title })).toBeVisible();
   // Fora da barra de status o Início não repete o contador: o filtro é só a lista de missões.
-  await expect(missions.getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+  await expect(missions.getByRole('button', { name: 'Executando' })).toHaveAttribute(
     'aria-pressed',
     'false',
   );
@@ -71,7 +71,7 @@ test('a barra de status mostra os contadores, e clicar num deles filtra o Iníci
   // Outro contador troca o filtro: nenhuma missão em execução, e a lista diz isso.
   await running.click();
   await expect(page).toHaveURL(/#\/\?estado=running$/);
-  await expect(missions.getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+  await expect(missions.getByRole('button', { name: 'Executando' })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
