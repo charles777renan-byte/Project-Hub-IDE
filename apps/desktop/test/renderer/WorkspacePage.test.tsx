@@ -499,6 +499,106 @@ describe('WorkspacePage', () => {
   });
 });
 
+// A animação em si só toca na janela real; aqui se prova quem é marcado e quando o painel sai do layout.
+describe('animação ao abrir e fechar painéis', () => {
+  beforeEach(() => {
+    // Com `matchMedia` e sem "reduzir movimento", a saída espera a animação.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    );
+  });
+
+  const leafOf = (pane: HTMLElement) => pane.closest('.pane-tree__leaf') as HTMLElement;
+  // O jsdom não tem AnimationEvent: sem ele o React escuta o nome com prefixo, e o `animationName` entra à mão.
+  const animationEnd = (target: Element, animationName: string) => {
+    const event = new Event('webkitAnimationEnd', { bubbles: true });
+    Object.defineProperty(event, 'animationName', { value: animationName });
+    fireEvent(target, event);
+  };
+
+  it('o painel novo nasce marcado para entrar; os que o workspace trouxe ao abrir, não', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    api.workspaces.addPane.mockResolvedValue({
+      ok: true,
+      data: dto(
+        arrangeLeaves([leaf('a', 'claude'), leaf('n', 'shell')], () => 'novo') as LayoutNode,
+      ),
+    });
+    renderAt();
+    const first = await screen.findByRole('region', { name: 'Painel Claude Code' });
+    expect(leafOf(first)).not.toHaveAttribute('data-motion');
+    await abrirPrograma(/PowerShell/);
+    const created = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    expect(leafOf(created)).toHaveAttribute('data-motion', 'entering');
+    expect(leafOf(screen.getByRole('region', { name: 'Painel Claude Code' }))).not.toHaveAttribute(
+      'data-motion',
+    );
+  });
+
+  it('a marca de entrada sai quando a entrada termina (voltar à visão Terminais não a repete)', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    api.workspaces.addPane.mockResolvedValue({
+      ok: true,
+      data: dto(
+        arrangeLeaves([leaf('a', 'claude'), leaf('n', 'shell')], () => 'novo') as LayoutNode,
+      ),
+    });
+    renderAt();
+    await screen.findByRole('region', { name: 'Painel Claude Code' });
+    await abrirPrograma(/PowerShell/);
+    const created = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    animationEnd(leafOf(created), 'pane-in');
+    expect(leafOf(created)).not.toHaveAttribute('data-motion');
+  });
+
+  it('fechar marca a saída e só chama removePane quando a animação termina, uma vez', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    renderAt();
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    expect(leafOf(pane)).toHaveAttribute('data-motion', 'leaving');
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    // A animação de algo de dentro do painel não conta.
+    animationEnd(within(pane).getByRole('button', { name: 'Fechar painel' }), 'pane-out');
+    expect(screen.getByRole('region', { name: 'Painel PowerShell' })).toBe(pane);
+    expect(leafOf(pane)).toHaveAttribute('data-motion', 'leaving');
+    // O fim da saída tira o painel da tela no mesmo instante, sem esperar o prazo.
+    animationEnd(leafOf(pane), 'pane-out');
+    expect(screen.queryByRole('region', { name: 'Painel PowerShell' })).not.toBeInTheDocument();
+    await waitFor(() => expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c'));
+    expect(api.workspaces.removePane).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem o fim da animação (janela em segundo plano), o painel fecha pelo prazo', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    renderAt();
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await waitFor(() => expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c'));
+    expect(api.workspaces.removePane).toHaveBeenCalledTimes(1);
+  });
+
+  it('com "reduzir movimento", fecha na hora', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    renderAt();
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
+  });
+});
+
 describe('modo "um painel por vez"', () => {
   const pane = (name: string) => screen.queryByRole('region', { name: `Painel ${name}` });
 

@@ -22,6 +22,12 @@ import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
 import { leavesOf } from '../workspace/layout-model';
+import {
+  LEAVE_FALLBACK_MS,
+  paneMotionOff,
+  useEnteringLeaves,
+  type PaneMotion,
+} from '../workspace/pane-motion';
 import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useWorkspace } from '../workspace/use-workspace';
 import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
@@ -170,6 +176,11 @@ function WorkspaceBody({
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   // Painéis que estão fechando: somem da tela já, antes da resposta do processo principal.
   const [closing, setClosing] = useState<ReadonlySet<string>>(new Set());
+  // Painéis encolhendo antes de fechar (pane-motion.ts): a ref barra o segundo clique antes de o estado chegar.
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
+  const leavingRef = useRef(new Set<string>());
+  // O prazo da saída chama a versão da última pintura, não a do clique.
+  const finishLeavingRef = useRef<(leafId: string) => void>(() => {});
   const consumed = useRef<string | null>(null);
   // Abrir um painel é um pedido por vez: a ref barra o segundo clique antes de o estado chegar.
   const [opening, setOpening] = useState(false);
@@ -201,6 +212,7 @@ function WorkspaceBody({
   const ready = workspace.state.status === 'ready';
   const currentLayout =
     workspace.state.status === 'ready' ? workspace.state.workspace.layout : undefined;
+  const { entering, settle } = useEnteringLeaves(currentLayout);
   // Ao ficar sem painéis (o último foi fechado), o foco não pode cair no body: vai para a barra.
   useEffect(() => {
     if (currentLayout === undefined) return;
@@ -302,7 +314,7 @@ function WorkspaceBody({
 
   // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
   // O painel some na hora, sem esperar o processo principal. Se o pedido falhar, ele volta e o erro aparece nele.
-  const closePane = (leafId: string) => {
+  const removeNow = (leafId: string) => {
     // No modo de um painel, o vizinho vira o ativo antes de fechar: é ele que passa a aparecer.
     if (soloLeaf?.id === leafId) {
       const next = neighbourOf(shownLeaves, leafId);
@@ -317,6 +329,32 @@ function WorkspaceBody({
       }),
     );
   };
+
+  // A saída terminou (ou o prazo venceu): agora o painel sai do layout. Chamar de novo não faz nada.
+  const finishLeaving = (leafId: string) => {
+    if (!leavingRef.current.delete(leafId)) return;
+    setLeaving((previous) => {
+      const next = new Set(previous);
+      next.delete(leafId);
+      return next;
+    });
+    removeNow(leafId);
+  };
+  finishLeavingRef.current = finishLeaving;
+
+  // Na grade, o painel encolhe e some antes de sair; sozinho na tela (o vizinho aparece no lugar) ou com
+  // "reduzir movimento", sai na hora.
+  const closePane = (leafId: string) => {
+    if (leavingRef.current.has(leafId)) return;
+    if (soloLeaf !== undefined || paneMotionOff()) {
+      removeNow(leafId);
+      return;
+    }
+    leavingRef.current.add(leafId);
+    setLeaving((previous) => new Set(previous).add(leafId));
+    window.setTimeout(() => finishLeavingRef.current(leafId), LEAVE_FALLBACK_MS);
+  };
+  const motion: PaneMotion = { entering, leaving, onEntered: settle, onLeft: finishLeaving };
 
   // Ctrl+Alt com as setas troca de aba. Vale na captura, antes do xterm: dentro do terminal o xterm tomaria a tecla.
   const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -418,7 +456,12 @@ function WorkspaceBody({
             />
           </div>
         ) : (
-          <PaneTree layout={shown} onRatio={workspace.setRatio} renderLeaf={renderLeaf} />
+          <PaneTree
+            layout={shown}
+            onRatio={workspace.setRatio}
+            renderLeaf={renderLeaf}
+            motion={motion}
+          />
         )}
       </div>
     </div>
