@@ -17,6 +17,7 @@ export {
   type OrchestratorDeps,
 } from './missions/orchestrator';
 export { planFromCriteria, type MissionPlanStep } from './missions/plan';
+export { applyPlanEdit, type PlanEdit } from './missions/plan-edit';
 export {
   MAX_PLAN_TASKS,
   tasksToSteps,
