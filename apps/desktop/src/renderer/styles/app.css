@@ -1342,6 +1342,38 @@ button:disabled {
 }
 
 /*
+ * Uso do computador e "Parar todos" no cabeçalho (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
+ * discreto em --muted. Em janela estreita ele some primeiro, para os contadores não perderem lugar. A pergunta
+ * de "Parar todos" cabe na altura da barra: botões baixos, sem quebra de linha.
+ */
+.system-usage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .system-usage {
+    display: none;
+  }
+}
+
+.topbar__status .confirm-inline {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.topbar__status .btn-danger,
+.topbar__status .confirm-inline button {
+  height: 24px;
+  padding: 0 var(--space-2);
+  font-size: 0.6875rem;
+  line-height: 22px;
+}
+
+/*
  * Workspace da missão (pages/MissionPage.tsx): uma coluna com o resumo fixo no topo, o banner
  * "Aguardando você" (só com decisão pendente), e a área das abas, que enche a altura que sobra da
  * página. Cada painel de aba rola dentro de si, então nenhum conteúdo é cortado e a página não cresce
