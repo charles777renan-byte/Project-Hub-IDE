@@ -182,9 +182,9 @@ describe('estilo do aviso', () => {
     expect(toast.get('color')).toBe('var(--text)');
   });
 
-  it('o lima marca o sucesso e o vermelho do tema marca o erro', () => {
+  it('o ciano marca o sucesso e o vermelho do tema marca o erro', () => {
     expect(ruleDeclarations(appCss, '.toast--success .toast__icon').get('color')).toBe(
-      'var(--lime)',
+      'var(--cyan)',
     );
     expect(ruleDeclarations(appCss, '.toast--error .toast__icon').get('color')).toBe(
       'var(--danger)',

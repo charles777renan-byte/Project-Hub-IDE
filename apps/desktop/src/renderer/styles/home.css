@@ -373,7 +373,7 @@
   display: block;
   min-width: 0;
   aspect-ratio: 1;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .activity-cell--blank {
