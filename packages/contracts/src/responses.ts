@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { activityDailyResponseSchema } from './activity';
 import { CHANNELS } from './channels';
+import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { systemUsageDtoSchema } from './system';
 import { projectSummarySchema } from './project';
@@ -87,4 +88,6 @@ export const responseSchemas = {
   [CHANNELS.profileGet]: appResultSchema(profileDtoSchema),
   [CHANNELS.profileSetDisplayName]: appResultSchema(z.undefined()),
   [CHANNELS.systemUsage]: appResultSchema(systemUsageDtoSchema),
+  [CHANNELS.limitsGet]: appResultSchema(limitsDtoSchema),
+  [CHANNELS.limitsRefresh]: appResultSchema(limitsDtoSchema),
 } as const;

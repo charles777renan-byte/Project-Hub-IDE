@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   CHANNELS,
+  type LimitsDto,
   type MissionEventDto,
   type MissionUsageEventDto,
   type TerminalEvent,
@@ -26,14 +27,19 @@ import {
   resolveAgentCommand,
   resolveDatabaseFile,
   resolveDirectoryChooser,
+  resolveLimitsCommand,
   resolveMaxRunning,
   resolvePlannerCommand,
   resolveWorktreesRoot,
 } from './composition';
 import { createClaudeAgent, createTerminalBackend, resolveExecutable } from './claude-agent';
+import { createClaudeLimitsProbe } from './claude-limits';
 import { createClaudePlanner } from './claude-planner';
+import { registerLimitsHandlers } from './ipc/limits';
 import { registerActivityHandlers } from './ipc/activity';
 import { registerProfileHandlers } from './ipc/profile';
+import { createLimitsService } from './limits';
+import { createLimitsStore } from './limits-store';
 import { registerSystemHandlers } from './ipc/system';
 import { createSystemUsageSampler } from './system-usage';
 import { buildTerminalEnv } from '../terminal-host/env';
@@ -140,6 +146,13 @@ function publishMissionUsage(event: MissionUsageEventDto): void {
   const target = mainWindow;
   if (target === undefined || target.isDestroyed()) return;
   target.webContents.send(CHANNELS.missionsUsage, event);
+}
+
+/** Entrega o estado dos limites da assinatura ao quadro principal. */
+function publishLimitsEvent(limits: LimitsDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.limitsEvent, limits);
 }
 
 /** Entrega um evento de terminal ao quadro principal. */
@@ -257,6 +270,31 @@ app
       services.close();
     });
 
+    // Limites da assinatura: lidos rodando o próprio `claude` do usuário, com o ambiente filtrado dos terminais
+    // (que passa o login). Em teste, sem o gancho `APP_LIMITS_SCRIPT`, a sonda nem é criada: cada leitura gasta
+    // cota real, e o serviço fica inerte. A leitura automática só roda com a janela principal à vista.
+    const limitsDir = testDataDir ?? app.getPath('userData');
+    const limitsCommand = resolveLimitsCommand(env, resolveExecutable('claude', process.env));
+    const limits = createLimitsService({
+      probe: limitsCommand.enabled
+        ? createClaudeLimitsProbe({
+            command: limitsCommand.command,
+            commandPrefix: limitsCommand.commandPrefix,
+            env: buildTerminalEnv(process.env),
+            extraEnv: limitsCommand.extraEnv,
+            cwd: join(limitsDir, 'limits-probe'),
+          })
+        : undefined,
+      store: createLimitsStore(join(limitsDir, 'limits.json')),
+      publish: publishLimitsEvent,
+      isActive: () =>
+        mainWindow !== undefined && !mainWindow.isDestroyed() && !mainWindow.isMinimized(),
+    });
+    // Para o timer e mata a leitura em andamento, para o `claude` filho não sobreviver ao app.
+    app.once('will-quit', () => {
+      limits.dispose();
+    });
+
     registerTrustedHandler(ipcMain, CHANNELS.appPing, isTrustedSender, () =>
       Promise.resolve({ ok: true, data: 'pong' }),
     );
@@ -275,6 +313,7 @@ app
     });
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
+    registerLimitsHandlers(ipcMain, isTrustedSender, limits);
     const providers = createProviderRegistry({
       env: process.env,
       platform: process.platform,
@@ -310,11 +349,13 @@ app
       providers,
     );
     createMainWindow();
+    limits.start();
 
     // macOS: reabre a janela quando o ícone do Dock é clicado sem janela aberta.
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createMainWindow();
+        limits.start();
       }
     });
   })

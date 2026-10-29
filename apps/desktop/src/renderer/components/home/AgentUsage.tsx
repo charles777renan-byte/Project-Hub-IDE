@@ -1,6 +1,8 @@
+import { ClaudeLimits } from './ClaudeLimits';
+
 /**
- * Uso dos agentes: por enquanto só o espaço reservado para a próxima etapa. Não mostra número, barra
- * nem dado simulado; o estado vazio diz o que virá.
+ * Uso dos agentes: o cartão dos limites do Claude e, abaixo, uma linha para os programas que ainda não
+ * têm fonte de dados.
  */
 export function AgentUsage() {
   return (
@@ -8,7 +10,8 @@ export function AgentUsage() {
       <h2 id="agent-usage-title" className="home-block__title">
         Uso dos agentes
       </h2>
-      <p className="agent-usage__empty">Em breve: limites de uso do Claude Code e do Codex.</p>
+      <ClaudeLimits />
+      <p className="agent-usage__empty">Codex e Antigravity CLI: Em breve.</p>
     </section>
   );
 }

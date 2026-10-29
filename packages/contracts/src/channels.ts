@@ -74,4 +74,10 @@ export const CHANNELS = {
   profileSetDisplayName: 'profile:set-display-name:v1',
   /** Uso do processador e da memória do computador, para o cabeçalho. Só leitura. */
   systemUsage: 'system:usage:v1',
+  /** Limites da assinatura dos programas (cartão de uso do Início): a última leitura guardada. */
+  limitsGet: 'limits:get:v1',
+  /** Pede uma leitura nova dos limites. Devolve o estado depois da leitura (ou o de antes, se ela é recente). */
+  limitsRefresh: 'limits:refresh:v1',
+  /** Mudança nos limites (leitura nova ou em andamento), do processo principal para o renderer. Não tem resposta. */
+  limitsEvent: 'limits:event:v1',
 } as const;

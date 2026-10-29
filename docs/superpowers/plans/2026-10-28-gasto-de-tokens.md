@@ -1,6 +1,6 @@
 # Gasto de tokens em tempo real e limites de assinatura: plano
 
-Estado: fase 1 em implementação, sem commit (2026-10-28). Plano revisado pela revisão independente (três lentes: arquitetura, terminal e segurança, produto e precisão). A fase 2 ainda não começou. Os números medidos vêm de transcripts locais e não devem ir para testes sem anonimização.
+Estado: fase 1 em implementação, sem commit (2026-10-28). Plano revisado pela revisão independente (três lentes: arquitetura, terminal e segurança, produto e precisão). A fase 2 (limites de assinatura) está em implementação no ramo `feat/limites-de-assinatura`, sem commit. Os números medidos vêm de transcripts locais e não devem ir para testes sem anonimização.
 
 Decisão de escopo: `brain/decisoes/decisao-limites-de-assinatura.md`.
 
@@ -100,20 +100,23 @@ Gate de cada parte: `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 
 ## Fase 2: limites de assinatura no Início
 
-Pedido do usuário em 2026-10-28: um bloco no Início com a porcentagem usada e a hora da renovação, como nas capturas de referência (Claude, Codex e Antigravity).
+Pedido do usuário em 2026-10-28: um cartão "Uso do Claude" no Início, com a porcentagem usada e a hora da renovação das janelas de 5 horas e semanal, como nas capturas de referência. Estado: em implementação, no ramo `feat/limites-de-assinatura`, sem commit. Decisão: [decisão de limites de assinatura](../../../brain/decisoes/decisao-limites-de-assinatura.md).
 
-### Claude (entra nesta fase)
+### Claude (em implementação)
 
-- Fonte: `rate_limits.five_hour` (Sessão atual) e `rate_limits.seven_day` (Semanal, todos os modelos), recebidos pelo `statusLine` no arquivo de `--settings` do terminal.
-- Efeitos colaterais a informar antes de implementar:
-  - pela doc de configurações, a linha de comando fica acima das configurações de projeto e de usuário, então o `statusLine` do usuário é sobrescrito dentro das sessões do app. Não testado ainda;
-  - o rodapé do terminal perde as dicas de teclado, incluindo "esc to interrupt". A alternativa citada pela doc é `footerLinksRegexes`;
-  - o script é cancelado a cada nova atualização, então a ponte que envia ao app precisa ser rápida e idempotente;
-  - `rate_limits` vale para a conta inteira, e só aparece para Pro e Max.
+- Fonte: o próprio Claude Code em modo `-p`. O app roda uma chamada mínima (`claude -p "." --model haiku --restricted --strict-mcp-config --tools "" --system-prompt "." --no-session-persistence --output-format stream-json --verbose`) e lê o evento `rate_limit_event`: `rate_limit_info.unifiedWindows.five_hour` e `seven_day`, com `utilization` (de 0 a 1), `resetsAt` (epoch em segundos) e `status`.
+- Medido em 2026-10-28, com o Claude Code 2.1.312: cerca de 1,3 mil tokens e US$ 0,0003 por leitura, em torno de 4 s. Os números batem com o cartão de referência.
+- Descartado: o `statusLine` via `--settings`. Só traz `rate_limits` durante uma sessão do app, sobrescreve o `statusLine` do usuário (testado) e só chega depois da primeira resposta. Com ele saem também a perda de dicas do rodapé e a sobrescrita.
+- Não existe a linha "Semanal (por modelo)" nessa fonte. O app não a mostra.
+- Não lê o token de login nem chama a API da Anthropic. O ambiente da sonda é filtrado e inclui `CLAUDE_CONFIG_DIR` ([[decisao-raiz-do-claude-config]]).
+- Agendamento: primeira leitura 5 s depois de a janela abrir, depois a cada 15 minutos, só com a janela aberta e não minimizada. "Atualizar" tem no máximo uma leitura por minuto. A última leitura boa fica em `<dados do app>/limits.json`.
+- Em teste (`PROJECT_HUB_ENV=test`) nenhuma leitura automática roda. Só o gancho `APP_LIMITS_SCRIPT` troca a sonda.
+- Contrato: `packages/contracts/src/limits.ts`, canais `limits:get:v1`, `limits:refresh:v1` e `limits:event:v1`, e `window.projectHub.limits`.
+- Problemas tratados: `not-installed`, `not-logged-in`, `no-limits` (conta sem limite por janela, como chave de API) e `failed`. Janela cujo `resetsAt` passou aparece como "janela renovada, aguardando nova leitura".
+- Painel "Uso dos agentes": o Claude deixa de dizer "Em breve". O teste `HomePage.test.tsx:428-433` foi trocado de propósito.
+- Efeito colateral: cada leitura entra no consumo do plano. Com a janela aberta, são cerca de US$ 0,03 por dia de uso contínuo, a preço de lista.
+- Alternativas descartadas: a tela `/usage` (só se lê raspando um terminal, frágil) e o token OAuth com o endpoint de uso da Anthropic (credencial fora do Claude Code, endpoint não documentado, possível conflito com os termos de uso).
 - Não usar `cost.total_cost_usd` como fatura, nem `context_window` como gasto.
-- Sem sessão Claude aberta, o cartão mostra o último valor gravado, com a hora da leitura. O snapshot é por conta, não por execução.
-- Trocar o texto "Em breve: limites de uso do Claude Code e do Codex" e o teste `HomePage.test.tsx:428-433`, que proíbe dígitos no painel. Essa mudança de contrato precisa ser feita de propósito.
-- Pendente antes de implementar: confirmar que o campo "Semanal (por modelo)" existe. Não apareceu nos campos que li.
 
 ### Codex (investigação, sem código)
 
@@ -126,6 +129,7 @@ Pedido do usuário em 2026-10-28: um bloco no Início com a porcentagem usada e 
 ### Regra de interface
 
 - Sem fonte confirmada, o cartão mostra "sem dado". Não mostra número inventado.
+- Sem sessão Claude aberta, o cartão mostra a última leitura gravada, com a hora dela. O valor é da conta, não de uma execução.
 - O bloco entra no painel do Início. Ver [plano do dashboard do Início](2026-10-24-inicio-dashboard.md).
 
 ## Riscos pré-existentes (fora desta fase, mas na mesma superfície)
@@ -148,7 +152,7 @@ Pedido do usuário em 2026-10-28: um bloco no Início com a porcentagem usada e 
 4. **O que entra no total:** planejamento, tentativas que falharam e subagentes? **Resposta (2026-10-28):** subagentes e tentativas repetidas contam. O planejamento (`claude -p`) fica fora nesta fase (pendência).
 5. **Tabela de preço:** quem mantém, de onde vem o preço, com que data? Modelo novo sem preço é aceitável? **Resposta (2026-10-28):** a tabela fica no domínio, com data e fonte no código. Modelo novo fica sem custo até entrar na tabela.
 6. **Quem lê o arquivo:** o adaptador, no processo principal, ou o processo de terminais? Isso define quem acessa o transcript. **Resposta (2026-10-28):** o adaptador, no processo principal, com leitura assíncrona.
-7. **Fase 2:** aceitar a perda de dicas do rodapé, e o `statusLine` do usuário sobrescrito dentro das sessões do app? **Resposta (2026-10-28):** ainda não decidida.
+7. **Fase 2:** aceitar a perda de dicas do rodapé, e o `statusLine` do usuário sobrescrito dentro das sessões do app? **Resposta (2026-10-28):** a pergunta deixou de valer. O `statusLine` foi descartado como fonte; a fonte do Claude é o `claude -p` mínimo com o evento `rate_limit_event` (ver [decisão de limites de assinatura](../../../brain/decisoes/decisao-limites-de-assinatura.md)). Nenhuma dica do rodapé se perde e o `statusLine` do usuário não é tocado.
 8. **"Tempo real":** aceitar que signifique "por bloco de resposta concluído", com defasagem a medir (C2)? **Resposta (2026-10-28):** por bloco de resposta concluído, lido a cada 1,5 s.
 
 ## Ordem sugerida
@@ -159,4 +163,4 @@ Pedido do usuário em 2026-10-28: um bloco no Início com a porcentagem usada e 
 4. Adaptador e drenagem final (passo 4).
 5. Orquestrador e publicador próprio (passo 5).
 6. Preço e tela (passos 7 e 8), com o fixture como oráculo.
-7. Fase 2 do Claude, depois as investigações de Codex e Antigravity.
+7. Fase 2 do Claude (em implementação, ramo `feat/limites-de-assinatura`), depois as investigações de Codex e Antigravity.
