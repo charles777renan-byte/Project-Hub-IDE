@@ -63,6 +63,8 @@
   --space-5: 2rem;
   /* Controles (botões e campos), cartões e pílulas. --radius-panel é o nome antigo do raio do cartão. */
   --radius: 8px;
+  /* Marcadores pequenos e blocos internos. */
+  --radius-sm: 4px;
   --radius-card: 12px;
   --radius-panel: var(--radius-card);
   --radius-pill: 999px;
@@ -77,7 +79,7 @@
   );
 
   /* Escala tipográfica. */
-  --text-xs: 0.6875rem;
+  --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-md: 0.9375rem;
   --text-lg: 1.125rem;

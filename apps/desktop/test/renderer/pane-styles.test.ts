@@ -131,7 +131,7 @@ describe('árvore de painéis e painel', () => {
     const used = [...section.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
     // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
-    // --surface: o fundo do cartão. --radius*: raios, que não são cor.
+    // --surface: o fundo do cartão. --radius*: raios, que não são cor. --text-*: escala tipográfica.
     const allowed = new Set([
       '--bg',
       '--surface',
@@ -142,7 +142,7 @@ describe('árvore de painéis e painel', () => {
       '--focus',
     ]);
     expect(
-      used.filter((name) => !allowed.has(name) && !/^--(?:space|font|radius)/.test(name)),
+      used.filter((name) => !allowed.has(name) && !/^--(?:space|font|radius|text-)/.test(name)),
     ).toEqual([]);
   });
 
@@ -155,7 +155,7 @@ describe('árvore de painéis e painel', () => {
   it('o gasto de tokens é mono pequeno, sem cor própria, e some antes de o título ser cortado', () => {
     const usage = rule('.pane__usage');
     expect(usage.get('font-family')).toBe('var(--font-mono)');
-    expect(usage.get('font-size')).toBe('11px');
+    expect(usage.get('font-size')).toBe('var(--text-xs)');
     // Herda a cor do cabeçalho (--muted, mais apagada no painel inativo): nem lima nem cor nova.
     expect(usage.has('color')).toBe(false);
     expect(usage.has('background')).toBe(false);
