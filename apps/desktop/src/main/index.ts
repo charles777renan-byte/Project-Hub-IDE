@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CHANNELS, type MissionEventDto, type TerminalEvent } from '@project-hub/contracts';
+import {
+  CHANNELS,
+  type MissionEventDto,
+  type MissionUsageEventDto,
+  type TerminalEvent,
+} from '@project-hub/contracts';
 import { getStatus } from '@project-hub/git-adapter';
 import { createHash, randomUUID } from 'node:crypto';
 import {
@@ -18,6 +23,7 @@ import {
   applicationEnvironment,
   createAppServices,
   platformOf,
+  resolveAgentCommand,
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolveMaxRunning,
@@ -129,6 +135,13 @@ function publishMissionEvent(event: MissionEventDto): void {
   target.webContents.send(CHANNELS.missionsEvent, event);
 }
 
+/** Entrega o gasto de tokens de uma tentativa ao quadro principal. */
+function publishMissionUsage(event: MissionUsageEventDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.missionsUsage, event);
+}
+
 /** Entrega um evento de terminal ao quadro principal. */
 function publishTerminalEvent(event: TerminalEvent): void {
   const target = mainWindow;
@@ -214,14 +227,29 @@ app
             extraEnv: plannerCommand.extraEnv,
           })
         : undefined;
+    // Agente das missões: o Claude Code real com `APP_AGENT_ADAPTER=claude-code`. Em teste, um CLI falso
+    // (`APP_AGENT_SCRIPT`) toma o lugar do `claude` e liga o agente real mesmo sem a variável; o planejador
+    // não segue essa ligação, só os ganchos dele (`APP_PLANNER_*`).
+    const agentCommand = resolveAgentCommand(env, resolveExecutable('claude', process.env));
     const services = createAppServices({
       dbFile: resolveDatabaseFile(env, app.getPath('userData')),
       platform: platformOf(process.platform),
       worktreesRoot: resolveWorktreesRoot(env, homedir()),
       publishMissionEvent,
+      publishMissionUsage,
       maxRunningMissions: resolveMaxRunning(env),
-      ...(process.env['APP_AGENT_ADAPTER'] === 'claude-code'
-        ? { agent: createClaudeAgent(terminalOptions, terminalBackend) }
+      ...(process.env['APP_AGENT_ADAPTER'] === 'claude-code' || agentCommand.overridden
+        ? {
+            agent: createClaudeAgent(
+              {
+                ...terminalOptions,
+                command: agentCommand.command,
+                commandPrefix: agentCommand.commandPrefix,
+                extraEnv: agentCommand.extraEnv,
+              },
+              terminalBackend,
+            ),
+          }
         : {}),
       planner,
     });

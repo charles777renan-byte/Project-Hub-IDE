@@ -60,6 +60,13 @@ export type LaunchOptions = {
    * o planejador não é ligado: o plano sai com um passo por critério de aceite.
    */
   plannerScript?: string;
+  /**
+   * Caminho de um `.mjs` que faz o papel do `claude` interativo nas missões (`APP_AGENT_SCRIPT`). Com ele, o
+   * agente das missões é o Claude Code real do app (terminal, hooks, transcripts), só que com o CLI falso, e o
+   * `CLAUDE_CONFIG_DIR` do terminal aponta para `claudeConfigDir`, dentro da pasta de dados do teste. Sem esta
+   * opção, o agente é o de demonstração e nenhuma variável do agente vem da máquina de quem roda.
+   */
+  agentScript?: string;
   /** Espera a interface ficar pronta. O padrão confere a navegação principal. */
   waitForReady?: (page: Page) => Promise<void>;
   /** Chamado assim que o processo abre, antes de qualquer espera. */
@@ -91,6 +98,8 @@ type Fixtures = {
    * Valem para o aplicativo e para os comandos Git do teste.
    */
   gitEnv: Record<string, string>;
+  /** Pasta de dados do Claude Code (`CLAUDE_CONFIG_DIR`) que o CLI falso usa, dentro da pasta de dados do teste. */
+  claudeConfigDir: string;
   /** Repositório Git com um commit na branch `main` (fixada pelo helper), fora da pasta de dados. */
   gitRepo: TempRepo;
   /** Abre o aplicativo com a pasta de dados do teste. Pode ser chamada de novo para reiniciar. */
@@ -174,6 +183,11 @@ export const test = base.extend<Fixtures>({
     await use(join(dataDir, 'worktrees'));
   },
 
+  claudeConfigDir: async ({ dataDir }, use) => {
+    // Nunca o `~/.claude` da pessoa: o CLI falso grava transcripts, e o app os lê, só aqui.
+    await use(join(dataDir, 'claude-config'));
+  },
+
   gitEnv: async ({ dataDir }, use) => {
     const emptyConfig = join(dataDir, 'git-config-vazio');
     writeFileSync(emptyConfig, '');
@@ -227,7 +241,7 @@ export const test = base.extend<Fixtures>({
     await use(launchApp);
   },
 
-  launchProcess: async ({ dataDir, gitEnv, closeFailures }, use) => {
+  launchProcess: async ({ dataDir, gitEnv, claudeConfigDir, closeFailures }, use) => {
     /** Um aplicativo aberto. `observed`: o teste chamou `close()` e viu o resultado. */
     type Handle = { closeOnce(): Promise<void>; observed: boolean };
     const opened: Handle[] = [];
@@ -248,6 +262,14 @@ export const test = base.extend<Fixtures>({
       delete env['APP_PLANNER_COMMAND'];
       delete env['APP_PLANNER_SCRIPT'];
       if (options.plannerScript !== undefined) env['APP_PLANNER_SCRIPT'] = options.plannerScript;
+      // Nenhuma escolha de agente vem da máquina de quem roda: só a opção do teste liga o CLI falso, e o
+      // `CLAUDE_CONFIG_DIR` da máquina nunca chega ao terminal dele.
+      delete env['APP_AGENT_SCRIPT'];
+      delete env['APP_AGENT_ADAPTER'];
+      if (options.agentScript !== undefined) {
+        env['APP_AGENT_SCRIPT'] = options.agentScript;
+        env['CLAUDE_CONFIG_DIR'] = claudeConfigDir;
+      }
       if (options.rendererUrl !== undefined) env['ELECTRON_RENDERER_URL'] = options.rendererUrl;
 
       const app = await electron.launch({

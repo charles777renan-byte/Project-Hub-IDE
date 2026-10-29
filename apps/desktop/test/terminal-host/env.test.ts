@@ -30,6 +30,11 @@ describe('buildTerminalEnv', () => {
     expect(Object.keys(env)).toEqual(['PATH']);
   });
 
+  it('passa a pasta de dados do Claude Code, para o terminal e o app usarem a mesma', () => {
+    const env = buildTerminalEnv({ PATH: 'C:\\Windows', CLAUDE_CONFIG_DIR: 'D:\\claude' });
+    expect(env).toEqual({ PATH: 'C:\\Windows', CLAUDE_CONFIG_DIR: 'D:\\claude' });
+  });
+
   it('reconhece o nome da variável sem diferenciar maiúsculas, como o Windows', () => {
     const env = buildTerminalEnv({ Path: 'C:\\Windows', temp: 'C:\\Temp' });
     expect(env).toEqual({ Path: 'C:\\Windows', temp: 'C:\\Temp' });

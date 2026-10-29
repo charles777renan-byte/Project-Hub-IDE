@@ -36,6 +36,8 @@ export const CHANNELS = {
   missionsRequestChanges: 'missions:request-changes:v1',
   /** Evento da missão, do processo principal para o renderer. Não tem resposta. */
   missionsEvent: 'missions:event:v1',
+  /** Gasto de tokens de uma tentativa, a cada mudança, do processo principal para o renderer. Não tem resposta. */
+  missionsUsage: 'missions:usage:v1',
   approvalsDecide: 'approvals:decide:v1',
   /** Worktrees do projeto, derivados das missões (Tarefa 14 da interface). */
   worktreesList: 'worktrees:list:v1',

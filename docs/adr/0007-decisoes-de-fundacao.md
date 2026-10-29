@@ -280,6 +280,7 @@ Decisões tomadas durante a execução do plano que não estavam previstas acima
 - **Caminho fora do worktree (R125):** `create-file` recusa caminho absoluto, com `..` ou que caia fora da pasta de trabalho. A recusa vira `tool.completed` com `PATH_OUTSIDE_ALLOWED_SCOPE`, e a sessão termina com `session.failed`. Um link simbólico dentro da pasta não é verificado, igual à Tarefa 8.
 - **Aprovação:** `approve` com `rejected` termina a sessão com `session.failed` e `APPROVAL_REQUIRED`. O roteiro não informa o tipo de ação protegida, então o pedido sai com `write_outside_worktree`.
 - **Uso:** o adaptador não informa uso (`usageReporting: false`). Cancelar (abortar o sinal ou chamar `stop`) para a sessão sem emitir mais nada (R126).
+- **Atualização de 2026-10-28:** esta nota vale só para o adaptador da Tarefa 9 (agente simulado). O adaptador do Claude Code passou a informar uso lendo os transcripts apontados pelos hooks. Ver `brain/decisoes/decisao-gasto-de-tokens.md`.
 
 ### 2026-10-20, Tarefa 10: toda missão roda em worktree (R160)
 

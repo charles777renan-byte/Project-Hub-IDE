@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type {
   AppResult,
   MissionEventDto,
+  MissionUsageEventDto,
   MissionViewDto,
   ProjectHubApi,
 } from '@project-hub/contracts';
@@ -48,11 +49,14 @@ function viewOf(
 }
 
 type Listener = (event: MissionEventDto) => void;
+type UsageListener = (event: MissionUsageEventDto) => void;
 
 /** Instala a API do preload. `get` devolve a visão atual; cada teste troca a visão quando quer. */
 function installApi(initial: MissionViewDto) {
   let current = initial;
   let listener: Listener | undefined;
+  let usageListener: UsageListener | undefined;
+  const unsubscribeUsage = vi.fn();
   const api = {
     missions: {
       get: vi.fn(() => Promise.resolve<AppResult<MissionViewDto>>({ ok: true, data: current })),
@@ -85,6 +89,13 @@ function installApi(initial: MissionViewDto) {
           listener = undefined;
         };
       }),
+      subscribeUsage: vi.fn((next: UsageListener) => {
+        usageListener = next;
+        return () => {
+          usageListener = undefined;
+          unsubscribeUsage();
+        };
+      }),
     },
     approvals: { decide: vi.fn(() => Promise.resolve(OK)) },
     terminals: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
@@ -94,6 +105,10 @@ function installApi(initial: MissionViewDto) {
     api,
     setView(next: MissionViewDto) {
       current = next;
+    },
+    unsubscribeUsage,
+    emitUsage(event: MissionUsageEventDto) {
+      usageListener?.(event);
     },
     emit(event: Partial<MissionEventDto>) {
       listener?.({
@@ -2242,3 +2257,99 @@ describe('MissionPage: Ctrl+K sobre a resposta ao agente', () => {
     expect(campo).toHaveFocus();
   });
 });
+
+describe('MissionPage: gasto de tokens', () => {
+  const execution = (id: string, usage?: { inputTokens: number; outputTokens: number }) => ({
+    id,
+    missionId: 'm1',
+    attempt: 1,
+    stepId: 's1',
+    status: 'running' as const,
+    ...(usage === undefined ? {} : { usage }),
+  });
+
+  it('a seção fica entre as tarefas e os arquivos alterados', async () => {
+    installApi(viewOf({ status: 'running' }, { executions: [execution('e1', usageOf(100, 20))] }));
+    renderPage();
+
+    const plan = await screen.findByRole('region', { name: 'Plano da missão' });
+    const usage = screen.getByRole('region', { name: 'Gasto de tokens' });
+    const files = screen.getByRole('region', { name: 'Arquivos alterados' });
+    expect(plan.compareDocumentPosition(usage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(usage.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('sem nenhuma tentativa com gasto, a seção não aparece', async () => {
+    installApi(viewOf({ status: 'running' }, { executions: [execution('e1')] }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Plano da missão' });
+    expect(screen.queryByRole('region', { name: 'Gasto de tokens' })).toBeNull();
+  });
+
+  it('um evento de gasto troca o número da tentativa, sem buscar a visão de novo', async () => {
+    const { api, emitUsage } = installApi(
+      viewOf({ status: 'running' }, { executions: [execution('e1', usageOf(100, 20))] }),
+    );
+    renderPage();
+
+    const section = await screen.findByRole('region', { name: 'Gasto de tokens' });
+    expect(within(section).getByText('120')).toBeInTheDocument();
+    expect(api.missions.get).toHaveBeenCalledTimes(1);
+
+    act(() => emitUsage({ missionId: 'm1', executionId: 'e1', usage: usageOf(1000, 234) }));
+
+    // O evento traz o total da tentativa: o número substitui o anterior, não soma.
+    expect(within(section).getByText('1.234')).toBeInTheDocument();
+    expect(within(section).queryByText('120')).toBeNull();
+    expect(api.missions.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('um evento de gasto de outra missão ou de uma tentativa que a visão não tem é ignorado', async () => {
+    const { api, emitUsage } = installApi(
+      viewOf({ status: 'running' }, { executions: [execution('e1', usageOf(100, 20))] }),
+    );
+    renderPage();
+
+    const section = await screen.findByRole('region', { name: 'Gasto de tokens' });
+    act(() => {
+      emitUsage({ missionId: 'outra', executionId: 'e1', usage: usageOf(9000, 9) });
+      emitUsage({ missionId: 'm1', executionId: 'e9', usage: usageOf(8000, 8) });
+    });
+
+    expect(within(section).getByText('120')).toBeInTheDocument();
+    expect(screen.queryByText('9.009')).toBeNull();
+    expect(screen.queryByText('8.008')).toBeNull();
+    expect(api.missions.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('o primeiro gasto de uma tentativa que já está na visão faz a seção aparecer', async () => {
+    const { emitUsage } = installApi(
+      viewOf({ status: 'running' }, { executions: [execution('e1')] }),
+    );
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Plano da missão' });
+    expect(screen.queryByRole('region', { name: 'Gasto de tokens' })).toBeNull();
+
+    act(() => emitUsage({ missionId: 'm1', executionId: 'e1', usage: usageOf(5, 6) }));
+
+    expect(await screen.findByRole('region', { name: 'Gasto de tokens' })).toBeInTheDocument();
+  });
+
+  it('cancela a assinatura do gasto ao sair da página', async () => {
+    const { api, unsubscribeUsage } = installApi(viewOf({ status: 'running' }));
+    const { unmount } = renderPage();
+    await screen.findByRole('region', { name: 'Plano da missão' });
+    expect(api.missions.subscribeUsage).toHaveBeenCalledTimes(1);
+    expect(unsubscribeUsage).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(unsubscribeUsage).toHaveBeenCalledTimes(1);
+  });
+});
+
+function usageOf(inputTokens: number, outputTokens: number) {
+  return { inputTokens, outputTokens };
+}

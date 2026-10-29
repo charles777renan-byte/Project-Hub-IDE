@@ -104,6 +104,8 @@ Se um hook não chegar, a missão não avança sozinha. O orquestrador trata a f
 | `persistentContext` | `false` | Sem `--resume` nesta etapa. |
 | `localExecution` | `true` | Roda na máquina da pessoa. |
 
+**Atualização de 2026-10-28:** a linha `usageReporting` acima ficou para trás. O adaptador do Claude Code passou a informar uso (`usageReporting: true`), lendo os transcripts apontados pelos hooks. Ver `brain/decisoes/decisao-gasto-de-tokens.md`.
+
 ### Terminal e processo
 
 - Windows primeiro (`brain/decisoes/decisao-windows-primeiro.md`). O PTY usa ConPTY, por meio do `node-pty`.
