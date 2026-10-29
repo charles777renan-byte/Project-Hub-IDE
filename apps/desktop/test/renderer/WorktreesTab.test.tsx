@@ -153,6 +153,41 @@ describe('WorktreesTab', () => {
     expect(within(alert).getByText('src/login.ts')).toBeInTheDocument();
     expect(within(alert).getByText('rascunho.txt')).toBeInTheDocument();
     expect(screen.getByText('C:\\worktrees\\app\\m1')).toBeInTheDocument();
+    expect(screen.getByRole('article')).toContainElement(alert);
+  });
+
+  it('a recusa aparece só no cartão do worktree recusado, e não no topo da lista', async () => {
+    const other: WorktreeDto = {
+      ...done,
+      missionId: 'm5',
+      missionTitle: 'Outra missão',
+      path: 'C:\\worktrees\\app\\m5',
+      branch: 'ph/m5-outra',
+    };
+    const api = installApi([[done, other]], () =>
+      Promise.resolve({
+        ok: false,
+        error: {
+          code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+          message: 'O worktree tem alterações não salvas e não foi removido.',
+          details: { files: ['src/outra.ts'] },
+          retryable: false,
+        },
+      }),
+    );
+    renderTab();
+
+    const removeButtons = await screen.findAllByRole('button', { name: 'Remover' });
+    await userEvent.click(removeButtons[1]!);
+    await userEvent.click(screen.getByRole('button', { name: 'Remover worktree' }));
+
+    expect(api.worktrees.remove).toHaveBeenCalledWith('m5');
+    const alert = await screen.findByRole('alert');
+    const cards = screen.getAllByRole('article');
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).not.toContainElement(alert);
+    expect(cards[1]).toContainElement(alert);
+    expect(within(cards[1]!).getByText('src/outra.ts')).toBeInTheDocument();
   });
 
   it('outra recusa mostra só a mensagem', async () => {

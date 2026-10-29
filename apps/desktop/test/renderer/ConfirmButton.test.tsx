@@ -80,6 +80,61 @@ describe('ConfirmButton', () => {
     expect(screen.getByRole('button', { name: 'Excluir missão' })).toBeInTheDocument();
   });
 
+  it('Voltar devolve o foco ao botão inicial', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Excluir missão"
+        question={QUESTION}
+        confirmLabel="Excluir"
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(screen.getByRole('button', { name: 'Excluir missão' })).toHaveFocus();
+  });
+
+  it('com hint (botão envolvido pelo Radix), Voltar também devolve o foco ao botão inicial', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Excluir missão"
+        question={QUESTION}
+        confirmLabel="Excluir"
+        hint="Exclui a missão inteira"
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(screen.getByRole('button', { name: 'Excluir missão' })).toHaveFocus();
+  });
+
+  it('Excluir não devolve o foco ao botão inicial, porque o item costuma sair da tela', async () => {
+    const onConfirm = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Excluir missão"
+        question={QUESTION}
+        confirmLabel="Excluir"
+        onConfirm={onConfirm}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('group', { name: QUESTION })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Excluir missão' })).not.toHaveFocus();
+  });
+
   it('desabilitado, o botão inicial não abre a pergunta', async () => {
     const onConfirm = vi.fn();
     const user = userEvent.setup();

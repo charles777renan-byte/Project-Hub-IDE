@@ -109,6 +109,24 @@ describe('WorkspaceToolbar', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(LIMIT_HINT);
   });
 
+  it('com o motivo de indisponível, o botão fica desabilitado e a dica traz o motivo', async () => {
+    setup({ unavailableReason: 'A pasta do projeto não está disponível.' });
+    const trigger = screen.getByRole('button', { name: 'Abrir terminal' });
+    expect(trigger).toBeDisabled();
+    expect(trigger.parentElement).toHaveClass('workspace__open-wrap');
+    await userEvent.hover(trigger.parentElement as HTMLElement);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'A pasta do projeto não está disponível.',
+    );
+  });
+
+  it('sem o motivo de indisponível, o botão segue habilitado e sem a dica', () => {
+    setup();
+    const trigger = screen.getByRole('button', { name: 'Abrir terminal' });
+    expect(trigger).toBeEnabled();
+    expect(trigger.parentElement).not.toHaveClass('workspace__open-wrap');
+  });
+
   it('um focusToken novo leva o foco ao botão', async () => {
     const { rerender } = setup();
     rerender(
@@ -117,5 +135,31 @@ describe('WorkspaceToolbar', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveFocus(),
     );
+  });
+
+  it('o wrapper do botão bloqueado tem papel de grupo e nome com o motivo da dica', () => {
+    setup({ limitReached: true });
+    const group = screen.getByRole('group', { name: LIMIT_HINT });
+    expect(group).toHaveAttribute('tabindex', '0');
+    expect(group).toContainElement(screen.getByRole('button', { name: 'Abrir terminal' }));
+  });
+
+  it('com o motivo de indisponível, o wrapper também é um grupo nomeado por esse motivo', () => {
+    setup({ unavailableReason: 'A pasta do projeto não está disponível.' });
+    expect(
+      screen.getByRole('group', { name: 'A pasta do projeto não está disponível.' }),
+    ).toContainElement(screen.getByRole('button', { name: 'Abrir terminal' }));
+  });
+
+  it('um bloqueio que chega com o menu aberto fecha o menu e impede a escolha', async () => {
+    const { onOpen, rerender } = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    rerender(
+      <WorkspaceToolbar providers={providers} busy={false} limitReached onOpen={onOpen} />,
+    );
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeDisabled();
+    expect(onOpen).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,9 @@ const VIEW_TABS: readonly TabItem<ProjectView>[] = PROJECT_VIEWS.map((view) => (
 /** Ação do projeto que espera a confirmação da pessoa. */
 type Pending = 'archive' | 'remove';
 
+/** Id do aviso de pasta indisponível, que fica na WorkspacePage. Nova missão aponta para ele quando está desabilitado. */
+export const PROJECT_UNAVAILABLE_NOTICE_ID = 'aviso-pasta-indisponivel';
+
 /**
  * Fecha a aba do workspace do projeto, se ela estiver aberta, para nenhuma aba nem sessão ficar apontando para um
  * projeto que saiu da lista. É o mesmo fechamento da barra superior (`workspaces.close`), seguido do aviso de que a
@@ -48,7 +51,8 @@ async function closeProjectWorkspace(projectId: string) {
  * `?visao=` na rota; escolher uma aba troca só esse parâmetro, substituindo a entrada do histórico (cada seta de
  * aba não empilha um passo). O painel da visão é do chamador: as abas apontam para o `project-panel-<visão>` de cada
  * visão. Arquivar ou remover só sai da tela quando a ação dá certo, e então fecha também a aba do workspace do
- * projeto: falha fica aqui, com a mensagem da API, e o projeto segue como estava.
+ * projeto: falha fica aqui, com a mensagem da API, e o projeto segue como estava. Com a pasta indisponível
+ * (`available` false), Nova missão fica desabilitado e aponta para o aviso da WorkspacePage.
  */
 export function ProjectHeader({
   project,
@@ -63,6 +67,7 @@ export function ProjectHeader({
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const view = missionOpen ? 'missoes' : projectViewFromParams(params);
+  const unavailable = project.available === false;
   const [pending, setPending] = useState<Pending | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +117,13 @@ export function ProjectHeader({
         />
         {missionOpen ? null : (
           <div className="project-header__actions">
-            <button type="button" className="btn-primary" onClick={onNewMission}>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={unavailable}
+              aria-describedby={unavailable ? PROJECT_UNAVAILABLE_NOTICE_ID : undefined}
+              onClick={onNewMission}
+            >
               {PROJECT_TEXT.newMission}
             </button>
             <MenuAcoes
