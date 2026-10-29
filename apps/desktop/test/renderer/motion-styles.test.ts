@@ -30,13 +30,28 @@ function motionValues(css: string): string[] {
   );
 }
 
+/** Só os valores de `transition` do arquivo, fora do `@media` de movimento reduzido. */
+function transitionValues(css: string): string[] {
+  const withoutReduced = css.replace(reduced, '');
+  return [...withoutReduced.matchAll(/\btransition\s*:\s*([^;}]+)/g)].map(([, value = '']) =>
+    value.trim(),
+  );
+}
+
 describe('keyframes de entrada', () => {
   const blocks = [
     ...motionCss.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g),
   ].map(([, name = '', body = '']) => ({ name, body }));
 
-  it('declara panel-in, panel-fade, pane-in e pane-out', () => {
+  it('declara as entradas e saídas dos painéis e da paleta de comandos', () => {
     expect(blocks.map((block) => block.name).sort()).toEqual([
+      'paleta-fundo-in',
+      'paleta-fundo-out',
+      'paleta-in',
+      'paleta-out',
+      'paleta-passo-frente',
+      'paleta-passo-volta',
+      'paleta-pilula-in',
       'pane-in',
       'pane-out',
       'panel-fade',
@@ -154,9 +169,9 @@ describe('custo e consistência', () => {
   });
 
   it('as transições só listam propriedades baratas, nunca "all" nem medidas de layout', () => {
-    const properties = motionValues(motionCss)
-      .filter((value) => !/\bpanel?-/.test(value))
-      .flatMap((value) => value.split(',').map((part) => part.trim().split(/\s+/)[0] ?? ''));
+    const properties = transitionValues(motionCss).flatMap((value) =>
+      value.split(',').map((part) => part.trim().split(/\s+/)[0] ?? ''),
+    );
     expect(properties.length).toBeGreaterThan(0);
     for (const property of properties) {
       expect(['opacity', 'transform', 'color', 'background-color']).toContain(property);
@@ -197,5 +212,76 @@ describe('movimento reduzido', () => {
   it('desliga a transição da aba e da pílula', () => {
     expect(ruleDeclarations(reduced, '.tab').get('transition')).toBe('none');
     expect(ruleDeclarations(reduced, '.tab::before').get('transition')).toBe('none');
+  });
+});
+
+describe('paleta de comandos', () => {
+  const ENTRADAS = [
+    '.paleta[open]',
+    '.paleta[open]::backdrop',
+    '.paleta__pilula',
+    '.paleta__vazio',
+  ];
+  const SAIDAS = [".paleta[data-motion='leaving']", ".paleta[data-motion='leaving']::backdrop"];
+  const PASSOS = [
+    ".paleta__pagina[data-direcao='frente']",
+    ".paleta__pagina[data-direcao='volta']",
+  ];
+
+  it('abre descendo e crescendo, com o fundo escurecendo junto, sem deixar nada depois do fim', () => {
+    expect(ruleDeclarations(motionCss, '.paleta[open]').get('animation')).toContain('paleta-in');
+    expect(ruleDeclarations(motionCss, '.paleta[open]::backdrop').get('animation')).toContain(
+      'paleta-fundo-in',
+    );
+    for (const selector of ENTRADAS) {
+      expect(ruleDeclarations(motionCss, selector).get('animation'), selector).toContain(
+        'backwards',
+      );
+    }
+  });
+
+  it('fecha mais rápido, acelerando, e segura o último quadro até o <dialog> fechar', () => {
+    for (const selector of SAIDAS) {
+      const animation = flat(ruleDeclarations(motionCss, selector).get('animation'));
+      expect(animation, selector).toContain('var(--dur-fast)');
+      expect(animation, selector).toContain('var(--ease-exit)');
+      expect(animation, selector).toContain('forwards');
+    }
+    // Saindo, a paleta não recebe clique (app.css).
+    expect(ruleDeclarations(appCss, ".paleta[data-motion='leaving']").get('pointer-events')).toBe(
+      'none',
+    );
+  });
+
+  it('o passo desliza para o lado da ida e da volta', () => {
+    expect(ruleDeclarations(motionCss, PASSOS[0] ?? '').get('animation')).toContain(
+      'paleta-passo-frente',
+    );
+    expect(ruleDeclarations(motionCss, PASSOS[1] ?? '').get('animation')).toContain(
+      'paleta-passo-volta',
+    );
+  });
+
+  it('a linha marcada troca de fundo e o "Abrir ↵" aparece com a transição curta', () => {
+    expect(flat(ruleDeclarations(motionCss, '.paleta__item').get('transition'))).toBe(
+      'background-color var(--dur-fast) var(--ease)',
+    );
+    expect(flat(ruleDeclarations(motionCss, '.paleta__enter').get('transition'))).toBe(
+      'opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease)',
+    );
+  });
+
+  it('"reduzir movimento" desliga toda animação e transição da paleta', () => {
+    for (const selector of [
+      ...ENTRADAS,
+      ...SAIDAS,
+      ...PASSOS,
+      '.paleta__pagina',
+      '.paleta__item',
+    ]) {
+      expect(ruleDeclarations(reduced, selector).get('animation'), selector).toBe('none');
+    }
+    expect(ruleDeclarations(reduced, '.paleta__item').get('transition')).toBe('none');
+    expect(ruleDeclarations(reduced, '.paleta__enter').get('transition')).toBe('none');
   });
 });

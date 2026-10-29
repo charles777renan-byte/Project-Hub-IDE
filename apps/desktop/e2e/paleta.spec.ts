@@ -1,5 +1,7 @@
 import type { ElementHandle, Locator, Page } from '@playwright/test';
+import { basename } from 'node:path';
 import { expect, test } from './fixtures';
+import { addGitProject } from './missions';
 
 // Paleta de comandos (Ctrl+K, components/PaletaComandos.tsx) na janela real, sob a CSP do app. O <dialog>
 // modal e o cmdk não podem montar <style> nem disparar violação de CSP. O foco entra na busca ao abrir e
@@ -91,5 +93,62 @@ test('a paleta abre com Ctrl+K, leva à tela escolhida e fecha com Escape, sem v
   await expect(nome).toBeVisible();
 
   expect(await cspProblems(page)).toEqual({ styles: stylesAntes, others: [] });
+  await launched.close();
+});
+
+test('a paleta anima ao abrir e ao fechar, e "Nova missão…" leva ao formulário do projeto escolhido', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const launched = await launchApp({ dialogPath: gitRepo.path });
+  const { page } = launched;
+  await watchCspViolations(page);
+  await addGitProject(page, projectName);
+  const paleta = page.getByRole('dialog', { name: 'Paleta de comandos' });
+
+  // Abrir: a caixa entra com paleta-in (a regra vale enquanto ela está aberta, então não depende do quadro).
+  await page.keyboard.press('Control+K');
+  await expect(paleta).toBeVisible();
+  expect(await paleta.evaluate((dialog) => getComputedStyle(dialog).animationName)).toBe(
+    'paleta-in',
+  );
+
+  // Fechar: a paleta fica na tela com data-motion="leaving" e paleta-out até a saída acabar, e só então some.
+  // O observador entra antes do Escape (o evaluate termina primeiro) e guarda o que viu em `window`.
+  await paleta.evaluate((dialog) => {
+    const w = window as unknown as { saidaDaPaleta?: string };
+    new MutationObserver((_, observer) => {
+      if (dialog.getAttribute('data-motion') !== 'leaving') return;
+      observer.disconnect();
+      w.saidaDaPaleta = getComputedStyle(dialog).animationName;
+    }).observe(dialog, { attributes: true, attributeFilter: ['data-motion'] });
+  });
+  await page.keyboard.press('Escape');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { saidaDaPaleta?: string }).saidaDaPaleta),
+    )
+    .toBe('paleta-out');
+  await expect(paleta).toBeHidden();
+
+  // "Nova missão…" troca a lista pelos projetos; Enter no projeto abre o formulário dele.
+  await page.keyboard.press('Control+K');
+  await expect(paleta).toBeVisible();
+  await page.keyboard.type('Nova missão…');
+  await expect(paleta.getByRole('option', { name: 'Nova missão…' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.keyboard.press('Enter');
+  const busca = paleta.getByRole('combobox');
+  await expect(busca).toHaveAttribute('placeholder', 'Em qual projeto?');
+  await expect(paleta.getByRole('button', { name: 'Voltar para todos os comandos' })).toBeVisible();
+  await page.keyboard.type(projectName);
+  await page.keyboard.press('Enter');
+  await expect(paleta).toBeHidden();
+  await expect(page.getByRole('form', { name: 'Nova missão' })).toBeVisible();
+
+  expect((await cspProblems(page)).others).toEqual([]);
   await launched.close();
 });
