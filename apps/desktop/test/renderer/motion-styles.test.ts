@@ -172,6 +172,15 @@ describe('custo e consistência', () => {
   });
 });
 
+describe('gasto de tokens do painel', () => {
+  it('o número troca de cor com a transição curta dos tokens, e some com "reduzir movimento"', () => {
+    expect(flat(ruleDeclarations(motionCss, '.pane__usage-value').get('transition'))).toBe(
+      'color var(--dur) var(--ease)',
+    );
+    expect(ruleDeclarations(reduced, '.pane__usage-value').get('transition')).toBe('none');
+  });
+});
+
 describe('movimento reduzido', () => {
   it('desliga a animação de cada entrada', () => {
     for (const selector of [

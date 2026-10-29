@@ -219,6 +219,117 @@ describe('PaneView', () => {
     expect(within(status).queryByRole('button')).not.toBeInTheDocument();
   });
 
+  describe('gasto de tokens no cabeçalho', () => {
+    const usage = {
+      inputTokens: 1_234,
+      outputTokens: 12_345,
+      cacheReadInputTokens: 456_789,
+      cacheWrite5mInputTokens: 1_000,
+      cacheWrite1hInputTokens: 234,
+      estimatedCostUsd: 1.5,
+    };
+    const detail =
+      'Saída: 12.345 tokens · Entrada nova: 1.234 · Cache: 456.789 lidos, 1.234 escritos · ' +
+      `Custo estimado a preço de lista da API: USD${String.fromCharCode(0xa0)}1,50 (não é fatura)`;
+    const indicator = (container: HTMLElement) => container.querySelector('.pane__usage');
+
+    it('mostra a saída no formato curto, entre o título e a marca de estado, com o detalhe na dica', () => {
+      const { container } = setup({ terminal: { ...session, usage } });
+      const head = container.querySelector('.pane__head') as HTMLElement;
+      const element = indicator(container);
+      expect(element).not.toBeNull();
+      expect(element).toHaveAttribute('title', detail);
+      expect(within(element as HTMLElement).getByText('12.345 tokens')).toBeInTheDocument();
+      // A ordem do cabeçalho: título, gasto, marca de estado, etiqueta e ações.
+      expect([...head.children].map((child) => child.className)).toEqual([
+        'pane__title',
+        'pane__usage',
+        'state-mark state-mark--active',
+        'pane__tag',
+        'pane__actions',
+      ]);
+    });
+
+    it('o leitor de tela lê o nome e o detalhe inteiro, não o número curto', () => {
+      const { container } = setup({ terminal: { ...session, usage } });
+      // O texto fica fora da vista, mas no fluxo de leitura (a classe o esconde só visualmente).
+      const spoken = container.querySelector('.pane__usage-sr');
+      expect(spoken?.textContent).toBe(`Tokens deste terminal. ${detail}`);
+      expect(spoken).not.toHaveAttribute('aria-hidden');
+      expect(spoken?.closest('[aria-hidden="true"]')).toBeNull();
+      expect(screen.getByText('12.345 tokens')).toHaveAttribute('aria-hidden', 'true');
+      // Sem região viva: a lista é relida a cada 2 s.
+      expect(indicator(container)?.closest('[aria-live], [role="status"]')).toBeNull();
+    });
+
+    it('sem custo, a dica diz que a estimativa está indisponível', () => {
+      const { container } = setup({
+        terminal: { ...session, usage: { inputTokens: 10, outputTokens: 872 } },
+      });
+      expect(screen.getByText('872 tokens')).toBeInTheDocument();
+      expect(indicator(container)).toHaveAttribute(
+        'title',
+        'Saída: 872 tokens · Entrada nova: 10 · Cache: 0 lidos, 0 escritos · Custo estimado indisponível',
+      );
+    });
+
+    it('sem usage não há indicador (nem zero), e o resto do cabeçalho não muda', () => {
+      const { container } = setup();
+      expect(indicator(container)).toBeNull();
+      expect(screen.queryByText(/tokens/)).not.toBeInTheDocument();
+      expect(container.querySelector('.pane__head')?.children).toHaveLength(4);
+    });
+
+    it('provedor que não informa o gasto (Codex, shell) fica como hoje', () => {
+      const { container } = setup({
+        terminal: { ...session, provider: 'codex', kind: 'shell' },
+        provider: { id: 'codex', label: 'Codex', available: true },
+      });
+      expect(indicator(container)).toBeNull();
+    });
+
+    it('atualiza quando o usage muda no mesmo painel, e some quando ele deixa de vir', () => {
+      const { container, rerender, props } = setup({
+        terminal: { ...session, usage: { inputTokens: 1, outputTokens: 999 } },
+      });
+      const terminalView = screen.getByTestId('terminal-view');
+      expect(screen.getByText('999 tokens')).toBeInTheDocument();
+      rerender(
+        <PaneView
+          {...props}
+          terminal={{ ...session, usage: { inputTokens: 1, outputTokens: 1_234_567 } }}
+        />,
+      );
+      expect(screen.getByText('1,2 mi tokens')).toBeInTheDocument();
+      expect(screen.queryByText('999 tokens')).not.toBeInTheDocument();
+      // O mesmo terminal continua montado: só o número mudou.
+      expect(screen.getByTestId('terminal-view')).toBe(terminalView);
+      rerender(<PaneView {...props} terminal={session} />);
+      expect(indicator(container)).toBeNull();
+    });
+
+    it('o painel de um terminal de missão (agent) mostra o mesmo indicador', () => {
+      setup({ terminal: { ...session, kind: 'agent', missionId: 'm1', usage } });
+      expect(screen.getByText('12.345 tokens')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Tirar do painel' })).toBeInTheDocument();
+    });
+
+    it('a sessão encerrada não mostra o indicador (o cabeçalho é o aviso)', () => {
+      const { container } = setup({ terminal: { ...session, state: 'exited', usage } });
+      expect(indicator(container)).toBeNull();
+    });
+
+    it('clicar e dar duplo clique no gasto ativa e maximiza como o resto do cabeçalho', async () => {
+      const onMaximize = vi.fn();
+      const { props } = setup({ terminal: { ...session, usage }, onMaximize });
+      const value = screen.getByText('12.345 tokens');
+      await userEvent.click(value);
+      expect(props.onActivate).toHaveBeenCalled();
+      await userEvent.dblClick(value);
+      expect(onMaximize).toHaveBeenCalled();
+    });
+  });
+
   it('com terminal, o rótulo do painel usa o provedor da sessão', () => {
     setup({
       leaf: { ...leaf, provider: 'claude' },
