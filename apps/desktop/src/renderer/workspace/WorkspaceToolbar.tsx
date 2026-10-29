@@ -20,13 +20,16 @@ const DESCRIPTION: Record<ProviderId, string> = {
  * o mesmo jeito do menu de projetos da barra superior: setas percorrem os programas disponíveis (com volta),
  * Home e End vão às pontas, Esc fecha e devolve o foco ao botão, e clicar fora também fecha. Programa não
  * instalado aparece marcado como "Não instalado", com o motivo na dica, e não abre nada. Com o limite de
- * painéis, o botão fica desabilitado com a dica do limite. `focusToken` novo leva o foco ao botão, como
- * quando o último painel é fechado.
+ * painéis, o botão fica desabilitado com a dica do limite. Com `unavailableReason` (a pasta do projeto sumiu), o
+ * botão também fica desabilitado, e a dica é o motivo. Um bloqueio que chega com o menu aberto fecha o menu.
+ * `focusToken` novo leva o foco ao botão, como quando o
+ * último painel é fechado.
  */
 export function WorkspaceToolbar({
   providers,
   busy,
   limitReached = false,
+  unavailableReason,
   focusToken = 0,
   soloMode = false,
   canSolo = false,
@@ -37,6 +40,8 @@ export function WorkspaceToolbar({
   busy: boolean;
   /** Todos os painéis possíveis já estão abertos: o botão fica desabilitado, com a dica do limite. */
   limitReached?: boolean;
+  /** Nada pode abrir (ex.: a pasta do projeto não está disponível): o botão fica desabilitado, com este motivo na dica. */
+  unavailableReason?: string;
   /** Cada valor novo (maior que 0) leva o foco ao botão, ex.: depois de fechar o último painel. */
   focusToken?: number;
   /** O modo "um painel por vez" está ligado: o botão "Abas" fica apertado. */
@@ -49,7 +54,9 @@ export function WorkspaceToolbar({
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
-  const blocked = busy || limitReached;
+  const blocked = busy || limitReached || unavailableReason !== undefined;
+  // Com o motivo de indisponível, a dica é ele: sem a pasta, nenhum terminal abre, nem mesmo com espaço livre.
+  const hint = unavailableReason ?? (limitReached ? LIMIT_HINT : undefined);
 
   const enabledItems = () =>
     Array.from(
@@ -63,6 +70,11 @@ export function WorkspaceToolbar({
     const target = button.current && !button.current.disabled ? button.current : wrapper.current;
     target?.focus();
   }, [focusToken]);
+
+  // Bloqueio que chega com o menu aberto (limite de painéis, pasta que some) fecha o menu: nada abre enquanto bloqueado.
+  useEffect(() => {
+    if (blocked) setOpen(false);
+  }, [blocked]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,7 +113,7 @@ export function WorkspaceToolbar({
   }
 
   function choose(provider: ProviderInfo) {
-    if (provider.available === false) return;
+    if (blocked || provider.available === false) return;
     setOpen(false);
     onOpen(provider.id);
   }
@@ -132,9 +144,9 @@ export function WorkspaceToolbar({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      {limitReached ? (
-        <Hint label={LIMIT_HINT}>
-          <span className="workspace__open-wrap" tabIndex={0}>
+      {hint !== undefined ? (
+        <Hint label={hint}>
+          <span className="workspace__open-wrap" role="group" aria-label={hint} tabIndex={0}>
             {trigger}
           </span>
         </Hint>

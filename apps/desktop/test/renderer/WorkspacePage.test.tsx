@@ -10,6 +10,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
+import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../../src/renderer/components/project/ProjectHeader';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
@@ -1311,5 +1312,82 @@ describe('aba do projeto: missão aberta', () => {
 
     expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 1, name: 'Ajustar login' })).toBeNull();
+  });
+});
+
+describe('pasta do projeto indisponível', () => {
+  /** Lista de projetos com a pasta `p1`; os campos extras entram no resumo (ex.: `available`). */
+  const comPasta = (extra: Record<string, unknown>) =>
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [{ id: 'p1', name: 'app', path: 'C:\\Projetos\\app', repositoryKind: 'git', ...extra }],
+    });
+
+  it('mostra o aviso com o caminho esperado quando available é false', async () => {
+    comPasta({ available: false });
+    renderAt();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
+      'A pasta deste projeto não está disponível. Ela pode ter sido movida ou apagada. Caminho esperado: C:\\Projetos\\app',
+    );
+    expect(alert).toHaveAttribute('id', PROJECT_UNAVAILABLE_NOTICE_ID);
+  });
+
+  it('o aviso fica acima do corpo da aba, também fora de Terminais', async () => {
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
+    comPasta({ available: false });
+    renderAt(undefined, 'p1', '?visao=missoes');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('A pasta deste projeto não está disponível.');
+    const panel = await screen.findByRole('tabpanel', { name: 'Missões' });
+    // O aviso vem antes do painel da visão na ordem do documento: fica acima dele.
+    expect(alert.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('com a pasta indisponível, Abrir terminal e Nova missão ficam desabilitados', async () => {
+    comPasta({ available: false });
+    renderAt();
+
+    await screen.findByRole('alert');
+    expect(await screen.findByRole('button', { name: 'Abrir terminal' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nova missão' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nova missão' })).toHaveAttribute(
+      'aria-describedby',
+      PROJECT_UNAVAILABLE_NOTICE_ID,
+    );
+  });
+
+  it('com a pasta indisponível, os painéis do lançador ficam com o Iniciar desabilitado', async () => {
+    comPasta({ available: false });
+    renderAt();
+
+    await screen.findByRole('alert');
+    const claude = await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(claude).toBeDisabled();
+    expect(claude).toHaveAttribute('aria-describedby', PROJECT_UNAVAILABLE_NOTICE_ID);
+    expect(screen.getByRole('button', { name: 'Iniciar PowerShell' })).toBeDisabled();
+  });
+
+  it('com a pasta disponível, não há aviso e os dois botões seguem habilitados', async () => {
+    comPasta({ available: true });
+    renderAt();
+
+    expect(await screen.findByRole('button', { name: 'Abrir terminal' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Nova missão' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('sem o campo available, vale disponível: sem aviso e com os botões habilitados', async () => {
+    comPasta({});
+    renderAt();
+
+    expect(await screen.findByRole('button', { name: 'Abrir terminal' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Nova missão' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

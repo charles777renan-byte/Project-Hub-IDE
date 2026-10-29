@@ -63,6 +63,46 @@ function inputEvent(prompt: string): MissionViewDto['events'][number] {
   };
 }
 
+function verificationEvent(
+  id: string,
+  sequence: number,
+  payload: { command: string; passed: number; failed: number; criteria?: string[] },
+  aggregateId = 'e1',
+): MissionViewDto['events'][number] {
+  return {
+    id,
+    missionId: 'm1',
+    aggregateType: 'execution',
+    aggregateId,
+    eventType: 'verification.completed',
+    severity: 'info',
+    actor: 'agent',
+    payload: { ...payload, durationMs: 5, criteria: payload.criteria ?? [] },
+    sequence,
+    createdAt: '2026-10-20T09:00:00.000Z',
+  };
+}
+
+/** A conclusão de uma tentativa (`execution.concluded`): a última delas diz qual execução o resumo usa. */
+function concludedEvent(
+  id: string,
+  sequence: number,
+  aggregateId: string,
+): MissionViewDto['events'][number] {
+  return {
+    id,
+    missionId: 'm1',
+    aggregateType: 'execution',
+    aggregateId,
+    eventType: 'execution.concluded',
+    severity: 'info',
+    actor: 'agent',
+    payload: { changedFiles: 3, gitState: 'uncommitted' },
+    sequence,
+    createdAt: '2026-10-20T09:00:00.000Z',
+  };
+}
+
 function handlersOf() {
   return {
     onGeneratePlan: vi.fn(),
@@ -510,27 +550,204 @@ describe('DecisionBlock: revisão da conclusão', () => {
 describe('DecisionBlock: resumo da conclusão', () => {
   const SUMMARY = { name: 'Resumo da conclusão' };
 
-  it('missão concluída mostra a frase final do agente e o estado do Git', () => {
+  const UNCOMMITTED =
+    'Há alterações sem commit na pasta da missão. Elas ainda não entraram no projeto.';
+  const CLEAN = 'O trabalho está salvo na branch da missão. Ainda não entrou no projeto.';
+
+  it('missão concluída mostra a frase final do agente e o próximo passo, com alterações sem commit', () => {
     setup('succeeded', {}, { conclusion: CONCLUSION });
 
     const summary = within(block()).getByRole('region', SUMMARY);
     expect(within(summary).getByText('Login corrigido.')).toBeInTheDocument();
-    expect(within(summary).getByText('Git: alterações sem commit')).toBeInTheDocument();
+    expect(within(summary).getByText(UNCOMMITTED)).toBeInTheDocument();
+    expect(within(summary).queryByText(/Git:/)).toBeNull();
   });
 
-  it('estado do Git limpo', () => {
+  it('com o estado do Git limpo, o próximo passo diz que o trabalho está salvo na branch', () => {
     setup('succeeded', {}, { conclusion: { ...CONCLUSION, changedFiles: 0, gitState: 'clean' } });
 
-    expect(screen.getByText('Git: sem alterações pendentes')).toBeInTheDocument();
-    expect(screen.queryByText('Git: alterações sem commit')).toBeNull();
+    const summary = within(block()).getByRole('region', SUMMARY);
+    expect(within(summary).getByText(CLEAN)).toBeInTheDocument();
+    expect(within(summary).queryByText(UNCOMMITTED)).toBeNull();
+    expect(summary.textContent).not.toMatch(/worktree/i);
   });
 
-  it('o resumo não repete verificação nem arquivos', () => {
+  it('o resumo não lista os arquivos alterados', () => {
     setup('succeeded', {}, { conclusion: CONCLUSION });
 
     const summary = within(block()).getByRole('region', SUMMARY);
-    expect(within(summary).queryByText(/Verificação/)).toBeNull();
     expect(within(summary).queryByText(/arquivo/)).toBeNull();
+  });
+
+  it('a linha de testes diz quantos passaram, sem falhas quando não há nenhuma', () => {
+    setup('succeeded', {}, { conclusion: CONCLUSION });
+
+    const summary = within(block()).getByRole('region', SUMMARY);
+    expect(within(summary).getByText('Testes: 12 passaram')).toBeInTheDocument();
+    expect(within(summary).queryByText(/falharam/)).toBeNull();
+  });
+
+  it('a linha de testes diz quantos falharam quando há falhas', () => {
+    setup(
+      'succeeded',
+      {},
+      { conclusion: { ...CONCLUSION, verification: { passed: 12, failed: 2 } } },
+    );
+
+    expect(screen.getByText('Testes: 12 passaram, 2 falharam')).toBeInTheDocument();
+  });
+
+  it('sem verificação registrada, a linha de testes diz isso', () => {
+    setup(
+      'succeeded',
+      {},
+      {
+        conclusion: {
+          summary: 'Login corrigido.',
+          changedFiles: 3,
+          gitState: 'uncommitted',
+        },
+      },
+    );
+
+    expect(screen.getByText('Testes: nenhuma verificação registrada.')).toBeInTheDocument();
+  });
+
+  it('a linha de critérios conta só os critérios da missão comprovados por verificação que passou', () => {
+    setup(
+      'succeeded',
+      {},
+      {
+        mission: {
+          ...viewOf('succeeded').mission,
+          acceptanceCriteria: [
+            { id: 'c1', position: 1, text: 'Login funciona' },
+            { id: 'c2', position: 2, text: 'Logout funciona' },
+            { id: 'c3', position: 3, text: 'Senha expira' },
+          ],
+        },
+        conclusion: CONCLUSION,
+        events: [
+          // Texto com espaços nas bordas: conta depois de aparado.
+          verificationEvent('v1', 1, {
+            command: 'pnpm test',
+            passed: 3,
+            failed: 0,
+            criteria: ['  Login funciona  '],
+          }),
+          // Com falha: não comprova.
+          verificationEvent('v2', 2, {
+            command: 'pnpm lint',
+            passed: 2,
+            failed: 1,
+            criteria: ['Senha expira'],
+          }),
+          // Texto que não é critério da missão: não entra na conta.
+          verificationEvent('v3', 3, {
+            command: 'pnpm build',
+            passed: 1,
+            failed: 0,
+            criteria: ['Critério fora da missão'],
+          }),
+        ],
+      },
+    );
+
+    expect(screen.getByText('Critérios: 1 de 3 verificados.')).toBeInTheDocument();
+  });
+
+  it('sem verificação, a linha de critérios mostra zero verificados', () => {
+    setup(
+      'succeeded',
+      {},
+      {
+        mission: {
+          ...viewOf('succeeded').mission,
+          acceptanceCriteria: [
+            { id: 'c1', position: 1, text: 'Login funciona' },
+            { id: 'c2', position: 2, text: 'Logout funciona' },
+          ],
+        },
+        conclusion: CONCLUSION,
+      },
+    );
+
+    expect(screen.getByText('Critérios: 0 de 2 verificados.')).toBeInTheDocument();
+  });
+
+  it('o critério verificado numa tentativa anterior não conta na conclusão de outra execução', () => {
+    const twoAttempts = {
+      mission: {
+        ...viewOf('review').mission,
+        acceptanceCriteria: [
+          { id: 'c1', position: 1, text: 'Login funciona' },
+          { id: 'c2', position: 2, text: 'Logout funciona' },
+        ],
+      },
+      // A tentativa 1 passa e comprova o primeiro critério; a tentativa 2 conclui sem verificação.
+      conclusion: { summary: 'Login corrigido.', changedFiles: 3, gitState: 'uncommitted' as const },
+      events: [
+        verificationEvent('v1', 1, { command: 'pnpm test', passed: 3, failed: 0, criteria: ['Login funciona'] }),
+        concludedEvent('k1', 2, 'e1'),
+        concludedEvent('k2', 3, 'e2'),
+      ],
+    };
+    setup('review', {}, twoAttempts);
+
+    const summary = within(block()).getByRole('region', { name: 'Resumo da conclusão' });
+    expect(within(summary).getByText('Testes: nenhuma verificação registrada.')).toBeInTheDocument();
+    expect(within(summary).getByText('Critérios: 0 de 2 verificados.')).toBeInTheDocument();
+  });
+
+  it('na conclusão de uma execução, conta a verificação dela e não a de outra tentativa', () => {
+    setup(
+      'review',
+      {},
+      {
+        mission: {
+          ...viewOf('review').mission,
+          acceptanceCriteria: [
+            { id: 'c1', position: 1, text: 'Login funciona' },
+            { id: 'c2', position: 2, text: 'Logout funciona' },
+          ],
+        },
+        conclusion: { summary: 'Login corrigido.', changedFiles: 3, gitState: 'uncommitted' },
+        events: [
+          verificationEvent('v1', 1, { command: 'pnpm test', passed: 3, failed: 0, criteria: ['Login funciona'] }),
+          concludedEvent('k1', 2, 'e1'),
+          // A tentativa 2 é a que concluiu: a verificação dela comprova o segundo critério.
+          verificationEvent(
+            'v2',
+            3,
+            { command: 'pnpm test', passed: 4, failed: 0, criteria: ['Logout funciona'] },
+            'e2',
+          ),
+          concludedEvent('k2', 4, 'e2'),
+        ],
+      },
+    );
+
+    expect(screen.getByText('Critérios: 1 de 2 verificados.')).toBeInTheDocument();
+  });
+
+  it('com zero testes contados, a linha de testes não mostra "0 passaram"', () => {
+    setup(
+      'succeeded',
+      {},
+      { conclusion: { ...CONCLUSION, verification: { passed: 0, failed: 0 } } },
+    );
+
+    const summary = within(block()).getByRole('region', { name: 'Resumo da conclusão' });
+    expect(within(summary).getByText('Testes: nenhum teste contado.')).toBeInTheDocument();
+    expect(within(summary).queryByText(/0 passaram/)).toBeNull();
+  });
+
+  it('sem critério na missão, a linha de critérios não aparece', () => {
+    setup('succeeded', {}, { conclusion: CONCLUSION });
+
+    const summary = within(block()).getByRole('region', { name: 'Resumo da conclusão' });
+    expect(within(summary).queryByText(/Critérios:/)).toBeNull();
+    expect(within(summary).getByText('Testes: 12 passaram')).toBeInTheDocument();
   });
 
   it('o texto vindo do agente entra como texto, não como HTML', () => {

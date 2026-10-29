@@ -3,6 +3,7 @@ import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/con
 import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
 import { ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
+import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHeader';
 import { StateMark } from '../components/StateMark';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
@@ -20,6 +21,8 @@ export type PaneViewProps = {
   focusTerminal?: boolean;
   /** Pedido de iniciar ou encerrar em curso. */
   busy: boolean;
+  /** A pasta do projeto sumiu: iniciar e reiniciar ficam desabilitados, com o aviso da página como descrição. */
+  unavailable?: boolean;
   error?: string;
   /** O painel recebeu o foco do teclado: marca como ativo, sem levar o foco ao terminal. */
   onActivate(): void;
@@ -84,6 +87,11 @@ function CloseButton({
 export function PaneView(props: PaneViewProps) {
   const { leaf, terminal, provider, projectName, active, busy, error } = props;
   const focusTerminal = props.focusTerminal === true;
+  const unavailable = props.unavailable === true;
+  // Com a pasta indisponível, o botão de iniciar ou reiniciar aponta para o aviso da página (aria-describedby).
+  const unavailableLink: { 'aria-describedby'?: string } = unavailable
+    ? { 'aria-describedby': PROJECT_UNAVAILABLE_NOTICE_ID }
+    : {};
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
   const maximize =
     props.onMaximize === undefined ? null : (
@@ -121,7 +129,8 @@ export function PaneView(props: PaneViewProps) {
               <button
                 type="button"
                 className="btn-primary"
-                disabled={busy || provider?.available === false}
+                disabled={busy || unavailable || provider?.available === false}
+                {...unavailableLink}
                 onClick={props.onStart}
               >
                 {`Iniciar ${label}`}
@@ -135,17 +144,30 @@ export function PaneView(props: PaneViewProps) {
   } else if (terminal === undefined || terminal.state === 'exited') {
     // Sem registro não dá para saber se a sessão era de missão: oferecer reiniciar é o caso comum.
     const canRestart = terminal?.missionId === undefined;
+    // Conversa do agente não volta com o contexto anterior: o rótulo e a dica dizem isso.
+    const isAgent = terminal?.kind === 'agent';
+    const restart = (
+      <button
+        type="button"
+        disabled={busy || unavailable}
+        {...unavailableLink}
+        onClick={props.onStart}
+      >
+        {isAgent ? 'Iniciar nova conversa' : 'Iniciar de novo'}
+      </button>
+    );
     content = (
       <>
         <div className="pane__head">
           <div className="pane__notice">
             <span role="status">A sessão terminou.</span>
             <span className="pane__actions">
-              {canRestart && (
-                <button type="button" disabled={busy} onClick={props.onStart}>
-                  Iniciar de novo
-                </button>
-              )}
+              {canRestart &&
+                (isAgent ? (
+                  <Hint label="O contexto da conversa anterior não volta">{restart}</Hint>
+                ) : (
+                  restart
+                ))}
               {maximize}
               <CloseButton disabled={busy} onClick={props.onClose} hint="Fecha o painel" />
             </span>

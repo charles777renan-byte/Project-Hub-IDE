@@ -27,8 +27,9 @@ function blockingFiles(error: AppError): string[] {
 
 /**
  * Aba Worktrees do projeto (seção 10.5): pasta, branch, missão e estado de cada worktree, com o botão
- * Remover. A remoção é do Git, sem forçar: alteração não salva recusa e a recusa aparece aqui, com os
- * arquivos que impedem. A branch nunca é apagada. Só o worktree de missão concluída pode sair.
+ * Remover. A remoção é do Git, sem forçar: alteração não salva recusa e a recusa aparece no cartão do
+ * worktree que foi recusado, com os arquivos que impedem. A branch nunca é apagada. Só o worktree de
+ * missão concluída pode sair.
  * Tudo que vem do Git ou do banco entra como texto.
  */
 export function WorktreesTab({ projectId }: { projectId: string }) {
@@ -90,59 +91,57 @@ export function WorktreesTab({ projectId }: { projectId: string }) {
   }
 
   return (
-    <>
-      {refusal === null ? null : (
-        <div role="alert" className="page-alert">
-          <p>{refusal.message}</p>
-          {refusal.files.length === 0 ? null : (
-            <>
-              <p>Arquivos que impedem a remoção:</p>
-              <ul>
-                {refusal.files.map((file) => (
-                  <li key={file}>{file}</li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-      <ul className="card-list" aria-label="Worktrees do projeto">
-        {state.worktrees.map((worktree) => (
-          <li key={worktree.missionId}>
-            <article className="mission-card">
-              <StatusChip
-                label={statusLabel(worktree.status)}
-                tone={statusTone(worktree.status)}
-                icon={statusIcon(worktree.status)}
+    <ul className="card-list" aria-label="Worktrees do projeto">
+      {state.worktrees.map((worktree) => (
+        <li key={worktree.missionId}>
+          <article className="mission-card">
+            <StatusChip
+              label={statusLabel(worktree.status)}
+              tone={statusTone(worktree.status)}
+              icon={statusIcon(worktree.status)}
+            />
+            <h2>
+              <Link to={missionPath(projectId, worktree.missionId)}>{worktree.missionTitle}</Link>
+            </h2>
+            <p className="project-path">
+              <PathText path={worktree.path} />
+            </p>
+            <p className="mission-meta">
+              Branch: <span>{worktree.branch ?? 'não registrada'}</span>
+            </p>
+            {worktree.status === 'succeeded' ? (
+              <ConfirmButton
+                label="Remover"
+                question="Remover este worktree? A branch continua no repositório."
+                confirmLabel="Remover worktree"
+                disabled={removing !== null}
+                onConfirm={() => void remove(worktree.missionId)}
               />
-              <h2>
-                <Link to={missionPath(projectId, worktree.missionId)}>{worktree.missionTitle}</Link>
-              </h2>
-              <p className="project-path">
-                <PathText path={worktree.path} />
-              </p>
+            ) : (
               <p className="mission-meta">
-                Branch: <span>{worktree.branch ?? 'não registrada'}</span>
+                {worktree.status === 'failed' || worktree.status === 'cancelled'
+                  ? 'Só o worktree de uma missão concluída pode ser removido.'
+                  : 'Em uso pela missão.'}
               </p>
-              {worktree.status === 'succeeded' ? (
-                <ConfirmButton
-                  label="Remover"
-                  question="Remover este worktree? A branch continua no repositório."
-                  confirmLabel="Remover worktree"
-                  disabled={removing !== null}
-                  onConfirm={() => void remove(worktree.missionId)}
-                />
-              ) : (
-                <p className="mission-meta">
-                  {worktree.status === 'failed' || worktree.status === 'cancelled'
-                    ? 'Só o worktree de uma missão concluída pode ser removido.'
-                    : 'Em uso pela missão.'}
-                </p>
-              )}
-            </article>
-          </li>
-        ))}
-      </ul>
-    </>
+            )}
+            {refusal !== null && refusal.missionId === worktree.missionId ? (
+              <div role="alert" className="page-alert">
+                <p>{refusal.message}</p>
+                {refusal.files.length === 0 ? null : (
+                  <>
+                    <p>Arquivos que impedem a remoção:</p>
+                    <ul>
+                      {refusal.files.map((file) => (
+                        <li key={file}>{file}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </article>
+        </li>
+      ))}
+    </ul>
   );
 }

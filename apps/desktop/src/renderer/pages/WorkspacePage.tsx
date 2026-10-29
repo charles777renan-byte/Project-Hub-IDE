@@ -7,7 +7,8 @@ import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
-import { ProjectHeader } from '../components/project/ProjectHeader';
+import { PathText } from '../components/PathText';
+import { PROJECT_UNAVAILABLE_NOTICE_ID, ProjectHeader } from '../components/project/ProjectHeader';
 import { ProjectMissions } from '../components/project/ProjectMissions';
 import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
@@ -33,6 +34,9 @@ import { useWorkspace } from '../workspace/use-workspace';
 import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
 
 const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.';
+const UNAVAILABLE_NOTICE =
+  'A pasta deste projeto não está disponível. Ela pode ter sido movida ou apagada.';
+const UNAVAILABLE_REASON = 'A pasta do projeto não está disponível.';
 
 /** Lê o id da sessão que a barra lateral pediu para mostrar, se o estado da rota traz um. */
 function requestedTerminal(state: unknown): string | null {
@@ -62,6 +66,8 @@ export function WorkspacePage() {
   const view = missionId === undefined ? projectViewFromParams(params) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
+  // Pasta que sumiu: o aviso sai acima de todas as visões e os terminais não abrem. Sem o campo, vale disponível.
+  const unavailable = project?.available === false;
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
   // de leitura, o workspace abre e o processo principal recusa o que não existe.
   if (sidebar.status === 'ready' && project === undefined) {
@@ -83,12 +89,18 @@ export function WorkspacePage() {
           }
         />
       )}
+      {project !== undefined && unavailable ? (
+        <p role="alert" className="page-alert" id={PROJECT_UNAVAILABLE_NOTICE_ID}>
+          {UNAVAILABLE_NOTICE} Caminho esperado: <PathText path={project.path} />
+        </p>
+      ) : null}
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
         <WorkspaceBody
           key={projectId}
           projectId={projectId}
           projectName={project?.name ?? ''}
           visible={view === 'terminais'}
+          {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
         />
       </ProjectPanel>
       <ProjectPanel
@@ -156,13 +168,18 @@ function WorkspaceBody({
   projectId,
   projectName,
   visible,
+  unavailableReason,
 }: {
   projectId: string;
   projectName: string;
   /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
   visible: boolean;
+  /** A pasta do projeto sumiu: a barra não abre terminal e a dica mostra este motivo. */
+  unavailableReason?: string;
 }) {
   const workspace = useWorkspace(projectId);
+  // A pasta sumida desabilita também iniciar e reiniciar nos painéis (o motivo vem com `unavailableReason`).
+  const unavailable = unavailableReason !== undefined;
 
   const { terminals, loaded, reload } = useTerminals();
   const location = useLocation();
@@ -399,6 +416,7 @@ function WorkspaceBody({
         active={workspace.activeLeafId === leaf.id}
         focusTerminal={workspace.focusLeafId === leaf.id}
         busy={busy.has(leaf.id)}
+        unavailable={unavailable}
         {...(errors[leaf.id] !== undefined ? { error: errors[leaf.id] } : {})}
         onActivate={() => workspace.activate(leaf.id)}
         onPointerActivate={() => workspace.activateWithFocus(leaf.id)}
@@ -417,6 +435,7 @@ function WorkspaceBody({
         providers={providers}
         busy={opening}
         limitReached={leavesOf(layout).length >= LAYOUT_LIMITS.maxLeaves}
+        {...(unavailableReason === undefined ? {} : { unavailableReason })}
         focusToken={toolbarFocus}
         soloMode={soloLeaf !== undefined}
         canSolo={shownLeaves.length > 0}
