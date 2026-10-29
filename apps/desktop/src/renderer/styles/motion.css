@@ -92,19 +92,132 @@
   transition: color var(--dur) var(--ease);
 }
 
+/*
+ * Paleta de comandos (Ctrl+K). Abre descendo 8px e crescendo de 98% enquanto aparece, com o fundo escurecendo
+ * junto; fecha ao contrário, mais rápido e acelerando (--ease-exit), e segura o último quadro (`forwards`) até o
+ * <dialog> fechar (PaletaComandos). A lista chega meio instante depois da caixa. Entrar no passo "Nova missão"
+ * desliza a página da direita, e voltar desliza da esquerda; a pílula do passo cresce de 90%. Uma linha que
+ * reaparece enquanto se digita só acende, a linha marcada troca de fundo e o "Abrir ↵" entra deslizando 4px.
+ */
+@keyframes paleta-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+
+@keyframes paleta-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes paleta-fundo-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes paleta-fundo-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes paleta-passo-frente {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+@keyframes paleta-passo-volta {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+
+@keyframes paleta-pilula-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.paleta[open] {
+  animation: paleta-in var(--dur) var(--ease) backwards;
+}
+
+.paleta[open]::backdrop {
+  animation: paleta-fundo-in var(--dur) var(--ease) backwards;
+}
+
+.paleta[data-motion='leaving'] {
+  animation: paleta-out var(--dur-fast) var(--ease-exit) forwards;
+}
+
+.paleta[data-motion='leaving']::backdrop {
+  animation: paleta-fundo-out var(--dur-fast) var(--ease-exit) forwards;
+}
+
+.paleta__pagina {
+  animation: panel-in var(--dur) var(--ease) calc(var(--dur-fast) / 2) backwards;
+}
+
+.paleta__pagina[data-direcao='frente'] {
+  animation: paleta-passo-frente var(--dur) var(--ease) backwards;
+}
+
+.paleta__pagina[data-direcao='volta'] {
+  animation: paleta-passo-volta var(--dur) var(--ease) backwards;
+}
+
+.paleta__pilula {
+  animation: paleta-pilula-in var(--dur) var(--ease) backwards;
+}
+
+.paleta__item {
+  animation: panel-fade var(--dur-fast) var(--ease) backwards;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.paleta__enter {
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+
+.paleta__vazio {
+  animation: panel-in var(--dur) var(--ease) backwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .project-tab__panel:not([hidden]),
   .mission-dock__panel:not([hidden]),
   .project-tab__panel--terminais:not([hidden]),
   .app-main__content > *,
   .pane-tree__leaf[data-motion='entering'],
-  .pane-tree__leaf[data-motion='leaving'] {
+  .pane-tree__leaf[data-motion='leaving'],
+  .paleta[open],
+  .paleta[open]::backdrop,
+  .paleta[data-motion='leaving'],
+  .paleta[data-motion='leaving']::backdrop,
+  .paleta__pagina,
+  .paleta__pagina[data-direcao='frente'],
+  .paleta__pagina[data-direcao='volta'],
+  .paleta__pilula,
+  .paleta__item,
+  .paleta__vazio {
     animation: none;
   }
 
   .tab,
   .tab::before,
-  .pane__usage-value {
+  .pane__usage-value,
+  .paleta__item,
+  .paleta__enter {
     transition: none;
   }
 }
