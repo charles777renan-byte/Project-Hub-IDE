@@ -8,6 +8,7 @@ import {
   decisionTextOf,
   lastInputPrompt,
   primaryActionOf,
+  verifiedCriteria,
   type PrimaryAction,
 } from '../../mission-text';
 import { ApprovalCard } from '../ApprovalCard';
@@ -25,24 +26,66 @@ const PRIMARY_LABEL: Record<PrimaryAction, string> = {
 };
 
 /**
- * Fecho da missão (R130): a frase final do agente e o estado do Git, numa caixa discreta. A verificação e
- * os arquivos alterados já aparecem nas abas Testes e Diff, então não se repetem aqui. A frase vem do
- * agente e entra como texto, nunca como HTML.
+ * Eventos da execução que concluiu a missão, pela mesma regra de `deriveConclusion`: a última
+ * `execution.concluded` e os eventos com o mesmo `aggregateId`. Assim a verificação de uma tentativa
+ * anterior não comprova critério na conclusão de outra. Sem nenhuma `execution.concluded` na lista, vale a
+ * lista inteira.
+ */
+function eventsOfConclusion(events: MissionViewDto['events']): MissionViewDto['events'] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.eventType === 'execution.concluded') {
+      return events.filter((other) => other.aggregateId === event.aggregateId);
+    }
+  }
+  return events;
+}
+
+/**
+ * Linha de testes do resumo. Sem verificação, diz que nada foi registrado; com verificação de zero testes,
+ * não conta zero como se fosse um resultado.
+ */
+function testsLine(verification: NonNullable<MissionViewDto['conclusion']>['verification']): string {
+  if (verification === undefined) return 'Testes: nenhuma verificação registrada.';
+  if (verification.passed === 0 && verification.failed === 0) {
+    return 'Testes: nenhum teste contado.';
+  }
+  const failed = verification.failed > 0 ? `, ${verification.failed} falharam` : '';
+  return `Testes: ${verification.passed} passaram${failed}`;
+}
+
+/**
+ * Fecho da missão (R130): a frase final do agente, o próximo passo do Git, a verificação e os critérios
+ * comprovados, numa caixa discreta. A verificação aparece aqui para a pessoa ver antes de aprovar
+ * (decisao-revisao-da-missao). Os arquivos alterados continuam fora: já aparecem na aba Diff. A frase vem
+ * do agente e entra como texto, nunca como HTML.
  */
 function ConclusionSummary({
   conclusion,
+  criteriaVerified,
+  criteriaTotal,
 }: {
   conclusion: NonNullable<MissionViewDto['conclusion']>;
+  /** Critérios de aceite da missão que os eventos comprovam (X de Y). */
+  criteriaVerified: number;
+  criteriaTotal: number;
 }) {
+  const { verification } = conclusion;
+  const nextStep =
+    conclusion.gitState === 'uncommitted'
+      ? 'Há alterações sem commit na pasta da missão. Elas ainda não entraram no projeto.'
+      : 'O trabalho está salvo na branch da missão. Ainda não entrou no projeto.';
   return (
     <section className="conclusion" aria-label="Resumo da conclusão">
       <p className="conclusion__summary">{conclusion.summary}</p>
       <ul className="conclusion__facts">
-        <li className="conclusion__item">
-          {conclusion.gitState === 'uncommitted'
-            ? 'Git: alterações sem commit'
-            : 'Git: sem alterações pendentes'}
-        </li>
+        <li className="conclusion__item">{nextStep}</li>
+        <li className="conclusion__item">{testsLine(verification)}</li>
+        {criteriaTotal > 0 ? (
+          <li className="conclusion__item">
+            {`Critérios: ${criteriaVerified} de ${criteriaTotal} verificados.`}
+          </li>
+        ) : null}
       </ul>
     </section>
   );
@@ -126,6 +169,12 @@ export function DecisionBlock({
   /** Uma regra só: com qualquer chamada em curso, planejar inclusive, nada do bloco muda o plano. */
   const locked = busy || planning;
   const prompt = lastInputPrompt(events) ?? DECISION_TEXT.answerPromptFallback;
+  /** Critérios da missão comprovados pelas verificações que passaram na execução da conclusão (X de Y). */
+  const verified = verifiedCriteria(eventsOfConclusion(events));
+  const criteriaTotal = view.mission.acceptanceCriteria.length;
+  const criteriaVerified = view.mission.acceptanceCriteria.filter((criterion) =>
+    verified.has(criterion.text.trim()),
+  ).length;
 
   const primaryAction: Record<PrimaryAction, { run: () => void; disabled: boolean }> = {
     generate_plan: { run: onGeneratePlan, disabled: busy },
@@ -167,7 +216,11 @@ export function DecisionBlock({
       {planned ? <p className="muted">{DECISION_TEXT.plannedReassurance}</p> : null}
 
       {(reviewing || status === 'succeeded') && conclusion !== undefined ? (
-        <ConclusionSummary conclusion={conclusion} />
+        <ConclusionSummary
+          conclusion={conclusion}
+          criteriaVerified={criteriaVerified}
+          criteriaTotal={criteriaTotal}
+        />
       ) : null}
 
       {pendingApprovals.map((approval) => (

@@ -328,6 +328,13 @@ describe('botões, campos e anel de foco', () => {
     expect(rule(':focus-visible').get('outline-offset')).toBe('2px');
   });
 
+  it('o item do menu do workspace tem o anel por dentro (deslocamento de -2px) e não tira o outline', () => {
+    // O anel fica por dentro do item (deslocamento negativo); sem outline, o foco do teclado some.
+    const item = rule('.workspace__menu-item:focus-visible');
+    expect(item.get('outline-offset')).toBe('-2px');
+    expect(item.get('outline')).not.toBe('none');
+  });
+
   it('campos têm fundo --surface (sólido; o cartão .form é translúcido), borda --field-line e raio de controle', () => {
     const field = rule('.field input');
     expect(field.get('background')).toBe('var(--surface)');

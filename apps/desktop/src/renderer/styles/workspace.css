@@ -195,6 +195,12 @@
   -webkit-app-region: no-drag;
 }
 
+/* A marca de atenção vem depois do nome, centrada na linha da aba (a cor é a de state-mark em app.css). */
+.topbar__tab-link .state-mark {
+  margin-left: var(--space-1);
+  vertical-align: middle;
+}
+
 /* Com o ponteiro capturado pelo link, o cursor é o dele: mão fechada durante o arrasto. */
 .topbar__tab--dragging .topbar__tab-link {
   cursor: grabbing;

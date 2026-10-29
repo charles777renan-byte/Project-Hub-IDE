@@ -9,8 +9,11 @@ import {
 import { NavLink, useLocation, useMatch, useNavigate } from 'react-router';
 import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
 import markUrl from '../assets/simbolo.png';
+import { needsAttention } from '../mission-text';
 import { ADD_PROJECT_REQUEST_EVENT } from '../projects-events';
 import { ROUTE_PATHS, workspacePath } from '../routes';
+import { MARKS } from '../state-mark';
+import { useTerminals } from '../terminals-data';
 import { useSidebarData } from '../use-sidebar-data';
 import { previewDrop, stepId, type DropPreview, type TabSlot } from '../workspace-order';
 import { showWorkspaceOrder, useOpenWorkspaces } from '../workspaces-data';
@@ -39,7 +42,8 @@ function prefersReducedMotion(): boolean {
  * a marca, a aba fixa Início (link para `/`, sempre a primeira, sem botão de fechar e fora da
  * reordenação), as abas dos workspaces abertos e o botão que abre outro workspace. Arrastar pelo fundo
  * move a janela; abas, botão e menu ficam fora da área de arrastar (workspace.css). Os nomes dos projetos entram sempre como
- * texto.
+ * texto. A aba de um projeto que espera a pessoa (terminal em `waiting` ou missão que pede decisão) ganha
+ * a marca de atenção, escondida dos leitores de tela, com a descrição "Precisa de você" no link.
  */
 export function TopBar({
   sidebarCollapsed = false,
@@ -52,7 +56,8 @@ export function TopBar({
 } = {}) {
   const navigate = useNavigate();
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
-  const { projects } = useSidebarData();
+  const { projects, missionsByProject } = useSidebarData();
+  const { terminals } = useTerminals();
   const { workspaces, status: loadStatus, message } = useOpenWorkspaces();
   const [problem, setProblem] = useState<string | null>(null);
   // Ordenar as abas com o ponteiro (sem o arrasto nativo do navegador, que traz o ícone e a imagem do sistema).
@@ -278,6 +283,14 @@ export function TopBar({
   // Um erro de abrir ou fechar vale mais que o da carga; o da carga some na próxima carga que der certo.
   const notice = problem ?? (loadStatus === 'error' ? (message ?? null) : null);
   const openIds = new Set(workspaces.map((workspace) => workspace.projectId));
+  // Os projetos que esperam a pessoa: um terminal em `waiting` ou uma missão que pede decisão (a mesma regra da barra lateral).
+  const waitingProjects = new Set<string>();
+  for (const terminal of terminals) {
+    if (terminal.state === 'waiting') waitingProjects.add(terminal.projectId);
+  }
+  for (const [projectId, missions] of Object.entries(missionsByProject)) {
+    if (missions.some((mission) => needsAttention(mission.status))) waitingProjects.add(projectId);
+  }
 
   return (
     <header className="topbar">
@@ -323,6 +336,8 @@ export function TopBar({
               const name = nameOf(workspace);
               const dragged = drag?.id === workspace.id ? drag : null;
               const shift = dragged?.x ?? drag?.preview.shifts.get(workspace.id) ?? 0;
+              const attention = waitingProjects.has(workspace.projectId);
+              const attentionId = `topbar-attention-${workspace.id}`;
               const classes = ['topbar__tab'];
               if (dragged !== null) classes.push('topbar__tab--dragging');
               if (dragged?.settling === true) classes.push('topbar__tab--dropping');
@@ -337,6 +352,7 @@ export function TopBar({
                     to={workspacePath(workspace.projectId)}
                     className="topbar__tab-link"
                     title={name}
+                    aria-describedby={attention ? attentionId : undefined}
                     data-workspace-id={workspace.id}
                     draggable={false}
                     onPointerDown={(event) => pressTab(event, workspace.id)}
@@ -366,7 +382,17 @@ export function TopBar({
                     }}
                   >
                     {name}
+                    {attention ? (
+                      <span className="state-mark state-mark--waiting" aria-hidden="true">
+                        {MARKS.waiting.glyph}
+                      </span>
+                    ) : null}
                   </NavLink>
+                  {attention ? (
+                    <span id={attentionId} className="visually-hidden">
+                      Precisa de você
+                    </span>
+                  ) : null}
                   <Hint label={`Fechar workspace ${name}`}>
                     <button
                       type="button"

@@ -1325,9 +1325,10 @@ button:disabled {
   user-select: none;
 }
 
+/* O anel de foco do app fica por dentro do item, como no menu de ações (um fundo só não basta: WCAG 2.4.7). */
 .workspace__menu-item:focus-visible {
   background: var(--line);
-  outline: none;
+  outline-offset: -2px;
 }
 
 .workspace__menu-item[aria-disabled='true'] {

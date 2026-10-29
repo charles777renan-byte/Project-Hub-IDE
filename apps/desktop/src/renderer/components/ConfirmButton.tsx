@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Hint } from './Hint';
 
 /**
@@ -65,9 +65,19 @@ export function ConfirmButton({
   onConfirm: () => void;
 }) {
   const [asking, setAsking] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // "Voltar" devolve o foco ao botão inicial. Confirmar não devolve: a ação costuma tirar o item da tela.
+  const returnFocus = useRef(false);
+  useEffect(() => {
+    if (asking || !returnFocus.current) return;
+    returnFocus.current = false;
+    trigger.current?.focus();
+  }, [asking]);
+
   if (!asking) {
     const button = (
       <button
+        ref={trigger}
         type="button"
         className="btn-danger"
         aria-label={ariaLabel}
@@ -88,7 +98,10 @@ export function ConfirmButton({
         setAsking(false);
         onConfirm();
       }}
-      onCancel={() => setAsking(false)}
+      onCancel={() => {
+        returnFocus.current = true;
+        setAsking(false);
+      }}
     />
   );
 }
