@@ -7,4 +7,17 @@ export {
   type ClaudeHooks,
   type ClaudeTerminal,
 } from './claude-code/adapter';
-export { mapHookEntry, type HookRecord } from './claude-code/settings';
+export {
+  HOOK_EVENTS,
+  isClearSessionEnd,
+  mapHookEntry,
+  writeHookScript,
+  writeSettingsFile,
+  type HookEventName,
+  type HookRecord,
+} from './claude-code/settings';
+export {
+  claudeConfigDirOf,
+  createTranscriptUsageTracker,
+  type TranscriptUsageTracker,
+} from './claude-code/transcript-usage';

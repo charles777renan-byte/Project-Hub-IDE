@@ -1,7 +1,5 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import type {
   AgentAdapter,
   AgentCapabilities,
@@ -19,7 +17,11 @@ import {
   writeSettingsFile,
   type HookRecord,
 } from './settings';
-import { createTranscriptUsageTracker, type TranscriptUsageTracker } from './transcript-usage';
+import {
+  claudeConfigDirOf,
+  createTranscriptUsageTracker,
+  type TranscriptUsageTracker,
+} from './transcript-usage';
 
 /** Terminal do processo de terminais, pelo que o adaptador usa. A porta da aplicação satisfaz este tipo. */
 export type ClaudeTerminal = {
@@ -107,7 +109,7 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   const runVersion = options.runVersion ?? readVersion;
   const usage: UsageOptions = {
-    configDir: options.claudeConfigDir ?? configDirOf(options.env),
+    configDir: options.claudeConfigDir ?? claudeConfigDirOf(options.env),
     intervalMs: options.usageIntervalMs ?? DEFAULT_USAGE_INTERVAL_MS,
     drainDelayMs: options.usageDrainDelayMs ?? DEFAULT_USAGE_DRAIN_DELAY_MS,
   };
@@ -181,15 +183,6 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
 
 /** Onde e de quanto em quanto tempo o gasto é lido. */
 type UsageOptions = { configDir: string; intervalMs: number; drainDelayMs: number };
-
-/**
- * A pasta de dados do Claude Code que o terminal vai usar: `CLAUDE_CONFIG_DIR` do ambiente do terminal
- * (o nome é comparado sem diferenciar maiúsculas, como no Windows), ou `~/.claude`.
- */
-function configDirOf(env: Readonly<Record<string, string>>): string {
-  const entry = Object.entries(env).find(([key]) => key.toUpperCase() === 'CLAUDE_CONFIG_DIR');
-  return entry !== undefined && entry[1] !== '' ? entry[1] : join(homedir(), '.claude');
-}
 
 function createSession(
   executionId: string,

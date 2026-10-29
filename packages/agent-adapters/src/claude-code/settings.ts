@@ -86,19 +86,34 @@ export function hookCommand(scriptPath: string): string {
   return `node "${scriptPath.replaceAll('\\', '/')}"`;
 }
 
-/** Configuração de hooks de uma execução: todos os eventos apontam para o mesmo script. */
-export function buildHookSettings(scriptPath: string): {
+/** Nome de um evento de hook que o app sabe gravar. */
+export type HookEventName = (typeof HOOK_EVENTS)[number];
+
+/**
+ * Configuração de hooks de uma execução: os eventos pedidos apontam todos para o mesmo script. Padrão: os
+ * seis da missão. O painel de terminal pede só o início e o fim da sessão, porque cada evento a mais vira
+ * uma linha no log que o receptor relê inteiro.
+ */
+export function buildHookSettings(
+  scriptPath: string,
+  events: readonly HookEventName[] = HOOK_EVENTS,
+): {
   hooks: Record<string, { hooks: { type: 'command'; command: string }[] }[]>;
 } {
   const group = { hooks: [{ type: 'command' as const, command: hookCommand(scriptPath) }] };
-  return { hooks: Object.fromEntries(HOOK_EVENTS.map((event) => [event, [group]])) };
+  return { hooks: Object.fromEntries(events.map((event) => [event, [group]])) };
 }
 
-/** Grava a configuração de hooks da execução e devolve o caminho do arquivo. */
-export function writeSettingsFile(dir: string, executionId: string, scriptPath: string): string {
+/** Grava a configuração de hooks da execução e devolve o caminho do arquivo. Eventos: os de `buildHookSettings`. */
+export function writeSettingsFile(
+  dir: string,
+  executionId: string,
+  scriptPath: string,
+  events: readonly HookEventName[] = HOOK_EVENTS,
+): string {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${executionId}.settings.json`);
-  writeFileSync(file, JSON.stringify(buildHookSettings(scriptPath), null, 2), 'utf8');
+  writeFileSync(file, JSON.stringify(buildHookSettings(scriptPath, events), null, 2), 'utf8');
   return file;
 }
 

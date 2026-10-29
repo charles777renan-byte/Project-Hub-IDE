@@ -152,6 +152,32 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__actions').get('flex')).toBe('none');
   });
 
+  it('o gasto de tokens é mono pequeno, sem cor própria, e some antes de o título ser cortado', () => {
+    const usage = rule('.pane__usage');
+    expect(usage.get('font-family')).toBe('var(--font-mono)');
+    expect(usage.get('font-size')).toBe('11px');
+    // Herda a cor do cabeçalho (--muted, mais apagada no painel inativo): nem lima nem cor nova.
+    expect(usage.has('color')).toBe(false);
+    expect(usage.has('background')).toBe(false);
+    // O espaço que falta sai primeiro dele: encolhe muito mais que o título e pode chegar a zero.
+    expect(usage.get('flex')).toBe('0 100000 auto');
+    expect(usage.get('min-width')).toBe('0');
+    expect(rule('.pane__title').get('flex')).toBe('1 1 auto');
+    expect(rule('.pane__title').get('min-width')).toBe('0');
+    // O número que não cabe desce para a segunda linha, escondida: nunca aparece pela metade.
+    expect(usage.get('flex-wrap')).toBe('wrap');
+    expect(usage.get('overflow')).toBe('hidden');
+    expect(usage.get('height')).toBe('18px');
+    expect(rule('.pane__usage::before').get('width')).toBe('0');
+    expect(rule('.pane__usage::before').get('height')).toBe('18px');
+    expect(rule('.pane__usage-value').get('white-space')).toBe('nowrap');
+    // Dígitos de largura igual, para o número não balançar enquanto sobe; enquanto conta, acende em --text.
+    expect(rule('.pane__usage-value').get('font-variant-numeric')).toBe('tabular-nums');
+    expect(rule(".pane__usage-value[data-counting='true']").get('color')).toBe('var(--text)');
+    // O detalhe para leitor de tela usa o mesmo esconder visual das marcas de estado.
+    expect(ruleDeclarations(css, '.pane__usage-sr').get('clip')).toBe('rect(0, 0, 0, 0)');
+  });
+
   it('o estado vazio é centrado e em --muted; no painel, o texto tem respiro e não encosta na borda', () => {
     const empty = rule('.empty-state');
     expect(empty.get('display')).toBe('flex');

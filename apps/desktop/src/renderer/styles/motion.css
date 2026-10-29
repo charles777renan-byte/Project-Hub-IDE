@@ -87,6 +87,11 @@
   transition: opacity var(--dur-fast) var(--ease);
 }
 
+/* Gasto de tokens do painel: o número acende e apaga (cor), enquanto sobe (workspace/use-count-up.ts). */
+.pane__usage-value {
+  transition: color var(--dur) var(--ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .project-tab__panel:not([hidden]),
   .mission-dock__panel:not([hidden]),
@@ -98,7 +103,8 @@
   }
 
   .tab,
-  .tab::before {
+  .tab::before,
+  .pane__usage-value {
     transition: none;
   }
 }

@@ -1,8 +1,9 @@
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  claudeConfigDirOf,
   createTranscriptUsageTracker,
   readUsageLine,
   takeCompleteLines,
@@ -246,5 +247,19 @@ describe('createTranscriptUsageTracker', () => {
 
     writeFileSync(sessionFile(), `${assistantLine('msg_3', { output: 1 })}\n`);
     expect((await tracker.poll())?.outputTokens).toBe(11);
+  });
+});
+
+describe('claudeConfigDirOf', () => {
+  it('usa CLAUDE_CONFIG_DIR do ambiente, com o nome em qualquer caixa', () => {
+    expect(claudeConfigDirOf({ CLAUDE_CONFIG_DIR: 'D:/conta' })).toBe('D:/conta');
+    expect(claudeConfigDirOf({ Claude_Config_Dir: 'D:/outra' })).toBe('D:/outra');
+  });
+
+  it('sem a variável, ou com ela vazia, cai em ~/.claude', () => {
+    const fallback = join(homedir(), '.claude');
+    expect(claudeConfigDirOf({})).toBe(fallback);
+    expect(claudeConfigDirOf({ CLAUDE_CONFIG_DIR: '' })).toBe(fallback);
+    expect(claudeConfigDirOf({ CLAUDE_CONFIG_DIR: undefined })).toBe(fallback);
   });
 });

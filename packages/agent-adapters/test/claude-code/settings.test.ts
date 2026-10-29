@@ -38,6 +38,30 @@ describe('configuração de hooks', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('liga só os eventos pedidos, quando a lista vem', () => {
+    const settings = buildHookSettings('C:/app/hook.cjs', ['SessionStart', 'SessionEnd']);
+
+    expect(Object.keys(settings.hooks).sort()).toEqual(['SessionEnd', 'SessionStart']);
+    expect(settings.hooks['SessionStart']?.[0]?.hooks[0]).toEqual({
+      type: 'command',
+      command: 'node "C:/app/hook.cjs"',
+    });
+  });
+
+  it('grava o arquivo só com os eventos pedidos', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ph-settings-'));
+    try {
+      const file = writeSettingsFile(dir, 'painel-1', 'C:/app/hook.cjs', [
+        'SessionStart',
+        'SessionEnd',
+      ]);
+      const written = JSON.parse(readFileSync(file, 'utf8')) as { hooks: Record<string, unknown> };
+      expect(Object.keys(written.hooks).sort()).toEqual(['SessionEnd', 'SessionStart']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('mapHookEntry', () => {
