@@ -1360,20 +1360,22 @@ button:disabled {
 
 /*
  * Paleta de comandos (components/PaletaComandos.tsx, Ctrl+K): um <dialog> modal nativo, perto do topo da janela,
- * com a superfície e a sombra do menu de ações. O fundo escurece o resto da tela. O item marcado (cmdk,
- * data-selected) usa a mesma cor do destaque do menu. O <dialog> do navegador traz borda e margem próprias:
- * elas são zeradas aqui.
+ * em --surface com a sombra do menu flutuante. O fundo escurece o resto da tela. Cada linha tem ícone, rótulo,
+ * a segunda linha (onde o item está) e, à direita, o selo do estado, o atalho ou o "Abrir ↵" da linha marcada
+ * (cmdk, data-selected). O ícone pinta o tipo: ciano no projeto, o tom do estado na missão, lima só na ação
+ * principal (Nova missão). O <dialog> do navegador traz borda e margem próprias: elas são zeradas aqui. O
+ * movimento (abrir, fechar, passo, linhas) mora em motion.css.
  */
 .paleta {
   inset-block-start: 12vh;
   inset-block-end: auto;
   margin-inline: auto;
-  width: min(36rem, calc(100vw - 2rem));
-  max-height: min(70vh, 30rem);
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: min(76vh, 36rem);
   padding: 0;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-pop);
   overflow: hidden;
@@ -1383,55 +1385,325 @@ button:disabled {
   background: rgb(4 2 16 / 60%);
 }
 
+/* Saindo: a paleta continua na tela até a animação acabar, mas não recebe mais clique. */
+.paleta[data-motion='leaving'] {
+  pointer-events: none;
+}
+
 .paleta__comando {
   display: flex;
   flex-direction: column;
-  max-height: min(70vh, 30rem);
+  max-height: min(76vh, 36rem);
+}
+
+.paleta__cabeca {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 3.5rem;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* O foco da busca: um traço violeta sob a cabeça, no lugar do anel lima (a busca é o único campo da paleta). */
+.paleta__cabeca:has(.paleta__busca:focus-visible) {
+  box-shadow: inset 0 -1px 0 var(--brand);
+}
+
+.paleta__lupa {
+  flex: none;
+  color: var(--muted);
 }
 
 .paleta__busca {
-  width: 100%;
-  padding: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-3) 0;
   border: 0;
-  border-bottom: 1px solid var(--line);
   background: transparent;
   color: var(--text);
   font: inherit;
   font-size: var(--text-md);
 }
 
+.paleta__busca:focus-visible {
+  outline: none;
+}
+
 .paleta__busca::placeholder {
   color: var(--muted);
 }
 
+.paleta__contagem {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.paleta__limpar,
+.paleta__pilula-sair {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.paleta__limpar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.paleta__limpar:hover {
+  color: var(--text);
+}
+
+/* O passo ("Nova missão"): uma pílula antes da busca, com o X que volta a todos os comandos. */
+.paleta__pilula {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.paleta__pilula > svg {
+  color: var(--accent);
+}
+
+.paleta__pilula-sair {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+
+.paleta__tecla {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0.0625rem 0.4375rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
 .paleta__lista {
   overflow-y: auto;
-  padding: var(--space-1);
+  padding: var(--space-2);
+}
+
+.paleta__grupo + .paleta__grupo {
+  margin-top: var(--space-1);
 }
 
 .paleta__grupo [cmdk-group-heading] {
   padding: var(--space-2) 0.625rem var(--space-1);
   color: var(--muted);
   font-size: var(--text-xs);
+  font-weight: 500;
 }
 
 .paleta__item {
-  padding: 0.375rem 0.625rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: var(--space-2) 0.625rem;
   border-radius: var(--radius);
   color: var(--text);
-  font-size: var(--text-sm);
   cursor: pointer;
   user-select: none;
 }
 
 .paleta__item[data-selected='true'] {
-  background: var(--line);
+  background: color-mix(in srgb, var(--brand) 16%, var(--surface));
+}
+
+.paleta__item[data-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.paleta__item[data-disabled='true'] .paleta__rotulo {
+  color: var(--muted);
+}
+
+.paleta__item[data-disabled='true'] .paleta__detalhe {
+  color: var(--warn);
+}
+
+.paleta__icone {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.paleta__item--projeto .paleta__icone {
+  color: var(--cyan);
+}
+
+.paleta__item--principal .paleta__icone {
+  color: var(--accent);
+}
+
+.paleta__item--missao .paleta__icone {
+  color: var(--muted);
+}
+
+.paleta__item--missao[data-tom='warn'] .paleta__icone {
+  color: var(--warn);
+}
+
+.paleta__item--missao[data-tom='red'] .paleta__icone {
+  color: var(--danger);
+}
+
+.paleta__item--missao[data-tom='lime'] .paleta__icone {
+  color: var(--accent);
+}
+
+.paleta__item[data-disabled='true'] .paleta__icone {
+  color: var(--muted);
+}
+
+.paleta__texto {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.paleta__rotulo,
+.paleta__detalhe {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paleta__rotulo {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.paleta__detalhe {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* O trecho buscado: violeta da marca, sem o fundo amarelo do <mark>. */
+.paleta__marca {
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--brand) 24%, transparent);
+  color: var(--text);
+}
+
+.paleta__seta {
+  flex: none;
+  color: var(--muted);
+}
+
+/* "Abrir ↵": só na linha marcada (a opacidade anima em motion.css). */
+.paleta__enter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text);
+  font-size: var(--text-xs);
+  opacity: 0;
+  transform: translateX(-4px);
+}
+
+.paleta__item[data-selected='true'] .paleta__enter {
+  opacity: 1;
+  transform: none;
 }
 
 .paleta__vazio {
-  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  text-align: center;
+}
+
+.paleta__vazio-icone {
+  color: var(--muted);
+}
+
+.paleta__vazio-titulo {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.paleta__vazio-texto {
+  margin: 0;
   color: var(--muted);
   font-size: var(--text-sm);
+}
+
+.paleta__vazio-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.paleta__rodape {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 2.5rem;
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.paleta__atalhos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.paleta__atalhos > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Janela estreita: a dica do rodapé sai antes dos atalhos. */
+@media (max-width: 40rem) {
+  .paleta__rodape-dica {
+    display: none;
+  }
 }
 
 /*

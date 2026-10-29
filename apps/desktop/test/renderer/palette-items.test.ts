@@ -117,12 +117,47 @@ describe('buildPaletteItems', () => {
       { status: 'loading', projects: [], missionsByProject: {} },
       vi.fn(),
     );
+    // Sem projeto, não há "Nova missão…": o passo não teria nada para escolher.
     expect(items.map((item) => item.rotulo)).toEqual([
+      'Adicionar projeto',
+      'Mostrar ou ocultar a barra lateral',
       'Ir para Início',
       'Alterar meu nome',
-      'Mostrar ou ocultar a barra lateral',
-      'Adicionar projeto',
     ]);
+  });
+
+  it('dá a cada missão o projeto, o estado e a data da última mudança, e a cada projeto a branch', () => {
+    const items = buildPaletteItems(COM_DADOS, vi.fn());
+    const missao = itemNamed(items, 'Ajustar login');
+    expect(missao.detalhe).toBe('Missão · app');
+    expect(missao.estado?.rotulo).toBeTruthy();
+    expect(missao.atualizadoEm).toBe(MISSAO.updatedAt);
+    expect(itemNamed(items, 'app').detalhe).toBe('Projeto · main · 1 missão');
+  });
+
+  it('"Nova missão…" é um passo com os projetos, e quem não pode receber missão vem indisponível', () => {
+    const navigate = vi.fn();
+    const semGit: ProjectSummary = { ...PROJETO, id: 'p2', name: 'notas', repositoryKind: 'none' };
+    const sumiu: ProjectSummary = { ...PROJETO, id: 'p3', name: 'velho', available: false };
+    const items = buildPaletteItems(
+      { ...COM_DADOS, projects: [PROJETO, semGit, sumiu], missionsByProject: {} },
+      navigate,
+    );
+
+    const passo = itemNamed(items, 'Nova missão…').passo;
+    expect(passo?.itens.map((item) => item.rotulo)).toEqual(['app', 'notas', 'velho']);
+    const [app, notas, velho] = passo?.itens ?? [];
+    expect(app?.indisponivel).toBeUndefined();
+    expect(notas?.indisponivel).toMatch(/git init/);
+    expect(velho?.indisponivel).toMatch(/Pasta indisponível/);
+
+    app?.executar();
+    expect(navigate).toHaveBeenLastCalledWith('/workspaces/p1?visao=missoes', {
+      state: { newMission: true },
+    });
+    // Buscando, só aparece "Nova missão em" do projeto que pode receber missão.
+    expect(items.filter((item) => item.rotulo.startsWith('Nova missão em '))).toHaveLength(1);
+    expect(itemNamed(items, 'Nova missão em app').so).toBe('buscando');
   });
 
   it('dá um id único a cada item, mesmo quando um projeto e uma missão têm o mesmo nome', () => {
