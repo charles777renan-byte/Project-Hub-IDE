@@ -81,7 +81,8 @@
   flex: none;
   margin: 0;
   border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-3);
+  /* 12px dos lados: com o vão de 4px, cada aba ocupa 28px a mais que o nome, menos que os 32px da versão sublinhada. */
+  padding: var(--space-1) 0.75rem;
   font-size: 0.8125rem;
   white-space: nowrap;
 }
