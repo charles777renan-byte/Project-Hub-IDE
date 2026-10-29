@@ -284,7 +284,7 @@
   min-width: 2px;
   height: 0.5rem;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .progress-seg--succeeded {
