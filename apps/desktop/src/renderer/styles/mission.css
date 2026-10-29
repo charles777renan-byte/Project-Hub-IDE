@@ -238,11 +238,25 @@
 /*
  * Sua decisão: a frase da situação, o que ela espera da pessoa (cartões, caixas e botões) e a falha de
  * uma ação. A região de anúncio é só para o leitor de tela (`visually-hidden`, fora da grade).
+ * O bloco é um cartão, com a mesma superfície, contorno e raio dos painéis do aplicativo (app.css).
  */
 .decision-block {
   display: grid;
   gap: var(--space-2);
   justify-items: start;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+/* Dentro do cartão, o título da seção sai da legenda em caixa-alta e vira título de cartão. */
+.decision-block > .mission-section-title {
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* Cartões, formulários e o resumo ocupam a largura do bloco (até um limite de leitura), não a do conteúdo. */
@@ -252,6 +266,10 @@
 .decision-block__instruction {
   justify-self: stretch;
   max-width: 40rem;
+}
+
+.decision-block .form {
+  border-radius: var(--radius-card);
 }
 
 .decision-block .conclusion__summary {

@@ -216,7 +216,7 @@ describe('tokens da identidade visual', () => {
     expect(root.get('--radius-panel')).toBe('var(--radius-card)');
     expect(root.get('--radius-pill')).toBe('999px');
     expect(['xs', 'sm', 'md', 'lg', 'xl'].map((size) => root.get(`--text-${size}`))).toEqual([
-      '0.6875rem',
+      '0.75rem',
       '0.8125rem',
       '0.9375rem',
       '1.125rem',
@@ -567,4 +567,49 @@ describe('links sem cara de site', () => {
       expect(rule.get('color')).toBe('var(--text)');
     },
   );
+});
+
+/**
+ * Escala tipográfica e raios só em tokens (tokens.css): nenhuma folha de styles/ escreve um font-size
+ * ou um border-radius com valor literal em px ou rem. Não entram na conta 50%, 0 e inherit, que não
+ * têm px nem rem. Ficam de fora só o tokens.css, que é onde a escala e os raios são definidos, e no
+ * font-size o xterm.css, que é o CSS do próprio terminal e carrega o tamanho dele.
+ */
+describe('escala tipográfica e raios só em tokens', () => {
+  const LITERAL = /(?<![\w.-])(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem)\b/;
+  const FONT_SIZE_EXCLUDED = ['tokens.css', 'xterm.css'];
+  const RADIUS_EXCLUDED = ['tokens.css'];
+
+  /** Os valores literais de `property` em cada folha de styles/, com arquivo e linha de cada um. */
+  function literalValues(property: string, excluded: string[]): string[] {
+    return readdirSync(stylesDirectory)
+      .filter((name) => name.endsWith('.css') && !excluded.includes(name))
+      .flatMap((name) => {
+        // Os comentários viram espaços, para que a numeração das linhas continue igual à do arquivo.
+        const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(
+          /\/\*[\s\S]*?\*\//g,
+          (comment) => comment.replace(/[^\n]/g, ' '),
+        );
+        return [...css.matchAll(new RegExp(`(?<![\\w-])${property}\\s*:\\s*([^;{}]+);`, 'g'))]
+          .filter(([, value = '']) => LITERAL.test(value))
+          .map((match) => {
+            const line = css.slice(0, match.index).split('\n').length;
+            return `${name}:${line} ${property}: ${match[1]?.trim() ?? ''}`;
+          });
+      });
+  }
+
+  it('nenhum font-size tem valor literal em px ou rem fora de tokens.css e xterm.css', () => {
+    expect(
+      literalValues('font-size', FONT_SIZE_EXCLUDED),
+      'font-size com valor literal: troque pelo token de --text-* (escala em tokens.css)',
+    ).toEqual([]);
+  });
+
+  it('nenhum border-radius tem valor literal em px ou rem fora de tokens.css', () => {
+    expect(
+      literalValues('border-radius', RADIUS_EXCLUDED),
+      'border-radius com valor literal: troque pelo token de raio (--radius-sm, --radius, --radius-card)',
+    ).toEqual([]);
+  });
 });

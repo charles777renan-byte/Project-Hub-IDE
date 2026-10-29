@@ -251,7 +251,7 @@ describe('cores do chrome do workspace', () => {
   // Variáveis do chrome que não são cor: espaçamento, fonte, raio, movimento e os tokens compostos de
   // sombra e brilho, por nome exato. As cores desses três são conferidas no teste "sombras e brilho".
   const NOT_COLOR =
-    /^--(?:space|font|radius|ease|dur)(?:-|$)|^--(?:shadow-card|shadow-pop|glow-app)$/;
+    /^--(?:space|font|text|radius|ease|dur)(?:-|$)|^--(?:shadow-card|shadow-pop|glow-app)$/;
 
   /** Variáveis derivadas, definidas em workspace.css: `--nome: color-mix(...)`. */
   const derived = new Map(
