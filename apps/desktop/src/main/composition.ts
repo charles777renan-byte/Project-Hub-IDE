@@ -245,6 +245,48 @@ export function resolveAgentCommand(
   return { command: defaultCommand, commandPrefix: [], extraEnv: {}, overridden: false };
 }
 
+/** Como a leitura dos limites da assinatura é executada: o executável, o que vai antes dos argumentos e o ambiente extra. */
+export type LimitsCommand = {
+  command: string;
+  /** Argumentos antes dos fixos da sonda (o script do CLI falso). Vazio fora dos testes. */
+  commandPrefix: string[];
+  /** Variáveis somadas ao ambiente filtrado (`ELECTRON_RUN_AS_NODE` do CLI falso). Vazio fora dos testes. */
+  extraEnv: Record<string, string>;
+  /**
+   * A leitura pode rodar. Falso só em teste (`PROJECT_HUB_ENV=test`) sem o gancho: cada leitura gasta cota
+   * real da assinatura, e a suíte de ponta a ponta abre o app dezenas de vezes. Nesse caso o serviço fica
+   * inerte e nunca lança o `claude`.
+   */
+  enabled: boolean;
+};
+
+/**
+ * Comando da leitura dos limites. Fora de teste, vale `defaultCommand` e a leitura está ligada. Com
+ * `PROJECT_HUB_ENV=test`, a leitura fica desligada, a menos que `APP_LIMITS_SCRIPT` (um `.mjs`) tome o lugar do
+ * `claude`: o script roda o próprio executável (`execPath`, o Electron) como Node, com o script na frente dos
+ * argumentos fixos, no mesmo padrão do planejador (`resolvePlannerCommand`). Empacotado, a variável some junto
+ * com `PROJECT_HUB_ENV` em `applicationEnvironment`, e a leitura é a real.
+ */
+export function resolveLimitsCommand(
+  env: NodeJS.ProcessEnv,
+  defaultCommand: string,
+  execPath: string = process.execPath,
+): LimitsCommand {
+  if (env['PROJECT_HUB_ENV'] !== 'test') {
+    return { command: defaultCommand, commandPrefix: [], extraEnv: {}, enabled: true };
+  }
+  const script = env['APP_LIMITS_SCRIPT'];
+  if (script !== undefined && script !== '') {
+    return {
+      command: execPath,
+      commandPrefix: [script],
+      extraEnv: { ELECTRON_RUN_AS_NODE: '1' },
+      enabled: true,
+    };
+  }
+  return { command: defaultCommand, commandPrefix: [], extraEnv: {}, enabled: false };
+}
+
 /**
  * Liga as portas dos casos de uso às implementações reais (composição do processo principal). Abre
  * o banco, aplica as migrações e trata as execuções que ficaram abertas antes de devolver os
