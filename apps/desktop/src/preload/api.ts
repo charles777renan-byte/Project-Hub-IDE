@@ -1,6 +1,7 @@
 import {
   CHANNELS,
   missionEventDtoSchema,
+  missionUsageEventDtoSchema,
   terminalEventSchema,
   responseSchemas,
   type ActivityDay,
@@ -15,6 +16,7 @@ import {
   type MissionDto,
   type MissionEventDto,
   type MissionPlanDto,
+  type MissionUsageEventDto,
   type MissionViewDto,
   type ProfileDto,
   type SystemUsageDto,
@@ -125,6 +127,18 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           if (!parsed.success) {
             console.warn(
               `Evento fora do contrato no canal ${CHANNELS.missionsEvent}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
+      subscribeUsage: (listener: (event: MissionUsageEventDto) => void) =>
+        subscribe(CHANNELS.missionsUsage, (payload) => {
+          const parsed = missionUsageEventDtoSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.missionsUsage}:`,
               parsed.error.issues,
             );
             return;

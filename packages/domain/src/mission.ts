@@ -142,8 +142,25 @@ export type Execution = {
   finishedAt?: string;
 };
 
-/** Uso informado pelo agente, em contagens de tokens. */
-export type UsageSummary = { inputTokens: number; outputTokens: number };
+/**
+ * Uso informado pelo agente, em contagens de tokens. `inputTokens` é só a entrada nova: a leitura e a
+ * escrita de cache ficam em campos próprios, porque têm preço próprio e, somadas, escondem o que é novo.
+ * Os campos opcionais faltam nos registros antigos, e falta não quer dizer zero.
+ */
+export type UsageSummary = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens?: number;
+  /** Escrita de cache com validade de 5 minutos. */
+  cacheWrite5mInputTokens?: number;
+  /** Escrita de cache com validade de 1 hora (custa mais que a de 5 minutos). */
+  cacheWrite1hInputTokens?: number;
+  /**
+   * Custo estimado, em US$, a preço de lista da API. Não é fatura: assinante Pro ou Max não paga por
+   * token. Falta quando alguma resposta veio de um modelo sem preço na tabela.
+   */
+  estimatedCostUsd?: number;
+};
 
 /** Pedido de aprovação de uma ação protegida (seção 9.1). */
 export type ApprovalRequest = {

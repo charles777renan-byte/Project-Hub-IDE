@@ -575,6 +575,7 @@ describe('withMissionEvents', () => {
       }),
       getExecution: (id: string) =>
         executions[id] === undefined ? undefined : { id, missionId: executions[id] },
+      updateExecution: vi.fn(),
     } as unknown as Parameters<typeof withMissionEvents>[0];
   }
 
@@ -624,6 +625,35 @@ describe('withMissionEvents', () => {
     });
 
     expect(() => repo.appendAudit(base)).not.toThrow();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('gasto novo da tentativa sai pelo canal próprio, sem evento de missão', () => {
+    const publish = vi.fn();
+    const publishUsage = vi.fn();
+    const inner = minimalRepo({ e1: 'm1' });
+    const repo = withMissionEvents(inner, publish, publishUsage);
+    const usage = { inputTokens: 1, outputTokens: 2 };
+
+    repo.updateExecution('e1', { usage });
+    repo.updateExecution('e1', { status: 'succeeded' });
+
+    expect(inner.updateExecution).toHaveBeenCalledTimes(2);
+    expect(publishUsage).toHaveBeenCalledTimes(1);
+    expect(publishUsage).toHaveBeenCalledWith({ missionId: 'm1', executionId: 'e1', usage });
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('erro ao entregar o gasto é registrado e não derruba a gravação', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const repo = withMissionEvents(minimalRepo({ e1: 'm1' }), vi.fn(), () => {
+      throw new Error('janela fechada');
+    });
+
+    expect(() =>
+      repo.updateExecution('e1', { usage: { inputTokens: 1, outputTokens: 1 } }),
+    ).not.toThrow();
     expect(error).toHaveBeenCalled();
     error.mockRestore();
   });

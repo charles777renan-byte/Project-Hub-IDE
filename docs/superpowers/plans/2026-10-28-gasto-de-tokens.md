@@ -1,6 +1,6 @@
 # Gasto de tokens em tempo real e limites de assinatura: plano
 
-Estado: revisado pela revisão independente (três lentes: arquitetura, terminal e segurança, produto e precisão; 2026-10-28). Ainda não implementado. Os números medidos vêm de transcripts locais e não devem ir para testes sem anonimização.
+Estado: fase 1 em implementação, sem commit (2026-10-28). Plano revisado pela revisão independente (três lentes: arquitetura, terminal e segurança, produto e precisão). A fase 2 ainda não começou. Os números medidos vêm de transcripts locais e não devem ir para testes sem anonimização.
 
 Decisão de escopo: `brain/decisoes/decisao-limites-de-assinatura.md`.
 
@@ -54,7 +54,7 @@ Estas regras valem para a fase 1 inteira. Os testes da fase 1 cobrem cada uma.
 
 1. **Chave é o `message.id`, global ao conjunto de arquivos da execução.** Para cada id, guarda-se o último `usage` visto (o maior, já que o valor cresce em streaming). Substitui-se, nunca se soma e nunca se mantém só a primeira ocorrência (a primeira subconta cerca de 19%).
 2. **Arquivos da execução:** todos os transcripts da execução. São o principal validado, os que aparecem depois de `/clear` (cada `/clear` abre outro `session_id` e outro arquivo), e os de `<sessão>/subagents/agent-<agentId>.jsonl`. O arquivo principal não tem linha de subagente.
-3. **Total da missão:** ids únicos entre as execuções, para não contar duas vezes uma mensagem compartilhada. Decisão em aberto (pergunta 4).
+3. **Total da missão:** a soma das tentativas. Cada tentativa abre o próprio terminal, com sessões próprias, e o app não usa `--resume`, então uma mensagem não aparece em duas tentativas. Subagentes e tentativas repetidas entram no total (pergunta 4).
 4. **Offset em bytes** só avança até a última quebra de linha (`\n`). Linha inválida completa é pulada sem derrubar a leitura. Se o arquivo encolher abaixo do offset, o leitor recomeça do byte 0.
 5. **Reanexação:** recalcular do byte 0, sem persistir o offset. Como a soma é por id, recalcular é seguro. O `transcript_path` precisa ser persistido na execução ou no próprio JSON de `usage`.
 6. **Totais monotônicos:** o adaptador emite `usage.updated` só quando os totais mudam, e um total nunca cai. Uma leitura atrasada não faz o número voltar.
@@ -82,9 +82,9 @@ Efeito no plano: a regra 2 (arquivos da execução) e a regra 7 (drenagem final)
 1. **Contrato e domínio.** `UsageSummary` ganha campos opcionais: entrada nova, saída, leitura de cache, escrita de cache de 5 min, escrita de cache de 1 h, e custo estimado com a base do preço. `executionDtoSchema` ganha `usage` opcional, e `responses.ts` e o preload passam a aceitá-lo. Ausência não vira zero. Arquivos: `packages/domain/src/mission.ts`, `packages/contracts/src/mission.ts`, `apps/desktop/src/preload/api.ts`.
 2. **Leitor puro.** Em `packages/agent-adapters/src/claude-code/`. Entrada: bytes novos a partir de um offset, e o mapa de ids já vistos. Saída: o mapa atualizado e o novo offset. Lista branca de campos numéricos, com valores finitos e não negativos. Nunca registra a mensagem de `JSON.parse`, porque ela pode trazer um trecho da linha. Ignora registros com `truncated`.
 3. **Descoberta de arquivos.** Valida o `transcript_path` com `fs.realpathSync.native`, `path.relative` (sem `..` e sem caminho absoluto), arquivo regular, extensão `.jsonl`, e raiz igual à que o terminal recebe (com `CLAUDE_CONFIG_DIR`, a raiz muda, e o login vai junto). Não basta checar o prefixo. **Decidido em 2026-10-28: mesma raiz.** O app passa `CLAUDE_CONFIG_DIR` ao terminal, incluindo a variável em `TERMINAL_ENV_ALLOWLIST` (`apps/desktop/src/terminal-host/env.ts:35`), e lê os transcripts da mesma raiz. Sem a variável, usa `~/.claude`. O planejador também recebe `buildTerminalEnv(process.env)` (`apps/desktop/src/main/index.ts:213`), então a mesma inclusão vale para ele. Hoje ele não recebe a variável, o que sugere que ele usa `~/.claude` mesmo quando a pessoa define outra raiz. Falta confirmar isso antes de dizer que é um defeito. Teste novo em `apps/desktop/test/terminal-host/env.test.ts`. Inclui os arquivos de `subagents/` da sessão.
-4. **Adaptador.** Guarda o `transcript_path` do `SessionStart` (o payload é pequeno). Lê no loop de 200 ms, em intervalo de 1 a 2 s. Emite `usage.updated` com totais monotônicos e só quando mudam. Faz a drenagem final. Passa `usageReporting: true`. Arquivos: `adapter.ts`, `settings.ts`.
+4. **Adaptador.** Guarda o `transcript_path` do `SessionStart` (o payload é pequeno). Lê no loop de 200 ms, a cada 1,5 s. Emite `usage.updated` com totais monotônicos e só quando mudam. Faz a drenagem final. Passa `usageReporting: true`. Arquivos: `adapter.ts`, `settings.ts`.
 5. **Orquestrador.** Para de auditar cada `usage.updated`. Grava a coluna `usage` (via `repo.updateExecution`). Para a tela, cria um publicador próprio que não passa pela auditoria, com contrato, preload e assinatura. O renderer recarrega com debounce. Arquivos: `orchestrator.ts`, `mission-events.ts`, `api.ts`.
-6. **Planejador.** Grava `usage` e `total_cost_usd` da chamada `claude -p`. Onde guardar fica em aberto (pergunta 4).
+6. **Planejador (pendente nesta fase).** Gravaria `usage` e `total_cost_usd` da chamada `claude -p`. Fica de fora desta fase: o planejamento não entra no total (pergunta 4), e continua sem linha em `executions`.
 7. **Preço.** Tabela no domínio, com data e fonte escritas no código. Escrita de cache de 5 min a 1,25x e de 1 h a 2x; leitura de cache a 0,1x; fast mode, `inference_geo` `us` (1,1x) e contexto longo (acima de 100k no Haiku 5.5) entram como multiplicadores, confirmados na doc de preços antes de codar. Custo por mensagem, com o modelo de cada linha. Modelo desconhecido e `<synthetic>` têm custo ausente, e a tela mostra só os tokens. O oráculo é o fixture `claude-plan-output.json` (`modelUsage.costUSD`).
 8. **Tela.** Em destaque, tokens novos (entrada nova e saída); o cache vai em linha separada. Total da missão e total por tarefa, rotulados "só Claude Code". Outros programas aparecem como "—", nunca como zero. O dólar aparece com o rótulo "estimativa a preço de lista". A localização do painel depende da pergunta 3.
 9. **Privacidade.** Só números são lidos e gravados. O leitor novo não grava conteúdo em log nem em auditoria. O `hook-log` já grava o payload inteiro (inclusive `tool_input`), e isso fica registrado como risco pré-existente, fora desta fase.
@@ -143,17 +143,17 @@ Pedido do usuário em 2026-10-28: um bloco no Início com a porcentagem usada e 
 ## Perguntas abertas
 
 1. **Número de destaque (respondida em 2026-10-28):** tokens novos. Em destaque, entrada nova (`input_tokens`) e saída (`output_tokens`). Leitura e escrita de cache ficam em linha separada, porque com a leitura de cache dominando a entrada, uma soma única engana.
-2. **Dólar:** sempre visível, ou só com o rótulo "estimativa a preço de lista"?
-3. **Onde aparece:** no painel "Uso dos agentes" (que o teste proíbe de ter dígitos), na aba de progresso, na linha do tempo ou no log?
-4. **O que entra no total:** planejamento, tentativas que falharam e subagentes? A sugestão é contar subagentes, e tentativas de retry com aviso.
-5. **Tabela de preço:** quem mantém, de onde vem o preço, com que data? Modelo novo sem preço é aceitável?
-6. **Quem lê o arquivo:** o adaptador, no processo principal, ou o processo de terminais? Isso define quem acessa o transcript.
-7. **Fase 2:** aceitar a perda de dicas do rodapé, e o `statusLine` do usuário sobrescrito dentro das sessões do app?
-8. **"Tempo real":** aceitar que signifique "por bloco de resposta concluído", com defasagem a medir (C2)?
+2. **Dólar:** sempre visível, ou só com o rótulo "estimativa a preço de lista"? **Resposta (2026-10-28):** sempre com o rótulo de estimativa a preço de lista. Sem preço, aparece "indisponível".
+3. **Onde aparece:** no painel "Uso dos agentes" (que o teste proíbe de ter dígitos), na aba de progresso, na linha do tempo ou no log? **Resposta (2026-10-28):** na página da missão. O painel "Uso dos agentes" do Início fica para a fase 2.
+4. **O que entra no total:** planejamento, tentativas que falharam e subagentes? **Resposta (2026-10-28):** subagentes e tentativas repetidas contam. O planejamento (`claude -p`) fica fora nesta fase (pendência).
+5. **Tabela de preço:** quem mantém, de onde vem o preço, com que data? Modelo novo sem preço é aceitável? **Resposta (2026-10-28):** a tabela fica no domínio, com data e fonte no código. Modelo novo fica sem custo até entrar na tabela.
+6. **Quem lê o arquivo:** o adaptador, no processo principal, ou o processo de terminais? Isso define quem acessa o transcript. **Resposta (2026-10-28):** o adaptador, no processo principal, com leitura assíncrona.
+7. **Fase 2:** aceitar a perda de dicas do rodapé, e o `statusLine` do usuário sobrescrito dentro das sessões do app? **Resposta (2026-10-28):** ainda não decidida.
+8. **"Tempo real":** aceitar que signifique "por bloco de resposta concluído", com defasagem a medir (C2)? **Resposta (2026-10-28):** por bloco de resposta concluído, lido a cada 1,5 s.
 
 ## Ordem sugerida
 
-1. Checagens C1 a C5: concluídas (ver o resultado acima). A raiz de `CLAUDE_CONFIG_DIR` está decidida (mesma raiz). Falta responder as perguntas abertas 2 a 8 antes da fase 1.
+1. Checagens C1 a C5: concluídas (ver o resultado acima). A raiz de `CLAUDE_CONFIG_DIR` está decidida (mesma raiz). As perguntas abertas foram respondidas em 2026-10-28 (ver a seção "Perguntas abertas").
 2. Contrato e domínio (passo 1 da fase 1), com campos opcionais e testes de ausência.
 3. Leitor puro e descoberta de arquivos (passos 2 e 3), com fixtures.
 4. Adaptador e drenagem final (passo 4).

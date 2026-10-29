@@ -338,6 +338,31 @@ describe('reanexação ao abrir o app', () => {
     await waitFor(() => h.repo.listExecutions('m1')[0]?.agentCursor === '2');
     expect(h.repo.listExecutions('m1')[0]?.agentSessionId).toBe('sessao-1');
   });
+
+  it('o gasto de tokens fica na tentativa, o último total vence, e não entra na auditoria', async () => {
+    const h = setup();
+    h.repo.insertMission(missionFixture({ id: 'm1' }));
+    await startRunning(h, 'm1');
+    const live = h.agent.lives.get('sessao-1');
+
+    live?.push({ type: 'usage.updated', usage: { inputTokens: 1, outputTokens: 2 } });
+    live?.push({
+      type: 'usage.updated',
+      usage: { inputTokens: 3, outputTokens: 9, cacheReadInputTokens: 40, estimatedCostUsd: 0.5 },
+    });
+
+    await waitFor(() => h.repo.listExecutions('m1')[0]?.agentCursor === '2');
+    const execution = h.repo.listExecutions('m1')[0];
+    expect(execution?.usage).toEqual({
+      inputTokens: 3,
+      outputTokens: 9,
+      cacheReadInputTokens: 40,
+      estimatedCostUsd: 0.5,
+    });
+    expect(
+      h.repo.listAudit(execution?.id ?? '').filter((event) => event.eventType === 'usage.updated'),
+    ).toEqual([]);
+  });
 });
 
 describe('fila: falha antes de rodar', () => {

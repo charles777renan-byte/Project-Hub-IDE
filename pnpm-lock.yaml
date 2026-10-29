@@ -308,6 +308,9 @@ importers:
       '@project-hub/agent-sdk':
         specifier: workspace:*
         version: link:../agent-sdk
+      '@project-hub/domain':
+        specifier: workspace:*
+        version: link:../domain
     devDependencies:
       '@project-hub/test-utils':
         specifier: workspace:*

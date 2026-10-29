@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -74,14 +74,14 @@ afterEach(() => {
 });
 
 describe('adaptador do Claude Code: capacidades e sondagem', () => {
-  it('declara o que o desenho pede: sem aprovação pelo app, sem pausa, sem uso', async () => {
+  it('declara o que o desenho pede: sem aprovação pelo app, sem pausa, com o gasto de tokens', async () => {
     const adapter = createClaudeCodeAdapter({ ...fakes(), settingsDir: dir, env: {} });
     const capabilities = await adapter.getCapabilities({ model: 'opus', configuration: {} });
     expect(capabilities).toMatchObject({
       interactiveInput: true,
       approvals: false,
       pauseResume: false,
-      usageReporting: false,
+      usageReporting: true,
       models: ['opus'],
     });
   });
@@ -305,5 +305,138 @@ describe('adaptador do Claude Code: eventos e sessão', () => {
 
     const events = await collect(session.events());
     expect(events.map((event) => event.type)).toEqual(['session.failed']);
+  });
+
+  it('o SessionEnd de um /clear não encerra: a sessão nova segue no mesmo terminal', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({ ...f, settingsDir: dir, env: {}, pollMs: 5 });
+    const session = await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+
+    f.push({ hook_event_name: 'SessionStart', session_id: 's1', source: 'startup' });
+    f.push({ hook_event_name: 'SessionEnd', reason: 'clear' });
+    f.push({ hook_event_name: 'SessionStart', session_id: 's2', source: 'clear' });
+    f.push({ hook_event_name: 'SessionEnd', reason: 'other' });
+
+    const events = await collect(session.events());
+    expect(events.map((event) => event.type)).toEqual([
+      'session.started',
+      'session.started',
+      'session.completed',
+    ]);
+  });
+});
+
+describe('adaptador do Claude Code: gasto de tokens', () => {
+  const SESSION_A = '11111111-2222-3333-4444-555555555555';
+  const SESSION_B = '66666666-7777-8888-9999-000000000000';
+
+  function transcriptLine(id: string, output: number): string {
+    return JSON.stringify({
+      type: 'assistant',
+      message: {
+        id,
+        model: 'claude-sonnet-5-5',
+        usage: { input_tokens: 1, output_tokens: output, cache_read_input_tokens: 10 },
+      },
+    });
+  }
+
+  function transcript(session: string, lines: string[]): string {
+    const folder = join(dir, 'claude', 'projects', 'C--projeto');
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, `${session}.jsonl`);
+    writeFileSync(file, lines.map((line) => `${line}\n`).join(''));
+    return file;
+  }
+
+  function adapterWithUsage(f: ReturnType<typeof fakes>) {
+    return createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: {},
+      pollMs: 5,
+      claudeConfigDir: join(dir, 'claude'),
+      usageIntervalMs: 0,
+      usageDrainDelayMs: 0,
+    });
+  }
+
+  it('entrega o total da execução e lê o transcript de novo antes do fim', async () => {
+    const f = fakes();
+    const adapter = adapterWithUsage(f);
+    const session = await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    const file = transcript(SESSION_A, [transcriptLine('msg_1', 5)]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION_A, transcript_path: file });
+
+    const iterator = session.events()[Symbol.asyncIterator]();
+    expect((await iterator.next()).value).toMatchObject({ type: 'session.started' });
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'usage.updated',
+      usage: { inputTokens: 1, outputTokens: 5, cacheReadInputTokens: 10 },
+    });
+
+    // A última resposta chega ao arquivo junto com o fim: a leitura final ainda a pega.
+    writeFileSync(file, `${transcriptLine('msg_1', 5)}\n${transcriptLine('msg_2', 7)}\n`);
+    f.push({ hook_event_name: 'SessionEnd', session_id: SESSION_A, transcript_path: file });
+    const rest: AgentEvent[] = [];
+    for (let next = await iterator.next(); next.done !== true; next = await iterator.next()) {
+      rest.push(next.value);
+    }
+    expect(rest.map((event) => event.type)).toEqual(['usage.updated', 'session.completed']);
+    expect(rest[0]).toMatchObject({ usage: { inputTokens: 2, outputTokens: 12 } });
+  });
+
+  it('soma a sessão aberta por um /clear com a de antes', async () => {
+    const f = fakes();
+    const adapter = adapterWithUsage(f);
+    const session = await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    const first = transcript(SESSION_A, [transcriptLine('msg_1', 5)]);
+    const second = transcript(SESSION_B, [transcriptLine('msg_2', 3)]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION_A, transcript_path: first });
+    f.push({ hook_event_name: 'SessionEnd', reason: 'clear', session_id: SESSION_A, transcript_path: first });
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION_B, transcript_path: second });
+    f.push({ hook_event_name: 'SessionEnd', reason: 'other', session_id: SESSION_B, transcript_path: second });
+
+    const events = await collect(session.events());
+    const usage = events.filter((event) => event.type === 'usage.updated');
+    expect(usage.at(-1)).toMatchObject({ usage: { outputTokens: 8 } });
+    expect(events.at(-1)?.type).toBe('session.completed');
+  });
+
+  it('na reanexação, acha o transcript nos hooks já aplicados e refaz o total', async () => {
+    const f = fakes();
+    const adapter = adapterWithUsage(f);
+    const file = transcript(SESSION_A, [transcriptLine('msg_1', 5), transcriptLine('msg_2', 6)]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION_A, transcript_path: file });
+    f.push({ hook_event_name: 'Stop' });
+    f.push({ hook_event_name: 'SessionEnd' });
+    const attached = await adapter.attach?.('exec-1', '2');
+    if (attached === undefined) throw new Error('a reanexação deveria acontecer');
+
+    const events = await collect(attached.events());
+    expect(events.map((event) => event.type)).toEqual(['usage.updated', 'session.completed']);
+    expect(events[0]).toMatchObject({ usage: { outputTokens: 11 } });
+  });
+
+  it('sem transcript nos hooks, não lê nada e não atrasa o fim', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({ ...f, settingsDir: dir, env: {}, pollMs: 5 });
+    const session = await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    f.push({ hook_event_name: 'SessionEnd' });
+
+    const events = await collect(session.events());
+    expect(events.map((event) => event.type)).toEqual(['session.completed']);
   });
 });

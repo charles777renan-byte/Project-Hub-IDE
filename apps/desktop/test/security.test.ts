@@ -509,6 +509,7 @@ describe('buildProjectHubApi', () => {
       'retry',
       'start',
       'subscribe',
+      'subscribeUsage',
     ]);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
     expect(Object.keys(api.activity)).toEqual(['daily']);
@@ -1045,6 +1046,38 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
       expect.anything(),
     );
     expect(removed).toEqual([CHANNELS.missionsEvent]);
+    warn.mockRestore();
+  });
+
+  it('subscribeUsage entrega só o gasto válido, pelo canal próprio', () => {
+    let registered: ((payload: unknown) => void) | undefined;
+    const channels: string[] = [];
+    const api = buildProjectHubApi(
+      () => Promise.resolve(undefined),
+      (channel, listener) => {
+        channels.push(channel);
+        registered = listener;
+        return () => undefined;
+      },
+    );
+    const received: unknown[] = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const usage = {
+      missionId: 'm1',
+      executionId: 'e1',
+      usage: { inputTokens: 3, outputTokens: 7, cacheReadInputTokens: 100 },
+    };
+
+    api.missions.subscribeUsage((evento) => received.push(evento));
+    required(registered, 'o canal de gasto')(usage);
+    required(registered, 'o canal de gasto')({ ...usage, usage: { inputTokens: -1, outputTokens: 0 } });
+
+    expect(channels).toEqual([CHANNELS.missionsUsage]);
+    expect(received).toEqual([usage]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(CHANNELS.missionsUsage),
+      expect.anything(),
+    );
     warn.mockRestore();
   });
 });
