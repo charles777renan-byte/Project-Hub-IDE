@@ -334,6 +334,9 @@ app
       env: process.env,
       newId: randomUUID,
       now: () => new Date().toISOString(),
+      // Os painéis do Claude Code usam o mesmo receptor e a mesma pasta de configuração da missão.
+      hooks: terminalBackend.hooks,
+      settingsDir: join(terminalOptions.dataDir, 'terminal-host', 'settings'),
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
     registerWorkspaceHandlers(

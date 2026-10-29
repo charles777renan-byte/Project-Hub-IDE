@@ -1,7 +1,19 @@
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { open } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { summarizeUsage, type MessageUsage, type UsageSummary } from '@project-hub/domain';
+
+/**
+ * A pasta de dados do Claude Code que o terminal vai usar: `CLAUDE_CONFIG_DIR` do ambiente do terminal
+ * (o nome é comparado sem diferenciar maiúsculas, como no Windows), ou `~/.claude`. Quem lê os
+ * transcripts precisa passar o mesmo ambiente que o terminal recebe, senão procura na conta errada.
+ */
+export function claudeConfigDirOf(env: Readonly<Record<string, string | undefined>>): string {
+  const entry = Object.entries(env).find(([key]) => key.toUpperCase() === 'CLAUDE_CONFIG_DIR');
+  const value = entry?.[1];
+  return value !== undefined && value !== '' ? value : join(homedir(), '.claude');
+}
 
 /** Transcript principal de uma sessão: `<pasta do projeto>/<session_id>.jsonl`. */
 const SESSION_FILE = /^[0-9A-Za-z][0-9A-Za-z-]{7,63}\.jsonl$/;
