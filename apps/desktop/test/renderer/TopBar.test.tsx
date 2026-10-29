@@ -10,8 +10,10 @@ import {
 import userEvent from '@testing-library/user-event';
 import type {
   AppResult,
+  MissionDto,
   ProjectHubApi,
   ProjectSummary,
+  TerminalSummary,
   WorkspaceDto,
 } from '@project-hub/contracts';
 import { Link, MemoryRouter, useLocation } from 'react-router';
@@ -23,6 +25,7 @@ import {
 } from '../../src/renderer/components/TopBar';
 import { ADD_PROJECT_REQUEST_EVENT } from '../../src/renderer/projects-events';
 import { workspacePath } from '../../src/renderer/routes';
+import { MARKS } from '../../src/renderer/state-mark';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
 // Barra superior (Tarefa 6 do plano do workspace multiagente): abas dos workspaces abertos, o botão
@@ -51,15 +54,50 @@ function workspace(id: string, projectId: string, extra: Partial<WorkspaceDto> =
   };
 }
 
+function mission(id: string, projectId: string, status: MissionDto['status']): MissionDto {
+  return {
+    id,
+    projectId,
+    title: `Missão ${id}`,
+    objective: 'Objetivo',
+    status,
+    altersCode: false,
+    acceptanceCriteria: [],
+    createdAt: '2026-10-22T09:00:00.000Z',
+    updatedAt: '2026-10-22T09:00:00.000Z',
+  };
+}
+
+function terminal(id: string, projectId: string, state: TerminalSummary['state']): TerminalSummary {
+  return {
+    id,
+    kind: 'shell',
+    title: `Terminal ${id}`,
+    projectId,
+    projectName: projectId,
+    state,
+    provider: 'shell',
+    origin: 'new',
+  };
+}
+
 const ok = <T,>(data: T) => Promise.resolve({ ok: true as const, data });
 
-type Fixture = { projects: ProjectSummary[]; workspaces: WorkspaceDto[] };
+type Fixture = {
+  projects: ProjectSummary[];
+  workspaces: WorkspaceDto[];
+  /** As missões de cada projeto, pelo id do projeto. */
+  missions: Record<string, MissionDto[]>;
+  terminals: TerminalSummary[];
+};
 
 /** Instala a API falsa. `open` e `close` mexem na lista, como o processo principal faria. */
 function installApi(fixture: Partial<Fixture> = {}) {
   const state: Fixture = {
     projects: fixture.projects ?? [],
     workspaces: fixture.workspaces ?? [],
+    missions: fixture.missions ?? {},
+    terminals: fixture.terminals ?? [],
   };
   const workspaces = {
     list: vi.fn(() => ok([...state.workspaces])),
@@ -83,19 +121,22 @@ function installApi(fixture: Partial<Fixture> = {}) {
       return Promise.resolve({ ok: true, data: undefined });
     }),
   };
+  const missions = {
+    list: vi.fn((projectId: string) => ok(state.missions[projectId] ?? [])),
+    get: () => Promise.reject(new Error('get não é chamado aqui')),
+    subscribe: () => () => undefined,
+  };
+  const terminals = { list: vi.fn(() => ok(state.terminals)) };
   window.projectHub = {
     projects: {
       list: () => ok(state.projects),
       listArchived: () => ok([]),
     },
-    missions: {
-      list: () => ok([]),
-      get: () => Promise.reject(new Error('get não é chamado aqui')),
-      subscribe: () => () => undefined,
-    },
+    missions,
+    terminals,
     workspaces,
   } as unknown as ProjectHubApi;
-  return { state, workspaces };
+  return { state, workspaces, missions, terminals };
 }
 
 function Where() {
@@ -257,6 +298,96 @@ describe('abas dos workspaces', () => {
     Reflect.deleteProperty(window, 'projectHub');
     renderBar('/');
     expect(await screen.findByRole('button', { name: 'Abrir workspace' })).toBeInTheDocument();
+  });
+});
+
+describe('marca de atenção nas abas', () => {
+  /** Uma leitura falsa (`vi.fn`) e as respostas que ela já devolveu. */
+  type Read = { mock: { results: { value: unknown }[] } };
+
+  /**
+   * Espera as leituras de terminais e de missões: primeiro a chamada, depois a resposta aplicada pela
+   * barra. A barra só mostra o efeito da resposta quando ela chega, então as asserções negativas
+   * esperam esse ponto, sem um tempo fixo.
+   */
+  async function settleReads(...reads: Read[]) {
+    await waitFor(() => {
+      for (const read of reads) expect(read).toHaveBeenCalled();
+    });
+    await act(async () => {
+      for (const read of reads) await read.mock.results[read.mock.results.length - 1]?.value;
+    });
+  }
+
+  const attentionMark = (link: HTMLElement) => link.querySelector('.state-mark--waiting');
+
+  it('sem nada que espere, a aba não tem marca nem descrição', async () => {
+    const { missions, terminals } = installApi({
+      projects: [project('p1', 'Alfa'), project('p2', 'Beta')],
+      workspaces: [workspace('w1', 'p1'), workspace('w2', 'p2', { position: 1 })],
+      missions: { p1: [mission('m1', 'p1', 'running')] },
+      terminals: [terminal('t1', 'p2', 'running')],
+    });
+    renderBar('/projects');
+    const alfa = await screen.findByRole('link', { name: 'Alfa' });
+    const beta = screen.getByRole('link', { name: 'Beta' });
+    await waitFor(() => expect(missions.list).toHaveBeenCalledWith('p1'));
+    await settleReads(terminals.list, missions.list);
+
+    for (const link of [alfa, beta]) {
+      expect(attentionMark(link)).toBeNull();
+      expect(link).not.toHaveAttribute('aria-describedby');
+    }
+    expect(screen.queryByText('Precisa de você')).toBeNull();
+  });
+
+  it('com uma missão que pede decisão, a marca aparece e a descrição do link é "Precisa de você"', async () => {
+    installApi({
+      projects: [project('p1', 'Alfa')],
+      workspaces: [workspace('w1', 'p1')],
+      missions: { p1: [mission('m1', 'p1', 'waiting_input')] },
+    });
+    renderBar('/projects');
+    const alfa = await screen.findByRole('link', { name: 'Alfa' });
+
+    await waitFor(() => expect(attentionMark(alfa)).not.toBeNull());
+    const mark = attentionMark(alfa) as HTMLElement;
+    expect(mark).toHaveAttribute('aria-hidden', 'true');
+    expect(mark).toHaveTextContent(MARKS.waiting.glyph);
+    // A marca vem depois do nome, e o nome acessível do link continua só o nome.
+    expect(alfa.lastElementChild).toBe(mark);
+    expect(alfa).toHaveAccessibleName('Alfa');
+    expect(alfa).toHaveAccessibleDescription('Precisa de você');
+  });
+
+  it('com um terminal em espera, só a aba do projeto dele ganha a marca', async () => {
+    installApi({
+      projects: [project('p1', 'Alfa'), project('p2', 'Beta')],
+      workspaces: [workspace('w1', 'p1'), workspace('w2', 'p2', { position: 1 })],
+      terminals: [terminal('t1', 'p2', 'waiting')],
+    });
+    renderBar('/projects');
+    const alfa = await screen.findByRole('link', { name: 'Alfa' });
+    const beta = screen.getByRole('link', { name: 'Beta' });
+
+    await waitFor(() => expect(attentionMark(beta)).not.toBeNull());
+    expect(beta).toHaveAccessibleDescription('Precisa de você');
+    expect(attentionMark(alfa)).toBeNull();
+    expect(alfa).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('uma missão em execução não põe marca', async () => {
+    const { missions, terminals } = installApi({
+      projects: [project('p1', 'Alfa')],
+      workspaces: [workspace('w1', 'p1')],
+      missions: { p1: [mission('m1', 'p1', 'running')] },
+    });
+    renderBar('/projects');
+    const alfa = await screen.findByRole('link', { name: 'Alfa' });
+    await settleReads(terminals.list, missions.list);
+
+    expect(attentionMark(alfa)).toBeNull();
+    expect(alfa).not.toHaveAttribute('aria-describedby');
   });
 });
 

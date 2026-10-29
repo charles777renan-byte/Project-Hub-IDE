@@ -8,7 +8,10 @@ import type {
   WorkspaceDto,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProjectHeader } from '../../src/renderer/components/project/ProjectHeader';
+import {
+  ProjectHeader,
+  PROJECT_UNAVAILABLE_NOTICE_ID,
+} from '../../src/renderer/components/project/ProjectHeader';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
@@ -343,6 +346,36 @@ describe('ProjectHeader: Mais ações', () => {
     );
     expect(screen.getByRole('heading', { level: 1, name: 'Project Hub' })).toBeInTheDocument();
     expect(screen.queryByText('Página inicial')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectHeader: pasta indisponível', () => {
+  it('Nova missão fica desabilitado e aponta para o aviso da página', () => {
+    installApi();
+    renderAt('/workspaces/p1', { project: { ...project, available: false } });
+
+    const button = screen.getByRole('button', { name: 'Nova missão' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-describedby', PROJECT_UNAVAILABLE_NOTICE_ID);
+  });
+
+  it('com a pasta disponível, Nova missão segue habilitado e sem aria-describedby', () => {
+    installApi();
+    renderAt('/workspaces/p1', { project: { ...project, available: true } });
+
+    const button = screen.getByRole('button', { name: 'Nova missão' });
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('sem o campo available, vale disponível: Nova missão segue habilitado', () => {
+    installApi();
+    const { available: _available, ...semCampo } = project;
+    renderAt('/workspaces/p1', { project: semCampo as ProjectSummary });
+
+    const button = screen.getByRole('button', { name: 'Nova missão' });
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute('aria-describedby');
   });
 });
 

@@ -1021,7 +1021,7 @@ describe('MissionPage: resumo de conclusão', () => {
     gitState: 'uncommitted' as const,
   };
 
-  it('missão concluída mostra a frase final e a nota do Git no bloco Sua decisão, sem os indicadores', async () => {
+  it('missão concluída mostra a frase final e o próximo passo do Git no bloco Sua decisão, sem os indicadores', async () => {
     installApi(
       viewOf(
         { status: 'succeeded', worktreePath: 'C:\\app\\.worktrees\\m1' },
@@ -1037,7 +1037,9 @@ describe('MissionPage: resumo de conclusão', () => {
     const decision = screen.getByRole('region', { name: 'Sua decisão' });
     const block = within(decision).getByRole('region', { name: 'Resumo da conclusão' });
     expect(within(block).getByText('Login corrigido.')).toBeInTheDocument();
-    expect(within(block).getByText('Git: alterações sem commit')).toBeInTheDocument();
+    expect(
+      within(block).getByText('Há alterações sem commit na pasta da missão. Elas ainda não entraram no projeto.'),
+    ).toBeInTheDocument();
     // O resumo da conclusão saiu do cabeçalho: ele não aparece duas vezes.
     expect(screen.getAllByText('Login corrigido.')).toHaveLength(1);
     expect(within(summary).queryByRole('region', { name: 'Resumo da conclusão' })).toBeNull();

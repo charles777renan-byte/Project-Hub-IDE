@@ -61,8 +61,20 @@ export function App() {
   const toggleSidebar = useCallback(() => {
     const panel = sidePanel.current;
     if (panel === null) return;
-    if (panel.isCollapsed()) panel.expand();
-    else panel.collapse();
+    if (panel.isCollapsed()) {
+      panel.expand();
+      return;
+    }
+    // Recolhendo com o foco dentro da lateral, o `inert` que vem a seguir o jogaria no body. Por isso ele vai antes
+    // para o botão da barra superior (ou para o conteúdo principal, se o botão não existir).
+    const ativo = document.activeElement;
+    if (ativo instanceof Element && ativo.closest('.app-side') !== null) {
+      const destino =
+        document.querySelector<HTMLElement>('.topbar__sidebar-toggle') ??
+        document.querySelector<HTMLElement>('.app-main');
+      destino?.focus();
+    }
+    panel.collapse();
   }, [sidePanel]);
 
   useEffect(() => {
@@ -130,13 +142,14 @@ export function App() {
           panelRef={sidePanel}
           onResize={(size) => setSideCollapsed(size.inPixels === 0)}
         >
-          <div className="app-side">
+          {/* Recolhida, a lateral sai do Tab também: `inert` tira os controles dela da ordem de foco. */}
+          <div className="app-side" inert={sideCollapsed}>
             <Sidebar onSearch={() => setPaletaAberta(true)} />
           </div>
         </Panel>
         <Separator className="pane-tree__separator" aria-label="Redimensionar barra lateral" />
         <Panel id={MAIN_ID} className="app-body__panel" minSize="30">
-          <main className="app-main">
+          <main className="app-main" tabIndex={-1}>
             <div className="app-main__content">
               <AppRoutes />
             </div>

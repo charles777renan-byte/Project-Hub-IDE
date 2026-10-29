@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
+import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../../src/renderer/components/project/ProjectHeader';
 import { PaneView, type PaneViewProps } from '../../src/renderer/workspace/PaneView';
 
 // O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador.
@@ -80,6 +81,25 @@ describe('PaneView', () => {
     expect(screen.getByRole('status').closest('.empty-state')).not.toBeNull();
   });
 
+  it('com a pasta indisponível, o Iniciar do lançador fica desabilitado e aponta para o aviso da página', () => {
+    setup({ leaf: emptyLeaf, terminal: undefined, unavailable: true });
+    const start = screen.getByRole('button', { name: 'Iniciar Claude Code' });
+    expect(start).toBeDisabled();
+    expect(start).toHaveAttribute('aria-describedby', PROJECT_UNAVAILABLE_NOTICE_ID);
+  });
+
+  it('com a pasta indisponível, os botões de reiniciar ficam desabilitados e apontam para o aviso', () => {
+    const first = setup({ terminal: { ...session, state: 'exited' }, unavailable: true });
+    const agent = screen.getByRole('button', { name: 'Iniciar nova conversa' });
+    expect(agent).toBeDisabled();
+    expect(agent).toHaveAttribute('aria-describedby', PROJECT_UNAVAILABLE_NOTICE_ID);
+    first.unmount();
+    setup({ terminal: undefined, unavailable: true });
+    const shell = screen.getByRole('button', { name: 'Iniciar de novo' });
+    expect(shell).toBeDisabled();
+    expect(shell).toHaveAttribute('aria-describedby', PROJECT_UNAVAILABLE_NOTICE_ID);
+  });
+
   it('mostra a falha em um alerta', () => {
     setup({ leaf: emptyLeaf, terminal: undefined, error: 'Não abriu' });
     expect(screen.getByRole('alert')).toHaveTextContent('Não abriu');
@@ -136,7 +156,7 @@ describe('PaneView', () => {
     const { props } = setup({ terminal: { ...session, state: 'exited' } });
     expect(screen.getByRole('status')).toHaveTextContent('A sessão terminou.');
     expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Iniciar de novo' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar nova conversa' }));
     expect(props.onStart).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'Limpar painel' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Fechar painel' }));
@@ -146,8 +166,30 @@ describe('PaneView', () => {
 
   it('sessão encerrada de missão não oferece Iniciar de novo', () => {
     setup({ terminal: { ...session, state: 'exited', missionId: 'm1' } });
+    expect(screen.queryByRole('button', { name: 'Iniciar nova conversa' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Iniciar de novo' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
+  });
+
+  it('sessão de agente encerrada oferece Iniciar nova conversa, com a dica do contexto', async () => {
+    const user = userEvent.setup();
+    setup({ terminal: { ...session, state: 'exited' } });
+    const start = screen.getByRole('button', { name: 'Iniciar nova conversa' });
+    expect(screen.queryByRole('button', { name: 'Iniciar de novo' })).not.toBeInTheDocument();
+    await user.hover(start);
+    expect(await screen.findByRole('tooltip', {}, { timeout: 2000 })).toHaveTextContent(
+      'O contexto da conversa anterior não volta',
+    );
+    // A dica descreve o botão; o nome acessível continua sendo o rótulo.
+    expect(start).toHaveAccessibleName('Iniciar nova conversa');
+    expect(start).toHaveAccessibleDescription('O contexto da conversa anterior não volta');
+  });
+
+  it('sessão de shell encerrada mantém Iniciar de novo, sem a dica de conversa', () => {
+    setup({ terminal: { ...session, kind: 'shell', state: 'exited' } });
+    const start = screen.getByRole('button', { name: 'Iniciar de novo' });
+    expect(screen.queryByRole('button', { name: 'Iniciar nova conversa' })).not.toBeInTheDocument();
+    expect(start).not.toHaveAttribute('aria-describedby');
   });
 
   it('terminalId fora da lista mostra o aviso, sem terminal', () => {
