@@ -7,6 +7,7 @@ import { StateMark } from '../components/StateMark';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
 import { markOfTerminal } from '../state-mark';
+import { PaneUsage } from './PaneUsage';
 
 export type PaneViewProps = {
   leaf: LayoutLeaf;
@@ -165,6 +166,7 @@ export function PaneView(props: PaneViewProps) {
           <span className="pane__title" title={terminal.title}>
             {terminal.title}
           </span>
+          <PaneUsage usage={terminal.usage} />
           <StateMark kind={markOfTerminal(terminal.state)} withLabel />
           <span className="pane__tag">
             {terminal.origin === 'recovered' ? 'recuperada' : 'nova'}

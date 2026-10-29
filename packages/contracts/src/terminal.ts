@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usageSummaryDtoSchema } from './mission';
 import { providerIdSchema } from './workspace';
 
 /** Tipos de terminal dos terminais: o de um agente (uma missão) ou um shell comum de um projeto. */
@@ -27,6 +28,12 @@ export const terminalSummarySchema = z.object({
   outputBytes: z.number().int().nonnegative().optional(),
   /** Arquivos com alteração na pasta da sessão (o worktree, na missão). Sem Git nessa pasta, não vem. */
   changedFiles: z.number().int().nonnegative().optional(),
+  /**
+   * Tokens que o Claude Code deste terminal já gastou (`outputTokens` é o número do cabeçalho do painel; o resto
+   * vai na dica). Só o Claude informa: os outros programas e o shell não têm o campo, e sem ele não há número
+   * (não é zero). No terminal de agente de missão, vem da tentativa em curso.
+   */
+  usage: usageSummaryDtoSchema.optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 

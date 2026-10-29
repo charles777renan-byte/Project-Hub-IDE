@@ -11,6 +11,7 @@ describe('main.tsx', () => {
     window.location.hash = '';
   });
 
+  // É o primeiro a carregar o app inteiro (cerca de 7 s a frio): com a máquina carregada passava de 15 s.
   it('monta o App na div #root e guarda a rota depois do #', async () => {
     document.body.innerHTML = '<div id="root"></div>';
     await act(async () => {
@@ -22,7 +23,7 @@ describe('main.tsx', () => {
     expect(window.location.hash).toBe('#/?estado=running');
     expect(window.location.pathname).toBe('/');
     expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
-  });
+  }, 45_000);
 
   it('monta a barra de status e não passa mais os contadores à barra superior', async () => {
     document.body.innerHTML = '<div id="root"></div>';

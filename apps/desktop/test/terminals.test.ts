@@ -4,9 +4,20 @@ import {
   type ProjectRepository,
   type TerminalPort,
 } from '@project-hub/application';
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { HookRecord } from '@project-hub/agent-adapters';
 import type { TerminalEvent } from '@project-hub/contracts';
 import type { TerminalSessionRecord, TerminalSessionRepository } from '@project-hub/database';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderRegistry } from '../src/main/providers';
 import { createTerminalService } from '../src/main/terminals';
 
@@ -34,6 +45,87 @@ const providers: ProviderRegistry = {
       : { ok: true, launch: { command: `${id}.exe`, args: id === 'shell' ? ['-NoLogo'] : [] } },
 };
 
+const TRANSCRIPT_SESSION = '11111111-2222-3333-4444-555555555555';
+const HOOK_TOKEN = 'token-secreto-do-hook';
+
+/** Pasta de dados do Claude Code (transcripts) e pasta de configuração dos hooks, novas a cada teste. */
+let claudeDir = '';
+let dataDir = '';
+beforeEach(() => {
+  claudeDir = mkdtempSync(join(tmpdir(), 'ph-terminals-claude-'));
+  dataDir = mkdtempSync(join(tmpdir(), 'ph-terminals-data-'));
+});
+afterEach(() => {
+  rmSync(claudeDir, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
+function settingsDir(): string {
+  return join(dataDir, 'terminal-host', 'settings');
+}
+
+/** Grava uma resposta no transcript da sessão e devolve o caminho dele. */
+function writeAnswer(output: number, session = TRANSCRIPT_SESSION): string {
+  const folder = join(claudeDir, 'projects', 'C--dev-app');
+  mkdirSync(folder, { recursive: true });
+  const file = join(folder, `${session}.jsonl`);
+  appendFileSync(
+    file,
+    `${JSON.stringify({
+      type: 'assistant',
+      message: {
+        model: 'claude-sonnet-5-5',
+        id: `msg_${output}`,
+        usage: { input_tokens: 2, output_tokens: output },
+      },
+    })}\n`,
+  );
+  return file;
+}
+
+/** Receptor de hooks falso: registra, solta e devolve o log de cada terminal. */
+function fakeHooks(options: { failRegister?: boolean } = {}) {
+  const registered: string[] = [];
+  const unregistered: string[] = [];
+  const logs = new Map<string, HookRecord[]>();
+  const reads: { id: string; afterSeq: number }[] = [];
+  return {
+    registered,
+    unregistered,
+    reads,
+    sessionStart(terminalId: string, transcriptPath: string, session = TRANSCRIPT_SESSION) {
+      const log = logs.get(terminalId) ?? [];
+      log.push({
+        seq: log.length + 1,
+        receivedAt: '2026-10-22T12:00:00.000Z',
+        payload: {
+          hook_event_name: 'SessionStart',
+          session_id: session,
+          transcript_path: transcriptPath,
+        },
+      });
+      logs.set(terminalId, log);
+    },
+    hooks: {
+      registerExecution: (id: string) => {
+        if (options.failRegister === true) {
+          return Promise.reject(new Error('processo de terminais fora do ar'));
+        }
+        registered.push(id);
+        return Promise.resolve({ token: HOOK_TOKEN, url: `http://127.0.0.1:4000/hooks/${id}` });
+      },
+      unregisterExecution: (id: string) => {
+        unregistered.push(id);
+        return Promise.resolve();
+      },
+      readAfter: (id: string, afterSeq: number) => {
+        reads.push({ id, afterSeq });
+        return Promise.resolve((logs.get(id) ?? []).filter((r) => r.seq > afterSeq));
+      },
+    },
+  };
+}
+
 function memorySessions(initial: TerminalSessionRecord[] = []) {
   const rows = new Map(initial.map((row) => [row.id, row]));
   const repo: TerminalSessionRepository = {
@@ -60,8 +152,13 @@ function setup(
     killError?: Error;
     slowSubscribe?: boolean;
     countChanges?: (folder: string) => Promise<number | undefined>;
+    hooks?: ReturnType<typeof fakeHooks>;
+    /** Pasta de configuração dos hooks. Padrão: uma pasta temporária nova. */
+    settingsDir?: string;
   } = {},
 ) {
+  const hooks = options.hooks ?? fakeHooks();
+  let clock = Date.parse('2026-10-22T12:00:00.000Z');
   const opened: {
     id: string;
     cwd: string;
@@ -131,12 +228,19 @@ function setup(
     providers,
     publish: (event) => events.push(event),
     countChanges: options.countChanges ?? (() => Promise.resolve(undefined)),
-    env: { PATH: 'C:/Windows', ANTHROPIC_API_KEY: 'segredo' },
+    env: { PATH: 'C:/Windows', ANTHROPIC_API_KEY: 'segredo', CLAUDE_CONFIG_DIR: claudeDir },
     newId: () => ids.shift() ?? 'shell-x',
-    now: () => '2026-10-22T12:00:00.000Z',
+    now: () => new Date(clock).toISOString(),
+    hooks: hooks.hooks,
+    settingsDir: options.settingsDir ?? settingsDir(),
   });
   return {
     service,
+    hooks,
+    /** Avança o relógio do serviço, em ms. */
+    advance: (ms: number) => {
+      clock += ms;
+    },
     sessions,
     opened,
     written,
@@ -519,5 +623,215 @@ describe('serviço de terminais do app', () => {
     await pending;
 
     expect(h.unsubscribed()).toBe(1);
+  });
+});
+
+describe('gasto de tokens dos painéis do Claude Code', () => {
+  const claudeSession: TerminalSessionRecord = {
+    id: 'claude-antigo',
+    projectId: 'p1',
+    provider: 'claude',
+    title: 'Claude Code · app',
+    createdAt: '2026-10-21T09:00:00.000Z',
+  };
+
+  it('abre o Claude com --settings antes dos argumentos do provedor e o hook pelo ambiente', async () => {
+    const h = setup();
+
+    await h.service.openSession('p1', 'claude');
+
+    const settingsFile = join(settingsDir(), 'shell-1.settings.json');
+    expect(h.hooks.registered).toEqual(['shell-1']);
+    expect(h.opened[0]).toMatchObject({
+      command: 'claude.exe',
+      args: ['--settings', settingsFile],
+    });
+    expect(h.opened[0]?.env).toMatchObject({
+      COLORTERM: 'truecolor',
+      PROJECT_HUB_HOOK_URL: 'http://127.0.0.1:4000/hooks/shell-1',
+      PROJECT_HUB_HOOK_TOKEN: HOOK_TOKEN,
+    });
+    // O token vai só pelo ambiente: a linha de comando é visível para outros processos.
+    expect(JSON.stringify(h.opened[0]?.args)).not.toContain(HOOK_TOKEN);
+    expect(h.opened[0]?.env).not.toHaveProperty('ANTHROPIC_API_KEY');
+    // Só o início e o fim da sessão: os outros hooks encheriam o log a cada ferramenta.
+    const written = JSON.parse(readFileSync(settingsFile, 'utf8')) as {
+      hooks: Record<string, unknown>;
+    };
+    expect(Object.keys(written.hooks).sort()).toEqual(['SessionEnd', 'SessionStart']);
+  });
+
+  it('outros provedores abrem como antes, sem registro nem variáveis do hook', async () => {
+    const h = setup();
+
+    await h.service.openSession('p1', 'shell');
+    await h.service.openSession('p1', 'antigravity');
+
+    expect(h.hooks.registered).toEqual([]);
+    expect(h.opened.map((o) => o.args)).toEqual([['-NoLogo'], []]);
+    for (const opened of h.opened) {
+      expect(opened.env).not.toHaveProperty('PROJECT_HUB_HOOK_URL');
+      expect(opened.env).not.toHaveProperty('PROJECT_HUB_HOOK_TOKEN');
+    }
+  });
+
+  it('falha ao registrar o hook não impede de abrir: o Claude abre puro e sem número', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const h = setup({ hooks: fakeHooks({ failRegister: true }) });
+
+      expect(await h.service.openSession('p1', 'claude')).toEqual({
+        ok: true,
+        data: { terminalId: 'shell-1' },
+      });
+
+      expect(h.opened[0]).toMatchObject({ command: 'claude.exe', args: [] });
+      expect(h.opened[0]?.env).not.toHaveProperty('PROJECT_HUB_HOOK_TOKEN');
+      expect(warn).toHaveBeenCalled();
+      const result = await h.service.list();
+      if (!result.ok) throw new Error('esperava sucesso');
+      expect(result.data[0]).not.toHaveProperty('usage');
+      expect(h.hooks.reads).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('falha ao gravar a configuração abre o Claude puro e solta o registro', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      // Um arquivo no lugar da pasta: a gravação falha.
+      const blocked = join(dataDir, 'arquivo');
+      writeFileSync(blocked, '');
+      const h = setup({ settingsDir: join(blocked, 'settings') });
+
+      expect((await h.service.openSession('p1', 'claude')).ok).toBe(true);
+
+      expect(h.opened[0]?.args).toEqual([]);
+      expect(h.opened[0]?.env).not.toHaveProperty('PROJECT_HUB_HOOK_TOKEN');
+      expect(h.hooks.unregistered).toEqual(['shell-1']);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('falha ao abrir o terminal solta o registro do hook', async () => {
+    const h = setup({ failOpen: true });
+
+    expect((await h.service.openSession('p1', 'claude')).ok).toBe(false);
+
+    expect(h.hooks.unregistered).toEqual(['shell-1']);
+  });
+
+  it('a lista traz o gasto só onde há número: painel do Claude e agente da missão com gasto gravado', async () => {
+    const usage = { inputTokens: 40, outputTokens: 900, estimatedCostUsd: 0.02 };
+    const otherMission = { ...mission, id: 'm2', title: 'Sem gasto' } as Mission;
+    const h = setup({
+      executions: [
+        { ...agentExecution, usage },
+        { ...agentExecution, id: 'e2', missionId: 'm2', agentSessionId: 'sessao-sem-gasto' },
+      ],
+      missions: [mission, otherMission],
+    });
+    await h.service.openSession('p1', 'claude');
+    await h.service.openSession('p1', 'shell');
+    h.hooks.sessionStart('shell-1', writeAnswer(120));
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    const byId = new Map(result.data.map((entry) => [entry.id, entry]));
+    expect(byId.get('sessao-agente')?.usage).toEqual(usage);
+    expect(byId.get('sessao-sem-gasto')).not.toHaveProperty('usage');
+    expect(byId.get('shell-1')?.usage).toMatchObject({ inputTokens: 2, outputTokens: 120 });
+    expect(byId.get('shell-2')).not.toHaveProperty('usage');
+  });
+
+  it('painel do Claude sem resposta ainda não tem o campo (não é zero)', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).not.toHaveProperty('usage');
+  });
+
+  it('a lista relê os transcripts no máximo a cada 1,5 s', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+    h.hooks.sessionStart('shell-1', writeAnswer(120));
+    expect(await h.service.list()).toMatchObject({ data: [{ usage: { outputTokens: 120 } }] });
+    writeAnswer(30);
+
+    h.advance(1000);
+    expect(await h.service.list()).toMatchObject({ data: [{ usage: { outputTokens: 120 } }] });
+    h.advance(500);
+    expect(await h.service.list()).toMatchObject({ data: [{ usage: { outputTokens: 150 } }] });
+  });
+
+  it('painel recuperado depois de reiniciar o app reaprende pelo log de hooks desde o começo', async () => {
+    const hooks = fakeHooks();
+    hooks.sessionStart('claude-antigo', writeAnswer(77));
+    const h = setup({ sessions: [claudeSession], hooks });
+
+    const result = await h.service.list();
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: [{ id: 'claude-antigo', origin: 'recovered', usage: { outputTokens: 77 } }],
+    });
+    expect(hooks.reads[0]).toEqual({ id: 'claude-antigo', afterSeq: 0 });
+  });
+
+  it('painel recuperado aberto antes deste recurso (sem hooks) não tem número', async () => {
+    const h = setup({ sessions: [claudeSession] });
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).toMatchObject({ id: 'claude-antigo', origin: 'recovered' });
+    expect(result.data[0]).not.toHaveProperty('usage');
+  });
+
+  it('terminal de outro provedor nunca é lido, mesmo recuperado', async () => {
+    const h = setup({ sessions: [storedSession] });
+
+    await h.service.list();
+
+    expect(h.hooks.reads).toEqual([]);
+  });
+
+  it('fechar o painel do Claude solta o registro e o leitor', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+    h.hooks.sessionStart('shell-1', writeAnswer(10));
+    await h.service.list();
+
+    expect((await h.service.closeSession('shell-1')).ok).toBe(true);
+    h.hooks.reads.length = 0;
+    h.advance(1500);
+    await h.service.list();
+
+    expect(h.hooks.unregistered).toEqual(['shell-1']);
+    expect(h.hooks.reads).toEqual([]);
+  });
+
+  it('fechar um painel recuperado do Claude também solta o registro; o de outro provedor, não', async () => {
+    const h = setup({ sessions: [claudeSession, storedSession] });
+
+    await h.service.closeSession('claude-antigo');
+    await h.service.closeSession('antiga');
+
+    expect(h.hooks.unregistered).toEqual(['claude-antigo']);
+  });
+
+  it('painel do Claude que o processo de terminais não conhece mais é fechado e solta o registro', async () => {
+    const h = setup({ sessions: [claudeSession], snapshot: undefined });
+
+    expect(await h.service.list()).toEqual({ ok: true, data: [] });
+
+    expect(h.hooks.unregistered).toEqual(['claude-antigo']);
   });
 });

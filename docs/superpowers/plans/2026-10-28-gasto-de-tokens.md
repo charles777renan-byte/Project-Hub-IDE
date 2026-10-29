@@ -1,8 +1,8 @@
 # Gasto de tokens em tempo real e limites de assinatura: plano
 
-Estado: fase 1 em implementação, sem commit (2026-10-28). Plano revisado pela revisão independente (três lentes: arquitetura, terminal e segurança, produto e precisão). A fase 2 (limites de assinatura) está em implementação no ramo `feat/limites-de-assinatura`, sem commit. Os números medidos vêm de transcripts locais e não devem ir para testes sem anonimização.
+Estado (2026-10-28): fase 1 commitada (`4b37e56`). Fase 2 (limites de assinatura) commitada no ramo `feat/limites-de-assinatura` (`9b2fb9f` e `48c2141`). Fase 3 (tokens por terminal) em implementação no ramo `feat/uso-por-terminal`, sem commit. Plano revisado pela revisão independente (três lentes: arquitetura, terminal e segurança, produto e precisão). Os números medidos vêm de transcripts locais e não devem ir para testes sem anonimização.
 
-Decisão de escopo: `brain/decisoes/decisao-limites-de-assinatura.md`.
+Decisões de escopo: `brain/decisoes/decisao-gasto-de-tokens.md`, `brain/decisoes/decisao-limites-de-assinatura.md` e `brain/decisoes/decisao-uso-por-terminal.md`.
 
 ## Objetivo
 
@@ -100,9 +100,9 @@ Gate de cada parte: `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 
 ## Fase 2: limites de assinatura no Início
 
-Pedido do usuário em 2026-10-28: um cartão "Uso do Claude" no Início, com a porcentagem usada e a hora da renovação das janelas de 5 horas e semanal, como nas capturas de referência. Estado: em implementação, no ramo `feat/limites-de-assinatura`, sem commit. Decisão: [decisão de limites de assinatura](../../../brain/decisoes/decisao-limites-de-assinatura.md).
+Pedido do usuário em 2026-10-28: um cartão "Uso do Claude" no Início, com a porcentagem usada e a hora da renovação das janelas de 5 horas e semanal, como nas capturas de referência. Estado: commitada no ramo `feat/limites-de-assinatura` (`48c2141`, limites no Início; `9b2fb9f`, abas do projeto com a pílula arredondada). Decisão: [decisão de limites de assinatura](../../../brain/decisoes/decisao-limites-de-assinatura.md).
 
-### Claude (em implementação)
+### Claude (commitado)
 
 - Fonte: o próprio Claude Code em modo `-p`. O app roda uma chamada mínima (`claude -p "." --model haiku --restricted --strict-mcp-config --tools "" --system-prompt "." --no-session-persistence --output-format stream-json --verbose`) e lê o evento `rate_limit_event`: `rate_limit_info.unifiedWindows.five_hour` e `seven_day`, com `utilization` (de 0 a 1), `resetsAt` (epoch em segundos) e `status`.
 - Medido em 2026-10-28, com o Claude Code 2.1.312: cerca de 1,3 mil tokens e US$ 0,0003 por leitura, em torno de 4 s. Os números batem com o cartão de referência.
@@ -131,6 +131,18 @@ Pedido do usuário em 2026-10-28: um cartão "Uso do Claude" no Início, com a p
 - Sem fonte confirmada, o cartão mostra "sem dado". Não mostra número inventado.
 - Sem sessão Claude aberta, o cartão mostra a última leitura gravada, com a hora dela. O valor é da conta, não de uma execução.
 - O bloco entra no painel do Início. Ver [plano do dashboard do Início](2026-10-24-inicio-dashboard.md).
+
+## Fase 3: tokens por terminal
+
+Pedido do usuário em 2026-10-28: no cabeçalho de cada painel de terminal do workspace, entre o título e o "Ativo", mostrar o gasto de tokens daquele terminal. Estado: em implementação, no ramo `feat/uso-por-terminal` (sai da fase 2), sem commit. Decisão: [decisão de uso por terminal](../../../brain/decisoes/decisao-uso-por-terminal.md).
+
+- **Objetivo.** Em destaque, só a saída (`outputTokens`), por escolha do usuário. Entrada nova, cache lido e escrito e custo estimado a preço de lista ficam na dica ao passar o mouse.
+- **Fonte.** Os painéis abriam o `claude` puro, sem hooks, e o app não sabia qual transcript era de qual terminal. Agora, para o provedor `claude`, o painel abre com `--settings <arquivo>` só com `SessionStart` e `SessionEnd`. O terminal é registrado no receptor de hooks com o próprio id; URL e token vão pelo ambiente. Um serviço de uso por terminal aprende os transcripts pelos hooks (um `/clear` abre outra sessão e soma) e usa o leitor da fase 1. Lê no máximo a cada 1,5 s, quando o `terminals.list` pede. O `terminals.list` devolve `usage` em cada terminal (`TerminalSummary.usage`, opcional, em `packages/contracts/src/terminal.ts`).
+- **Por que dois eventos.** Os seis hooks da missão gravariam cada chamada de ferramenta, e o `HookLog` relê o arquivo inteiro a cada leitura.
+- **Reinício do app.** Terminal reencontrado reaprende os transcripts pelo log de hooks em disco.
+- **Terminal de missão.** Usa a `Execution.usage` que a fase 1 já grava.
+- **Limites.** Só conta sessões que o app abriu com `--settings`: um Claude aberto dentro de um painel shell não conta. Terminal aberto antes do recurso, Codex, Antigravity e shell ficam sem número (ausência, não zero). O número vem dos transcripts e é estimativa: pode ficar cerca de 2% abaixo do real, por chamadas auxiliares do próprio Claude que não entram no transcript (medido na fase 1).
+- **Execução.** Subagentes em Opus 5.5 high, por escolha do usuário (a matriz do projeto indicaria Sonnet 5.5).
 
 ## Riscos pré-existentes (fora desta fase, mas na mesma superfície)
 
@@ -163,4 +175,5 @@ Pedido do usuário em 2026-10-28: um cartão "Uso do Claude" no Início, com a p
 4. Adaptador e drenagem final (passo 4).
 5. Orquestrador e publicador próprio (passo 5).
 6. Preço e tela (passos 7 e 8), com o fixture como oráculo.
-7. Fase 2 do Claude (em implementação, ramo `feat/limites-de-assinatura`), depois as investigações de Codex e Antigravity.
+7. Fase 2 do Claude (commitada, ramo `feat/limites-de-assinatura`), depois as investigações de Codex e Antigravity.
+8. Fase 3, tokens por terminal (em implementação, ramo `feat/uso-por-terminal`).
