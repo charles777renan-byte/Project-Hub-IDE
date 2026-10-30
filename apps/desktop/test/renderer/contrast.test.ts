@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { USAGE_LEVEL_STARTS } from '../../src/renderer/terminal-usage';
 
 /**
  * Contraste dos tokens de cor (WCAG 2.2 AA, seção 12.4 do planejamento): todo texto sobre um fundo
@@ -232,6 +233,41 @@ describe('selos de estado em pílula', () => {
     const color = tokens.get(tone) ?? '';
     const fill = mixOver(color, tokens.get('--surface') ?? '', BADGE_TINT);
     expect(fill).not.toBe(color);
+    expect(contrastRatio(color, fill), `${tone} (${color}) sobre ${fill}`).toBeGreaterThanOrEqual(
+      MIN_CONTRAST,
+    );
+  });
+});
+
+/**
+ * Gasto de tokens do painel de terminal: a pílula do número vai do frio ao quente conforme o nível de uso
+ * (`data-level` em app.css, limites em terminal-usage.ts). O texto é o acento do nível e o fundo é o mesmo acento a
+ * 14% sobre --surface; cada par passa do mesmo limite de 4,5:1 dos outros selos.
+ */
+describe('gasto de tokens do painel (rampa neon)', () => {
+  const appCss = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles/app.css'),
+    'utf8',
+  );
+  const RAMP = ['--cyan', '--lime', '--yellow', '--orange', '--red', '--magenta'] as const;
+
+  it('há um acento para cada nível', () => {
+    expect(RAMP).toHaveLength(USAGE_LEVEL_STARTS.length + 1);
+  });
+
+  it('o nível 0 é a base e cada nível seguinte troca só a cor, na ordem da rampa', () => {
+    const css = appCss.replaceAll(/\s+/g, ' ');
+    expect(css).toContain('.pane__usage-value { color: var(--cyan);');
+    RAMP.slice(1).forEach((token, index) => {
+      expect(css, `nível ${index + 1}`).toContain(
+        `.pane__usage-value[data-level='${index + 1}'] { color: var(${token}); }`,
+      );
+    });
+  });
+
+  it.each(RAMP)('%s sobre o fundo da pílula (14% sobre --surface) passa de 4,5:1', (tone) => {
+    const color = tokens.get(tone) ?? '';
+    const fill = mixOver(color, tokens.get('--surface') ?? '', BADGE_TINT);
     expect(contrastRatio(color, fill), `${tone} (${color}) sobre ${fill}`).toBeGreaterThanOrEqual(
       MIN_CONTRAST,
     );

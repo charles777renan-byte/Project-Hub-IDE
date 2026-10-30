@@ -1,9 +1,11 @@
 import type { UsageSummaryDto } from '@project-hub/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  USAGE_LEVEL_STARTS,
   formatTokensShort,
   usageDetailText,
   usageIndicatorText,
+  usageLevel,
 } from '../../src/renderer/terminal-usage';
 
 /** O Intl do Brasil separa o código da moeda do valor com um espaço sem quebra; o teste compara com espaço comum. */
@@ -17,28 +19,45 @@ describe('formatTokensShort', () => {
     [1, '1'],
     [872, '872'],
     [999, '999'],
-    [1_000, '1.000'],
-    [12_345, '12.345'],
-    [999_999, '999.999'],
-    [1_000_000, '1 mi'],
-    [1_234_567, '1,2 mi'],
+    [1_000, '1k'],
+    [1_234, '1,2k'],
+    [12_345, '12,3k'],
+    [999_999, '999,9k'],
+    [1_000_000, '1M'],
+    [1_234_567, '1,2M'],
   ])('%d vira "%s"', (count, expected) => {
     expect(formatTokensShort(count)).toBe(expected);
   });
 
   it('trunca a casa decimal em vez de arredondar: o número nunca passa do gasto real', () => {
-    expect(formatTokensShort(1_999_999)).toBe('1,9 mi');
-    expect(formatTokensShort(1_299_999)).toBe('1,2 mi');
+    expect(formatTokensShort(1_999)).toBe('1,9k');
+    expect(formatTokensShort(1_999_999)).toBe('1,9M');
+    expect(formatTokensShort(1_299_999)).toBe('1,2M');
   });
 
   it('acima de mil milhões, os milhões ganham o separador de milhar', () => {
-    expect(formatTokensShort(1_234_567_890)).toBe('1.234,5 mi');
+    expect(formatTokensShort(1_234_567_890)).toBe('1.234,5M');
+  });
+});
+
+describe('usageLevel', () => {
+  it('sobe um nível em cada limite, de 0 a ' + USAGE_LEVEL_STARTS.length, () => {
+    expect(usageLevel(0)).toBe(0);
+    USAGE_LEVEL_STARTS.forEach((start, index) => {
+      expect(usageLevel(start - 1), `logo antes de ${start}`).toBe(index);
+      expect(usageLevel(start), `em ${start}`).toBe(index + 1);
+    });
+    expect(usageLevel(10_000_000)).toBe(USAGE_LEVEL_STARTS.length);
+  });
+
+  it('os limites são crescentes', () => {
+    expect([...USAGE_LEVEL_STARTS]).toEqual([...USAGE_LEVEL_STARTS].sort((a, b) => a - b));
   });
 });
 
 describe('usageIndicatorText', () => {
   it('é a saída no formato curto mais a palavra tokens', () => {
-    expect(usageIndicatorText({ inputTokens: 5, outputTokens: 12_345 })).toBe('12.345 tokens');
+    expect(usageIndicatorText({ inputTokens: 5, outputTokens: 12_345 })).toBe('12,3k tokens');
     expect(usageIndicatorText({ inputTokens: 5, outputTokens: 0 })).toBe('0 tokens');
   });
 
