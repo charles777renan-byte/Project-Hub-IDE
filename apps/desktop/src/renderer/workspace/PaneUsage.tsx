@@ -1,5 +1,6 @@
 import type { UsageSummaryDto } from '@project-hub/contracts';
-import { usageDetailText, usageIndicatorText } from '../terminal-usage';
+import { ICON_PROPS, Zap } from '../components/Icon';
+import { usageDetailText, usageIndicatorText, usageLevel } from '../terminal-usage';
 import { useCountUp } from './use-count-up';
 
 /**
@@ -13,14 +14,17 @@ export function PaneUsage({ usage }: { usage: UsageSummaryDto | undefined }) {
   const { value, counting } = useCountUp(usage?.outputTokens);
   if (usage === undefined) return null;
   const detail = usageDetailText(usage);
+  const shown = value ?? usage.outputTokens;
   return (
     <span className="pane__usage" title={detail}>
       <span
         className="pane__usage-value"
+        data-level={usageLevel(shown)}
         data-counting={counting ? 'true' : undefined}
         aria-hidden="true"
       >
-        {usageIndicatorText({ ...usage, outputTokens: value ?? usage.outputTokens })}
+        <Zap {...ICON_PROPS} size={11} className="pane__usage-icon" />
+        {usageIndicatorText({ ...usage, outputTokens: shown })}
       </span>
       <span className="pane__usage-sr">{`Tokens deste terminal. ${detail}`}</span>
     </span>

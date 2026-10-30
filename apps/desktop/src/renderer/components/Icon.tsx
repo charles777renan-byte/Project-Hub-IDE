@@ -35,6 +35,7 @@ export {
   SquareTerminal,
   UserPen,
   X,
+  Zap,
 } from 'lucide-react';
 export type { LucideIcon } from 'lucide-react';
 
