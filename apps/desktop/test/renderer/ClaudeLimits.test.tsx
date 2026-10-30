@@ -69,6 +69,25 @@ describe('ClaudeLimits', () => {
     expect(bar).toHaveAttribute('max', '100');
   });
 
+  it.each([
+    [74, 'normal'],
+    [75, 'aviso'],
+    [90, 'aviso'],
+    [91, 'critico'],
+  ] as const)('uso de %i%% sai com o nível %s e a barra recebe as regiões', async (used, nivel) => {
+    install(
+      claude({ windows: [{ id: 'five_hour', usedPercent: used, resetsAt: iso(28, 20, 49) }] }),
+    );
+    render(<ClaudeLimits />);
+
+    const bar = await screen.findByLabelText(`Sessão atual, ${used}% usado`);
+    expect(bar).toHaveAttribute('data-nivel', nivel);
+    expect(bar).toHaveAttribute('low', '75');
+    expect(bar).toHaveAttribute('high', '90');
+    expect(bar).toHaveAttribute('optimum', '0');
+    expect(screen.getByText(`${used}% usado · ${100 - used}% restante`)).toBeInTheDocument();
+  });
+
   it('janela vencida não mostra o percentual antigo', async () => {
     install(
       claude({

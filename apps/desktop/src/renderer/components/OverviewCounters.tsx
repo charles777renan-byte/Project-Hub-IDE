@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { useAttention } from '../attention';
 import { useOverview } from '../use-overview';
 
 /**
@@ -8,9 +9,14 @@ import { useOverview } from '../use-overview';
  * vão para caixa alta pela CSS. A região é `aria-live="polite"`: a leitura de tela anuncia a mudança sem
  * interromper o que estiver lendo. Antes da primeira leitura, a contagem aparece como traço, para não parecer
  * um dado de zero.
+ *
+ * "Aguarda você" é o mesmo número da faixa "Precisa de você" da barra lateral: missões e sessões de terminal em
+ * espera, pela regra única de `attention.ts`. Enquanto os terminais não foram lidos, o número é desconhecido e
+ * aparece como traço.
  */
 export function OverviewCounters() {
-  const { running, waiting, failed, loaded } = useOverview();
+  const { running, failed, loaded } = useOverview();
+  const attention = useAttention();
   const shown = (count: number) => (loaded ? String(count) : '—');
   return (
     <div className="overview-counters" aria-live="polite">
@@ -24,7 +30,7 @@ export function OverviewCounters() {
         to={{ pathname: '/', search: '?estado=attention' }}
         className="chip chip--warn overview-counter overview-counter--warn"
       >
-        {shown(waiting)} aguarda você
+        {attention.known ? attention.count : '—'} aguarda você
       </Link>
       <Link
         to={{ pathname: '/', search: '?estado=failed' }}

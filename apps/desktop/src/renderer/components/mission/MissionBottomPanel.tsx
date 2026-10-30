@@ -4,7 +4,7 @@ import type { MissionViewDto } from '@project-hub/contracts';
 import { missionTabCounts } from '../../mission-text';
 import { Tabs, type TabCount, type TabItem } from '../Tabs';
 
-/** As abas do painel inferior da missão, na ordem em que aparecem. A Conversa é a aba de abertura. */
+/** As abas do painel inferior da missão, na ordem em que aparecem. A Atividade é a aba de abertura. */
 export type MissionTab = 'conversation' | 'diff' | 'tests' | 'terminal' | 'logs';
 
 const STORAGE_KEY = 'project-hub:mission-dock-layout';
@@ -47,7 +47,7 @@ function dockTabs(counts: ReturnType<typeof missionTabCounts>): TabItem<MissionT
   const withCount = (item: TabItem<MissionTab>, count: TabCount | undefined) =>
     count === undefined ? item : { ...item, count };
   return [
-    { id: 'conversation', label: 'Conversa' },
+    { id: 'conversation', label: 'Atividade' },
     withCount({ id: 'diff', label: 'Diff' }, counts.diff),
     withCount({ id: 'tests', label: 'Testes' }, counts.tests),
     { id: 'terminal', label: 'Terminal' },
@@ -87,7 +87,7 @@ function TabPanel({
 
 /**
  * O corpo da missão como numa IDE: em cima o `main` (o quadro, as tarefas, os arquivos e a decisão, que
- * rolam sozinhos) e, embaixo, o painel redimensionável com as abas Conversa, Diff, Testes, Terminal e
+ * rolam sozinhos) e, embaixo, o painel redimensionável com as abas Atividade, Diff, Testes, Terminal e
  * Logs. A divisória se move com o mouse e com as setas (o foco vai nela com Tab), e a altura escolhida
  * fica guardada no `localStorage` (com `try/catch`). Os painéis das abas ficam montados o tempo todo.
  */

@@ -153,6 +153,82 @@ describe('ConfirmButton', () => {
     expect(screen.queryByRole('group', { name: QUESTION })).not.toBeInTheDocument();
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it('sem as props novas, o botão inicial e o que confirma continuam vermelhos e o foco não vai ao Voltar', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Excluir missão"
+        question={QUESTION}
+        confirmLabel="Excluir"
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Excluir missão' })).toHaveClass('btn-danger');
+
+    await user.click(screen.getByRole('button', { name: 'Excluir missão' }));
+
+    expect(screen.getByRole('button', { name: 'Excluir' })).toHaveClass('btn-danger');
+    expect(screen.getByRole('button', { name: 'Voltar' })).not.toHaveFocus();
+  });
+
+  it('neutralTrigger: o botão inicial sai secundário, sem vermelho; o que confirma segue vermelho', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Parar todos"
+        question={QUESTION}
+        confirmLabel="Parar 2 missões"
+        neutralTrigger
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    const gatilho = screen.getByRole('button', { name: 'Parar todos' });
+    expect(gatilho).toHaveClass('btn-secondary');
+    expect(gatilho).not.toHaveClass('btn-danger');
+
+    await user.click(gatilho);
+
+    expect(screen.getByRole('button', { name: 'Parar 2 missões' })).toHaveClass('btn-danger');
+  });
+
+  it('focusBack: o Voltar recebe o foco ao montar a pergunta', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Parar todos"
+        question={QUESTION}
+        confirmLabel="Parar 2 missões"
+        focusBack
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Parar todos' }));
+
+    expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+  });
+
+  it('focusBack com neutralTrigger: Voltar devolve o foco ao botão inicial neutro', async () => {
+    const user = userEvent.setup();
+    render(
+      <ConfirmButton
+        label="Parar todos"
+        question={QUESTION}
+        confirmLabel="Parar 2 missões"
+        focusBack
+        neutralTrigger
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Parar todos' }));
+    await user.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(screen.getByRole('button', { name: 'Parar todos' })).toHaveFocus();
+  });
 });
 
 describe('ConfirmInline', () => {

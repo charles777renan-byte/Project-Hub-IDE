@@ -452,7 +452,7 @@ describe('cartão de aprovação, linha do worktree e abas', () => {
 
   // Atualizado na identidade visual (Tarefa 6): as abas de seção viram pílulas uniformes. A cor por tipo
   // (ponto e sublinhado em --tab-accent, uma por .tab--<id>) e o lima somem; a ativa é o gradiente
-  // field-line -> line com texto --text, a inativa é transparente com --muted.
+  // fill -> line com texto --text, a inativa é transparente com --muted.
   it('a aba é uma pílula: a ativa em gradiente, a inativa transparente e muted', () => {
     const tab = ruleDeclarations(appCss, '.tab');
     expect(tab.get('border-radius')).toBe('var(--radius-pill)');
@@ -460,7 +460,7 @@ describe('cartão de aprovação, linha do worktree e abas', () => {
     expect(tab.get('color')).toBe('var(--muted)');
     // O gradiente mora na pílula (o ::before da aba), que acende na ativa para a troca poder animar.
     expect(ruleDeclarations(appCss, '.tab::before').get('background')).toBe(
-      'linear-gradient(135deg, var(--field-line), var(--line))',
+      'linear-gradient(135deg, var(--fill), var(--line))',
     );
     expect(ruleDeclarations(appCss, ".tab[aria-selected='true']").get('color')).toBe('var(--text)');
   });

@@ -1,8 +1,9 @@
 import { useId, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Link, useMatch, useNavigate } from 'react-router';
 import type { LayoutNode, ProjectSummary, TerminalSummary } from '@project-hub/contracts';
+import { attentionEntries } from '../attention';
 import { useListMotion } from '../list-motion';
-import { formatTime, needsAttention, statusIcon, statusLabel } from '../mission-text';
+import { formatTime, statusIcon, statusLabel } from '../mission-text';
 import { notify } from '../notify';
 import { colorOf } from '../project-color';
 import { missionPath, ROUTE_PATHS, workspacePath } from '../routes';
@@ -235,30 +236,39 @@ function AttentionStrip({
   onShowTerminal: ShowTerminal;
   onShowMission: (projectId: string, missionId: string) => void;
 }) {
-  const waiting = terminals.filter((terminal) => terminal.state === 'waiting');
-  const covered = new Set(waiting.flatMap((terminal) => terminal.missionId ?? []));
-  const items: AttentionItem[] = waiting.map((terminal) => ({
-    key: `t-${terminal.id}`,
-    title: terminal.title,
-    detail: terminal.projectName,
-    icon: <ProviderIcon provider={terminal.provider} size={14} />,
-    go: () => onShowTerminal(terminal.projectId, terminal.id),
-  }));
-  if (data.status === 'ready') {
-    for (const project of data.projects) {
-      for (const mission of data.missionsByProject[project.id] ?? []) {
-        if (!needsAttention(mission.status) || covered.has(mission.id)) continue;
-        const Glyph = statusIcon(mission.status) ?? Clock;
-        items.push({
-          key: `m-${mission.id}`,
-          title: mission.title,
-          detail: `${project.name} · ${statusLabel(mission.status)}`,
-          icon: <Glyph {...ICON_PROPS} size={14} />,
-          go: () => onShowMission(project.id, mission.id),
-        });
-      }
+  // A regra do que espera a pessoa é a de `attention.ts`, a mesma do contador da barra de status.
+  const missions =
+    data.status === 'ready'
+      ? data.projects.flatMap((project) =>
+          (data.missionsByProject[project.id] ?? []).map((mission) => ({
+            projectId: project.id,
+            mission,
+          })),
+        )
+      : [];
+  const projectName = (projectId: string) =>
+    data.projects.find((project) => project.id === projectId)?.name ?? '';
+  const items: AttentionItem[] = attentionEntries(terminals, missions).map((entry) => {
+    if (entry.kind === 'session') {
+      const { terminal } = entry;
+      return {
+        key: entry.key,
+        title: terminal.title,
+        detail: terminal.projectName,
+        icon: <ProviderIcon provider={terminal.provider} size={14} />,
+        go: () => onShowTerminal(terminal.projectId, terminal.id),
+      };
     }
-  }
+    const { mission } = entry;
+    const Glyph = statusIcon(mission.status) ?? Clock;
+    return {
+      key: entry.key,
+      title: mission.title,
+      detail: `${projectName(entry.projectId)} · ${statusLabel(mission.status)}`,
+      icon: <Glyph {...ICON_PROPS} size={14} />,
+      go: () => onShowMission(entry.projectId, mission.id),
+    };
+  });
   const first = items[0];
   const announcement = (
     <p aria-live="polite" className="sidebar__sr">
@@ -543,7 +553,7 @@ function ProjectRow({
                     : barLevels(activity.get(session.id))
                 }
                 onShowTerminal={() => onShowTerminal(project.id, session.id)}
-                onClose={() => void closeSession(project.id, session.id, onReload)}
+                onEnd={() => void endSession(project.id, session.id, onReload)}
               />
             ))
           )}
@@ -561,10 +571,11 @@ function findLeaf(node: LayoutNode | null, terminalId: string): { id: string } |
 }
 
 /**
- * Fecha uma sessão pelo cartão, sem confirmar: acha o painel dela no workspace do projeto e o remove, como o
- * botão de fechar do painel. A lista de terminais é lida de novo no fim. A sessão de missão não passa por aqui.
+ * Encerra uma sessão pelo cartão, sem confirmar: acha o painel dela no workspace do projeto e o remove, como o
+ * botão de fechar do painel (que encerra a sessão dele). A lista de terminais é lida de novo no fim. A sessão de
+ * missão não passa por aqui.
  */
-async function closeSession(
+async function endSession(
   projectId: string,
   terminalId: string,
   onReload: () => Promise<void>,
@@ -584,7 +595,7 @@ async function closeSession(
     const removed = await window.projectHub.workspaces.removePane(workspace.id, leaf.id);
     if (!removed.ok) notify.error(removed.error.message);
   } catch {
-    notify.error('Não foi possível fechar a sessão.');
+    notify.error('Não foi possível encerrar a sessão.');
   }
   await onReload();
 }
@@ -638,20 +649,23 @@ function changesDetail(count: number | undefined): string | undefined {
 /**
  * Cartão de uma sessão aberta: trilho colorido pelo estado, o ícone do programa, o título e o detalhe, e à
  * direita a hora e o gráfico de atividade. Clicar leva ao workspace do projeto, pedindo para mostrar esse
- * terminal. Com o mouse ou o foco no cartão, aparecem Abrir e Fechar (a sessão de missão não fecha por aqui).
+ * terminal. Abrir e Encerrar ficam numa coluna ao lado do cartão, e não por cima dele: aparecem com o mouse ou o
+ * foco na linha, que então cede essa largura (a hora e o gráfico somem enquanto isso). Encerrar não pede
+ * confirmação. Numa sessão já encerrada o processo acabou, então o botão segue como Fechar, que só tira o painel.
+ * A sessão de missão não tem o botão.
  */
 function SessionCard({
   session,
   detail,
   levels,
   onShowTerminal,
-  onClose,
+  onEnd,
 }: {
   session: TerminalSummary;
   detail: string;
   levels: readonly number[] | undefined;
   onShowTerminal: () => void;
-  onClose: () => void;
+  onEnd: () => void;
 }) {
   const time = session.startedAt === undefined ? null : formatTime(session.startedAt);
   const stateText =
@@ -660,6 +674,8 @@ function SessionCard({
       : session.state === 'running'
         ? 'rodando'
         : 'encerrada';
+  // Sessão em execução: Encerrar mata o processo. Sessão já encerrada: o botão só tira o painel, e segue Fechar.
+  const endLabel = session.state === 'exited' ? 'Fechar' : 'Encerrar';
   return (
     <li className="sidebar__session">
       <button
@@ -695,11 +711,11 @@ function SessionCard({
         {session.missionId === undefined ? (
           <button
             type="button"
-            className="sidebar__card-close"
-            aria-label={`Fechar ${session.title}`}
-            onClick={onClose}
+            className="sidebar__card-end"
+            aria-label={`${endLabel} ${session.title}`}
+            onClick={onEnd}
           >
-            Fechar
+            {endLabel}
           </button>
         ) : null}
       </span>

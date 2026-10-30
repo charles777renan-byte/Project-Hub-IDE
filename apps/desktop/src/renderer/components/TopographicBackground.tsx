@@ -27,7 +27,7 @@ const TIERS: readonly Tier[] = [0, 1, 2];
 const TIER_WIDTH: Record<Tier, number> = { 0: 1.05, 1: 1.35, 2: 2.35 };
 /** As linhas maiores ficam atenuadas, para não competir com o texto. */
 const TIER_ALPHA: Record<Tier, number> = { 0: 1, 1: 1, 2: 0.35 };
-const TIER_TOKEN: Record<Tier, string> = { 0: '--line', 1: '--field-line', 2: '--muted' };
+const TIER_TOKEN: Record<Tier, string> = { 0: '--line', 1: '--fill', 2: '--muted' };
 
 /**
  * Cores lidas dos tokens de tokens.css, para o canvas seguir a paleta do app e não uma cópia dela.

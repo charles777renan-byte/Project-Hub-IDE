@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LIMIT_CRITICAL_ABOVE,
+  LIMIT_WARN_FROM,
   formatClock,
   formatRenewal,
   isWindowExpired,
+  limitLevel,
   remainingPercent,
   usageText,
   windowLabel,
@@ -52,5 +55,29 @@ describe('limits-format', () => {
 
   it('formatClock usa 24 horas', () => {
     expect(formatClock(at(28, 7, 3))).toBe('07:03');
+  });
+
+  it('os limiares da barra são 75 (aviso) e 90 (crítico)', () => {
+    expect(LIMIT_WARN_FROM).toBe(75);
+    expect(LIMIT_CRITICAL_ABOVE).toBe(90);
+  });
+
+  it('nível da barra: 74 é normal, 75 começa o aviso, 90 ainda é aviso, 91 é crítico', () => {
+    expect(limitLevel({ usedPercent: 74 })).toBe('normal');
+    expect(limitLevel({ usedPercent: 75 })).toBe('aviso');
+    expect(limitLevel({ usedPercent: 90 })).toBe('aviso');
+    expect(limitLevel({ usedPercent: 91 })).toBe('critico');
+  });
+
+  it('nível da barra nas pontas: 0 é normal e 100 é crítico', () => {
+    expect(limitLevel({ usedPercent: 0 })).toBe('normal');
+    expect(limitLevel({ usedPercent: 100 })).toBe('critico');
+  });
+
+  it('nível usa o percentual arredondado, o mesmo número da tela', () => {
+    // 74,6 aparece como 75% e por isso já é aviso; 90,4 aparece como 90% e ainda é aviso.
+    expect(limitLevel({ usedPercent: 74.6 })).toBe('aviso');
+    expect(limitLevel({ usedPercent: 90.4 })).toBe('aviso');
+    expect(limitLevel({ usedPercent: 90.6 })).toBe('critico');
   });
 });

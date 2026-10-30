@@ -70,7 +70,9 @@
   white-space: nowrap;
 }
 
+/* O gatilho de "Parar todos" sai neutro (btn-secondary), por isso entra na mesma medida que o vermelho. */
 .statusbar .btn-danger,
+.statusbar .btn-secondary,
 .statusbar .confirm-inline button {
   height: 20px;
   padding: 0 var(--space-2);
