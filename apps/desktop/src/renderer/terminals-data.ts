@@ -30,6 +30,9 @@ let stop: (() => void) | undefined;
 let started = 0;
 let shown = 0;
 let epoch = 0;
+// Terminais que a pessoa acabou de fechar: somem da lista na hora, antes de o processo principal responder, e
+// uma leitura que ainda os traga (começou antes do fechamento) não os faz voltar.
+const hidden = new Set<string>();
 
 function publish(next: TerminalsState) {
   // A lista chega nova a cada leitura; sem mudança, ninguém precisa redesenhar.
@@ -63,6 +66,11 @@ async function load(): Promise<void> {
     shown = run;
     publish(next(state));
   };
+  /** A lista lida sem os terminais fechados agora; o que o servidor já não lista deixa de precisar de filtro. */
+  const withoutHidden = (list: TerminalSummary[]): TerminalSummary[] => {
+    for (const id of [...hidden]) if (!list.some((item) => item.id === id)) hidden.delete(id);
+    return list.filter((item) => !hidden.has(item.id));
+  };
   const failed = (message: string) => (previous: TerminalsState) => ({
     terminals: previous.terminals,
     error: message,
@@ -74,7 +82,7 @@ async function load(): Promise<void> {
     const result = await api.list();
     apply((previous) =>
       result.ok
-        ? { terminals: result.data, error: null, loaded: true }
+        ? { terminals: withoutHidden(result.data), error: null, loaded: true }
         : failed(result.error.message || LOAD_ERROR)(previous),
     );
   } catch {
@@ -99,6 +107,7 @@ function start(): () => void {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     epoch += 1;
     shown = 0;
+    hidden.clear();
     state = INITIAL;
   };
 }
@@ -113,6 +122,21 @@ function subscribe(listener: () => void): () => void {
       stop = undefined;
     }
   };
+}
+
+/**
+ * Tira o terminal da lista agora, sem esperar o processo principal encerrá-lo (a barra lateral e o resto da janela
+ * leem esta mesma lista). Ele fica fora das leituras até o servidor deixar de listá-lo ou até `unhideTerminal`.
+ */
+export function hideTerminal(id: string): void {
+  hidden.add(id);
+  publish({ ...state, terminals: state.terminals.filter((item) => item.id !== id) });
+}
+
+/** O pedido de fechar terminou: o terminal volta à lista se o servidor ainda o tem (o fechamento falhou). */
+export function unhideTerminal(id: string): void {
+  if (!hidden.delete(id)) return;
+  void load();
 }
 
 /**

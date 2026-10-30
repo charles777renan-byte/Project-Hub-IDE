@@ -11,6 +11,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { Sidebar } from '../../src/renderer/components/Sidebar';
+import { TERMINALS_POLL_MS } from '../../src/renderer/terminals-data';
 import {
   ADD_PROJECT_REQUEST_EVENT,
   PROJECTS_CHANGED_EVENT,
@@ -954,7 +955,7 @@ describe('Sidebar: sessões de cada projeto', () => {
 });
 
 describe('Sidebar: atividade dos cartões', () => {
-  it('sessão com o contador de saída mostra o gráfico, sempre com sete barras', async () => {
+  it('sessão parada não desenha o gráfico, mesmo com o contador de saída', async () => {
     installApi({ terminals: [terminalOf({ id: 't1', title: 'npm test', outputBytes: 120 })] });
     renderSidebar('/');
     await spaces();
@@ -962,10 +963,35 @@ describe('Sidebar: atividade dos cartões', () => {
     await userEvent.click(expandOf('Project Hub'));
 
     const card = await screen.findByRole('button', { name: /^npm test/ });
-    const graph = card.querySelector('.activity');
-    expect(graph).not.toBeNull();
-    expect(graph).toHaveAttribute('aria-hidden', 'true');
-    expect(graph?.querySelectorAll('.activity__bar')).toHaveLength(7);
+    expect(card.querySelector('.activity')).toBeNull();
+  });
+
+  it('sessão com saída nova entre duas leituras mostra o gráfico, sempre com sete barras', async () => {
+    const { state } = installApi({
+      terminals: [terminalOf({ id: 't1', title: 'npm test', outputBytes: 120 })],
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(expandOf('Project Hub'));
+    const card = await screen.findByRole('button', { name: /^npm test/ });
+    expect(card.querySelector('.activity')).toBeNull();
+
+    // A primeira amostra do cartão é a base: a saída só conta depois dela, então espera-se um ciclo antes de crescer.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, TERMINALS_POLL_MS + 500));
+    });
+    // A saída cresce; a amostra seguinte acusa a diferença e o gráfico aparece.
+    state.terminals = [terminalOf({ id: 't1', title: 'npm test', outputBytes: 500 })];
+    await waitFor(
+      () => {
+        const graph = screen.getByRole('button', { name: /^npm test/ }).querySelector('.activity');
+        expect(graph).not.toBeNull();
+        expect(graph).toHaveAttribute('aria-hidden', 'true');
+        expect(graph?.querySelectorAll('.activity__bar')).toHaveLength(7);
+      },
+      { timeout: 6_000 },
+    );
   });
 
   it('sessão sem o contador não mostra o gráfico', async () => {
