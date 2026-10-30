@@ -1,5 +1,9 @@
 import { useId, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import type { MissionDto, TerminalSummary } from '@project-hub/contracts';
+import { useAttention, type AttentionEntry } from '../attention';
+import { EmptyState } from '../components/EmptyState';
+import { FolderPlus } from '../components/Icon';
 import { ActivityHeatmap } from '../components/home/ActivityHeatmap';
 import { AgentUsage } from '../components/home/AgentUsage';
 import { Greeting } from '../components/home/Greeting';
@@ -15,15 +19,25 @@ import {
   STATUS_FILTERS,
   type MissionStatusFilter,
 } from '../mission-text';
-import { EDIT_NAME_PARAM, missionPath } from '../routes';
+import { ADD_PROJECT_REQUEST_EVENT, type AddProjectRequest } from '../projects-events';
+import { EDIT_NAME_PARAM, missionPath, workspacePath } from '../routes';
 import { useMissionsBoard } from '../use-missions-board';
 import { useOverview } from '../use-overview';
+import { useSidebarData } from '../use-sidebar-data';
 
 /** Parâmetro do Início com o filtro por estado; os contadores da barra de status levam a ele. */
 const STATE_PARAM = 'estado';
 
 /** Faixa do Início: título pequeno, contagem em `--muted` ao lado e o corpo. A região leva o nome do título. */
-function Band({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+function Band({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count?: number | string;
+  children: ReactNode;
+}) {
   const titleId = useId();
   return (
     <section aria-labelledby={titleId} className="home-band">
@@ -39,56 +53,72 @@ function Band({ title, count, children }: { title: string; count?: number; child
 }
 
 /**
- * "Precisa de você": o que espera uma decisão, uma linha por item e cada uma com o link que leva direto à
- * missão. As aprovações pendentes vêm pelo título da aprovação; plano para aprovar, pergunta e revisão
- * vêm pelo título da missão, com a ação que falta. As mesmas missões que o contador "aguarda você" da barra
- * de status conta. Enquanto as aprovações carregam, mostra "Carregando…" em vez do vazio.
+ * Uma sessão em espera: o link leva ao workspace do projeto e pede o terminal dela, do jeito que a lateral faz.
+ * Usada em "Precisa de você" e na banda Missões sob `?estado=attention`.
+ */
+function SessionRow({ terminal }: { terminal: TerminalSummary }) {
+  return (
+    <li className="needs-list__item">
+      <Link to={workspacePath(terminal.projectId)} state={{ showTerminal: terminal.id }}>
+        {terminal.title}
+      </Link>
+      <span className="needs-list__meta">
+        {`${terminal.projectName} · ${HOME_TEXT.sessionWaiting}`}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * "Precisa de você": uma linha por entrada de `useAttention` (sessão em espera ou missão que espera), a mesma
+ * regra do contador "aguarda você" da barra de status e da faixa da lateral. A sessão leva ao terminal dela; a
+ * missão, à tela da missão. Uma missão em `waiting_approval` mostra o título da primeira aprovação pendente quando
+ * a leitura dela deu certo, e o próprio título da missão quando não há leitura (ainda carregando ou perdida, e aí
+ * a linha diz isso). O número do cabeçalho é a contagem da regra e vira traço enquanto ela não é conhecida. Enquanto
+ * as aprovações carregam, mostra "Carregando…" em vez do vazio.
  */
 function NeedsYou() {
-  const { items, approvals, unreadApprovals, approvalsLoaded, loaded } = useOverview();
+  const attention = useAttention();
+  const { approvals, unreadApprovals, approvalsLoaded } = useOverview();
   const motion = useListMotion<HTMLUListElement>();
-
-  const others = items.filter(
-    ({ mission }) => needsAttention(mission.status) && mission.status !== 'waiting_approval',
-  );
-  // Missão que pede aprovação mas já não tem pendência (decidida há pouco): aparece como a missão.
-  const approvalMissions = new Set([
-    ...approvals.map((entry) => entry.missionId),
-    ...unreadApprovals.map((entry) => entry.missionId),
-  ]);
-  const orphans = approvalsLoaded
-    ? items.filter(
-        ({ mission }) => mission.status === 'waiting_approval' && !approvalMissions.has(mission.id),
-      )
-    : [];
-  const rows = approvals.length + unreadApprovals.length + others.length + orphans.length;
-  const count = loaded && approvalsLoaded ? rows : undefined;
+  const rows = attention.entries.length;
 
   return (
-    <Band title={HOME_TEXT.needsYou} {...(count === undefined ? {} : { count })}>
+    <Band title={HOME_TEXT.needsYou} count={attention.known ? attention.count : '—'}>
       {rows > 0 ? (
         <ul ref={motion} className="needs-list">
-          {approvals.map(({ projectId, missionId, missionTitle, approval }) => (
-            <li key={approval.id} className="needs-list__item">
-              <Link to={missionPath(projectId, missionId)}>{approval.title}</Link>
-              <span className="needs-list__meta">{missionTitle}</span>
-            </li>
-          ))}
-          {unreadApprovals.map(({ missionId, missionTitle }) => (
-            <li key={`unread-${missionId}`} className="needs-list__item">
-              {HOME_TEXT.needsYouUnread(missionTitle)}
-            </li>
-          ))}
-          {[...others, ...orphans].map(({ projectId, mission }) => (
-            <li key={mission.id} className="needs-list__item">
-              <Link to={missionPath(projectId, mission.id)}>{mission.title}</Link>
-              <span className="needs-list__meta">{requiredActionOf(mission.status)}</span>
-            </li>
-          ))}
+          {attention.entries.map((entry) => {
+            if (entry.kind === 'session') {
+              return <SessionRow key={entry.key} terminal={entry.terminal} />;
+            }
+            const { mission, projectId } = entry;
+            const waitingApproval = mission.status === 'waiting_approval';
+            const pending = waitingApproval
+              ? approvals.find((item) => item.missionId === mission.id)
+              : undefined;
+            const unread =
+              waitingApproval && unreadApprovals.some((item) => item.missionId === mission.id);
+            const meta =
+              pending !== undefined
+                ? mission.title
+                : unread
+                  ? HOME_TEXT.needsYouUnread(mission.title)
+                  : requiredActionOf(mission.status);
+            return (
+              <li key={entry.key} className="needs-list__item">
+                <Link to={missionPath(projectId, mission.id)}>
+                  {pending?.approval.title ?? mission.title}
+                </Link>
+                <span className="needs-list__meta">{meta}</span>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
-      {!loaded || !approvalsLoaded ? <p className="home-band__note">{HOME_TEXT.loading}</p> : null}
-      {loaded && approvalsLoaded && rows === 0 ? (
+      {!attention.known || !approvalsLoaded ? (
+        <p className="home-band__note">{HOME_TEXT.loading}</p>
+      ) : null}
+      {attention.known && approvalsLoaded && rows === 0 ? (
         <p className="home-band__note">{HOME_TEXT.needsYouEmpty}</p>
       ) : null}
     </Band>
@@ -96,9 +126,37 @@ function NeedsYou() {
 }
 
 /**
+ * As missões que "Precisa de você" já mostra: a da própria linha de missão e a que uma sessão em espera
+ * representa (`terminal.missionId`), esta só quando a missão também espera a pessoa. Uma missão em execução que
+ * tem uma sessão sua em espera continua na banda Missões: a sessão aparece em "Precisa de você", a missão não.
+ * Tudo vem de `attentionEntries`, sem regra nova.
+ */
+function missionsListedInNeedsYou(
+  entries: readonly AttentionEntry[],
+  missions: readonly { mission: MissionDto }[],
+): Set<string> {
+  const listed = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === 'mission' ? [entry.mission.id] : (entry.terminal.missionId ?? []),
+    ),
+  );
+  const waiting = new Set(
+    missions
+      .filter(({ mission }) => needsAttention(mission.status))
+      .map(({ mission }) => mission.id),
+  );
+  return new Set([...listed].filter((id) => waiting.has(id)));
+}
+
+/**
  * Missões de todos os projetos, com progresso. O filtro por estado vem de `?estado=running|attention|failed`
  * (o mesmo dos contadores da barra de status): três chips o escolhem (o ativo, apertado de novo, o limpa) e
  * "Limpar filtro" aparece enquanto há filtro. Valor desconhecido vale como sem filtro.
+ *
+ * Sem filtro, cada missão aparece uma vez: as que "Precisa de você" já lista saem desta banda. Sob `attention`,
+ * a lista é a mesma do contador "aguarda você": as sessões em espera primeiro, depois as missões que esperam
+ * (sem as que uma sessão em espera já representa). Com `running` ou `failed`, a lista é o filtro inteiro. O número
+ * da banda é o do que está listado, e só aparece quando a contagem já é conhecida.
  */
 function Missions({
   filter,
@@ -108,10 +166,28 @@ function Missions({
   onFilter: (next: MissionStatusFilter | undefined) => void;
 }) {
   const board = useMissionsBoard();
-  const shown =
-    filter === undefined
-      ? board.items.length
-      : board.items.filter((item) => matchesStatusFilter(item.mission.status, filter)).length;
+  const attention = useAttention();
+  const attentionView = filter === 'attention';
+  // Sem filtro e sob `attention`, a lista depende da leitura de atenção; com `running` ou `failed`, não.
+  const readsAttention = filter === undefined || attentionView;
+  const sessions = attentionView
+    ? attention.entries.flatMap((entry) => (entry.kind === 'session' ? [entry.terminal] : []))
+    : [];
+  const waitingIds = new Set(
+    attention.entries.flatMap((entry) => (entry.kind === 'mission' ? [entry.mission.id] : [])),
+  );
+  const listedInNeeds = missionsListedInNeedsYou(attention.entries, board.items);
+  const missionItems = attentionView
+    ? board.items.filter((item) => waitingIds.has(item.mission.id))
+    : filter === undefined
+      ? board.items.filter((item) => !listedInNeeds.has(item.mission.id))
+      : board.items.filter((item) => matchesStatusFilter(item.mission.status, filter));
+  const shown = sessions.length + missionItems.length;
+  const loading = board.status === 'loading' || (readsAttention && !attention.known);
+
+  let emptyText: string = HOME_TEXT.missionsEmpty;
+  if (filter !== undefined) emptyText = HOME_TEXT.missionsEmptyFiltered;
+  else if (board.items.length > 0) emptyText = HOME_TEXT.allInNeeds;
 
   let body: ReactNode;
   if (board.status === 'error') {
@@ -120,24 +196,29 @@ function Missions({
         {HOME_TEXT.missionsError}
       </p>
     );
-  } else if (board.status === 'loading') {
+  } else if (loading) {
     body = <p className="home-band__note">{HOME_TEXT.loading}</p>;
   } else if (shown === 0) {
-    body = (
-      <p className="home-band__note">
-        {filter === undefined ? HOME_TEXT.missionsEmpty : HOME_TEXT.missionsEmptyFiltered}
-      </p>
-    );
+    body = <p className="home-band__note">{emptyText}</p>;
   } else {
     body = (
       <div className="home-band__scroll">
-        <MissionProgressList items={board.items} {...(filter === undefined ? {} : { filter })} />
+        {sessions.length === 0 ? null : (
+          <ul className="needs-list">
+            {sessions.map((terminal) => (
+              <SessionRow key={terminal.id} terminal={terminal} />
+            ))}
+          </ul>
+        )}
+        <MissionProgressList items={missionItems} />
       </div>
     );
   }
 
+  const countShown = board.status === 'ready' && (!readsAttention || attention.known);
+
   return (
-    <Band title={HOME_TEXT.missions} {...(board.status === 'ready' ? { count: shown } : {})}>
+    <Band title={HOME_TEXT.missions} {...(countShown ? { count: shown } : {})}>
       <div role="group" aria-label={HOME_TEXT.filterGroup} className="filter-chips">
         {STATUS_FILTERS.map((option) => (
           <button
@@ -166,16 +247,55 @@ function Missions({
 }
 
 /**
+ * Primeiro uso, sem nenhum projeto (carga pronta e lista vazia): o estado vazio com os dois passos e o botão
+ * "Adicionar projeto", no lugar das faixas. O botão pede o cadastro pelo mesmo evento da barra lateral, com
+ * `irParaMissoes`: depois de cadastrar, a visão Missões do projeto abre. Só este pedido leva para lá; o botão da
+ * lateral, a paleta e o menu "+" ficam onde estão.
+ */
+function FirstSteps() {
+  function requestAdd() {
+    const detail: AddProjectRequest = { irParaMissoes: true };
+    window.dispatchEvent(new CustomEvent(ADD_PROJECT_REQUEST_EVENT, { detail }));
+  }
+
+  return (
+    <EmptyState
+      className="home-empty"
+      icon={FolderPlus}
+      title={HOME_TEXT.firstStepsTitle}
+      hint={
+        <span className="home-empty__steps">
+          {HOME_TEXT.firstSteps.map((step) => (
+            <span key={step} className="home-empty__step">
+              {step}
+            </span>
+          ))}
+        </span>
+      }
+      action={
+        <button type="button" className="btn-primary" onClick={requestAdd}>
+          {HOME_TEXT.addProject}
+        </button>
+      }
+    />
+  );
+}
+
+/**
  * Início, o painel de abertura, de cima para baixo: a faixa do topo (a saudação numa linha, sobre o fundo
  * topográfico, que não aparece em mais nenhum ponto do Início), "Precisa de você", Missões com
  * progresso (e o filtro `?estado=`), Atividade e Uso dos agentes. Os números vêm da carga compartilhada
- * da visão geral; nada é simulado. `?editar-nome=1` (o item "Alterar meu nome" da paleta) abre o campo do
- * nome na saudação, e o parâmetro sai quando o campo fecha.
+ * da visão geral; nada é simulado. Sem nenhum projeto, o estado vazio (`FirstSteps`) toma o lugar de "Precisa de você",
+ * Missões e Atividade; o Uso dos agentes segue, porque não é uma faixa vazia.
+ * `?editar-nome=1` (o item "Alterar meu nome" da paleta) abre o campo do nome na saudação, e o parâmetro sai
+ * quando o campo fecha.
  */
 export function HomePage() {
   const [params, setParams] = useSearchParams();
   const filter = parseStatusFilter(params.get(STATE_PARAM));
   const editRequested = params.get(EDIT_NAME_PARAM) === '1';
+  const sidebar = useSidebarData();
+  const semProjetos = sidebar.status === 'ready' && sidebar.projects.length === 0;
 
   function setFilter(next: MissionStatusFilter | undefined) {
     setParams(
@@ -208,11 +328,17 @@ export function HomePage() {
       </div>
       <div className="home-columns">
         <div className="home-main">
-          <NeedsYou />
-          <Missions filter={filter} onFilter={setFilter} />
+          {semProjetos ? (
+            <FirstSteps />
+          ) : (
+            <>
+              <NeedsYou />
+              <Missions filter={filter} onFilter={setFilter} />
+            </>
+          )}
         </div>
         <div className="home-side">
-          <ActivityHeatmap />
+          {semProjetos ? null : <ActivityHeatmap />}
           <AgentUsage />
         </div>
       </div>

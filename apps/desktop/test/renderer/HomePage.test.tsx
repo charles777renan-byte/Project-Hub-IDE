@@ -9,11 +9,13 @@ import type {
   MissionViewDto,
   ProjectHubApi,
   ProjectSummary,
+  TerminalSummary,
 } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OverviewCounters } from '../../src/renderer/components/OverviewCounters';
 import { HomePage } from '../../src/renderer/pages/HomePage';
-import { missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
+import { ADD_PROJECT_REQUEST_EVENT } from '../../src/renderer/projects-events';
+import { missionPath, ROUTE_PATHS, workspacePath } from '../../src/renderer/routes';
 
 /**
  * Início como painel de abertura: saudação numa linha, "Precisa de você", missões com progresso (e o
@@ -71,9 +73,33 @@ type Setup = {
   activity?: AppResult<ActivityDay[]>;
   /** Nome do perfil local (`profile.get`). */
   displayName?: string | null;
+  /** Terminais (`terminals.list`). Sem a opção, a API de terminais nem existe; `'pending'` nunca responde. */
+  terminals?: TerminalSummary[] | 'pending';
 };
 
-function installApi({ projects = [], missions = {}, get, activity, displayName = null }: Setup) {
+/** Uma sessão de terminal em espera, do projeto p1 e sem missão. */
+function waitingSession(extra: Partial<TerminalSummary> = {}): TerminalSummary {
+  return {
+    id: 't1',
+    kind: 'shell',
+    title: 'Claude Code',
+    projectId: 'p1',
+    projectName: 'Projeto p1',
+    state: 'waiting',
+    provider: 'claude',
+    origin: 'new',
+    ...extra,
+  };
+}
+
+function installApi({
+  projects = [],
+  missions = {},
+  get,
+  activity,
+  displayName = null,
+  terminals,
+}: Setup) {
   const setDisplayName = vi.fn(() => Promise.resolve({ ok: true }));
   const api = {
     activity: {
@@ -134,13 +160,29 @@ function installApi({ projects = [], missions = {}, get, activity, displayName =
       subscribe: vi.fn(() => () => {}),
     },
   };
+  if (terminals !== undefined) {
+    Object.assign(api, {
+      terminals: {
+        list: vi.fn(() =>
+          terminals === 'pending'
+            ? new Promise<never>(() => {})
+            : Promise.resolve<AppResult<TerminalSummary[]>>({ ok: true, data: terminals }),
+        ),
+      },
+    });
+  }
   window.projectHub = api as unknown as ProjectHubApi;
   return { setDisplayName };
 }
 
 function Where() {
   const location = useLocation();
-  return <p data-testid="where">{`${location.pathname}${location.search}`}</p>;
+  return (
+    <>
+      <p data-testid="where">{`${location.pathname}${location.search}`}</p>
+      <p data-testid="state">{JSON.stringify(location.state)}</p>
+    </>
+  );
 }
 
 function renderHome(entry: string = ROUTE_PATHS.home) {
@@ -286,7 +328,7 @@ describe('HomePage', () => {
     expect(screen.queryByText('Nada espera por você.')).not.toBeInTheDocument();
   });
 
-  it('Missões lista todas as missões com o estado e o link para a missão', async () => {
+  it('Missões lista as missões com o estado e o link, sem repetir as que Precisa de você já mostra', async () => {
     installApi({ projects: [project('p1')], missions: MIXED });
 
     renderHome();
@@ -296,8 +338,67 @@ describe('HomePage', () => {
       'href',
       missionPath('p1', 'm1'),
     );
-    expect(within(missions).getAllByRole('listitem')).toHaveLength(5);
+    // m3 (aprovação) e m4 (plano) já estão em "Precisa de você": a banda mostra só as demais.
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(missions).queryByRole('link', { name: 'Missão m3' })).not.toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m4' })).not.toBeInTheDocument();
     expect(within(missions).getByText(/^Falhou/)).toBeInTheDocument();
+    expect(within(missions).getByText('3')).toBeInTheDocument();
+  });
+
+  it('missão em planned aparece só em Precisa de você sem filtro, e na banda com o filtro Aguarda você', async () => {
+    const user = userEvent.setup();
+    installApi({ projects: [project('p1')], missions: { p1: [mission('m4', 'p1', 'planned')] } });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    expect(
+      await within(panel('Precisa de você')).findByRole('link', { name: 'Missão m4' }),
+    ).toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m4' })).not.toBeInTheDocument();
+    expect(
+      within(missions).getByText('Todas as missões estão em “Precisa de você”.'),
+    ).toBeInTheDocument();
+
+    await user.click(within(missions).getByRole('button', { name: 'Aguarda você' }));
+
+    expect(await within(missions).findByRole('link', { name: 'Missão m4' })).toBeInTheDocument();
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('missão running aparece só na banda Missões, nunca em Precisa de você', async () => {
+    installApi({ projects: [project('p1')], missions: { p1: [mission('m1', 'p1', 'running')] } });
+
+    renderHome();
+
+    expect(
+      await within(panel('Missões')).findByRole('link', { name: 'Missão m1' }),
+    ).toBeInTheDocument();
+    expect(
+      await within(panel('Precisa de você')).findByText('Nada espera por você.'),
+    ).toBeInTheDocument();
+    expect(
+      within(panel('Precisa de você')).queryByRole('link', { name: 'Missão m1' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('uma missão que uma sessão em espera representa não aparece na banda sem filtro', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m4', 'p1', 'planned'), mission('m1', 'p1', 'running')] },
+      terminals: [waitingSession({ missionId: 'm4' })],
+    });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    expect(await within(missions).findByRole('link', { name: 'Missão m1' })).toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m4' })).not.toBeInTheDocument();
+    expect(
+      within(panel('Precisa de você')).getByRole('link', { name: 'Claude Code' }),
+    ).toBeInTheDocument();
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(1);
   });
 
   it('?estado=failed mostra só as missões que falharam e um chip para limpar o filtro', async () => {
@@ -318,7 +419,7 @@ describe('HomePage', () => {
     await user.click(within(missions).getByRole('button', { name: 'Limpar filtro' }));
 
     expect(await within(missions).findByRole('link', { name: 'Missão m1' })).toBeInTheDocument();
-    expect(within(missions).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(3);
     expect(screen.getByTestId('where')).toHaveTextContent('/');
     expect(screen.getByTestId('where')).not.toHaveTextContent('estado');
   });
@@ -342,6 +443,105 @@ describe('HomePage', () => {
         .getAllByRole('link')
         .map((link) => link.textContent),
     ).toEqual(['Missão m3', 'Missão m4']);
+  });
+
+  it('?estado=attention põe as sessões em espera antes das missões, e o número da banda é o do contador', async () => {
+    installApi({ projects: [project('p1')], missions: MIXED, terminals: [waitingSession()] });
+    render(
+      <MemoryRouter initialEntries={['/?estado=attention']}>
+        <OverviewCounters />
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    const missions = panel('Missões');
+    await within(missions).findByRole('link', { name: 'Claude Code' });
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: '3 aguarda você' })).toBeInTheDocument(),
+    );
+    expect(within(missions).getByText('3')).toBeInTheDocument();
+    expect(
+      within(missions)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Claude Code', 'Missão m3', 'Missão m4']);
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('Precisa de você tem uma linha por entrada: a sessão em espera e a missão que espera, e o cabeçalho diz 2', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m4', 'p1', 'planned')] },
+      terminals: [waitingSession()],
+    });
+
+    renderHome();
+
+    const needs = panel('Precisa de você');
+    expect(await within(needs).findByRole('link', { name: 'Claude Code' })).toHaveAttribute(
+      'href',
+      workspacePath('p1'),
+    );
+    expect(within(needs).getByRole('link', { name: 'Missão m4' })).toHaveAttribute(
+      'href',
+      missionPath('p1', 'm4'),
+    );
+    expect(within(needs).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(needs).getByText('2')).toBeInTheDocument();
+  });
+
+  it('a sessão em espera leva ao workspace do projeto, pedindo o terminal dela (como a lateral)', async () => {
+    const user = userEvent.setup();
+    installApi({ projects: [project('p1')], terminals: [waitingSession()] });
+
+    renderHome();
+
+    await user.click(
+      await within(panel('Precisa de você')).findByRole('link', { name: 'Claude Code' }),
+    );
+
+    expect(screen.getByTestId('where')).toHaveTextContent(workspacePath('p1'));
+    expect(screen.getByTestId('state')).toHaveTextContent('"showTerminal":"t1"');
+  });
+
+  it('sem a primeira leitura dos terminais, o cabeçalho de Precisa de você mostra traço e não zero', async () => {
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m4', 'p1', 'planned')] },
+      terminals: 'pending',
+    });
+
+    renderHome();
+
+    const needs = panel('Precisa de você');
+    expect(await within(needs).findByRole('link', { name: 'Missão m4' })).toBeInTheDocument();
+    expect(within(needs).getByText('—')).toBeInTheDocument();
+    expect(within(needs).queryByText('0')).not.toBeInTheDocument();
+    expect(within(needs).queryByText('1')).not.toBeInTheDocument();
+  });
+
+  it('uma missão com duas aprovações pendentes ocupa uma linha só, com a primeira', async () => {
+    const second = { ...approval('m3'), id: 'ap-m3-2', title: 'Segunda aprovação' };
+    installApi({
+      projects: [project('p1')],
+      missions: { p1: [mission('m3', 'p1', 'waiting_approval')] },
+      get: () => ({
+        ok: true,
+        data: {
+          steps: [],
+          pendingApprovals: [approval('m3'), second],
+        } as unknown as MissionViewDto,
+      }),
+    });
+
+    renderHome();
+
+    const needs = panel('Precisa de você');
+    expect(await within(needs).findByRole('link', { name: 'Aprovar m3' })).toBeInTheDocument();
+    expect(
+      within(needs).queryByRole('link', { name: 'Segunda aprovação' }),
+    ).not.toBeInTheDocument();
+    expect(within(needs).getAllByRole('listitem')).toHaveLength(1);
   });
 
   it('os chips de estado têm os mesmos nomes dos contadores: Executando, Aguarda você e Falharam', async () => {
@@ -372,7 +572,7 @@ describe('HomePage', () => {
     await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(1));
 
     await user.click(within(missions).getByRole('button', { name: 'Executando' }));
-    await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(5));
+    await waitFor(() => expect(within(missions).getAllByRole('listitem')).toHaveLength(3));
   });
 
   it('um valor de ?estado= que não existe vale como sem filtro', async () => {
@@ -382,7 +582,7 @@ describe('HomePage', () => {
 
     const missions = panel('Missões');
     await within(missions).findByRole('link', { name: 'Missão m1' });
-    expect(within(missions).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(missions).getAllByRole('listitem')).toHaveLength(3);
     expect(within(missions).queryByRole('button', { name: 'Limpar filtro' })).toBeNull();
   });
 
@@ -399,8 +599,8 @@ describe('HomePage', () => {
     expect(within(missions).getByRole('button', { name: 'Limpar filtro' })).toBeInTheDocument();
   });
 
-  it('com tudo vazio, mostra os estados vazios', async () => {
-    installApi({});
+  it('com um projeto e nenhuma missão, mostra os estados vazios de cada faixa', async () => {
+    installApi({ projects: [project('p1')] });
 
     renderHome();
 
@@ -498,11 +698,80 @@ describe('HomePage', () => {
   });
 
   it('não tem texto com travad', async () => {
-    installApi({});
+    installApi({ projects: [project('p1')] });
 
     renderHome();
 
     await screen.findByText('Nada espera por você.');
     expect(document.body.textContent).not.toMatch(/travad/i);
+  });
+});
+
+describe('HomePage sem nenhum projeto', () => {
+  it('mostra os dois passos e o botão Adicionar projeto, no lugar das faixas', async () => {
+    installApi({});
+
+    renderHome();
+
+    expect(await screen.findByRole('button', { name: 'Adicionar projeto' })).toBeInTheDocument();
+    expect(screen.getByText('Comece por um projeto')).toBeInTheDocument();
+    expect(screen.getByText('1. Adicionar projeto')).toBeInTheDocument();
+    expect(screen.getByText('2. Criar a primeira missão')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Precisa de você' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Missões' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Atividade' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Nada espera por você.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nenhuma missão ainda.')).not.toBeInTheDocument();
+    // Uso dos agentes não é faixa vazia: segue na tela sem projeto.
+    expect(panel('Uso dos agentes')).toBeInTheDocument();
+  });
+
+  it('a saudação continua no topo', async () => {
+    installApi({ displayName: 'Ana' });
+
+    renderHome();
+
+    expect(await screen.findByText(/, Ana/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Início' })).toBeInTheDocument();
+  });
+
+  it('com um projeto, o estado vazio some e as faixas voltam', async () => {
+    installApi({ projects: [project('p1')] });
+
+    renderHome();
+
+    expect(await screen.findByText('Nada espera por você.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adicionar projeto' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Comece por um projeto')).not.toBeInTheDocument();
+    expect(panel('Precisa de você')).toBeInTheDocument();
+  });
+
+  it('com a lista de projetos em erro, não mostra o estado vazio', async () => {
+    installApi({ projects: 'error' });
+
+    renderHome();
+
+    expect(await within(panel('Missões')).findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adicionar projeto' })).not.toBeInTheDocument();
+  });
+
+  it('o botão Adicionar projeto dispara o pedido com irParaMissoes, pelo mesmo evento da lateral', async () => {
+    const user = userEvent.setup();
+    installApi({});
+    const pedidos: Event[] = [];
+    const ouvinte = (event: Event) => pedidos.push(event);
+    window.addEventListener(ADD_PROJECT_REQUEST_EVENT, ouvinte);
+
+    try {
+      renderHome();
+
+      await user.click(await screen.findByRole('button', { name: 'Adicionar projeto' }));
+
+      expect(pedidos).toHaveLength(1);
+      expect((pedidos[0] as CustomEvent<unknown>).detail).toEqual({ irParaMissoes: true });
+      expect(screen.getByTestId('where')).toHaveTextContent('/');
+    } finally {
+      window.removeEventListener(ADD_PROJECT_REQUEST_EVENT, ouvinte);
+    }
   });
 });

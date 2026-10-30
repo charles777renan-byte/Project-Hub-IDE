@@ -9,7 +9,7 @@ import {
 import { NavLink, useLocation, useMatch, useNavigate } from 'react-router';
 import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
 import markUrl from '../assets/simbolo.png';
-import { needsAttention } from '../mission-text';
+import { attentionEntries, attentionProjectIds } from '../attention';
 import { ADD_PROJECT_REQUEST_EVENT } from '../projects-events';
 import { ROUTE_PATHS, workspacePath } from '../routes';
 import { MARKS } from '../state-mark';
@@ -283,14 +283,15 @@ export function TopBar({
   // Um erro de abrir ou fechar vale mais que o da carga; o da carga some na próxima carga que der certo.
   const notice = problem ?? (loadStatus === 'error' ? (message ?? null) : null);
   const openIds = new Set(workspaces.map((workspace) => workspace.projectId));
-  // Os projetos que esperam a pessoa: um terminal em `waiting` ou uma missão que pede decisão (a mesma regra da barra lateral).
-  const waitingProjects = new Set<string>();
-  for (const terminal of terminals) {
-    if (terminal.state === 'waiting') waitingProjects.add(terminal.projectId);
-  }
-  for (const [projectId, missions] of Object.entries(missionsByProject)) {
-    if (missions.some((mission) => needsAttention(mission.status))) waitingProjects.add(projectId);
-  }
+  // Os projetos que esperam a pessoa: a regra única de `attention.ts`, a mesma da barra lateral e do contador.
+  const waitingProjects = attentionProjectIds(
+    attentionEntries(
+      terminals,
+      Object.entries(missionsByProject).flatMap(([projectId, missions]) =>
+        missions.map((mission) => ({ projectId, mission })),
+      ),
+    ),
+  );
 
   return (
     <header className="topbar">

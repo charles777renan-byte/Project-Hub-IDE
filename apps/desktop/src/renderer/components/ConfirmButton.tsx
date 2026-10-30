@@ -51,6 +51,8 @@ export function ConfirmButton({
   confirmLabel,
   disabled = false,
   hint,
+  focusBack = false,
+  neutralTrigger = false,
   onConfirm,
 }: {
   label: string;
@@ -62,6 +64,13 @@ export function ConfirmButton({
   disabled?: boolean;
   /** Dica do botão inicial (não muda o nome acessível dele). */
   hint?: string;
+  /** Repassado ao `ConfirmInline`: o "Voltar" recebe o foco ao montar a pergunta, quando a saída segura é a que importa. */
+  focusBack?: boolean;
+  /**
+   * O botão inicial sai neutro (`btn-secondary`) em vez de vermelho, para o vermelho ficar só no botão que confirma.
+   * Quem não passa isto mantém o botão inicial vermelho.
+   */
+  neutralTrigger?: boolean;
   onConfirm: () => void;
 }) {
   const [asking, setAsking] = useState(false);
@@ -79,7 +88,7 @@ export function ConfirmButton({
       <button
         ref={trigger}
         type="button"
-        className="btn-danger"
+        className={neutralTrigger ? 'btn-secondary' : 'btn-danger'}
         aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => setAsking(true)}
@@ -94,6 +103,7 @@ export function ConfirmButton({
       question={question}
       confirmLabel={confirmLabel}
       disabled={disabled}
+      focusBack={focusBack}
       onConfirm={() => {
         setAsking(false);
         onConfirm();

@@ -383,7 +383,7 @@ button:disabled {
 
 /*
  * Abas (components/Tabs.tsx): pílulas uniformes, sem cor por tipo. A inativa é transparente com texto
- * --muted; a ativa é uma pílula em gradiente (#3a3570 -> #2a2656 = --field-line -> --line) com texto
+ * --muted; a ativa é uma pílula em gradiente (--fill -> --line) com texto
  * --text. O lima fica fora das abas (só ação principal, estado ativo e foco).
  */
 .tabs {
@@ -429,7 +429,7 @@ button:disabled {
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(135deg, var(--field-line), var(--line));
+  background: linear-gradient(135deg, var(--fill), var(--line));
   /* Pista além do preenchimento (WCAG 1.4.11): anel de 1px em --muted, mais de 3:1 sobre --bg. */
   box-shadow: inset 0 0 0 1px var(--muted);
   opacity: 0;

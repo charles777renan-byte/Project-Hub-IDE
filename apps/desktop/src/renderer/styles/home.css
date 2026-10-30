@@ -6,9 +6,9 @@
  * janela estreita. Filhos de grid e de flex levam min-width: 0 para nunca transbordar. Ligado por <link> no
  * index.html, depois de app.css e antes de workspace.css; só usa tokens de tokens.css. Cores com papel:
  * - lima (--accent): só o dia de hoje no mapa de atividade e a barra de uma missão em andamento ou concluída;
- * - âmbar (--warn): só a barra de uma missão que espera a pessoa;
- * - vermelho (--danger): só a barra de uma missão que falhou;
- * - o resto das barras (pausada, rascunho, cancelada…) é neutro (--muted);
+ * - âmbar (--warn): a barra de uma missão que espera a pessoa e o aviso da barra de uso do Claude (75% a 90%);
+ * - vermelho (--danger): a barra de uma missão que falhou e o nível crítico da barra de uso (acima de 90%);
+ * - o resto das barras (pausada, rascunho, cancelada, uso do Claude abaixo de 75%…) é neutro (--muted);
  * - o mapa de atividade usa a rampa de --muted (#b7adcf) por opacidade, dos níveis 0 a 4.
  * Sem animação nem transição. Os níveis entram por classe (activity-level--0 a --4), nunca por estilo escrito.
  */
@@ -102,6 +102,28 @@
   .home-columns {
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   }
+}
+
+/*
+ * Início sem nenhum projeto: o estado vazio (components/EmptyState.tsx) num cartão, com os dois passos e o botão.
+ * `.home .home-empty` vence a regra do .empty-state (workspace.css, que carrega depois deste arquivo).
+ */
+.home .home-empty {
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.home-empty__steps {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.home-empty__step {
+  display: block;
+  color: var(--text);
+  font-size: var(--text-sm);
 }
 
 /* Faixa do Início: cartão com título pequeno em caixa alta e a contagem ao lado. */
@@ -501,7 +523,11 @@
   white-space: nowrap;
 }
 
-/* Barra fina; o preenchimento é a cor de destaque. O número sempre vem em texto logo abaixo. */
+/*
+ * Barra fina. O preenchimento é neutro (--muted) até 75% usado, âmbar (--warn) de 75% a 90% e vermelho
+ * (--danger) acima de 90%. A região vem dos atributos low/high/optimum do <meter> (limits-format.ts). O número
+ * sempre vem em texto logo abaixo: a cor não é a única pista.
+ */
 .claude-limits__bar {
   appearance: none;
   display: block;
@@ -520,11 +546,19 @@
   background: var(--surface-2);
 }
 
-.claude-limits__bar::-webkit-meter-optimum-value,
-.claude-limits__bar::-webkit-meter-suboptimum-value,
+.claude-limits__bar::-webkit-meter-optimum-value {
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+
+.claude-limits__bar::-webkit-meter-suboptimum-value {
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+}
+
 .claude-limits__bar::-webkit-meter-even-less-good-value {
   border-radius: var(--radius-pill);
-  background: var(--accent);
+  background: var(--danger);
 }
 
 .claude-limits__note,

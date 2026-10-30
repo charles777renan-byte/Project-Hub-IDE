@@ -19,8 +19,12 @@
   --panel: #0e0b24;
   --panel-2: #0e0b24;
   --line: #2a2656;
-  /* Borda de botão e de campo. */
-  --field-line: #3a3570;
+  /* Borda de botão, de campo e de chip. Tem 3:1 sobre --bg, --surface e --surface-2 (WCAG 1.4.11, contraste
+     de componente de interface). --line, a divisória interna, continua mais escura e discreta. */
+  --field-line: #5e57af;
+  /* Preenchimento atrás de texto (a pílula da aba ativa, o fundo dos contornos do terreno): o tom que --field-line tinha
+     antes de virar borda de 3:1. Com --muted tem 4,5:1 e com --text mais. Borda usa --field-line; fundo com texto usa isto. */
+  --fill: #3a3570;
   --text: #f5f2ff;
   --muted: #b7adcf;
 

@@ -83,7 +83,7 @@ describe('altura do painel inferior (readDockLayout e saveDockLayout)', () => {
 describe('MissionBottomPanel', () => {
   beforeEach(moveSeparatorsAway);
 
-  it('mostra o corpo em cima e, embaixo, as cinco abas, com a Conversa aberta', () => {
+  it('mostra o corpo em cima e, embaixo, as cinco abas, com a Atividade aberta', () => {
     render(<Harness />);
 
     expect(screen.getByText('Corpo da missão')).toBeInTheDocument();
@@ -92,8 +92,20 @@ describe('MissionBottomPanel', () => {
       within(tablist)
         .getAllByRole('tab')
         .map((tab) => tab.textContent),
-    ).toEqual(['Conversa', 'Diff', 'Testes', 'Terminal', 'Logs']);
-    expect(screen.getByRole('tab', { name: 'Conversa' })).toHaveAttribute('aria-selected', 'true');
+    ).toEqual(['Atividade', 'Diff', 'Testes', 'Terminal', 'Logs']);
+    expect(screen.getByRole('tab', { name: 'Atividade' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('a aba de abertura se chama Atividade, e o painel dela é o que aparece', () => {
+    render(<Harness />);
+
+    expect(screen.queryByRole('tab', { name: 'Conversa' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Atividade' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Atividade' })).toBeVisible();
+    expect(screen.getByRole('tabpanel', { name: 'Atividade' })).toHaveAttribute(
+      'id',
+      'mission-panel-conversation',
+    );
   });
 
   it('lê a altura guardada uma vez só, e não a cada render', async () => {
