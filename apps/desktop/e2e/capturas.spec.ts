@@ -106,10 +106,10 @@ test('capturas: Início, Terminais, Missões, Nova missão, missão planejada e 
 
   // Início, com a missão na lista e o contador "aguarda você" aceso.
   await page.getByRole('link', { name: 'Início', exact: true }).click();
-  // A missão aparece na lista do Início e no aviso "Precisa de você": a lista é a região Missões.
+  // A missão que espera a pessoa aparece uma vez, na faixa "Precisa de você" (a banda Missões não a repete).
   await expect(
     page
-      .getByRole('region', { name: 'Missões' })
+      .getByRole('region', { name: 'Precisa de você' })
       .getByRole('link', { name: MISSION.title, exact: true }),
   ).toBeVisible();
   await page.waitForTimeout(800);

@@ -1,10 +1,13 @@
 import type { LimitWindowDto } from '@project-hub/contracts';
 import {
+  LIMIT_CRITICAL_ABOVE,
   LIMIT_EXPIRED_TEXT,
   LIMIT_PROBLEM_TEXT,
+  LIMIT_WARN_FROM,
   formatClock,
   formatRenewal,
   isWindowExpired,
+  limitLevel,
   usageText,
   usedPercent,
   windowLabel,
@@ -27,11 +30,20 @@ function LimitRow({ window, now }: { window: LimitWindowDto; now: Date }) {
         <p className="claude-limits__note">{LIMIT_EXPIRED_TEXT}</p>
       ) : (
         <>
+          {/*
+           * Regiões do <meter>: abaixo de `low` é a região ótima (neutra), de `low` a `high` é a de aviso
+           * (âmbar) e acima de `high` é a crítica (vermelha). `optimum` = 0 porque usar menos é o desejado.
+           * O mesmo limiar vale para `data-nivel`, que o texto e os testes leem.
+           */}
           <meter
             className="claude-limits__bar"
             min={0}
             max={100}
+            low={LIMIT_WARN_FROM}
+            high={LIMIT_CRITICAL_ABOVE}
+            optimum={0}
             value={usedPercent(window)}
+            data-nivel={limitLevel(window)}
             aria-label={`${label}, ${usedPercent(window)}% usado`}
           />
           <p className="claude-limits__note">{usageText(window)}</p>

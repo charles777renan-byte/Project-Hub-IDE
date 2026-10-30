@@ -410,14 +410,22 @@ export function matchesStatusFilter(status: MissionStatus, filter: MissionStatus
 
 /** Textos do Início e das listas de missões com progresso. */
 export const HOME_TEXT = {
+  /** Início sem nenhum projeto: o título curto e os dois passos (o botão é "Adicionar projeto"). */
+  firstStepsTitle: 'Comece por um projeto',
+  firstSteps: ['1. Adicionar projeto', '2. Criar a primeira missão'],
+  addProject: 'Adicionar projeto',
   needsYou: 'Precisa de você',
   needsYouEmpty: 'Nada espera por você.',
+  /** Detalhe da linha de uma sessão em espera ("Projeto · Sessão aguardando você"). */
+  sessionWaiting: 'Sessão aguardando você',
   needsYouUnread: (missionTitle: string) =>
     `Não foi possível carregar a aprovação de ${missionTitle}.`,
   loading: 'Carregando…',
   missions: 'Missões',
   missionsEmpty: 'Nenhuma missão ainda.',
   missionsEmptyFiltered: 'Nenhuma missão neste estado.',
+  /** Banda Missões, sem filtro, quando todas as missões já estão em "Precisa de você". */
+  allInNeeds: 'Todas as missões estão em “Precisa de você”.',
   missionsError: 'Não foi possível carregar as missões.',
   filterGroup: 'Filtrar missões por estado',
   filterClear: 'Limpar filtro',

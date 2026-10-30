@@ -27,6 +27,7 @@ const COLOR_TOKENS = [
   '--panel-2',
   '--line',
   '--field-line',
+  '--fill',
   '--text',
   '--muted',
   '--surface',
@@ -54,11 +55,12 @@ const TEXTS = ['--text', '--muted', '--accent', ...ACCENTS] as const;
 const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ...TEXTS.flatMap((text) => SURFACES.map((surface): [ColorToken, ColorToken] => [text, surface])),
   ...ACCENTS.map((accent): [ColorToken, ColorToken] => ['--bg', accent]),
-  // Barra superior e navegação do workspace: a aba ativa e o item ativo ficam sobre --field-line, e o
-  // botão de fechar e o passar do mouse usam --line e --field-line por trás do texto secundário.
-  ['--muted', '--field-line'],
+  // Barra superior e navegação do workspace: a aba ativa e o item ativo ficam sobre --fill (o tom antigo de
+  // --field-line; a borda de 3:1 não serve de fundo), e o botão de fechar e o passar do mouse usam --line e --fill
+  // por trás do texto secundário.
+  ['--muted', '--fill'],
   ['--muted', '--line'],
-  ['--text', '--field-line'],
+  ['--text', '--fill'],
   ['--text', '--line'],
   // Identidade visual: texto escuro dentro do botão e da aba cheios em lima.
   ['--accent-ink', '--accent'],
@@ -182,6 +184,18 @@ describe('tema escuro', () => {
       ).toBeGreaterThanOrEqual(MIN_CONTRAST);
     },
   );
+
+  // Borda de botão, de campo e de chip: componente de interface precisa de 3:1 sobre cada superfície
+  // onde aparece (WCAG 1.4.11). A pior das três superfícies é --surface-2.
+  it('--field-line tem pelo menos 3:1 sobre --bg, --surface e --surface-2 (WCAG 1.4.11)', () => {
+    const border = tokens.get('--field-line') ?? '';
+    for (const surface of ['--bg', '--surface', '--surface-2']) {
+      expect(
+        contrastRatio(border, tokens.get(surface) ?? ''),
+        `--field-line (${border}) sobre ${surface} (${tokens.get(surface)})`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
 });
 
 /**
@@ -472,19 +486,16 @@ describe('cores do Início (home.css)', () => {
   });
 
   it.each([
+    ['--accent', ['.activity-cell--today', ...FILL('lime')]],
     [
-      '--accent',
+      '--warn',
       [
-        '.activity-cell--today',
-        ...FILL('lime'),
-        // Preenchimento da barra de limites do Claude (<meter>), nos três estados do WebKit.
-        '.claude-limits__bar::-webkit-meter-optimum-value',
+        ...FILL('warn'),
+        // Barra de limites do Claude (<meter>): aviso de 75% a 90%. O normal é neutro (--muted).
         '.claude-limits__bar::-webkit-meter-suboptimum-value',
-        '.claude-limits__bar::-webkit-meter-even-less-good-value',
       ],
     ],
-    ['--warn', FILL('warn')],
-    ['--danger', FILL('red')],
+    ['--danger', [...FILL('red'), '.claude-limits__bar::-webkit-meter-even-less-good-value']],
   ])('%s só aparece onde tem papel', (token, allowed) => {
     const using = rules.filter(({ body }) => body.includes(`var(${token})`));
     expect(using.length).toBeGreaterThan(0);

@@ -832,21 +832,27 @@
   flex: none;
 }
 
-/* Cada sessão é um cartão: o trilho de estado (state-rail, em app.css), o programa, o título e o detalhe, e à direita a hora e a atividade. */
+/*
+ * Cada sessão é uma linha: o cartão (o botão, com o trilho de estado, state-rail, em app.css) e, ao lado dele, a
+ * coluna de ações. A coluna não cobre o cartão: quando aparece, o cartão cede a largura dela. A altura é a do
+ * cartão nos dois casos, então a lista não pula.
+ */
 .sidebar__session {
-  position: relative;
-  display: block;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
   min-width: 0;
+  margin-bottom: 5px;
 }
 
 .sidebar__card {
   position: relative;
   display: grid;
+  flex: 1 1 0;
   grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 1px var(--space-2);
-  width: 100%;
-  margin-bottom: 5px;
+  min-width: 0;
   padding: 8px 9px 8px 12px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -949,13 +955,16 @@
   height: 12px;
 }
 
-/* Abrir e Fechar: aparecem com o mouse sobre o cartão ou o foco dentro dele, por cima da hora e do gráfico. */
+/*
+ * Abrir e Encerrar: a coluna ao lado do cartão, que aparece com o mouse ou o foco na linha da sessão. Ela tem a
+ * altura do cartão (stretch) e os dois botões empilhados cabem nela, então o cartão não muda de altura.
+ */
 .sidebar__card-actions {
-  position: absolute;
-  top: 6px;
-  right: 6px;
   display: none;
-  gap: 4px;
+  flex: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
 }
 
 .sidebar__session:hover .sidebar__card-actions,
@@ -963,20 +972,23 @@
   display: flex;
 }
 
-.sidebar__session:hover .sidebar__card-side,
-.sidebar__session:focus-within .sidebar__card-side {
-  opacity: 0.15;
+/* Com as ações abertas, a hora e o gráfico saem da linha para o título caber na largura que sobrou (a barra no mínimo, 200px). O texto para leitor de tela fica. */
+.sidebar__session:hover .sidebar__card-side time,
+.sidebar__session:hover .sidebar__card-side .activity,
+.sidebar__session:focus-within .sidebar__card-side time,
+.sidebar__session:focus-within .sidebar__card-side .activity {
+  display: none;
 }
 
-/* Compacto: os botões ficam por cima do cartão no passe do mouse, e a largura não pode cobrir o centro (o clique do cartão). */
 .sidebar__card-actions button {
-  padding: 2px 6px;
+  padding: 1px 6px;
   border: 1px solid var(--field-line);
   border-radius: var(--radius);
   background: var(--line);
   color: var(--text);
   font: inherit;
   font-size: var(--text-xs);
+  white-space: nowrap;
   cursor: pointer;
 }
 

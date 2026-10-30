@@ -5,6 +5,7 @@ import type {
   MissionEventDto,
   ProjectHubApi,
   ProjectSummary,
+  TerminalSummary,
 } from '@project-hub/contracts';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +14,9 @@ import { useOverview } from '../../src/renderer/use-overview';
 
 /**
  * Contadores globais da barra de status: "N executando" conta as missões `running`, "N aguarda você"
- * conta `planned`, `waiting_approval` e `waiting_input`, e "N falharam" conta as que falharam, de todos os projetos. A API do preload é falsa; cada teste monta os projetos e as missões.
+ * conta as missões que esperam a pessoa (`planned`, `waiting_approval`, `waiting_input` e `review`) e as sessões de terminal
+ * em `waiting`, pela regra única de `attention.ts`; e "N falharam" conta as que falharam, de todos os projetos. A API
+ * do preload é falsa; cada teste monta os projetos e as missões.
  */
 
 type MissionStatus = MissionDto['status'];
@@ -258,6 +261,35 @@ describe('OverviewCounters', () => {
       'href',
       '/?estado=failed',
     );
+  });
+
+  it('uma sessão de terminal em espera conta como aguarda você; a que roda não conta', async () => {
+    installApi([project('p1')], () => ({ ok: true, data: [mission('m1', 'p1', 'running')] }));
+    const session = (id: string, state: TerminalSummary['state']): TerminalSummary => ({
+      id,
+      kind: 'shell',
+      title: `Sessão ${id}`,
+      projectId: 'p1',
+      projectName: 'Projeto p1',
+      state,
+      provider: 'shell',
+      origin: 'new',
+    });
+    Object.assign(window.projectHub, {
+      terminals: {
+        list: vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            data: [session('t1', 'waiting'), session('t2', 'running')],
+          }),
+        ),
+      },
+    });
+
+    renderCounters();
+
+    expect(await screen.findByText('1 aguarda você')).toBeInTheDocument();
+    expect(screen.getByText('1 executando')).toBeInTheDocument();
   });
 
   it('antes da primeira leitura, mostra traço e não zero, que pareceria um dado', () => {
