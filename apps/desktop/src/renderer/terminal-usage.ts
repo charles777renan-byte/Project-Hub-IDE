@@ -10,15 +10,26 @@ import { formatTokens, formatUsd } from './mission-usage';
 const SHORT = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 
 /**
- * Contagem curta no formato do Brasil: até 999.999, o número inteiro com o separador de milhar ("872",
- * "12.345"), para que cada token novo apareça enquanto o contador sobe; de um milhão em diante, em milhões com
- * uma casa ("1,2 mi"). A casa decimal é truncada, não arredondada: o número nunca passa do gasto real. Casa
- * decimal zero some ("1 mi").
+ * Contagem abreviada, com a vírgula decimal do Brasil: até 999, o número inteiro ("872"); de mil em diante, em
+ * milhares com uma casa ("1k", "12,3k"); de um milhão em diante, em milhões ("1,2M"). A casa decimal é truncada,
+ * não arredondada: o número nunca passa do gasto real. Casa decimal zero some ("1k").
  */
 export function formatTokensShort(count: number): string {
   const whole = Math.max(0, Math.floor(count));
-  if (whole < 1_000_000) return SHORT.format(whole);
-  return `${SHORT.format(Math.floor(whole / 100_000) / 10)} mi`;
+  if (whole < 1_000) return SHORT.format(whole);
+  if (whole < 1_000_000) return `${SHORT.format(Math.floor(whole / 100) / 10)}k`;
+  return `${SHORT.format(Math.floor(whole / 100_000) / 10)}M`;
+}
+
+/** Onde cada nível de uso começa, em tokens de saída. O nível 0 vai até o primeiro limite. */
+export const USAGE_LEVEL_STARTS = [1_000, 5_000, 20_000, 60_000, 150_000] as const;
+
+/**
+ * O nível de uso de um terminal, de 0 (pouco) a `USAGE_LEVEL_STARTS.length` (muito), pela saída. A tela pinta a
+ * pílula numa rampa do frio ao quente conforme o nível (app.css, `data-level`).
+ */
+export function usageLevel(outputTokens: number): number {
+  return USAGE_LEVEL_STARTS.filter((start) => outputTokens >= start).length;
 }
 
 /**

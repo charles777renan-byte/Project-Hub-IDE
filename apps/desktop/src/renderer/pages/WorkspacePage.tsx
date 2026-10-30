@@ -18,7 +18,7 @@ import { MissionPage } from './MissionPage';
 import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
-import { useTerminals } from '../terminals-data';
+import { hideTerminal, unhideTerminal, useTerminals } from '../terminals-data';
 import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
@@ -338,13 +338,20 @@ function WorkspaceBody({
       if (next !== null) workspace.activate(next);
     }
     setClosing((previous) => new Set(previous).add(leafId));
-    void run(leafId, workspace.removePane).finally(() =>
+    // O terminal avulso é encerrado ao fechar o painel, então some da lista (e da barra lateral) na hora. O de
+    // missão só sai do painel e segue na lista.
+    const terminalId = leavesOf(layout).find((leaf) => leaf.id === leafId)?.terminalId ?? null;
+    const session = terminals.find((item) => item.id === terminalId);
+    const hiding = session !== undefined && session.missionId === undefined ? session.id : null;
+    if (hiding !== null) hideTerminal(hiding);
+    void run(leafId, workspace.removePane).finally(() => {
+      if (hiding !== null) unhideTerminal(hiding);
       setClosing((previous) => {
         const next = new Set(previous);
         next.delete(leafId);
         return next;
-      }),
-    );
+      });
+    });
   };
 
   // A saída terminou (ou o prazo venceu): agora o painel sai do layout. Chamar de novo não faz nada.

@@ -2,7 +2,12 @@ import { act, cleanup, render, renderHook, screen } from '@testing-library/react
 import type { AppResult, ProjectHubApi, TerminalSummary } from '@project-hub/contracts';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TERMINALS_POLL_MS, useTerminals } from '../../src/renderer/terminals-data';
+import {
+  TERMINALS_POLL_MS,
+  hideTerminal,
+  unhideTerminal,
+  useTerminals,
+} from '../../src/renderer/terminals-data';
 
 // Leitura compartilhada dos terminais (Tarefa 7 do plano do workspace multiagente): uma leitura a cada
 // 2 s para a janela inteira, enquanto houver quem a use, pausada com a janela oculta. O `window.projectHub`
@@ -70,6 +75,42 @@ afterEach(() => {
   vi.useRealTimers();
   Reflect.deleteProperty(document, 'hidden');
   Reflect.deleteProperty(window, 'projectHub');
+});
+
+describe('terminal fechado agora', () => {
+  it('some da lista na hora, e uma leitura que ainda o traga não o faz voltar', async () => {
+    let list: TerminalSummary[] = [terminal('t1'), terminal('t2')];
+    const spy = installApi(() => ok(list));
+    render(<Probe name="a" />);
+    await advance(0);
+    expect(screen.getByTestId('a')).toHaveTextContent('t1,t2|sem erro');
+
+    act(() => hideTerminal('t1'));
+    expect(screen.getByTestId('a')).toHaveTextContent('t2|sem erro');
+
+    // O servidor ainda lista o t1 (o processo está encerrando): a leitura seguinte o esconde.
+    await advance(TERMINALS_POLL_MS);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('a')).toHaveTextContent('t2|sem erro');
+
+    // O servidor deixou de listar o t1: o filtro some, e um t1 novo com o mesmo id apareceria.
+    list = [terminal('t2')];
+    await advance(TERMINALS_POLL_MS);
+    list = [terminal('t1'), terminal('t2')];
+    await advance(TERMINALS_POLL_MS);
+    expect(screen.getByTestId('a')).toHaveTextContent('t1,t2|sem erro');
+  });
+
+  it('se o fechamento falhou, o terminal volta à lista', async () => {
+    installApi(() => ok([terminal('t1'), terminal('t2')]));
+    render(<Probe name="a" />);
+    await advance(0);
+    act(() => hideTerminal('t1'));
+    expect(screen.getByTestId('a')).toHaveTextContent('t2|sem erro');
+    act(() => unhideTerminal('t1'));
+    await advance(0);
+    expect(screen.getByTestId('a')).toHaveTextContent('t1,t2|sem erro');
+  });
 });
 
 describe('useTerminals', () => {

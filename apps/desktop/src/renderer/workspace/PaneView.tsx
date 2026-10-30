@@ -4,10 +4,10 @@ import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
 import { ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHeader';
-import { StateMark } from '../components/StateMark';
+import { ProviderIcon } from '../components/ProviderIcon';
 import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
-import { markOfTerminal } from '../state-mark';
+import { MARKS, markOfTerminal } from '../state-mark';
 import { PaneUsage } from './PaneUsage';
 
 export type PaneViewProps = {
@@ -182,16 +182,26 @@ export function PaneView(props: PaneViewProps) {
       </>
     );
   } else {
+    // A luz é a única marca do estado: o rótulo vai para o leitor de tela e para a dica, com a origem da sessão.
+    const lightLabel = MARKS[markOfTerminal(terminal.state)].label;
+    const lightTitle =
+      terminal.origin === 'recovered' ? `${lightLabel} · sessão recuperada` : lightLabel;
     content = (
       <>
         <div className="pane__head">
-          <span className="pane__title" title={terminal.title}>
-            {terminal.title}
+          <span className="pane__provider" title={terminal.title}>
+            <ProviderIcon provider={terminal.provider} size={16} />
+            <span className="state-mark__sr">{terminal.title}</span>
           </span>
-          <PaneUsage usage={terminal.usage} />
-          <StateMark kind={markOfTerminal(terminal.state)} withLabel />
-          <span className="pane__tag">
-            {terminal.origin === 'recovered' ? 'recuperada' : 'nova'}
+          <span className="pane__status">
+            <PaneUsage key={terminal.id} usage={terminal.usage} />
+            <span
+              className={`pane__light pane__light--${markOfTerminal(terminal.state)}`}
+              title={lightTitle}
+            >
+              <span aria-hidden="true" className="pane__light-dot" />
+              <span className="state-mark__sr">{lightLabel}</span>
+            </span>
           </span>
           <span className="pane__actions">
             {maximize}
