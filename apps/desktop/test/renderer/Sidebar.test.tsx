@@ -834,7 +834,62 @@ describe('Sidebar: sessões de cada projeto', () => {
     expect(await screen.findByText(/Workspace/)).toHaveTextContent('"showTerminal":"t7"');
   });
 
-  it('Fechar acha o painel da sessão e o remove, sem pedir confirmação', async () => {
+  it('o botão da sessão aberta diz Encerrar, com o título no nome acessível, e não há mais Fechar', async () => {
+    installApi({ terminals: [terminalOf({ id: 't7', title: 'npm test' })] });
+    renderSidebar('/');
+    await spaces();
+    await userEvent.click(expandOf('Project Hub'));
+
+    const end = await screen.findByRole('button', { name: 'Encerrar npm test' });
+    expect(end).toHaveTextContent(/^Encerrar$/);
+    expect(screen.queryByRole('button', { name: /Fechar/ })).not.toBeInTheDocument();
+  });
+
+  it('sessão já encerrada segue como Fechar: o processo acabou, e o botão só tira o painel', async () => {
+    installApi({ terminals: [terminalOf({ id: 't8', title: 'npm test', state: 'exited' })] });
+    renderSidebar('/');
+    await spaces();
+    await userEvent.click(expandOf('Project Hub'));
+
+    const close = await screen.findByRole('button', { name: 'Fechar npm test' });
+    expect(close).toHaveTextContent(/^Fechar$/);
+    expect(screen.queryByRole('button', { name: /Encerrar/ })).not.toBeInTheDocument();
+  });
+
+  it('Abrir e Encerrar ficam fora do cartão: o cartão não contém os botões, e eles dividem a linha dele', async () => {
+    installApi({ terminals: [terminalOf({ id: 't7', title: 'npm test' })] });
+    renderSidebar('/');
+    await spaces();
+    await userEvent.click(expandOf('Project Hub'));
+
+    const card = await screen.findByRole('button', { name: /^npm test/ });
+    const open = screen.getByRole('button', { name: 'Abrir npm test' });
+    const end = screen.getByRole('button', { name: 'Encerrar npm test' });
+    expect(card.contains(open)).toBe(false);
+    expect(card.contains(end)).toBe(false);
+    expect(card.querySelector('.sidebar__card-actions')).toBeNull();
+    expect(open.closest('.sidebar__session')).toBe(card.closest('.sidebar__session'));
+    expect(end.closest('.sidebar__session')).toBe(card.closest('.sidebar__session'));
+  });
+
+  it('clicar no centro do cartão só leva ao terminal: não encerra a sessão', async () => {
+    const { api } = installApi({ terminals: [terminalOf({ id: 't7', title: 'npm test' })] });
+    const list = vi.fn(() => Promise.resolve({ ok: true, data: [] }));
+    const removePane = vi.fn(() => Promise.resolve({ ok: true, data: {} }));
+    Object.assign(api, { workspaces: { list, removePane } });
+    renderSidebar('/');
+    await spaces();
+    await userEvent.click(expandOf('Project Hub'));
+    list.mockClear();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^npm test/ }));
+
+    expect(await screen.findByText(/Workspace/)).toHaveTextContent('"showTerminal":"t7"');
+    expect(list).not.toHaveBeenCalled();
+    expect(removePane).not.toHaveBeenCalled();
+  });
+
+  it('Encerrar acha o painel da sessão e o remove, sem pedir confirmação', async () => {
     const { api } = installApi({ terminals: [terminalOf({ id: 't7', title: 'npm test' })] });
     const removePane = vi.fn(() => Promise.resolve({ ok: true, data: {} }));
     Object.assign(api, {
@@ -867,12 +922,12 @@ describe('Sidebar: sessões de cada projeto', () => {
     await spaces();
     await userEvent.click(expandOf('Project Hub'));
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Fechar npm test' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Encerrar npm test' }));
 
     await waitFor(() => expect(removePane).toHaveBeenCalledWith('w1', 'l2'));
   });
 
-  it('a sessão de missão não tem o botão Fechar', async () => {
+  it('a sessão de missão não tem o botão Encerrar, e continua com Abrir', async () => {
     installApi({
       terminals: [terminalOf({ id: 't9', kind: 'agent', title: 'Missão', missionId: 'm1' })],
     });
@@ -882,7 +937,8 @@ describe('Sidebar: sessões de cada projeto', () => {
     await userEvent.click(expandOf('Project Hub'));
 
     expect(await screen.findByRole('button', { name: 'Abrir Missão' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Fechar Missão' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Encerrar Missão' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Encerrar/ })).not.toBeInTheDocument();
   });
 
   it('título de sessão com marcação aparece como texto', async () => {

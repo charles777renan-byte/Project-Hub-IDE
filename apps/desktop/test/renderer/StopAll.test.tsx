@@ -80,7 +80,7 @@ describe('StopAll', () => {
     expect(screen.getByRole('group', { name: 'Cancelar 2 missões em execução?' })).toBeVisible();
     expect(api.missions.cancel).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Parar 2 missões' }));
 
     await waitFor(() => expect(api.missions.cancel).toHaveBeenCalledTimes(2));
     expect(api.missions.cancel.mock.calls.map(([id]) => id).sort()).toEqual(['m1', 'm2']);
@@ -89,16 +89,51 @@ describe('StopAll', () => {
     );
   });
 
-  it('uma missão só fica no singular', async () => {
+  it('o botão que confirma diz o efeito com o número real: "Parar 2 missões"', async () => {
+    installApi([mission('m1', 'running'), mission('m2', 'running')]);
+    render(<StopAll />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parar todos' }));
+
+    expect(screen.getByRole('button', { name: 'Parar 2 missões' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
+  });
+
+  it('uma missão só fica no singular, também no botão que confirma', async () => {
     installApi([mission('m1', 'running')]);
     render(<StopAll />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Parar todos' }));
 
     expect(screen.getByRole('group', { name: 'Cancelar 1 missão em execução?' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Parar 1 missão' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Parar 1 missões' })).not.toBeInTheDocument();
   });
 
-  it('"Voltar" desfaz o pedido sem cancelar nada', async () => {
+  it('ao abrir a pergunta, "Voltar" recebe o foco, a saída segura', async () => {
+    installApi([mission('m1', 'running')]);
+    render(<StopAll />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parar todos' }));
+
+    expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+  });
+
+  it('o gatilho "Parar todos" é neutro; o vermelho fica só no botão que confirma', async () => {
+    installApi([mission('m1', 'running'), mission('m2', 'running')]);
+    render(<StopAll />);
+
+    const gatilho = await screen.findByRole('button', { name: 'Parar todos' });
+    expect(gatilho).toHaveClass('btn-secondary');
+    expect(gatilho).not.toHaveClass('btn-danger');
+
+    await userEvent.click(gatilho);
+
+    expect(screen.getByRole('button', { name: 'Parar 2 missões' })).toHaveClass('btn-danger');
+    expect(screen.getByRole('button', { name: 'Voltar' })).not.toHaveClass('btn-danger');
+  });
+
+  it('"Voltar" desfaz o pedido sem cancelar nada e devolve o foco a "Parar todos"', async () => {
     const api = installApi([mission('m1', 'running')]);
     render(<StopAll />);
 
@@ -107,6 +142,7 @@ describe('StopAll', () => {
 
     expect(api.missions.cancel).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Parar todos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Parar todos' })).toHaveFocus();
   });
 
   it('se alguma missão não cancela, avisa quantas ficaram e segue com as outras', async () => {
@@ -120,7 +156,7 @@ describe('StopAll', () => {
     render(<StopAll />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Parar todos' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Parar 2 missões' }));
 
     await waitFor(() => expect(api.missions.cancel).toHaveBeenCalledTimes(2));
     await waitFor(() =>
@@ -135,7 +171,7 @@ describe('StopAll', () => {
     render(<StopAll />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Parar todos' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Parar 1 missão' }));
 
     await waitFor(() =>
       expect(getToasts().map((toast) => toast.message)).toContain(

@@ -10,6 +10,8 @@ const plural = (count: number) => (count === 1 ? '1 missão' : `${count} missõe
  * "Parar todos", na barra de status: cancela as missões em execução (as mesmas que o contador "N executando" conta), depois
  * de uma pergunta na mesma linha. Só aparece quando há alguma. Usa o cancelamento que a missão já tem, então a
  * pessoa pode tentar de novo depois. Terminais abertos não são tocados: fechá-los mataria sessões vivas.
+ * O botão que confirma diz o efeito ("Parar 2 missões"); "Voltar" recebe o foco; o gatilho fica neutro, e o vermelho
+ * fica só no botão que confirma.
  */
 export function StopAll() {
   const { items } = useOverview();
@@ -39,9 +41,11 @@ export function StopAll() {
     <ConfirmButton
       label="Parar todos"
       question={`Cancelar ${plural(running.length)} em execução?`}
-      confirmLabel="Cancelar"
+      confirmLabel={`Parar ${plural(running.length)}`}
       disabled={stopping}
       hint="Cancela as missões em execução. Os terminais abertos não são tocados."
+      focusBack
+      neutralTrigger
       onConfirm={() => void stopAll()}
     />
   );

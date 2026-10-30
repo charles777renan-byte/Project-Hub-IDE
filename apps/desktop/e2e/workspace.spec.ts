@@ -194,7 +194,8 @@ test('fechar um painel na hora encerra a sessão e os outros ocupam o espaço; f
 
   const bar = sidebarOf(page);
   await bar.getByRole('button', { name: `Sessões de ${projectName}` }).click();
-  const sessions = bar.locator('.sidebar__session').getByRole('button');
+  // Só o cartão de cada sessão: Abrir e Encerrar aparecem com o mouse sobre o cartão e não contam aqui.
+  const sessions = bar.locator('.sidebar__card');
   await expect(sessions).toHaveCount(3);
 
   // Fechar sai na hora, sem confirmação: o painel some, a sessão dele termina e os dois restantes ficam lado a lado.
@@ -369,7 +370,8 @@ test('a barra lateral lista a sessão do workspace e leva de volta ao terminal d
 
   const bar = sidebarOf(page);
   await bar.getByRole('button', { name: `Sessões de ${projectName}` }).click();
-  const session = bar.locator('.sidebar__session').getByRole('button');
+  // O cartão, e não os botões Abrir e Encerrar: o clique no centro do cartão leva ao terminal.
+  const session = bar.locator('.sidebar__card');
   await expect(session).toHaveCount(1);
 
   // Sai do workspace; clicar na sessão leva ao workspace com o terminal no painel.

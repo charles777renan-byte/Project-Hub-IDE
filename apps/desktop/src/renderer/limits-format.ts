@@ -70,3 +70,22 @@ export function remainingPercent(window: Pick<LimitWindowDto, 'usedPercent'>): n
 export function usageText(window: Pick<LimitWindowDto, 'usedPercent'>): string {
   return `${usedPercent(window)}% usado · ${remainingPercent(window)}% restante`;
 }
+
+/** A partir deste percentual usado a barra avisa (âmbar). Até 74% ela é neutra. */
+export const LIMIT_WARN_FROM = 75;
+/** Acima deste percentual usado a barra fica crítica (vermelha). Em 90% exato ainda é aviso. */
+export const LIMIT_CRITICAL_ABOVE = 90;
+
+/** Nível da barra de uso: neutra, aviso (âmbar) ou crítica (vermelha). */
+export type LimitLevel = 'normal' | 'aviso' | 'critico';
+
+/**
+ * Nível da barra pelo percentual usado já arredondado (o mesmo número que aparece na tela):
+ * "normal" abaixo de 75, "aviso" de 75 a 90 (os dois inclusive) e "critico" acima de 90.
+ */
+export function limitLevel(window: Pick<LimitWindowDto, 'usedPercent'>): LimitLevel {
+  const used = usedPercent(window);
+  if (used > LIMIT_CRITICAL_ABOVE) return 'critico';
+  if (used >= LIMIT_WARN_FROM) return 'aviso';
+  return 'normal';
+}
