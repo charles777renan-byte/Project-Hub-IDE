@@ -1,4 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import type {
@@ -11,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../../src/renderer/components/project/ProjectHeader';
+import { useTerminals } from '../../src/renderer/terminals-data';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
@@ -224,6 +233,28 @@ describe('WorkspacePage', () => {
     expect(screen.getByText('Nenhum terminal aberto')).toBeInTheDocument();
     await act(async () => finish({ ok: true, data: { ...dto(padrao()), layout: null } }));
     expect(screen.getByText('Nenhum terminal aberto')).toBeInTheDocument();
+  });
+
+  it('o terminal fechado some da lista compartilhada (a barra lateral) na hora, e volta se o fechamento falhar', async () => {
+    api.workspaces.open.mockResolvedValue({
+      ok: true,
+      data: { ...dto(padrao()), layout: leaf('c', 'shell', 't1') },
+    });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    let finish: (value: unknown) => void = () => {};
+    api.workspaces.removePane.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    renderAt();
+    // O mesmo que a barra lateral lê: a lista de terminais da janela.
+    const sidebar = renderHook(() => useTerminals());
+    const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await waitFor(() => expect(sidebar.result.current.terminals).toHaveLength(1));
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    // O processo principal ainda não respondeu, e a lista já não traz o terminal.
+    expect(sidebar.result.current.terminals).toHaveLength(0);
+    await act(async () =>
+      finish({ ok: false, error: { code: 'x', message: 'Não foi possível fechar o painel' } }),
+    );
+    await waitFor(() => expect(sidebar.result.current.terminals).toHaveLength(1));
   });
 
   it('se o processo principal recusar, o painel volta com o erro', async () => {

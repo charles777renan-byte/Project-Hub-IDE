@@ -1165,7 +1165,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .state-mark--active .state-mark__glyph {
+  .state-mark--active .state-mark__glyph,
+  .pane__light--active .pane__light-dot,
+  .pane__light--active::after {
     animation: none;
   }
 
@@ -1345,52 +1347,106 @@
 }
 
 /*
- * Gasto de tokens do terminal (workspace/PaneUsage.tsx): texto mono pequeno na cor do cabeçalho, sem pílula,
- * para não competir com a marca de estado. Em painel estreito ele some inteiro antes de o título ser cortado:
- * o fator de encolhimento enorme faz o espaço que falta sair todo dele (o título, de base igual ao texto,
- * só encolhe quando ele chega a zero), e o número nunca aparece pela metade ("12,3 mi" no lugar de
- * "12,3 mil"). Para isso a caixa quebra linha: o ::before, de largura zero, ocupa a primeira, e o número,
- * quando não cabe nela, desce para a segunda, escondida pela altura fixa. O texto para leitor de tela é
- * absoluto, fora da quebra, e continua sendo lido.
+ * Grupo do lado direito do cabeçalho: o gasto de tokens (workspace/PaneUsage.tsx) e a luz de estado, colados um no
+ * outro. O margin-left: auto empurra o grupo para a direita, e as ações vêm logo depois, sem espaço livre entre a
+ * luz e elas (a regra `.pane__status + .pane__actions` zera a margem automática delas, senão o espaço sobrante
+ * se dividiria entre os dois e o grupo ficaria no meio). O texto para leitor de tela é absoluto e não ocupa espaço.
  */
+.pane__status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.pane__status + .pane__actions {
+  margin-left: 0;
+}
+
 .pane__usage {
   position: relative;
   display: flex;
-  flex: 0 100000 auto;
-  flex-wrap: wrap;
-  min-width: 0;
+  flex: none;
   height: 18px;
-  overflow: hidden;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 18px;
 }
 
-.pane__usage::before {
-  width: 0;
-  height: 18px;
-  content: '';
-}
-
-/* Dígitos de largura igual: o número não balança enquanto sobe. Enquanto conta, acende em --text (motion.css suaviza a troca). */
+/*
+ * O número é uma pílula: um raio (ícone) e a contagem. Dígitos de largura igual, para o número não balançar enquanto
+ * sobe. A cor, o fundo e o brilho neon seguem o nível de uso e ficam em app.css (motion.css suaviza a troca de cor).
+ */
 .pane__usage-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.pane__usage-value[data-counting='true'] {
-  color: var(--text);
+/* O raio herda a cor do número, então acende e apaga junto com ele. */
+.pane__usage-icon {
+  flex: none;
 }
 
-/* Etiqueta da origem ("nova" ou "recuperada"): uma pílula discreta, sem contorno. */
-.pane__tag {
+/* O programa do terminal, só o símbolo, à esquerda (o título da sessão vai na dica e para o leitor de tela). */
+.pane__provider {
+  display: inline-flex;
   flex: none;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--line);
-  color: var(--muted);
-  font-size: var(--text-xs);
-  line-height: 18px;
+  align-items: center;
+}
+
+/*
+ * A luz de estado do terminal, no lugar do rótulo e da etiqueta de origem: verde e piscando, a sessão roda; âmbar
+ * e parada, ela espera a pessoa; as outras ficam apagadas. O rótulo em texto vai na dica e para o leitor de tela,
+ * então a cor nunca é a única pista. O anel que se abre ao redor do ponto (::after) só existe com a sessão rodando.
+ */
+.pane__light {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.pane__light-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.pane__light--active .pane__light-dot {
+  animation: state-mark-pulse 1.6s ease-in-out infinite;
+}
+
+.pane__light--active::after {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: currentcolor;
+  content: '';
+  animation: pane-light-ring 1.6s ease-out infinite;
+}
+
+@keyframes pane-light-ring {
+  from {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.2);
+  }
 }
 
 /* Fechar e maximizar o painel são botões só de ícone: a área é de 24px e o passe do mouse só clareia o fundo. */
