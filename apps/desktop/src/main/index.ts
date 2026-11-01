@@ -36,6 +36,7 @@ import {
 import { createClaudeAgent, createTerminalBackend, resolveExecutable } from './claude-agent';
 import { createClaudeLimitsProbe } from './claude-limits';
 import { createClaudePlanner } from './claude-planner';
+import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerActivityHandlers } from './ipc/activity';
 import { registerProfileHandlers } from './ipc/profile';
@@ -267,6 +268,8 @@ app
             commandPrefix: plannerCommand.commandPrefix,
             env: buildTerminalEnv(process.env),
             extraEnv: plannerCommand.extraEnv,
+            // Cota esgotada: a falha do planejador diz a hora da renovação, lida do último estado dos limites.
+            quotaMessage: () => quotaExhaustedMessage(limits.get(), new Date()),
           })
         : undefined;
     // Agente das missões: o Claude Code real com `APP_AGENT_ADAPTER=claude-code`. Em teste, um CLI falso

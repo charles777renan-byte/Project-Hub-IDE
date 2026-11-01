@@ -7,6 +7,7 @@ import { missionPath } from '../../routes';
 import { useMissionsBoard } from '../../use-missions-board';
 import { MissionForm, type MissionFormValues } from '../MissionForm';
 import { MissionProgressList } from '../MissionProgressList';
+import { PROJECT_NO_GIT_NOTICE_ID } from './ProjectHeader';
 
 /** O pedido de abrir o formulário: `state.newMission` (cabeçalho e paleta) ou `?nova-missao=1` na rota. */
 function newMissionRequested(state: unknown, search: string): boolean {
@@ -134,7 +135,13 @@ export function ProjectMissions({
     body = (
       <div className="project-missions__empty">
         <p>{HOME_TEXT.missionsEmpty}</p>
-        <button type="button" className="btn-secondary" onClick={openForm}>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={project.repositoryKind !== 'git'}
+          aria-describedby={project.repositoryKind === 'git' ? undefined : PROJECT_NO_GIT_NOTICE_ID}
+          onClick={openForm}
+        >
           {PROJECT_TEXT.newMission}
         </button>
       </div>

@@ -1057,6 +1057,28 @@ describe('Sidebar: aviso para leitor de tela', () => {
   });
 });
 
+describe('Sidebar: estado visível das sessões', () => {
+  it('sessão em espera mostra o rótulo na tela, e nenhuma outra sessão ganha esse rótulo', async () => {
+    installApi({
+      terminals: [
+        terminalOf({ id: 't1', title: 'Codex', state: 'waiting' }),
+        terminalOf({ id: 't2', title: 'Claude', state: 'running' }),
+      ],
+    });
+    renderSidebar('/');
+    // As sessões só aparecem com o projeto expandido.
+    await userEvent.click(await screen.findByRole('button', { name: 'Sessões de Project Hub' }));
+
+    const labels = document.querySelectorAll('.state-label');
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label).toHaveTextContent('aguardando você');
+      // Visível só para quem enxerga: o leitor de tela já ouve o estado pelo texto de apoio.
+      expect(label).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+});
+
 describe('Sidebar: o que precisa de você', () => {
   it('sem nada esperando, a faixa não existe', async () => {
     installApi({ terminals: [terminalOf({ state: 'running' })] });

@@ -25,6 +25,8 @@ type Pending = 'archive' | 'remove';
 
 /** Id do aviso de pasta indisponível, que fica na WorkspacePage. Nova missão aponta para ele quando está desabilitado. */
 export const PROJECT_UNAVAILABLE_NOTICE_ID = 'aviso-pasta-indisponivel';
+/** Id do aviso de projeto sem Git, que também fica na WorkspacePage. Sem Git não há worktree, então não há missão. */
+export const PROJECT_NO_GIT_NOTICE_ID = 'aviso-sem-git';
 
 /**
  * Fecha a aba do workspace do projeto, se ela estiver aberta, para nenhuma aba nem sessão ficar apontando para um
@@ -68,6 +70,7 @@ export function ProjectHeader({
   const [params] = useSearchParams();
   const view = missionOpen ? 'missoes' : projectViewFromParams(params);
   const unavailable = project.available === false;
+  const noGit = project.repositoryKind !== 'git';
   const [pending, setPending] = useState<Pending | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,8 +123,14 @@ export function ProjectHeader({
             <button
               type="button"
               className="btn-primary"
-              disabled={unavailable}
-              aria-describedby={unavailable ? PROJECT_UNAVAILABLE_NOTICE_ID : undefined}
+              disabled={unavailable || noGit}
+              aria-describedby={
+                unavailable
+                  ? PROJECT_UNAVAILABLE_NOTICE_ID
+                  : noGit
+                    ? PROJECT_NO_GIT_NOTICE_ID
+                    : undefined
+              }
               onClick={onNewMission}
             >
               {PROJECT_TEXT.newMission}

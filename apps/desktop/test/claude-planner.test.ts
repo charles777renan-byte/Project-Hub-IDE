@@ -388,3 +388,52 @@ describe('createClaudePlanner', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
   });
 });
+
+describe('createClaudePlanner: cota esgotada', () => {
+  const quotaEnvelope = JSON.stringify({ is_error: true, result: 'Quota exceeded' });
+
+  it('com a cota esgotada, a falha traz a mensagem da cota, não "não respondeu"', async () => {
+    const quota = 'A cota do Claude acabou. Renova às 20:49.';
+    const result = await createClaudePlanner({
+      command: 'claude',
+      env: {},
+      run: okRunner(quotaEnvelope),
+      quotaMessage: () => quota,
+    }).plan(baseInput());
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'AGENT_UNAVAILABLE', message: quota, retryable: false },
+    });
+  });
+
+  it('sem cota esgotada, a falha segue com a mensagem de sempre', async () => {
+    const result = await createClaudePlanner({
+      command: 'claude',
+      env: {},
+      run: okRunner(quotaEnvelope),
+      quotaMessage: () => undefined,
+    }).plan(baseInput());
+
+    expect(result).toMatchObject({ ok: false, error: { message: NO_RESPONSE } });
+  });
+
+  it('uma falha que não é de resposta (tempo esgotado) não pergunta a cota', async () => {
+    let asked = false;
+    const result = await createClaudePlanner({
+      command: 'claude',
+      env: {},
+      run: () => Promise.reject(new PlannerTimeoutError(1000)),
+      quotaMessage: () => {
+        asked = true;
+        return 'cota';
+      },
+    }).plan(baseInput());
+
+    expect(asked).toBe(false);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: 'O planejamento demorou demais.' },
+    });
+  });
+});
