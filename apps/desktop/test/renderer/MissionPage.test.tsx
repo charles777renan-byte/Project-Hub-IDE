@@ -1103,7 +1103,7 @@ describe('MissionPage: resumo de conclusão', () => {
       within(summary)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Mais ações', 'Copiar caminho']);
+    ).toEqual(['Copiar caminho', 'Mais ações']);
     await openActionsMenu();
     expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
   });
@@ -1331,7 +1331,28 @@ describe('MissionPage: "Sua decisão" no fluxo da missão', () => {
   });
 
   describe('folha de estilo (mission.css)', () => {
-    const css = readCss('mission.css');
+    const full = readCss('mission.css');
+    const WIDE = '(min-width: 52rem)';
+
+    /**
+     * O bloco `@container <consulta> { ... }` inteiro. O `ruleDeclarations` só deixa de fora o `@media`, então
+     * as regras do `@container` entrariam como regras base, e a última venceria.
+     */
+    function containerBlock(source: string, query: string): string {
+      const start = source.indexOf(`@container ${query}`);
+      if (start < 0) return '';
+      let depth = 0;
+      for (let index = source.indexOf('{', start); index < source.length; index += 1) {
+        if (source[index] === '{') depth += 1;
+        if (source[index] === '}') depth -= 1;
+        if (depth === 0) return source.slice(start, index + 1);
+      }
+      return '';
+    }
+
+    const wide = containerBlock(full, WIDE);
+    /** As regras base: o CSS sem o regime de janela larga. */
+    const css = full.replace(wide, '');
 
     it('o grupo do cabeçalho fica fixo no alto do corpo, acima do que rola, com fundo opaco', () => {
       const group = ruleDeclarations(css, '.mission-top');
@@ -1370,8 +1391,9 @@ describe('MissionPage: "Sua decisão" no fluxo da missão', () => {
       expect(wrapper.get('position')).toBeUndefined();
       expect(wrapper.get('min-height')).toBeUndefined();
       expect(wrapper.get('max-height')).toBeUndefined();
-      expect(css).not.toContain('@container');
-      expect(css).not.toContain('11rem');
+      // O único `@container` é o das duas colunas em janela larga; nada de regime de corpo baixo.
+      expect([...full.matchAll(/@container/g)]).toHaveLength(1);
+      expect(full).not.toContain('11rem');
     });
 
     it('o corpo é uma coluna flexível, sem respiro de cima, para o grupo fixo valer em toda a rolagem e colar na borda', () => {
@@ -1413,11 +1435,52 @@ describe('MissionPage: "Sua decisão" no fluxo da missão', () => {
       expect(sticky).toEqual(['.mission-top']);
     });
 
+    it('em janela larga, a revisão e o plano gerado usam duas colunas; o resto ocupa a largura toda', () => {
+      expect(wide).not.toBe('');
+      for (const modifier of ['.decision-block--review', '.decision-block--planned']) {
+        const grid = ruleDeclarations(wide, modifier);
+        expect(grid.get('display'), modifier).toBe('grid');
+        expect(grid.get('grid-template-columns'), modifier).toBe('minmax(0, 1fr) minmax(0, 1fr)');
+        expect(grid.get('align-items'), modifier).toBe('start');
+        expect(ruleDeclarations(wide, `${modifier} > *`).get('grid-column'), modifier).toBe(
+          '1 / -1',
+        );
+      }
+      // Revisão: resumo e aprovação à esquerda, pedido de ajustes à direita, ao lado dos dois.
+      for (const left of ['.conclusion', '.decision-block__approve']) {
+        expect(ruleDeclarations(wide, `.decision-block--review > ${left}`).get('grid-column')).toBe(
+          '1',
+        );
+      }
+      const changes = ruleDeclarations(wide, '.decision-block--review > .decision-block__changes');
+      expect(changes.get('grid-column')).toBe('2');
+      expect(changes.get('grid-row')).toBe('3 / span 2');
+      // Plano gerado: a instrução à esquerda e os botões à direita.
+      expect(
+        ruleDeclarations(wide, '.decision-block--planned > .decision-block__instruction').get(
+          'grid-column',
+        ),
+      ).toBe('1');
+      const actions = ruleDeclarations(wide, '.decision-block--planned > .decision-block__actions');
+      expect(actions.get('grid-column')).toBe('2');
+      expect(actions.get('align-self')).toBe('end');
+    });
+
+    it('as colunas só valem em janela larga: fora da consulta, o bloco segue numa coluna', () => {
+      expect(ruleDeclarations(css, '.decision-block--review').get('display')).toBeUndefined();
+      expect(ruleDeclarations(css, '.decision-block--planned').get('display')).toBeUndefined();
+      expect(ruleDeclarations(css, '.decision-block').get('display')).toBe('flex');
+    });
+
     it('o título do bloco é um título de cartão comum', () => {
       const title = ruleDeclarations(css, '.decision-block > .mission-section-title');
       expect(title.get('position')).toBeUndefined();
       expect(title.get('line-height')).toBe('1.2');
       expect(title.get('text-transform')).toBe('none');
+    });
+
+    it('o formulário dentro do bloco não deixa margem embaixo: o vão entre os filhos é o gap do bloco', () => {
+      expect(ruleDeclarations(css, '.decision-block .form').get('margin')).toBe('0');
     });
 
     it('o cartão de aprovação e o formulário são colunas flexíveis que esticam até a largura de leitura', () => {

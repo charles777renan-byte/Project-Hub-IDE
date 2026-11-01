@@ -304,7 +304,7 @@ export function DecisionBlock({
         ref={setSection}
         tabIndex={-1}
         aria-labelledby={titleId}
-        className="decision-block mission-focus"
+        className={`decision-block mission-focus${reviewing ? ' decision-block--review' : ''}${planned ? ' decision-block--planned' : ''}`}
       >
         <h2 id={titleId} className="mission-section-title">
           {MISSION_TEXT.decisionTitle}
@@ -354,7 +354,7 @@ export function DecisionBlock({
 
         {reviewing ? (
           <>
-            <div className="form-actions">
+            <div className="form-actions decision-block__approve">
               <button
                 type="button"
                 className="btn-primary"
@@ -364,7 +364,11 @@ export function DecisionBlock({
                 {MISSION_TEXT.approveReview}
               </button>
             </div>
-            <form className="form" aria-label="Pedir ajustes" onSubmit={handleRequestChanges}>
+            <form
+              className="form decision-block__changes"
+              aria-label="Pedir ajustes"
+              onSubmit={handleRequestChanges}
+            >
               <div className="field">
                 <label htmlFor={feedbackId}>{DECISION_TEXT.feedbackLabel}</label>
                 <textarea

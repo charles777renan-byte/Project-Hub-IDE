@@ -171,10 +171,10 @@ function SecondaryActions({
 }
 
 /**
- * Cabeçalho da missão (seção 10.7), no formato do protótipo: o "← Missões" que volta à lista, a linha
- * "MISSÃO · {PROJETO}", o título, o objetivo em linha menor, o selo da situação (chip com texto e cor) e
- * "Mais ações" (pausar, cancelar ou excluir). Com o worktree criado, mostra o nome curto dele e o botão
- * que copia o caminho, e o link "Ver no terminal". A ação principal e o resumo da conclusão ficam no bloco
+ * Cabeçalho da missão (seção 10.7), no formato do protótipo, em duas linhas: em cima o "← Missões" que volta
+ * à lista, o "MISSÃO · {PROJETO}" e, com o worktree criado, o nome curto dele, o botão que copia o caminho
+ * e o link "Ver no terminal"; embaixo o título, o objetivo em linha menor, o selo da situação (chip com
+ * texto e cor) e "Mais ações" (pausar, cancelar ou excluir). A ação principal e o resumo da conclusão ficam no bloco
  * "Sua decisão". Este componente só mostra e chama o que a página passa: o comportamento das ações fica na página.
  */
 export function MissionSummary({
@@ -198,12 +198,20 @@ export function MissionSummary({
 
   return (
     <section aria-label="Resumo da missão" className="mission-head">
-      <Link to={projectViewPath(project.id, 'missoes')} className="mission-head__back">
-        {MISSION_TEXT.backToMissions}
-      </Link>
+      <div className="mission-head__top">
+        <Link to={projectViewPath(project.id, 'missoes')} className="mission-head__back">
+          {MISSION_TEXT.backToMissions}
+        </Link>
+        <p className="eyebrow">{MISSION_TEXT.eyebrow(project.name)}</p>
+        {mission.worktreePath === undefined ? null : (
+          <p className="mission-meta">
+            <WorktreeMeta path={mission.worktreePath} />
+            <TerminalLink projectId={project.id} missionId={mission.id} />
+          </p>
+        )}
+      </div>
       <div className="mission-head__row">
         <div className="mission-head__title">
-          <p className="eyebrow">{MISSION_TEXT.eyebrow(project.name)}</p>
           <h1>{mission.title}</h1>
           <p className="mission-head__objective">{mission.objective}</p>
         </div>
@@ -223,12 +231,6 @@ export function MissionSummary({
           />
         </div>
       </div>
-      {mission.worktreePath === undefined ? null : (
-        <p className="mission-meta">
-          <WorktreeMeta path={mission.worktreePath} />
-          <TerminalLink projectId={project.id} missionId={mission.id} />
-        </p>
-      )}
     </section>
   );
 }

@@ -169,7 +169,10 @@
   min-width: 0;
 }
 
-/* Cabeçalho: o "← Missões", a linha pequena com o projeto, o título, o objetivo e, à direita, o selo e as ações. */
+/*
+ * Cabeçalho, em duas linhas: em cima o "← Missões", a linha pequena com o projeto e, à direita, o worktree
+ * (quando há); embaixo o título, o objetivo e, à direita, o selo e as ações.
+ */
 .mission-head {
   display: grid;
   gap: var(--space-2);
@@ -177,8 +180,14 @@
   border-bottom: 1px solid var(--line);
 }
 
+.mission-head__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
 .mission-head__back {
-  justify-self: start;
   color: var(--muted);
   font-size: var(--text-sm);
 }
@@ -230,7 +239,7 @@
 .mission-terminal-link {
   display: inline-flex;
   align-items: center;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--field-line);
   border-radius: var(--radius);
   color: var(--text);
@@ -254,12 +263,23 @@
   font-size: var(--text-sm);
 }
 
-/* A linha do worktree: o nome curto e o botão que copia o caminho. */
+/* O worktree, na linha de cima, à direita: o nome curto, o botão que copia o caminho e "Ver no terminal". */
 .mission-head .mission-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+  flex: 0 1 auto;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+/* O nome do worktree não alarga a linha: o caminho inteiro fica no título (`title`) e no botão que o copia. */
+.mission-head .mission-meta__path {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Títulos pequenos das seções do corpo: ARQUIVOS ALTERADOS e SUA DECISÃO. */
@@ -381,6 +401,8 @@
 }
 
 .decision-block .form {
+  /* O `.form` global deixa 1.5rem embaixo; dentro do bloco o vão é o `gap` dele. */
+  margin: 0;
   border-radius: var(--radius-card);
 }
 
@@ -407,6 +429,47 @@
 
 .decision-block__actions .plan-quota {
   max-width: 16rem;
+}
+
+/*
+ * Em janela larga (o corpo da missão com 52rem ou mais), a revisão e o plano gerado usam duas colunas, para o
+ * bloco não passar da altura do corpo:
+ *  - revisão: o resumo da conclusão e "Aprovar conclusão" à esquerda; "Pedir ajustes" à direita, ao lado
+ *    dos dois (`grid-row: 3 / span 2`: o título e a frase ficam acima, nas linhas 1 e 2);
+ *  - plano gerado: a instrução à esquerda e "Aprovar plano" e "Planejar de novo" à direita, alinhados ao fim.
+ * O resto (título, frase, nota e falha) ocupa a largura toda. Em janela estreita nada disso vale, e o bloco
+ * segue numa coluna só. A consulta é do corpo da missão (`container-type: size`), e não da janela: a lateral
+ * e o painel dividem a largura com ele.
+ */
+@container (min-width: 52rem) {
+  .decision-block--review,
+  .decision-block--planned {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+
+  .decision-block--review > *,
+  .decision-block--planned > * {
+    grid-column: 1 / -1;
+  }
+
+  .decision-block--review > .conclusion,
+  .decision-block--review > .decision-block__approve,
+  .decision-block--planned > .decision-block__instruction {
+    grid-column: 1;
+  }
+
+  .decision-block--review > .decision-block__changes {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+  }
+
+  .decision-block--planned > .decision-block__actions {
+    grid-column: 2;
+    align-self: end;
+  }
 }
 
 /* O painel inferior: a barra de abas fica parada e cada painel rola dentro de si. */
