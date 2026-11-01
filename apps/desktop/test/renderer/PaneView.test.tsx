@@ -105,11 +105,23 @@ describe('PaneView', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Não abriu');
   });
 
-  it('sessão em andamento mostra título, estado, etiqueta, terminal e ações', () => {
-    setup({ terminal: { ...session, origin: 'recovered' }, active: true, focusTerminal: true });
-    expect(screen.getByText('Corrigir login')).toBeInTheDocument();
-    expect(screen.getByText('Ativo')).toBeInTheDocument();
-    expect(screen.getByText('recuperada')).toBeInTheDocument();
+  it('sessão em andamento mostra o símbolo do programa, a luz de estado, o terminal e as ações', () => {
+    const { container } = setup({
+      terminal: { ...session, origin: 'recovered' },
+      active: true,
+      focusTerminal: true,
+    });
+    // O título da sessão não aparece escrito: vai na dica do símbolo e para o leitor de tela.
+    const provider = container.querySelector('.pane__provider') as HTMLElement;
+    expect(provider.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(provider).toHaveAttribute('title', 'Corrigir login');
+    expect(screen.getByText('Corrigir login')).toHaveClass('state-mark__sr');
+    // A luz é a marca do estado: sem rótulo visível, e a origem da sessão só na dica.
+    const light = container.querySelector('.pane__light') as HTMLElement;
+    expect(light).toHaveClass('pane__light--active');
+    expect(light).toHaveAttribute('title', 'Ativo · sessão recuperada');
+    expect(screen.getByText('Ativo')).toHaveClass('state-mark__sr');
+    expect(screen.queryByText('recuperada')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
     // Tirar do painel só existe para sessão de missão (o processo dela não se encerra por aqui).
     expect(screen.queryByRole('button', { name: 'Tirar do painel' })).not.toBeInTheDocument();
@@ -118,9 +130,10 @@ describe('PaneView', () => {
     expect(terminal).toHaveAttribute('data-active', 'true');
   });
 
-  it('sessão nova leva a etiqueta nova', () => {
-    setup();
-    expect(screen.getByText('nova')).toBeInTheDocument();
+  it('sessão nova não leva etiqueta de origem', () => {
+    const { container } = setup();
+    expect(screen.queryByText('nova')).not.toBeInTheDocument();
+    expect(container.querySelector('.pane__light')).toHaveAttribute('title', 'Ativo');
   });
 
   it('sessão aguardando mostra Aguardando', () => {
@@ -242,7 +255,7 @@ describe('PaneView', () => {
   it('título com marcação aparece como texto', () => {
     setup({ terminal: { ...session, title: '<b>x</b>' } });
     const title = screen.getByText('<b>x</b>');
-    expect(title).toHaveAttribute('title', '<b>x</b>');
+    expect(title.closest('.pane__provider')).toHaveAttribute('title', '<b>x</b>');
     expect(title.querySelector('b')).toBeNull();
   });
 
@@ -281,15 +294,16 @@ describe('PaneView', () => {
       const element = indicator(container);
       expect(element).not.toBeNull();
       expect(element).toHaveAttribute('title', detail);
-      expect(within(element as HTMLElement).getByText('12.345 tokens')).toBeInTheDocument();
-      // A ordem do cabeçalho: título, gasto, marca de estado, etiqueta e ações.
+      expect(within(element as HTMLElement).getByText('12,3k tokens')).toBeInTheDocument();
+      // A ordem do cabeçalho: símbolo do programa, grupo de gasto e luz, e ações.
       expect([...head.children].map((child) => child.className)).toEqual([
-        'pane__title',
-        'pane__usage',
-        'state-mark state-mark--active',
-        'pane__tag',
+        'pane__provider',
+        'pane__status',
         'pane__actions',
       ]);
+      expect(
+        [...(head.querySelector('.pane__status')?.children ?? [])].map((child) => child.className),
+      ).toEqual(['pane__usage', 'pane__light pane__light--active']);
     });
 
     it('o leitor de tela lê o nome e o detalhe inteiro, não o número curto', () => {
@@ -299,7 +313,7 @@ describe('PaneView', () => {
       expect(spoken?.textContent).toBe(`Tokens deste terminal. ${detail}`);
       expect(spoken).not.toHaveAttribute('aria-hidden');
       expect(spoken?.closest('[aria-hidden="true"]')).toBeNull();
-      expect(screen.getByText('12.345 tokens')).toHaveAttribute('aria-hidden', 'true');
+      expect(screen.getByText('12,3k tokens')).toHaveAttribute('aria-hidden', 'true');
       // Sem região viva: a lista é relida a cada 2 s.
       expect(indicator(container)?.closest('[aria-live], [role="status"]')).toBeNull();
     });
@@ -319,7 +333,7 @@ describe('PaneView', () => {
       const { container } = setup();
       expect(indicator(container)).toBeNull();
       expect(screen.queryByText(/tokens/)).not.toBeInTheDocument();
-      expect(container.querySelector('.pane__head')?.children).toHaveLength(4);
+      expect(container.querySelector('.pane__head')?.children).toHaveLength(3);
     });
 
     it('provedor que não informa o gasto (Codex, shell) fica como hoje', () => {
@@ -342,7 +356,7 @@ describe('PaneView', () => {
           terminal={{ ...session, usage: { inputTokens: 1, outputTokens: 1_234_567 } }}
         />,
       );
-      expect(screen.getByText('1,2 mi tokens')).toBeInTheDocument();
+      expect(screen.getByText('1,2M tokens')).toBeInTheDocument();
       expect(screen.queryByText('999 tokens')).not.toBeInTheDocument();
       // O mesmo terminal continua montado: só o número mudou.
       expect(screen.getByTestId('terminal-view')).toBe(terminalView);
@@ -350,9 +364,54 @@ describe('PaneView', () => {
       expect(indicator(container)).toBeNull();
     });
 
+    it('a pílula muda de nível com o gasto: cada faixa de tokens de saída é um nível', () => {
+      const { rerender, props } = setup({
+        terminal: { ...session, usage: { inputTokens: 1, outputTokens: 872 } },
+      });
+      const level = () => screen.getByText(/tokens?$/).getAttribute('data-level');
+      expect(level()).toBe('0');
+      for (const [outputTokens, expected] of [
+        [1_000, '1'],
+        [20_000, '3'],
+        [200_000, '5'],
+      ] as const) {
+        rerender(
+          <PaneView
+            {...props}
+            terminal={{ ...session, usage: { inputTokens: 1, outputTokens } }}
+          />,
+        );
+        expect(level()).toBe(expected);
+      }
+    });
+
+    it('outro terminal no mesmo painel mostra o gasto dele direto, sem subir do número do anterior', () => {
+      // Com movimento ligado (o jsdom não tem relógio de quadros), uma contagem aproveitada do terminal
+      // anterior ficaria parada no número velho, em vez de mostrar o do terminal novo.
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query }));
+      vi.stubGlobal('requestAnimationFrame', () => 1);
+      vi.stubGlobal('cancelAnimationFrame', () => undefined);
+      try {
+        const { rerender, props } = setup({
+          terminal: { ...session, usage: { inputTokens: 1, outputTokens: 1_000 } },
+        });
+        expect(screen.getByText('1k tokens')).toBeInTheDocument();
+        rerender(
+          <PaneView
+            {...props}
+            terminal={{ ...session, id: 't2', usage: { inputTokens: 1, outputTokens: 50_000 } }}
+          />,
+        );
+        expect(screen.getByText('50k tokens')).toHaveAttribute('data-level', '3');
+        expect(screen.getByText('50k tokens')).not.toHaveAttribute('data-counting');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('o painel de um terminal de missão (agent) mostra o mesmo indicador', () => {
       setup({ terminal: { ...session, kind: 'agent', missionId: 'm1', usage } });
-      expect(screen.getByText('12.345 tokens')).toBeInTheDocument();
+      expect(screen.getByText('12,3k tokens')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Tirar do painel' })).toBeInTheDocument();
     });
 
@@ -364,7 +423,7 @@ describe('PaneView', () => {
     it('clicar e dar duplo clique no gasto ativa e maximiza como o resto do cabeçalho', async () => {
       const onMaximize = vi.fn();
       const { props } = setup({ terminal: { ...session, usage }, onMaximize });
-      const value = screen.getByText('12.345 tokens');
+      const value = screen.getByText('12,3k tokens');
       await userEvent.click(value);
       expect(props.onActivate).toHaveBeenCalled();
       await userEvent.dblClick(value);

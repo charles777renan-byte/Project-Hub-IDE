@@ -7,7 +7,7 @@ import { formatTime, statusIcon, statusLabel } from '../mission-text';
 import { notify } from '../notify';
 import { colorOf } from '../project-color';
 import { missionPath, ROUTE_PATHS, workspacePath } from '../routes';
-import { barLevels, useActivity } from '../sidebar-activity';
+import { barLevels, hasActivity, useActivity } from '../sidebar-activity';
 import { useTerminals } from '../terminals-data';
 import { useProjectActions, type ProjectActions } from '../use-project-actions';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
@@ -548,7 +548,7 @@ function ProjectRow({
                 session={session}
                 detail={details[index] ?? ''}
                 levels={
-                  session.outputBytes === undefined
+                  session.outputBytes === undefined || !hasActivity(activity.get(session.id))
                     ? undefined
                     : barLevels(activity.get(session.id))
                 }

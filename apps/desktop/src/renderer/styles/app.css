@@ -273,6 +273,62 @@ button:disabled {
   --tone: var(--danger);
 }
 
+/* Luz de estado do painel de terminal (workspace.css): ativa em lima, aguardando em âmbar, o resto apagado. */
+.pane__light {
+  color: var(--muted);
+}
+
+.pane__light--active {
+  color: var(--accent);
+}
+
+.pane__light--waiting {
+  color: var(--warn);
+}
+
+/*
+ * Gasto de tokens do painel de terminal (workspace/PaneUsage.tsx): a pílula muda de cor com o uso, numa rampa neon
+ * do frio ao quente (`data-level`, de 0 a 5; os limites estão em terminal-usage.ts). O texto é a cor do nível, o
+ * fundo é a mesma cor a 14% sobre --surface (o contrast.test.ts mede cada par) e o brilho vem de currentcolor, então
+ * acompanha a troca de cor. Enquanto o número sobe (`data-counting`), o brilho fica mais forte. O nível nunca é só
+ * cor: o número em si cresce, e a dica traz o detalhe.
+ */
+.pane__usage-value {
+  color: var(--cyan);
+  background: color-mix(in srgb, currentcolor 14%, var(--surface));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, currentcolor 45%, transparent),
+    0 0 8px color-mix(in srgb, currentcolor 30%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, currentcolor 55%, transparent);
+}
+
+.pane__usage-value[data-level='1'] {
+  color: var(--lime);
+}
+
+.pane__usage-value[data-level='2'] {
+  color: var(--yellow);
+}
+
+.pane__usage-value[data-level='3'] {
+  color: var(--orange);
+}
+
+.pane__usage-value[data-level='4'] {
+  color: var(--red);
+}
+
+.pane__usage-value[data-level='5'] {
+  color: var(--magenta);
+}
+
+.pane__usage-value[data-counting='true'] {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, currentcolor 70%, transparent),
+    0 0 12px color-mix(in srgb, currentcolor 50%, transparent);
+  text-shadow: 0 0 9px currentcolor;
+}
+
 .chip--violet {
   --tone: var(--brand);
 }
