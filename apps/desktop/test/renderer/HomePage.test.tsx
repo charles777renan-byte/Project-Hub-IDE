@@ -342,8 +342,49 @@ describe('HomePage', () => {
     expect(within(missions).getAllByRole('listitem')).toHaveLength(3);
     expect(within(missions).queryByRole('link', { name: 'Missão m3' })).not.toBeInTheDocument();
     expect(within(missions).queryByRole('link', { name: 'Missão m4' })).not.toBeInTheDocument();
-    expect(within(missions).getByText(/^Falhou/)).toBeInTheDocument();
+    // O nome do projeto vem antes do estado, para dizer de onde é a missão quando a lista junta vários.
+    expect(within(missions).getByText('Projeto p1 · Falhou')).toBeInTheDocument();
     expect(within(missions).getByText('3')).toBeInTheDocument();
+  });
+
+  it('o chip Concluídas mostra só as missões concluídas', async () => {
+    const user = userEvent.setup();
+    installApi({ projects: [project('p1')], missions: MIXED });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    await user.click(await within(missions).findByRole('button', { name: 'Concluídas' }));
+    expect(await within(missions).findByRole('link', { name: 'Missão m5' })).toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m1' })).not.toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m2' })).not.toBeInTheDocument();
+  });
+
+  it('a busca acha missão pelo título e pelo projeto, sem acento e sem maiúscula', async () => {
+    const user = userEvent.setup();
+    installApi({
+      projects: [project('p1'), { ...project('p2'), name: 'Relatório Anual' }],
+      missions: { ...MIXED, p2: [mission('m9', 'p2', 'running')] },
+    });
+
+    renderHome();
+
+    const missions = panel('Missões');
+    const search = within(missions).getByRole('searchbox', { name: 'Buscar missão ou projeto' });
+    await user.type(search, 'missao m1');
+    expect(await within(missions).findByRole('link', { name: 'Missão m1' })).toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m2' })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'RELATORIO');
+    expect(await within(missions).findByRole('link', { name: 'Missão m9' })).toBeInTheDocument();
+    expect(within(missions).queryByRole('link', { name: 'Missão m1' })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'nada disso');
+    expect(
+      await within(missions).findByText('Nenhuma missão encontrada para esta busca.'),
+    ).toBeInTheDocument();
   });
 
   it('missão em planned aparece só em Precisa de você sem filtro, e na banda com o filtro Aguarda você', async () => {

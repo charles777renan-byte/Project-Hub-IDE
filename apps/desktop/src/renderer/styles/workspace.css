@@ -810,6 +810,15 @@
   margin-left: 0;
 }
 
+/* Forma por estado, além da cor do anel: em espera o avatar é quadrado de cantos suaves; o encerrado fica apagado. */
+.sidebar__avatar[data-state='waiting'] {
+  border-radius: var(--radius-sm);
+}
+
+.sidebar__avatar[data-state='exited'] {
+  opacity: 0.55;
+}
+
 .sidebar__avatar-more {
   margin-left: 4px;
   color: var(--muted);

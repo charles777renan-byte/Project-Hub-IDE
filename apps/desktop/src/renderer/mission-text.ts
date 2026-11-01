@@ -412,9 +412,14 @@ export function boardStatusLabel(status: MissionStatus): string {
  * Filtro por estado das listas de missões, o mesmo dos contadores da barra de status (`?estado=`):
  * `running` é "Em execução", `attention` é o que espera a pessoa (`needsAttention`) e `failed` é "Falhou".
  */
-export type MissionStatusFilter = 'running' | 'attention' | 'failed';
+export type MissionStatusFilter = 'running' | 'attention' | 'failed' | 'done';
 
-export const STATUS_FILTERS: readonly MissionStatusFilter[] = ['running', 'attention', 'failed'];
+export const STATUS_FILTERS: readonly MissionStatusFilter[] = [
+  'running',
+  'attention',
+  'failed',
+  'done',
+];
 
 /** O valor de `?estado=` como filtro; valor desconhecido (ou ausente) vale como sem filtro. */
 export function parseStatusFilter(value: string | null): MissionStatusFilter | undefined {
@@ -424,7 +429,16 @@ export function parseStatusFilter(value: string | null): MissionStatusFilter | u
 export function matchesStatusFilter(status: MissionStatus, filter: MissionStatusFilter): boolean {
   if (filter === 'running') return status === 'running';
   if (filter === 'failed') return status === 'failed';
+  if (filter === 'done') return status === 'succeeded';
   return needsAttention(status);
+}
+
+/**
+ * Texto para comparar na busca: sem acento e sem maiúsculas, para "revisão" achar "Revisao" e "REVISÃO" achar
+ * "revisão". Só compara; nunca vai para a tela.
+ */
+export function textoDeBusca(texto: string): string {
+  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 /** Textos do Início e das listas de missões com progresso. */
@@ -443,6 +457,8 @@ export const HOME_TEXT = {
   missions: 'Missões',
   missionsEmpty: 'Nenhuma missão ainda.',
   missionsEmptyFiltered: 'Nenhuma missão neste estado.',
+  missionsEmptySearch: 'Nenhuma missão encontrada para esta busca.',
+  searchMissions: 'Buscar missão ou projeto',
   /** Banda Missões, sem filtro, quando todas as missões já estão em "Precisa de você". */
   allInNeeds: 'Todas as missões estão em “Precisa de você”.',
   missionsError: 'Não foi possível carregar as missões.',
@@ -452,6 +468,7 @@ export const HOME_TEXT = {
     running: 'Executando',
     attention: 'Aguarda você',
     failed: 'Falharam',
+    done: 'Concluídas',
   } satisfies Record<MissionStatusFilter, string>,
   tasks: (done: number, total: number) => `${done}/${total} tarefas`,
   progressLabel: (title: string, done: number, total: number) =>
@@ -470,6 +487,8 @@ export const PROJECT_TEXT = {
     configuracoes: 'Configurações',
   } satisfies Record<ProjectView, string>,
   newMission: 'Nova missão',
+  noGitNotice:
+    'Este projeto não é um repositório Git. Missões precisam de Git: rode git init na pasta do projeto para criar missões aqui.',
   moreActions: 'Mais ações',
   archive: 'Arquivar projeto',
   archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
@@ -513,7 +532,8 @@ export const MISSION_FORM_TEXT = {
   title: { label: 'Título', placeholder: 'Título (opcional: sai da primeira linha do objetivo)' },
   objective: {
     label: 'Objetivo',
-    placeholder: 'O que o agente deve fazer? Ex.: aceitar login com a conta Google além de e-mail e senha.',
+    placeholder:
+      'O que o agente deve fazer? Ex.: aceitar login com a conta Google além de e-mail e senha.',
   },
   criteria: {
     label: 'Pronto quando',
