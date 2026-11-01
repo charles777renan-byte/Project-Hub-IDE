@@ -113,6 +113,15 @@ export function platformOf(value: NodeJS.Platform): Platform {
 }
 
 /**
+ * Os testes de ponta a ponta podem rodar com a janela invisível (`PROJECT_HUB_E2E_HIDDEN=1`, junto com
+ * `PROJECT_HUB_ENV=test`), para não abrir janelas na frente de quem os roda. Recebe o ambiente de
+ * `applicationEnvironment`: no aplicativo empacotado as duas variáveis não existem, e a janela aparece.
+ */
+export function startsHidden(env: NodeJS.ProcessEnv): boolean {
+  return env['PROJECT_HUB_ENV'] === 'test' && env['PROJECT_HUB_E2E_HIDDEN'] === '1';
+}
+
+/**
  * Ambiente que a composição consulta para trocar pastas e o seletor de pasta (R193). Fora do
  * aplicativo empacotado, é o ambiente do processo. Empacotado, `PROJECT_HUB_DATA_DIR`,
  * `PROJECT_HUB_ENV` e `PROJECT_HUB_TEST_DIALOG_PATH` não valem: variáveis de teste não redirecionam

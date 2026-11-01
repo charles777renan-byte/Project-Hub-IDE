@@ -685,9 +685,18 @@ describe('DecisionBlock: resumo da conclusão', () => {
         ],
       },
       // A tentativa 1 passa e comprova o primeiro critério; a tentativa 2 conclui sem verificação.
-      conclusion: { summary: 'Login corrigido.', changedFiles: 3, gitState: 'uncommitted' as const },
+      conclusion: {
+        summary: 'Login corrigido.',
+        changedFiles: 3,
+        gitState: 'uncommitted' as const,
+      },
       events: [
-        verificationEvent('v1', 1, { command: 'pnpm test', passed: 3, failed: 0, criteria: ['Login funciona'] }),
+        verificationEvent('v1', 1, {
+          command: 'pnpm test',
+          passed: 3,
+          failed: 0,
+          criteria: ['Login funciona'],
+        }),
         concludedEvent('k1', 2, 'e1'),
         concludedEvent('k2', 3, 'e2'),
       ],
@@ -695,7 +704,9 @@ describe('DecisionBlock: resumo da conclusão', () => {
     setup('review', {}, twoAttempts);
 
     const summary = within(block()).getByRole('region', { name: 'Resumo da conclusão' });
-    expect(within(summary).getByText('Testes: nenhuma verificação registrada.')).toBeInTheDocument();
+    expect(
+      within(summary).getByText('Testes: nenhuma verificação registrada.'),
+    ).toBeInTheDocument();
     expect(within(summary).getByText('Critérios: 0 de 2 verificados.')).toBeInTheDocument();
   });
 
@@ -713,7 +724,12 @@ describe('DecisionBlock: resumo da conclusão', () => {
         },
         conclusion: { summary: 'Login corrigido.', changedFiles: 3, gitState: 'uncommitted' },
         events: [
-          verificationEvent('v1', 1, { command: 'pnpm test', passed: 3, failed: 0, criteria: ['Login funciona'] }),
+          verificationEvent('v1', 1, {
+            command: 'pnpm test',
+            passed: 3,
+            failed: 0,
+            criteria: ['Login funciona'],
+          }),
           concludedEvent('k1', 2, 'e1'),
           // A tentativa 2 é a que concluiu: a verificação dela comprova o segundo critério.
           verificationEvent(
@@ -873,4 +889,46 @@ describe('DecisionBlock: aviso para o leitor de tela', () => {
     expect(announce()).toBe(region);
     expect(region).toHaveTextContent('Aguardando você: aprovação, Gravar arquivo.');
   });
+});
+
+describe('DecisionBlock: duas colunas em janela larga', () => {
+  it('em revisão, o bloco leva o modificador e separa a aprovação do pedido de ajustes', () => {
+    setup('review', {}, { conclusion: CONCLUSION });
+
+    const region = block();
+    expect(region).toHaveClass('decision-block--review');
+    const approve = within(region).getByRole('button', { name: 'Aprovar conclusão' }).parentElement;
+    expect(approve).toHaveClass('decision-block__approve');
+    expect(approve?.parentElement).toBe(region);
+    const changes = within(region).getByRole('form', { name: 'Pedir ajustes' });
+    expect(changes).toHaveClass('decision-block__changes');
+    expect(changes.parentElement).toBe(region);
+    // A coluna da esquerda é o resumo e a aprovação: o resumo vem antes dela no documento.
+    const summary = within(region).getByRole('region', { name: 'Resumo da conclusão' });
+    expect(summary.parentElement).toBe(region);
+  });
+
+  it('com o plano gerado, o bloco leva o modificador, e a instrução e os botões são filhos dele', () => {
+    setup('planned');
+
+    const region = block();
+    expect(region).toHaveClass('decision-block--planned');
+    const field = within(region).getByRole('textbox', {
+      name: 'Instrução para o novo plano',
+    }).parentElement;
+    expect(field).toHaveClass('decision-block__instruction');
+    expect(field?.parentElement).toBe(region);
+    const actions = within(region).getByRole('button', { name: 'Aprovar plano' }).parentElement;
+    expect(actions).toHaveClass('decision-block__actions');
+    expect(actions?.parentElement).toBe(region);
+  });
+
+  it.each(['draft', 'queued', 'running', 'waiting_approval', 'waiting_input', 'failed'] as const)(
+    'com a missão %s, o bloco não leva modificador de colunas',
+    (status) => {
+      setup(status, {}, status === 'waiting_approval' ? { pendingApprovals: [APPROVAL] } : {});
+
+      expect(block().className).toBe('decision-block mission-focus');
+    },
+  );
 });

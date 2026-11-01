@@ -1,7 +1,8 @@
 /*
  * A missão dentro da aba do projeto (pages/MissionPage.tsx, components/mission/*, components/workspace/
- * MissionSummary.tsx). Em cima fica o corpo, que rola: o cabeçalho e "Sua decisão" ficam fixos no alto e, por
- * baixo deles, vêm a lista de etapas ou, durante o planejamento, o quadro do orquestrador. Embaixo fica o painel
+ * MissionSummary.tsx). Em cima fica o corpo, que rola: o cabeçalho fica fixo no alto (e, com ele, a barra
+ * de decisão, quando o bloco "Sua decisão" rola para trás dele) e, por baixo, vêm "Sua decisão", a lista
+ * de etapas ou, durante o planejamento, o quadro do orquestrador. Embaixo fica o painel
  * redimensionável, com as abas Atividade, Alterações (o resumo com a quantidade de arquivos e os totais, a lista
  * de arquivos alterados, o diff e os Artefatos) e Testes. Ligado por <link> no index.html, depois
  * do project.css e antes do workspace.css; só usa tokens de tokens.css, sem cor literal, sem estilo escrito em texto (CSP) e sem
@@ -72,85 +73,106 @@
 }
 
 /*
- * O grupo fixo no alto do corpo: o cabeçalho da missão, as falhas dele e "Sua decisão". Ao rolar, o
- * cabeçalho continua à vista e o bloco de decisão fica logo abaixo dele. É um grupo só porque o CSS não
- * sabe a altura do cabeçalho (ela muda com o título, o objetivo e a largura da janela): se o bloco grudasse
- * sozinho, o `top` dele teria de adivinhá-la. O fundo é opaco, para o que rola passar por baixo.
+ * O grupo fixo no alto do corpo: o cabeçalho da missão, as falhas dele e o encaixe da barra de decisão. Ao
+ * rolar, o cabeçalho continua à vista. É um grupo só porque o CSS não sabe a altura do cabeçalho (ela muda
+ * com o título, o objetivo e a largura da janela). O fundo é opaco, para o que rola passar por baixo.
  *
- * Ocupa no máximo 75% da altura do corpo. O cabeçalho e as falhas não encolhem; quem encolhe é o bloco, que
- * rola por dentro (o título e a ação principal continuam à vista). Assim o plano continua ao alcance mesmo
- * com um cabeçalho alto e uma decisão alta. Num corpo baixo o regime muda (ver o `@container` abaixo). Como
- * último recurso, o próprio grupo rola por dentro (`overflow-y`): um cabeçalho muito alto, uma janela
- * minúscula ou o divisor arrastado nunca deixam o fim do bloco, onde está a ação principal, cortado por um
- * grupo fixo que nenhuma rolagem do corpo alcança. A folga de cima e de baixo (o fundo opaco que cobre o que
- * rola) é compensada pela margem do primeiro bloco do corpo e pela margem negativa de baixo, então o espaço
- * do grupo não muda quando nada rola. O respiro dos lados, com a margem negativa, deixa o contorno de foco
- * (2px, afastado 2px) inteiro nos controles rentes à borda, que o `overflow` cortaria.
+ * O bloco "Sua decisão" não fica aqui: ele está no fluxo do corpo, inteiro, e só uma barra compacta aparece
+ * quando ele rola para trás do cabeçalho (ver `decision-bar`). Assim o grupo é curto, e o plano e o bloco
+ * nunca competem por um espaço que o CSS não conhece.
+ *
+ * O grupo tem duas partes. `mission-top__body` guarda o cabeçalho e as falhas: ocupa no máximo 75% da altura
+ * do corpo (`cqh`, pois o corpo é um contêiner de tamanho) e, como último recurso, rola por dentro
+ * (`overflow-y`): um cabeçalho muito alto ou uma janela minúscula nunca deixam o grupo comer o corpo. A folga
+ * de cima e de baixo (o fundo opaco que cobre o que rola) é compensada pela margem do primeiro bloco do
+ * corpo e pela margem negativa de baixo, então o espaço do grupo não muda quando nada rola. O respiro dos
+ * lados, com a margem negativa, deixa o contorno de foco (2px, afastado 2px) inteiro nos controles rentes à
+ * borda, que o `overflow` cortaria. A outra parte é o encaixe da barra, depois do corpo e fora do `overflow`.
  */
 .mission-top {
   position: sticky;
   top: 0;
   z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-height: 75%;
   margin: 0 calc(-1 * var(--space-1)) calc(-1 * var(--space-2));
-  padding: var(--space-2) var(--space-1);
-  overflow: hidden auto;
   background: var(--bg);
 }
 
-/* Primeiro bloco do corpo: a folga de cima do grupo já vem do padding dele. */
+.mission-top__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 75cqh;
+  padding: var(--space-2) var(--space-1);
+  overflow: hidden auto;
+}
+
+/* Primeiro bloco do corpo: a folga de cima do grupo já vem do padding do corpo dele. */
 .mission-main > .mission-top:first-child {
   margin-top: calc(var(--space-3) - var(--space-2));
 }
 
-.mission-top > * {
+.mission-top__body > * {
   flex: none;
   min-width: 0;
 }
 
 /*
- * O invólucro de "Sua decisão", só com decisão pendente (sem ela vira `visually-hidden`, ver MissionPage).
- * Dentro do grupo, é o único que encolhe: o bloco rola por dentro quando o grupo atinge o limite dele. Nunca
- * encolhe a ponto de esconder o título e a linha da ação principal (`min-height`, que cobre o título, uma
- * linha de texto e uma linha de botões, mais o topo do cartão: a linha fixa dele não sobe além do cartão, e o
- * piso de 11rem deixa o topo do cartão a uma linha de botões da borda). Numa janela baixa, com um cabeçalho alto, o grupo passa um pouco
- * do limite de 75%: o bloco tem prioridade sobre o plano, que fica ao alcance da rolagem.
+ * O encaixe da barra: uma linha de altura zero logo abaixo do cabeçalho. A barra flutua sobre o que rola, e
+ * por isso não muda a altura do grupo: se mudasse, o conteúdo pularia ao ela entrar e sair, e a medida que
+ * decide quando ela aparece (o topo do encaixe) oscilaria. Altura zero, e não `display: none`: o navegador
+ * não mede uma caixa que não existe.
  */
-.mission-top > .mission-decision {
-  display: flex;
-  flex: 0 1 auto;
-  flex-direction: column;
-  min-height: 11rem;
-  scroll-margin-top: var(--space-3);
-}
-
-/* Quem encolhe e rola é o bloco, não o invólucro. */
-.mission-decision > .decision-block {
-  flex: 0 1 auto;
-  min-height: 0;
+.decision-bar-slot {
+  position: relative;
+  height: 0;
 }
 
 /*
- * Corpo baixo (menos de 31rem, cerca de 500px): o cabeçalho e o piso do bloco já passam de 75% do corpo, e
- * o limite deixaria a ação principal para depois de uma rolagem dentro do grupo. Neste regime o bloco fica
- * no piso (11rem, com o título e a linha da ação à vista, e o resto rola por dentro dele) e o grupo pode
- * chegar a todo o corpo, só que não passa dele. O plano fica com o que sobra: pouco numa janela baixa, e
- * quem quiser mais espaço arrasta a divisória. Acima disso vale o limite de 75%.
+ * A barra de decisão: uma faixa fina com a frase da situação e os botões lado a lado (a ação principal, ou
+ * Aprovar e Recusar, e "Ver decisão", que traz o bloco de volta à vista). Quebra de linha em janela estreita,
+ * sem rolagem horizontal e sem cortar nada. O contorno na cor da marca a distingue do cabeçalho.
  */
-@container (max-height: 31rem) {
-  .mission-top {
-    max-height: 100%;
-  }
-
-  .mission-top > .mission-decision {
-    max-height: 11rem;
-  }
+.decision-bar {
+  position: absolute;
+  top: 0;
+  right: var(--space-1);
+  left: var(--space-1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-card);
+  background: var(--surface);
 }
 
-/* Cabeçalho: o "← Missões", a linha pequena com o projeto, o título, o objetivo e, à direita, o selo e as ações. */
+.decision-bar__text {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.decision-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* O invólucro de "Sua decisão", só com decisão pendente (sem ela vira `visually-hidden`, ver MissionPage). */
+.mission-decision {
+  min-width: 0;
+}
+
+/*
+ * Cabeçalho, em duas linhas: em cima o "← Missões", a linha pequena com o projeto e, à direita, o worktree
+ * (quando há); embaixo o título, o objetivo e, à direita, o selo e as ações.
+ */
 .mission-head {
   display: grid;
   gap: var(--space-2);
@@ -158,8 +180,14 @@
   border-bottom: 1px solid var(--line);
 }
 
+.mission-head__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
 .mission-head__back {
-  justify-self: start;
   color: var(--muted);
   font-size: var(--text-sm);
 }
@@ -211,7 +239,7 @@
 .mission-terminal-link {
   display: inline-flex;
   align-items: center;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--field-line);
   border-radius: var(--radius);
   color: var(--text);
@@ -235,12 +263,23 @@
   font-size: var(--text-sm);
 }
 
-/* A linha do worktree: o nome curto e o botão que copia o caminho. */
+/* O worktree, na linha de cima, à direita: o nome curto, o botão que copia o caminho e "Ver no terminal". */
 .mission-head .mission-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+  flex: 0 1 auto;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+/* O nome do worktree não alarga a linha: o caminho inteiro fica no título (`title`) e no botão que o copia. */
+.mission-head .mission-meta__path {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Títulos pequenos das seções do corpo: ARQUIVOS ALTERADOS e SUA DECISÃO. */
@@ -317,41 +356,24 @@
  * Sua decisão: a frase da situação, o que ela espera da pessoa (cartões, caixas e botões) e a falha de
  * uma ação. A região de anúncio é só para o leitor de tela (`visually-hidden`, fora do fluxo).
  * O bloco é um cartão, com a mesma superfície, contorno e raio dos painéis do aplicativo (app.css).
- * Tem no máximo 40% da altura da janela e rola por dentro: o título fica no alto e a linha da ação
- * principal de cada situação fica no fim (colados ao rolar, ver abaixo), para o botão principal não sumir
- * de vista. É uma coluna flexível pelo mesmo motivo do corpo: filho de grade não gruda. O `scroll-padding`
- * reserva o título e a linha fixos: um campo que ganha o foco pelo teclado não fica escondido atrás deles.
+ * Fica no fluxo do corpo, com a altura que o conteúdo pedir: sem altura máxima, sem rolagem por dentro e sem
+ * linhas coladas. Quem rola é o corpo; a ação principal fica à mão na barra do alto quando o bloco sai de vista.
+ * É uma coluna flexível para os filhos esticarem até a largura de leitura.
  */
 .decision-block {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--space-1);
-  max-height: 40vh;
+  gap: var(--space-2);
   padding: var(--space-4);
-  overflow-y: auto;
-  scroll-padding: calc(var(--space-4) + var(--text-lg) * 1.2 + var(--space-2)) 0 5rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--surface);
 }
 
-/*
- * Dentro do cartão, o título da seção sai da legenda em caixa-alta e vira título de cartão. Ele gruda no alto
- * do bloco. O navegador mede o "gruda" a partir da área de conteúdo do bloco, sem o padding, então o
- * deslocamento negativo (do tamanho do padding) leva o título até a borda; a margem negativa e o respiro de
- * dentro põem o fundo opaco sobre o padding, para o texto que rola não aparecer acima dele. A altura dele
- * é a do padding de cima, a de uma linha (1.2) e o respiro de baixo: a linha de aprovação da revisão usa a
- * mesma conta para grudar logo abaixo dele.
- */
+/* Dentro do cartão, o título da seção sai da legenda em caixa-alta e vira título de cartão. */
 .decision-block > .mission-section-title {
-  position: sticky;
-  top: calc(-1 * var(--space-4));
-  z-index: 1;
-  align-self: stretch;
-  margin: calc(-1 * var(--space-4)) 0 0;
-  padding: var(--space-4) 0 var(--space-2);
-  background: var(--surface);
+  margin: 0;
   color: var(--text);
   font-size: var(--text-lg);
   font-weight: 600;
@@ -362,8 +384,7 @@
 
 /*
  * Cartões, formulários e o resumo ocupam a largura do bloco (até um limite de leitura), não a do conteúdo.
- * O cartão de aprovação e o formulário são colunas flexíveis, e não grades: a linha de ações deles gruda no
- * fim do bloco (ver abaixo), e um filho de grade fica preso à própria área e nunca gruda.
+ * O cartão de aprovação e o formulário são colunas flexíveis para os filhos esticarem até essa largura.
  */
 .decision-block .decision-card,
 .decision-block .form,
@@ -380,6 +401,8 @@
 }
 
 .decision-block .form {
+  /* O `.form` global deixa 1.5rem embaixo; dentro do bloco o vão é o `gap` dele. */
+  margin: 0;
   border-radius: var(--radius-card);
 }
 
@@ -397,54 +420,6 @@
   overflow-wrap: anywhere;
 }
 
-/*
- * A linha da ação principal de cada situação gruda no fim do bloco quando o conteúdo rola, para o botão
- * principal não ficar abaixo da dobra:
- *  - Orquestrar, Aprovar plano, Iniciar, Retomar e Tentar de novo: `.decision-block__actions`, filha do bloco;
- *  - Aprovar conclusão (revisão): `.form-actions`, filha do bloco. Ela vem antes do formulário de ajustes,
- *    então também gruda no alto (logo abaixo do título) quando a rolagem a passa;
- *  - Aprovar e Recusar (aprovação de uma ação): `.inline-actions`, dentro do cartão;
- *  - Enviar resposta (o agente espera uma resposta): `.form-actions`, dentro do formulário. Só desse
- *    formulário: o de ajustes é secundário e não ganha uma segunda barra fixa.
- * Cada uma usa o mesmo deslocamento negativo do título (o padding fica de fora da medida), que leva a linha
- * até a borda do bloco. A margem negativa e o respiro de dentro põem o fundo opaco sobre o padding sem mudar
- * o espaço dela quando nada rola. Dentro de um cartão ou de um formulário, a linha só gruda enquanto ele
- * ocupa a borda de baixo: com vários cartões, cada linha vale para o seu cartão. O respiro de dentro é o do
- * padding de baixo do cartão (--space-3) ou do formulário (--space-4), e o fundo é o dele: o vidro sobre a
- * superfície do bloco, em camadas opacas, para a linha cobrir o que passa por baixo sem mudar de cor.
- *
- * Limite: uma linha não sai do cartão ou do formulário em que está. Num bloco muito baixo, em que o topo do
- * cartão (depois do título e da frase) fica a menos de uma linha de botões da borda de baixo, ela só chega
- * à borda depois de uma rolagem curta. Por isso o invólucro tem um piso de altura (`.mission-top >
- * .mission-decision`). A linha direta do bloco não tem esse limite.
- */
-.decision-block__actions,
-.decision-block > .form-actions,
-.decision-block .decision-card > .inline-actions,
-.decision-block form[aria-label='Resposta ao agente'] > .form-actions {
-  position: sticky;
-  bottom: calc(-1 * var(--space-4));
-  z-index: 1;
-  align-self: stretch;
-  margin-bottom: calc(-1 * var(--space-4));
-  padding-bottom: var(--space-4);
-  background: var(--surface);
-}
-
-.decision-block > .form-actions {
-  top: calc(var(--text-lg) * 1.2 + var(--space-2));
-}
-
-.decision-block .decision-card > .inline-actions {
-  margin-bottom: calc(-1 * var(--space-3));
-  padding-bottom: var(--space-3);
-  background: linear-gradient(var(--surface-glass), var(--surface-glass)), var(--surface);
-}
-
-.decision-block form[aria-label='Resposta ao agente'] > .form-actions {
-  background: linear-gradient(var(--surface-glass), var(--surface-glass)), var(--surface);
-}
-
 .decision-block__actions {
   display: flex;
   flex-wrap: wrap;
@@ -454,6 +429,47 @@
 
 .decision-block__actions .plan-quota {
   max-width: 16rem;
+}
+
+/*
+ * Em janela larga (o corpo da missão com 52rem ou mais), a revisão e o plano gerado usam duas colunas, para o
+ * bloco não passar da altura do corpo:
+ *  - revisão: o resumo da conclusão e "Aprovar conclusão" à esquerda; "Pedir ajustes" à direita, ao lado
+ *    dos dois (`grid-row: 3 / span 2`: o título e a frase ficam acima, nas linhas 1 e 2);
+ *  - plano gerado: a instrução à esquerda e "Aprovar plano" e "Planejar de novo" à direita, alinhados ao fim.
+ * O resto (título, frase, nota e falha) ocupa a largura toda. Em janela estreita nada disso vale, e o bloco
+ * segue numa coluna só. A consulta é do corpo da missão (`container-type: size`), e não da janela: a lateral
+ * e o painel dividem a largura com ele.
+ */
+@container (min-width: 52rem) {
+  .decision-block--review,
+  .decision-block--planned {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+
+  .decision-block--review > *,
+  .decision-block--planned > * {
+    grid-column: 1 / -1;
+  }
+
+  .decision-block--review > .conclusion,
+  .decision-block--review > .decision-block__approve,
+  .decision-block--planned > .decision-block__instruction {
+    grid-column: 1;
+  }
+
+  .decision-block--review > .decision-block__changes {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+  }
+
+  .decision-block--planned > .decision-block__actions {
+    grid-column: 2;
+    align-self: end;
+  }
 }
 
 /* O painel inferior: a barra de abas fica parada e cada painel rola dentro de si. */

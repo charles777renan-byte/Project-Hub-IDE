@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationPanel } from '../../src/renderer/components/ConversationPanel';
 import { MissionSummary } from '../../src/renderer/components/workspace/MissionSummary';
 import { projectViewPath } from '../../src/renderer/routes';
+import { readCss, ruleDeclarations } from './css-rules';
 
 type Status = MissionViewDto['mission']['status'];
 
@@ -234,5 +235,74 @@ describe('MissionSummary: Ver no terminal', () => {
     render(<MemoryRouter>{summaryOf(viewOf('planned'))}</MemoryRouter>);
 
     expect(screen.queryByRole('link', { name: 'Ver no terminal' })).not.toBeInTheDocument();
+  });
+});
+
+describe('MissionSummary: cabeçalho enxuto', () => {
+  function withWorktree(): MissionViewDto {
+    const view = viewOf('review');
+    return { ...view, mission: { ...view.mission, worktreePath: 'C:\\app\\.worktrees\\m1' } };
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'projectHub');
+  });
+
+  it('o "← Missões", o projeto e o worktree dividem a linha de cima, antes do título', () => {
+    window.projectHub = {
+      terminals: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    } as unknown as ProjectHubApi;
+    render(<MemoryRouter>{summaryOf(withWorktree())}</MemoryRouter>);
+
+    const header = screen.getByRole('region', { name: 'Resumo da missão' });
+    const top = header.querySelector('.mission-head__top');
+    expect(top).not.toBeNull();
+    expect(header.firstElementChild).toBe(top);
+    const inTop = within(top as HTMLElement);
+    expect(inTop.getByRole('link', { name: /Missões/ })).toBeInTheDocument();
+    expect(inTop.getByText(/Missão · app/i)).toBeInTheDocument();
+    expect(inTop.getByRole('button', { name: 'Copiar caminho' })).toBeInTheDocument();
+    expect(inTop.getByRole('link', { name: 'Ver no terminal' })).toBeInTheDocument();
+    // O título, o objetivo, o selo e o menu ficam na linha de baixo.
+    expect(inTop.queryByRole('heading', { name: 'Ajustar login' })).toBeNull();
+    const row = header.querySelector('.mission-head__row');
+    expect(top?.nextElementSibling).toBe(row);
+    expect(header.children).toHaveLength(2);
+    expect(
+      within(row as HTMLElement).getByRole('heading', { name: 'Ajustar login' }),
+    ).toBeVisible();
+    expect(within(row as HTMLElement).getByRole('button', { name: 'Mais ações' })).toBeVisible();
+  });
+
+  it('sem worktree, a linha de cima só tem o "← Missões" e o projeto', () => {
+    render(<MemoryRouter>{summaryOf(viewOf('review'))}</MemoryRouter>);
+
+    const top = screen
+      .getByRole('region', { name: 'Resumo da missão' })
+      .querySelector<HTMLElement>('.mission-head__top');
+    expect(top).not.toBeNull();
+    expect(top?.querySelector('.mission-meta')).toBeNull();
+    expect(within(top as HTMLElement).queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
+  });
+
+  describe('folha de estilo (mission.css)', () => {
+    const css = readCss('mission.css');
+
+    it('a linha de cima é uma faixa que quebra de linha em janela estreita', () => {
+      const top = ruleDeclarations(css, '.mission-head__top');
+      expect(top.get('display')).toBe('flex');
+      expect(top.get('flex-wrap')).toBe('wrap');
+      expect(top.get('align-items')).toBe('center');
+    });
+
+    it('o worktree vai para a direita da linha de cima', () => {
+      expect(ruleDeclarations(css, '.mission-head .mission-meta').get('margin-left')).toBe('auto');
+    });
+
+    it('o "Ver no terminal" é um botão baixo, para não engordar a linha', () => {
+      expect(ruleDeclarations(css, '.mission-terminal-link').get('padding')).toBe(
+        'var(--space-1) var(--space-3)',
+      );
+    });
   });
 });

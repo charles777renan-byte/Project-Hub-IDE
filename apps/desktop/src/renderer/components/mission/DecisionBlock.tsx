@@ -1,4 +1,5 @@
-import { useId, useState, type FormEvent, type Ref } from 'react';
+import { useCallback, useId, useRef, useState, type FormEvent, type Ref } from 'react';
+import { createPortal } from 'react-dom';
 import type { MissionViewDto } from '@project-hub/contracts';
 import {
   DECISION_TEXT,
@@ -12,6 +13,7 @@ import {
   type PrimaryAction,
 } from '../../mission-text';
 import { ApprovalCard } from '../ApprovalCard';
+import { revealDecision, useDecisionOutOfView } from './decision-visibility';
 
 /** Limite da instrução do novo plano, o mesmo do contrato (`planMissionInputSchema`). */
 const INSTRUCTION_MAX = 1000;
@@ -45,7 +47,9 @@ function eventsOfConclusion(events: MissionViewDto['events']): MissionViewDto['e
  * Linha de testes do resumo. Sem verificação, diz que nada foi registrado; com verificação de zero testes,
  * não conta zero como se fosse um resultado.
  */
-function testsLine(verification: NonNullable<MissionViewDto['conclusion']>['verification']): string {
+function testsLine(
+  verification: NonNullable<MissionViewDto['conclusion']>['verification'],
+): string {
   if (verification === undefined) return 'Testes: nenhuma verificação registrada.';
   if (verification.passed === 0 && verification.failed === 0) {
     return 'Testes: nenhum teste contado.';
@@ -103,6 +107,11 @@ function ConclusionSummary({
  * A região `status` fica montada o tempo todo, vazia até uma decisão chegar: só assim o leitor de tela
  * anuncia a decisão nova mesmo com outra aba do painel inferior aberta. O bloco também é o alvo do foco
  * (`decisionRef`; `answerRef` quando o agente espera uma resposta).
+ *
+ * O bloco fica no fluxo do corpo, inteiro, sem altura máxima nem rolagem própria. Quando ele rola para trás
+ * do cabeçalho fixo, e a situação tem algo a fazer, uma barra compacta aparece no `barSlot` (o encaixe do
+ * grupo fixo): a frase, a ação principal (ou Aprovar e Recusar, quando há uma aprovação só) e "Ver decisão".
+ * Campos de texto não vão para a barra: "Ver decisão" leva o bloco de volta à vista.
  */
 export function DecisionBlock({
   view,
@@ -122,6 +131,7 @@ export function DecisionBlock({
   onRequestChanges,
   decisionRef,
   answerRef,
+  barSlot = null,
 }: {
   view: MissionViewDto;
   /** Chamadas longas (planejar, aprovar, iniciar, decidir, responder e tentar de novo): desabilitam as ações. */
@@ -150,7 +160,19 @@ export function DecisionBlock({
   decisionRef?: Ref<HTMLElement>;
   /** Recebe o foco quando o agente espera uma resposta: o foco vai direto para a caixa de texto. */
   answerRef?: Ref<HTMLTextAreaElement>;
+  /** Onde a barra aparece quando o bloco sai de vista. Sem encaixe, ou sem decisão à vista, não há barra. */
+  barSlot?: HTMLElement | null;
 }) {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  /** O bloco é do `decisionRef` da página e também daqui, para medir se ele saiu de vista. */
+  const setSection = useCallback(
+    (node: HTMLElement | null) => {
+      sectionRef.current = node;
+      if (typeof decisionRef === 'function') decisionRef(node);
+      else if (decisionRef !== null && decisionRef !== undefined) decisionRef.current = node;
+    },
+    [decisionRef],
+  );
   const titleId = useId();
   const quotaId = useId();
   const instructionId = useId();
@@ -184,6 +206,23 @@ export function DecisionBlock({
     retry: { run: onRetry, disabled: busy },
   };
 
+  /** Só entra na barra o que se faz com um clique: caixas de texto ficam no bloco. */
+  const singleApproval = pendingApprovals.length === 1 ? pendingApprovals[0] : undefined;
+  const hasBarAction =
+    primary !== undefined || reviewing || waitingInput || pendingApprovals.length > 0;
+  const barVisible = useDecisionOutOfView(
+    sectionRef,
+    hasBarAction ? barSlot : null,
+    `${status}:${pendingApprovals.length}`,
+  );
+
+  function showDecision() {
+    const block = sectionRef.current;
+    if (block === null) return;
+    revealDecision(block, barSlot, true);
+    block.focus({ preventScroll: true });
+  }
+
   async function handleAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = answer.trim();
@@ -198,140 +237,214 @@ export function DecisionBlock({
     if (await onRequestChanges(text)) setFeedback('');
   }
 
+  const bar =
+    barVisible && barSlot !== null
+      ? createPortal(
+          <div className="decision-bar" role="group" aria-label={DECISION_TEXT.barLabel}>
+            <p className="decision-bar__text">
+              <strong>{MISSION_TEXT.decisionTitle}</strong>
+              <span>{singleApproval?.title ?? decisionTextOf(status)}</span>
+            </p>
+            <div className="decision-bar__actions">
+              {singleApproval !== undefined ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-decision"
+                    disabled={busy}
+                    onClick={() => onDecide(singleApproval.id, 'approved')}
+                  >
+                    Aprovar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger"
+                    disabled={busy}
+                    onClick={() => onDecide(singleApproval.id, 'rejected')}
+                  >
+                    Recusar
+                  </button>
+                </>
+              ) : null}
+              {reviewing ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busy}
+                  onClick={onApproveReview}
+                >
+                  {MISSION_TEXT.approveReview}
+                </button>
+              ) : null}
+              {primary === undefined ? null : (
+                <button
+                  type="button"
+                  className={primary === 'approve_plan' ? 'btn-decision' : 'btn-primary'}
+                  disabled={primaryAction[primary].disabled}
+                  onClick={primaryAction[primary].run}
+                >
+                  {primary === 'generate_plan' && planning
+                    ? PLAN_TEXT.planning
+                    : PRIMARY_LABEL[primary]}
+                </button>
+              )}
+              <button type="button" className="btn-outline" onClick={showDecision}>
+                {DECISION_TEXT.showDecision}
+              </button>
+            </div>
+          </div>,
+          barSlot,
+        )
+      : null;
+
   return (
-    <section
-      ref={decisionRef}
-      tabIndex={-1}
-      aria-labelledby={titleId}
-      className="decision-block mission-focus"
-    >
-      <h2 id={titleId} className="mission-section-title">
-        {MISSION_TEXT.decisionTitle}
-      </h2>
-      {/* A região fica montada o tempo todo: só assim o leitor de tela anuncia a decisão quando ela chega. */}
-      <p role="status" aria-live="polite" className="decision-announce visually-hidden">
-        {decisionAnnouncement(view)}
-      </p>
-      <p>{decisionTextOf(status)}</p>
-      {planned ? <p className="muted">{DECISION_TEXT.plannedReassurance}</p> : null}
+    <>
+      {bar}
+      <section
+        ref={setSection}
+        tabIndex={-1}
+        aria-labelledby={titleId}
+        className={`decision-block mission-focus${reviewing ? ' decision-block--review' : ''}${planned ? ' decision-block--planned' : ''}`}
+      >
+        <h2 id={titleId} className="mission-section-title">
+          {MISSION_TEXT.decisionTitle}
+        </h2>
+        {/* A região fica montada o tempo todo: só assim o leitor de tela anuncia a decisão quando ela chega. */}
+        <p role="status" aria-live="polite" className="decision-announce visually-hidden">
+          {decisionAnnouncement(view)}
+        </p>
+        <p>{decisionTextOf(status)}</p>
+        {planned ? <p className="muted">{DECISION_TEXT.plannedReassurance}</p> : null}
 
-      {(reviewing || status === 'succeeded') && conclusion !== undefined ? (
-        <ConclusionSummary
-          conclusion={conclusion}
-          criteriaVerified={criteriaVerified}
-          criteriaTotal={criteriaTotal}
-        />
-      ) : null}
+        {(reviewing || status === 'succeeded') && conclusion !== undefined ? (
+          <ConclusionSummary
+            conclusion={conclusion}
+            criteriaVerified={criteriaVerified}
+            criteriaTotal={criteriaTotal}
+          />
+        ) : null}
 
-      {pendingApprovals.map((approval) => (
-        <ApprovalCard
-          key={approval.id}
-          approval={approval}
-          busy={busy}
-          onDecide={(decision) => onDecide(approval.id, decision)}
-        />
-      ))}
+        {pendingApprovals.map((approval) => (
+          <ApprovalCard
+            key={approval.id}
+            approval={approval}
+            busy={busy}
+            onDecide={(decision) => onDecide(approval.id, decision)}
+          />
+        ))}
 
-      {waitingInput ? (
-        <form className="form" aria-label="Resposta ao agente" onSubmit={handleAnswer}>
-          <div className="field">
-            <label htmlFor={answerId}>{prompt}</label>
-            <textarea
-              id={answerId}
-              ref={answerRef}
-              value={answer}
-              onChange={(event) => setAnswer(event.target.value)}
-            />
-          </div>
-          <div className="form-actions">
-            <button type="submit" className="btn-primary" disabled={busy || answer.trim() === ''}>
-              {DECISION_TEXT.sendAnswer}
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      {reviewing ? (
-        <>
-          <div className="form-actions">
-            <button type="button" className="btn-primary" disabled={busy} onClick={onApproveReview}>
-              {MISSION_TEXT.approveReview}
-            </button>
-          </div>
-          <form className="form" aria-label="Pedir ajustes" onSubmit={handleRequestChanges}>
+        {waitingInput ? (
+          <form className="form" aria-label="Resposta ao agente" onSubmit={handleAnswer}>
             <div className="field">
-              <label htmlFor={feedbackId}>{DECISION_TEXT.feedbackLabel}</label>
+              <label htmlFor={answerId}>{prompt}</label>
               <textarea
-                id={feedbackId}
-                value={feedback}
-                onChange={(event) => setFeedback(event.target.value)}
+                id={answerId}
+                ref={answerRef}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
               />
             </div>
             <div className="form-actions">
-              <button
-                type="submit"
-                className="btn-outline"
-                disabled={busy || feedback.trim() === ''}
-              >
-                {MISSION_TEXT.requestChanges}
+              <button type="submit" className="btn-primary" disabled={busy || answer.trim() === ''}>
+                {DECISION_TEXT.sendAnswer}
               </button>
             </div>
           </form>
-        </>
-      ) : null}
+        ) : null}
 
-      {planned ? (
-        <div className="field decision-block__instruction">
-          <label htmlFor={instructionId}>{PLAN_TEXT.instructionLabel}</label>
-          <textarea
-            id={instructionId}
-            rows={2}
-            maxLength={INSTRUCTION_MAX}
-            aria-describedby={instructionHintId}
-            value={instruction}
-            onChange={(event) => setInstruction(event.target.value)}
-          />
-          <p id={instructionHintId} className="field-hint">
-            {PLAN_TEXT.instructionHint}
-          </p>
-        </div>
-      ) : null}
+        {reviewing ? (
+          <>
+            <div className="form-actions decision-block__approve">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy}
+                onClick={onApproveReview}
+              >
+                {MISSION_TEXT.approveReview}
+              </button>
+            </div>
+            <form
+              className="form decision-block__changes"
+              aria-label="Pedir ajustes"
+              onSubmit={handleRequestChanges}
+            >
+              <div className="field">
+                <label htmlFor={feedbackId}>{DECISION_TEXT.feedbackLabel}</label>
+                <textarea
+                  id={feedbackId}
+                  value={feedback}
+                  onChange={(event) => setFeedback(event.target.value)}
+                />
+              </div>
+              <div className="form-actions">
+                <button
+                  type="submit"
+                  className="btn-outline"
+                  disabled={busy || feedback.trim() === ''}
+                >
+                  {MISSION_TEXT.requestChanges}
+                </button>
+              </div>
+            </form>
+          </>
+        ) : null}
 
-      {primary === undefined ? null : (
-        <div className="decision-block__actions">
-          <button
-            type="button"
-            className={primary === 'approve_plan' ? 'btn-decision' : 'btn-primary'}
-            aria-describedby={primary === 'generate_plan' ? quotaId : undefined}
-            disabled={primaryAction[primary].disabled}
-            onClick={primaryAction[primary].run}
-          >
-            {primary === 'generate_plan' && planning ? PLAN_TEXT.planning : PRIMARY_LABEL[primary]}
-          </button>
-          {planned ? (
+        {planned ? (
+          <div className="field decision-block__instruction">
+            <label htmlFor={instructionId}>{PLAN_TEXT.instructionLabel}</label>
+            <textarea
+              id={instructionId}
+              rows={2}
+              maxLength={INSTRUCTION_MAX}
+              aria-describedby={instructionHintId}
+              value={instruction}
+              onChange={(event) => setInstruction(event.target.value)}
+            />
+            <p id={instructionHintId} className="field-hint">
+              {PLAN_TEXT.instructionHint}
+            </p>
+          </div>
+        ) : null}
+
+        {primary === undefined ? null : (
+          <div className="decision-block__actions">
             <button
               type="button"
-              className="btn-outline"
-              aria-describedby={quotaId}
-              disabled={locked}
-              onClick={() => onRequestNewPlan(instruction.trim())}
+              className={primary === 'approve_plan' ? 'btn-decision' : 'btn-primary'}
+              aria-describedby={primary === 'generate_plan' ? quotaId : undefined}
+              disabled={primaryAction[primary].disabled}
+              onClick={primaryAction[primary].run}
             >
-              {planning ? PLAN_TEXT.planning : PLAN_TEXT.replan}
+              {primary === 'generate_plan' && planning
+                ? PLAN_TEXT.planning
+                : PRIMARY_LABEL[primary]}
             </button>
-          ) : null}
-          {primary === 'generate_plan' || planned ? (
-            <p id={quotaId} className="plan-quota">
-              {PLAN_TEXT.quotaWarning}
-            </p>
-          ) : null}
-        </div>
-      )}
+            {planned ? (
+              <button
+                type="button"
+                className="btn-outline"
+                aria-describedby={quotaId}
+                disabled={locked}
+                onClick={() => onRequestNewPlan(instruction.trim())}
+              >
+                {planning ? PLAN_TEXT.planning : PLAN_TEXT.replan}
+              </button>
+            ) : null}
+            {primary === 'generate_plan' || planned ? (
+              <p id={quotaId} className="plan-quota">
+                {PLAN_TEXT.quotaWarning}
+              </p>
+            ) : null}
+          </div>
+        )}
 
-      {error === undefined ? null : (
-        <p role="alert" className="page-alert">
-          {error}
-        </p>
-      )}
-    </section>
+        {error === undefined ? null : (
+          <p role="alert" className="page-alert">
+            {error}
+          </p>
+        )}
+      </section>
+    </>
   );
 }

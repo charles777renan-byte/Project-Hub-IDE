@@ -11,7 +11,11 @@ import { join, resolve } from 'node:path';
 const stylesDirectory = resolve(import.meta.dirname, '../../src/renderer/styles');
 
 export function readCss(name: string): string {
-  return readFileSync(join(stylesDirectory, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  // Um comentário mal fechado sobra como `*/` ou `/*` solto: o navegador o descarta, mas o minificador do
+  // build recusa o arquivo (a falha só aparece no build de produção).
+  if (css.includes('*/') || css.includes('/*')) throw new Error(`${name}: comentário mal fechado.`);
+  return css;
 }
 
 /** As declarações de todas as regras que têm `selector` na lista de seletores. */

@@ -22,6 +22,7 @@ import {
 } from 'electron';
 import {
   applicationEnvironment,
+  startsHidden,
   createAppServices,
   platformOf,
   resolveAgentCommand,
@@ -67,6 +68,18 @@ import { buildWebPreferences, TITLE_BAR_OVERLAY } from './window';
 
 // Sandbox em todo renderer, mesmo que uma janela futura esqueça a opção. Precisa vir antes do ready.
 app.enableSandbox();
+
+/**
+ * Testes de ponta a ponta com a janela invisível: o Chromium reduz o ritmo de uma janela que ninguém vê
+ * (temporizadores, quadros e animações), e os testes esperariam por coisas que nunca andam. Estas opções
+ * mantêm o ritmo normal. Precisam vir antes do ready.
+ */
+const hiddenForTests = startsHidden(applicationEnvironment(process.env, app.isPackaged));
+if (hiddenForTests) {
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+}
 
 const rendererDirectory = join(import.meta.dirname, '../renderer');
 const preloadPath = join(import.meta.dirname, '../preload/index.cjs');
@@ -167,10 +180,15 @@ function createMainWindow(): void {
     width: 1200,
     height: 800,
     show: false,
+    // Nos testes de ponta a ponta, a janela é transparente e fora da barra de tarefas.
+    ...(hiddenForTests ? { opacity: 0, skipTaskbar: true } : {}),
     titleBarStyle: 'hidden',
     titleBarOverlay: TITLE_BAR_OVERLAY,
     icon: join(app.getAppPath(), 'build', 'icon.ico'),
-    webPreferences: buildWebPreferences(preloadPath),
+    webPreferences: {
+      ...buildWebPreferences(preloadPath),
+      ...(hiddenForTests ? { backgroundThrottling: false } : {}),
+    },
   });
   mainWindow = win;
   // A janela começa a fechar antes de ser destruída; o carregamento pendente rejeita nesse intervalo.
@@ -186,7 +204,18 @@ function createMainWindow(): void {
     confirmExternal: (url) => confirmExternal(win, url, closing),
     openExternal: (url) => shell.openExternal(url),
   });
-  win.once('ready-to-show', () => win.show());
+  // Nos testes de ponta a ponta, a janela é mostrada sem tomar o foco, transparente e sem receber o mouse:
+  // ela renderiza e anima de verdade (uma janela escondida não recebe quadros, e as transições nunca andariam)
+  // e tem o tamanho de uma janela comum, mas ninguém a vê nem esbarra nela. O Playwright age pelo protocolo
+  // do navegador, não pelo mouse do sistema.
+  win.once('ready-to-show', () => {
+    if (!hiddenForTests) {
+      win.show();
+      return;
+    }
+    win.setIgnoreMouseEvents(true);
+    win.showInactive();
+  });
 
   const loading =
     devServerUrl === undefined
