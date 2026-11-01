@@ -1874,6 +1874,25 @@ button:disabled {
   --ring: var(--line);
 }
 
+/* Sessão em espera tem rótulo visível: a cor sozinha não basta. O ponto leva a cor de espera; o texto segue --text. */
+.state-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.state-label::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  content: '';
+}
+
 .state-rail::before {
   content: '';
   position: absolute;

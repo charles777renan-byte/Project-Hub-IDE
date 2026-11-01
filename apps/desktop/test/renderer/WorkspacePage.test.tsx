@@ -18,7 +18,10 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
-import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../../src/renderer/components/project/ProjectHeader';
+import {
+  PROJECT_NO_GIT_NOTICE_ID,
+  PROJECT_UNAVAILABLE_NOTICE_ID,
+} from '../../src/renderer/components/project/ProjectHeader';
 import { useTerminals } from '../../src/renderer/terminals-data';
 import { notify } from '../../src/renderer/notify';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
@@ -1443,5 +1446,34 @@ describe('pasta do projeto indisponível', () => {
     expect(await screen.findByRole('button', { name: 'Abrir terminal' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Nova missão' })).toBeEnabled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('projeto sem Git', () => {
+  it('mostra o aviso com git init e deixa Nova missão desabilitado', async () => {
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: 'p1',
+          name: 'app',
+          path: 'C:\\Projetos\\app',
+          repositoryKind: 'none',
+          available: true,
+        },
+      ],
+    });
+    renderAt();
+
+    const notice = await screen.findByText(/git init/);
+    expect(notice).toHaveAttribute('id', PROJECT_NO_GIT_NOTICE_ID);
+    expect(screen.getByRole('button', { name: 'Nova missão' })).toBeDisabled();
+  });
+
+  it('com Git, não há aviso e Nova missão segue habilitado', async () => {
+    renderAt();
+
+    expect(await screen.findByRole('button', { name: 'Nova missão' })).toBeEnabled();
+    expect(document.getElementById(PROJECT_NO_GIT_NOTICE_ID)).toBeNull();
   });
 });
