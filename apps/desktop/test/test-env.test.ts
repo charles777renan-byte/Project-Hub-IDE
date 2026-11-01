@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applicationEnvironment,
+  startsHidden,
   resolveAgentCommand,
   resolveDatabaseFile,
   resolveDirectoryChooser,
@@ -367,5 +368,33 @@ describe('comando da leitura dos limites nos testes (APP_LIMITS_SCRIPT)', () => 
 
     expect(env).toEqual({});
     expect(resolveLimitsCommand(env, real, '/app/electron')).toEqual(production);
+  });
+});
+
+describe('janela escondida nos testes (PROJECT_HUB_E2E_HIDDEN)', () => {
+  it('com PROJECT_HUB_ENV=test e PROJECT_HUB_E2E_HIDDEN=1, a janela não é mostrada', () => {
+    expect(startsHidden({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_E2E_HIDDEN: '1' })).toBe(true);
+  });
+
+  it('sem a variável ou com outro valor, a janela é mostrada', () => {
+    expect(startsHidden({ PROJECT_HUB_ENV: 'test' })).toBe(false);
+    expect(startsHidden({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_E2E_HIDDEN: '' })).toBe(false);
+    expect(startsHidden({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_E2E_HIDDEN: '0' })).toBe(false);
+    expect(startsHidden({})).toBe(false);
+  });
+
+  it('fora do ambiente de teste, a variável sozinha não esconde a janela', () => {
+    expect(startsHidden({ PROJECT_HUB_E2E_HIDDEN: '1' })).toBe(false);
+    expect(startsHidden({ PROJECT_HUB_ENV: 'producao', PROJECT_HUB_E2E_HIDDEN: '1' })).toBe(false);
+  });
+
+  it('empacotado, a variável some junto com PROJECT_HUB_ENV (R193) e a janela é mostrada', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', PROJECT_HUB_E2E_HIDDEN: '1' },
+      true,
+    );
+
+    expect(env).toEqual({});
+    expect(startsHidden(env)).toBe(false);
   });
 });

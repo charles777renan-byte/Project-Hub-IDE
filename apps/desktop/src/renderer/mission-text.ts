@@ -219,6 +219,9 @@ export const DECISION_TEXT = {
   answerPromptFallback: 'O agente aguarda a sua resposta.',
   sendAnswer: 'Enviar resposta',
   feedbackLabel: 'O que ajustar',
+  /** A barra que aparece no alto quando o bloco "Sua decisão" rola para trás do cabeçalho. */
+  barLabel: 'Decisão pendente',
+  showDecision: 'Ver decisão',
   /** Anúncio para o leitor de tela quando uma decisão chega: um item por decisão pendente. */
   announce: {
     approval: (title: string) => `Aguardando você: aprovação, ${title}.`,
@@ -513,7 +516,8 @@ export const MISSION_FORM_TEXT = {
   title: { label: 'Título', placeholder: 'Título (opcional: sai da primeira linha do objetivo)' },
   objective: {
     label: 'Objetivo',
-    placeholder: 'O que o agente deve fazer? Ex.: aceitar login com a conta Google além de e-mail e senha.',
+    placeholder:
+      'O que o agente deve fazer? Ex.: aceitar login com a conta Google além de e-mail e senha.',
   },
   criteria: {
     label: 'Pronto quando',

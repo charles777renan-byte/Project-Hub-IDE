@@ -11,6 +11,7 @@ import { ConversationPanel } from '../components/ConversationPanel';
 import { PlanPanel } from '../components/PlanPanel';
 import { ChangedFiles } from '../components/mission/ChangedFiles';
 import { DecisionBlock } from '../components/mission/DecisionBlock';
+import { revealDecision } from '../components/mission/decision-visibility';
 import { MissionBottomPanel, type MissionTab } from '../components/mission/MissionBottomPanel';
 import { TokenUsage } from '../components/mission/TokenUsage';
 import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
@@ -83,8 +84,9 @@ export function MissionPage({ missionId }: { missionId: string }) {
 
 /**
  * Workspace de uma missão (seção 10.7, R168), no formato do protótipo: o cabeçalho (título, objetivo,
- * situação e Mais ações) e o bloco "Sua decisão" ficam fixos no alto do corpo, num grupo só
- * (`mission-top`); o quadro do orquestrador com a tabela de tarefas rolam por baixo dele; embaixo, o
+ * situação e Mais ações) fica fixo no alto do corpo (`mission-top`); abaixo dele, no fluxo, vêm o bloco
+ * "Sua decisão" (com uma barra compacta no alto quando ele rola para trás do cabeçalho), o quadro do
+ * orquestrador e a tabela de tarefas; embaixo, o
  * painel redimensionável com as abas Atividade (com o filtro Técnico, os Logs), Alterações (os arquivos
  * alterados e o diff) e Testes, cada uma com a própria rolagem. A visão vem do processo principal e é buscada de novo a cada ação e a cada
  * evento da missão (R165). Uma resposta antiga, que chega depois de uma mais nova, não substitui a tela.
@@ -222,6 +224,13 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
    * efeito acima. Uma vez por missão aberta, não a cada recarga.
    */
   const scrolledToDecision = useRef(false);
+  /** O encaixe da barra de decisão, no grupo fixo do alto do corpo. */
+  const barSlotRef = useRef<HTMLDivElement | null>(null);
+  const [barSlot, setBarSlot] = useState<HTMLDivElement | null>(null);
+  const setBarSlotNode = useCallback((node: HTMLDivElement | null) => {
+    barSlotRef.current = node;
+    setBarSlot(node);
+  }, []);
   useEffect(() => {
     if (decisionStatus === undefined || scrolledToDecision.current) return;
     scrolledToDecision.current = true;
@@ -231,6 +240,9 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     if (block !== null && typeof block.scrollIntoView === 'function') {
       block.scrollIntoView({ block: 'nearest' });
     }
+    // O cabeçalho fixo cobre o alto do corpo, e o navegador não o conta: se o topo do bloco ficou por baixo
+    // dele, desce o bloco até a borda do cabeçalho.
+    if (block !== null) revealDecision(block, barSlotRef.current);
   }, [decisionStatus]);
 
   /** Toda ação nova apaga a falha da anterior, esteja ela no bloco ou no cabeçalho. */
@@ -386,68 +398,75 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const main = (
     <>
       {/*
-        O cabeçalho, as falhas dele e "Sua decisão" formam um grupo fixo no alto do corpo (`mission-top`):
-        ao rolar, o cabeçalho continua à vista e o bloco fica logo abaixo dele. Num grupo só porque o CSS não
-        sabe a altura do cabeçalho, que muda com o título, o objetivo e a largura da janela.
+        O cabeçalho e as falhas dele formam um grupo fixo no alto do corpo (`mission-top`): ao rolar, o
+        cabeçalho continua à vista. Num grupo só porque o CSS não sabe a altura do cabeçalho, que muda com o
+        título, o objetivo e a largura da janela. No fim do grupo fica o encaixe da barra de decisão, vazio
+        até o bloco "Sua decisão" rolar para trás do cabeçalho.
       */}
       <div className="mission-top">
-        <MissionSummary
-          mission={mission}
-          project={project}
-          controlBusy={controlBusy}
-          onPause={() => void runHeaderControl(() => window.projectHub.missions.pause(missionId))}
-          onCancel={() => void runHeaderControl(() => window.projectHub.missions.cancel(missionId))}
-          onDelete={() => void removeMission(project.id)}
-        />
-        {headerError === null ? null : (
-          <p role="alert" className="page-alert">
-            {headerError}
-          </p>
-        )}
-        {reloadError === null ? null : (
-          <p role="alert" className="page-alert">
-            {reloadError}
-          </p>
-        )}
-        {/*
-          "Sua decisão", logo abaixo do cabeçalho e das falhas dele. O invólucro é o mesmo com ou sem
-          decisão: só a classe muda, e o bloco dentro dele nunca é remontado (a região de anúncio precisa
-          existir antes de a decisão chegar). Com decisão, ele fica à vista (`mission-decision`). Sem
-          decisão, `visually-hidden` o tira da tela e do fluxo, e o leitor de tela segue ouvindo a região
-          de anúncio.
-        */}
-        <div
-          className={decisionShown ? 'mission-decision' : 'visually-hidden'}
-          data-decision={decisionShown ? 'pending' : 'idle'}
-        >
-          <DecisionBlock
-            view={state.view}
-            busy={busy}
-            planning={planning}
+        <div className="mission-top__body">
+          <MissionSummary
+            mission={mission}
+            project={project}
             controlBusy={controlBusy}
-            error={actionError ?? undefined}
-            onGeneratePlan={() => void runPlan()}
-            onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
-            onRequestNewPlan={(instruction) => void runPlan(instruction)}
-            onStart={() => void runStart()}
-            onResume={() => void runResume()}
-            onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
-            onDecide={(approvalId, decision) =>
-              void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+            onPause={() => void runHeaderControl(() => window.projectHub.missions.pause(missionId))}
+            onCancel={() =>
+              void runHeaderControl(() => window.projectHub.missions.cancel(missionId))
             }
-            onAnswer={(text) =>
-              run(() => window.projectHub.missions.provideInput({ missionId, text }))
-            }
-            onApproveReview={() =>
-              void run(() => window.projectHub.missions.approveReview(missionId))
-            }
-            onRequestChanges={(text) =>
-              run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
-            }
-            decisionRef={decisionRef}
-            answerRef={answerRef}
+            onDelete={() => void removeMission(project.id)}
           />
+          {headerError === null ? null : (
+            <p role="alert" className="page-alert">
+              {headerError}
+            </p>
+          )}
+          {reloadError === null ? null : (
+            <p role="alert" className="page-alert">
+              {reloadError}
+            </p>
+          )}
         </div>
+        <div className="decision-bar-slot" ref={setBarSlotNode} />
+      </div>
+      {/*
+        "Sua decisão", no fluxo do corpo, inteiro e sem rolagem própria, logo depois do grupo fixo. O
+        invólucro é o mesmo com ou sem decisão: só a classe muda, e o bloco dentro dele nunca é remontado
+        (a região de anúncio precisa existir antes de a decisão chegar). Com decisão, ele fica à vista
+        (`mission-decision`). Sem decisão, `visually-hidden` o tira da tela e do fluxo, e o leitor de tela
+        segue ouvindo a região de anúncio.
+      */}
+      <div
+        className={decisionShown ? 'mission-decision' : 'visually-hidden'}
+        data-decision={decisionShown ? 'pending' : 'idle'}
+      >
+        <DecisionBlock
+          view={state.view}
+          busy={busy}
+          planning={planning}
+          controlBusy={controlBusy}
+          error={actionError ?? undefined}
+          onGeneratePlan={() => void runPlan()}
+          onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
+          onRequestNewPlan={(instruction) => void runPlan(instruction)}
+          onStart={() => void runStart()}
+          onResume={() => void runResume()}
+          onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
+          onDecide={(approvalId, decision) =>
+            void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+          }
+          onAnswer={(text) =>
+            run(() => window.projectHub.missions.provideInput({ missionId, text }))
+          }
+          onApproveReview={() =>
+            void run(() => window.projectHub.missions.approveReview(missionId))
+          }
+          onRequestChanges={(text) =>
+            run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
+          }
+          decisionRef={decisionRef}
+          answerRef={answerRef}
+          barSlot={decisionShown ? barSlot : null}
+        />
       </div>
       <PlanPanel
         mission={mission}
