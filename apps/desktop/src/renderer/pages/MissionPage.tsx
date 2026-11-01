@@ -15,9 +15,7 @@ import { MissionBottomPanel, type MissionTab } from '../components/mission/Missi
 import { TokenUsage } from '../components/mission/TokenUsage';
 import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
 import { DiffPanel, type DiffSummary } from '../components/workspace/DiffPanel';
-import { LogsPanel } from '../components/workspace/LogsPanel';
 import { MissionSummary } from '../components/workspace/MissionSummary';
-import { MissionTerminal } from '../components/workspace/MissionTerminal';
 import { TestsPanel } from '../components/workspace/TestsPanel';
 import { needsDecision, primaryActionOf, verifiedCriteria } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
@@ -51,6 +49,30 @@ type ViewState =
   | { status: 'error'; message: string };
 
 /**
+ * Quando o bloco "Sua decisão" aparece, fixo no topo da missão: a situação espera algo da pessoa (uma ação
+ * principal, ou a aprovação, a resposta ou a revisão). Em execução, e concluída sem resumo, nada espera a
+ * pessoa e o bloco se recolhe: continua montado, só sem ocupar a tela.
+ *
+ * EXCEÇÃO ao desenho (D3 e A2: "some quando não há decisão pendente"), a confirmar com a pessoa: a missão
+ * concluída com resumo (`succeeded` com `conclusion`) mantém o bloco à vista, e fixo como os outros, mesmo
+ * sem decisão. O resumo da conclusão (a frase final do agente, o próximo passo do Git, os testes e os
+ * critérios) só existe dentro do bloco, e recolhê-lo apagaria da tela um conteúdo que a missão já mostrava.
+ * O custo é um bloco fixo, de até 40% da janela, numa missão já encerrada. Para seguir o desenho à risca,
+ * basta tirar o último termo da condição abaixo, e o resumo precisa ganhar outro lugar na tela (a aba
+ * Atividade, por exemplo).
+ */
+function showsDecision(
+  status: MissionViewDto['mission']['status'],
+  hasConclusion: boolean,
+): boolean {
+  return (
+    needsDecision(status) ||
+    primaryActionOf(status) !== undefined ||
+    (status === 'succeeded' && hasConclusion)
+  );
+}
+
+/**
  * A missão aberta no centro da aba do projeto (`/workspaces/:projectId/missoes/:missionId`). O workspace é
  * remontado a cada missão (a chave é o `missionId`), para a aba aberta, o resumo do Diff, o pedido de foco
  * e a visão carregada não passarem de uma missão para a outra.
@@ -61,18 +83,22 @@ export function MissionPage({ missionId }: { missionId: string }) {
 
 /**
  * Workspace de uma missão (seção 10.7, R168), no formato do protótipo: o cabeçalho (título, objetivo,
- * situação e Mais ações), o quadro do orquestrador com a tabela de tarefas, os arquivos alterados e o
- * bloco "Sua decisão" rolam em cima; embaixo, o painel redimensionável com as abas Conversa, Diff,
- * Testes, Terminal e Logs, cada uma com a própria rolagem. A visão vem do processo principal e é buscada
- * de novo a cada ação e a cada evento da missão (R165). Uma resposta antiga, que chega depois de uma mais
- * nova, não substitui a tela.
+ * situação e Mais ações) e o bloco "Sua decisão" ficam fixos no alto do corpo, num grupo só
+ * (`mission-top`); o quadro do orquestrador com a tabela de tarefas rolam por baixo dele; embaixo, o
+ * painel redimensionável com as abas Atividade (com o filtro Técnico, os Logs), Alterações (os arquivos
+ * alterados e o diff) e Testes, cada uma com a própria rolagem. A visão vem do processo principal e é buscada de novo a cada ação e a cada
+ * evento da missão (R165). Uma resposta antiga, que chega depois de uma mais nova, não substitui a tela.
  *
- * As decisões (aprovações, resposta ao agente e revisão) moram no bloco "Sua decisão", no corpo, visível
- * em qualquer aba do painel inferior; a Conversa tem só a história. Os painéis das abas ficam montados o
- * tempo todo (os de fora ficam escondidos). Quando a missão espera a decisão (R182), o foco vai para o
- * bloco (ou para a caixa de resposta), mas só quando a pessoa não está trabalhando em outra aba do
- * painel: aí nada troca e nada toma o foco (ela pode estar digitando no terminal), e a região de anúncio
- * do bloco avisa o leitor de tela.
+ * As decisões (aprovações, resposta ao agente e revisão) moram no bloco "Sua decisão", logo abaixo do
+ * cabeçalho e dos avisos dele, visível em qualquer aba do painel inferior; a Conversa tem só a história.
+ * O bloco só aparece com uma decisão pendente (`showsDecision`). Sem ela, o invólucro se recolhe e o
+ * bloco segue montado, porque a região de anúncio dele precisa existir antes da decisão chegar. O
+ * cabeçalho, os avisos e o invólucro dividem o grupo fixo porque o CSS não sabe a altura do cabeçalho (ela
+ * muda com o título, o objetivo e a largura): no grupo, o bloco fica sempre logo abaixo dele. Os painéis
+ * das abas ficam montados o tempo todo (os de fora ficam escondidos). Quando a missão espera a decisão
+ * (R182), o foco vai para o bloco (ou para a caixa de resposta), mas só quando a pessoa não está
+ * trabalhando em outra aba do painel: aí nada troca e nada toma o foco (ela pode estar digitando no
+ * terminal), e a região de anúncio do bloco avisa o leitor de tela.
  */
 function MissionWorkspace({ missionId }: { missionId: string }) {
   const navigate = useNavigate();
@@ -353,29 +379,76 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     );
   }
 
-  const { mission, project, events, steps, executions } = state.view;
+  const { mission, project, events, steps, executions, conclusion } = state.view;
   const hasWorktree = mission.worktreePath !== undefined;
+  const decisionShown = showsDecision(mission.status, conclusion !== undefined);
 
   const main = (
     <>
-      <MissionSummary
-        mission={mission}
-        project={project}
-        controlBusy={controlBusy}
-        onPause={() => void runHeaderControl(() => window.projectHub.missions.pause(missionId))}
-        onCancel={() => void runHeaderControl(() => window.projectHub.missions.cancel(missionId))}
-        onDelete={() => void removeMission(project.id)}
-      />
-      {headerError === null ? null : (
-        <p role="alert" className="page-alert">
-          {headerError}
-        </p>
-      )}
-      {reloadError === null ? null : (
-        <p role="alert" className="page-alert">
-          {reloadError}
-        </p>
-      )}
+      {/*
+        O cabeçalho, as falhas dele e "Sua decisão" formam um grupo fixo no alto do corpo (`mission-top`):
+        ao rolar, o cabeçalho continua à vista e o bloco fica logo abaixo dele. Num grupo só porque o CSS não
+        sabe a altura do cabeçalho, que muda com o título, o objetivo e a largura da janela.
+      */}
+      <div className="mission-top">
+        <MissionSummary
+          mission={mission}
+          project={project}
+          controlBusy={controlBusy}
+          onPause={() => void runHeaderControl(() => window.projectHub.missions.pause(missionId))}
+          onCancel={() => void runHeaderControl(() => window.projectHub.missions.cancel(missionId))}
+          onDelete={() => void removeMission(project.id)}
+        />
+        {headerError === null ? null : (
+          <p role="alert" className="page-alert">
+            {headerError}
+          </p>
+        )}
+        {reloadError === null ? null : (
+          <p role="alert" className="page-alert">
+            {reloadError}
+          </p>
+        )}
+        {/*
+          "Sua decisão", logo abaixo do cabeçalho e das falhas dele. O invólucro é o mesmo com ou sem
+          decisão: só a classe muda, e o bloco dentro dele nunca é remontado (a região de anúncio precisa
+          existir antes de a decisão chegar). Com decisão, ele fica à vista (`mission-decision`). Sem
+          decisão, `visually-hidden` o tira da tela e do fluxo, e o leitor de tela segue ouvindo a região
+          de anúncio.
+        */}
+        <div
+          className={decisionShown ? 'mission-decision' : 'visually-hidden'}
+          data-decision={decisionShown ? 'pending' : 'idle'}
+        >
+          <DecisionBlock
+            view={state.view}
+            busy={busy}
+            planning={planning}
+            controlBusy={controlBusy}
+            error={actionError ?? undefined}
+            onGeneratePlan={() => void runPlan()}
+            onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
+            onRequestNewPlan={(instruction) => void runPlan(instruction)}
+            onStart={() => void runStart()}
+            onResume={() => void runResume()}
+            onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
+            onDecide={(approvalId, decision) =>
+              void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
+            }
+            onAnswer={(text) =>
+              run(() => window.projectHub.missions.provideInput({ missionId, text }))
+            }
+            onApproveReview={() =>
+              void run(() => window.projectHub.missions.approveReview(missionId))
+            }
+            onRequestChanges={(text) =>
+              run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
+            }
+            decisionRef={decisionRef}
+            answerRef={answerRef}
+          />
+        </div>
+      </div>
       <PlanPanel
         mission={mission}
         steps={steps}
@@ -385,30 +458,6 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         onEditStep={(stepId, edit) => void runEditStep(stepId, edit)}
       />
       <TokenUsage executions={executions} steps={steps} />
-      <ChangedFiles missionId={missionId} hasWorktree={hasWorktree} refreshKey={events.length} />
-      <DecisionBlock
-        view={state.view}
-        busy={busy}
-        planning={planning}
-        controlBusy={controlBusy}
-        error={actionError ?? undefined}
-        onGeneratePlan={() => void runPlan()}
-        onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
-        onRequestNewPlan={(instruction) => void runPlan(instruction)}
-        onStart={() => void runStart()}
-        onResume={() => void runResume()}
-        onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
-        onDecide={(approvalId, decision) =>
-          void run(() => window.projectHub.approvals.decide({ approvalId, decision }))
-        }
-        onAnswer={(text) => run(() => window.projectHub.missions.provideInput({ missionId, text }))}
-        onApproveReview={() => void run(() => window.projectHub.missions.approveReview(missionId))}
-        onRequestChanges={(text) =>
-          run(() => window.projectHub.missions.requestChanges({ missionId, feedback: text }))
-        }
-        decisionRef={decisionRef}
-        answerRef={answerRef}
-      />
     </>
   );
 
@@ -418,9 +467,9 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
         main={main}
         tab={tab}
         onTabChange={setTab}
-        steps={steps}
         diff={diffSummary}
         events={events}
+        changedFiles={<ChangedFiles hasWorktree={hasWorktree} summary={diffSummary} />}
         panels={{
           conversation: <ConversationPanel view={state.view} />,
           diff: (
@@ -440,8 +489,6 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
               />
             </>
           ),
-          terminal: <MissionTerminal missionId={missionId} events={events} />,
-          logs: <LogsPanel events={events} />,
         }}
       />
     </div>

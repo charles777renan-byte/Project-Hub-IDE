@@ -107,7 +107,7 @@ describe('TaskTimeline', () => {
     expect(within(second).getByText('15 min')).toBeInTheDocument();
 
     const third = rows[2] as HTMLElement;
-    expect(within(third).getByRole('img', { name: 'Em andamento' })).toBeInTheDocument();
+    expect(within(third).getByRole('img', { name: 'Em execução' })).toBeInTheDocument();
     expect(within(third).getByText('Frontend · Claude')).toBeInTheDocument();
     expect(within(third).getByText('15 min…')).toBeInTheDocument();
 

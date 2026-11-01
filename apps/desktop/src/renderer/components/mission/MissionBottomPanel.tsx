@@ -3,9 +3,15 @@ import { Group, Panel, Separator, type Layout } from 'react-resizable-panels';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { missionTabCounts } from '../../mission-text';
 import { Tabs, type TabCount, type TabItem } from '../Tabs';
+import { LogsPanel } from '../workspace/LogsPanel';
 
-/** As abas do painel inferior da missão, na ordem em que aparecem. A Atividade é a aba de abertura. */
-export type MissionTab = 'conversation' | 'diff' | 'tests' | 'terminal' | 'logs';
+/**
+ * As abas do painel inferior da missão, na ordem em que aparecem: Atividade (`conversation`), Alterações
+ * (`diff`) e Testes (`tests`). Os ids são os de sempre; só os rótulos mudaram. A Atividade é a aba de abertura.
+ */
+export type MissionTab = 'conversation' | 'diff' | 'tests';
+
+const MISSION_TABS: readonly MissionTab[] = ['conversation', 'diff', 'tests'];
 
 const STORAGE_KEY = 'project-hub:mission-dock-layout';
 const MAIN_ID = 'mission-main';
@@ -40,7 +46,7 @@ export function saveDockLayout(layout: Layout) {
 }
 
 /**
- * As abas com a contagem de cada uma, quando ela diz algo: arquivos alterados no Diff e testes que
+ * As abas com a contagem de cada uma, quando ela diz algo: arquivos alterados em Alterações e testes que
  * passaram em Testes (`missionTabCounts`). A classe `tab--<id>` é só um gancho, sem cor.
  */
 function dockTabs(counts: ReturnType<typeof missionTabCounts>): TabItem<MissionTab>[] {
@@ -48,10 +54,8 @@ function dockTabs(counts: ReturnType<typeof missionTabCounts>): TabItem<MissionT
     count === undefined ? item : { ...item, count };
   return [
     { id: 'conversation', label: 'Atividade' },
-    withCount({ id: 'diff', label: 'Diff' }, counts.diff),
+    withCount({ id: 'diff', label: 'Alterações' }, counts.diff),
     withCount({ id: 'tests', label: 'Testes' }, counts.tests),
-    { id: 'terminal', label: 'Terminal' },
-    { id: 'logs', label: 'Logs' },
   ];
 }
 
@@ -86,29 +90,34 @@ function TabPanel({
 }
 
 /**
- * O corpo da missão como numa IDE: em cima o `main` (o quadro, as tarefas, os arquivos e a decisão, que
- * rolam sozinhos) e, embaixo, o painel redimensionável com as abas Atividade, Diff, Testes, Terminal e
- * Logs. A divisória se move com o mouse e com as setas (o foco vai nela com Tab), e a altura escolhida
- * fica guardada no `localStorage` (com `try/catch`). Os painéis das abas ficam montados o tempo todo.
+ * O corpo da missão como numa IDE: em cima o `main` (o quadro, as tarefas e a decisão, que rolam sozinhos)
+ * e, embaixo, o painel redimensionável com as abas Atividade, Alterações e Testes. A divisória se move com
+ * o mouse e com as setas (o foco vai nela com Tab), e a altura escolhida fica guardada no `localStorage`
+ * (com `try/catch`). Os painéis das abas ficam montados o tempo todo.
+ *
+ * Os arquivos alterados (`changedFiles`) abrem a aba Alterações, acima do diff. Os Logs não são uma aba: o
+ * filtro "Técnico" da Atividade troca a conversa pelo registro completo dos eventos. Uma aba que não existe
+ * (um valor antigo, como `terminal`) abre a Atividade.
  */
 export function MissionBottomPanel({
   main,
   tab,
   onTabChange,
-  steps,
   diff,
   events,
+  changedFiles,
   panels,
 }: {
   main: ReactNode;
   tab: MissionTab;
   onTabChange: (tab: MissionTab) => void;
-  steps: MissionViewDto['steps'];
   diff: { count: number; truncated: boolean } | undefined;
   events: MissionViewDto['events'];
+  changedFiles: ReactNode;
   panels: Record<MissionTab, ReactNode>;
 }) {
-  const ids = ['conversation', 'diff', 'tests', 'terminal', 'logs'] as const;
+  const active = MISSION_TABS.includes(tab) ? tab : 'conversation';
+  const [technical, setTechnical] = useState(false);
   // A altura guardada só vale na abertura (o grupo a usa como inicial): ler a cada render seria à toa.
   const [initialLayout] = useState(readDockLayout);
   return (
@@ -131,16 +140,38 @@ export function MissionBottomPanel({
         <div className="mission-dock">
           <Tabs
             label="Abas da missão"
-            tabs={dockTabs(missionTabCounts({ steps, diff, events }))}
-            active={tab}
+            tabs={dockTabs(missionTabCounts({ diff, events }))}
+            active={active}
             onChange={onTabChange}
             panelId={tabPanelId}
           />
-          {ids.map((id) => (
-            <TabPanel key={id} id={id} active={tab}>
-              {panels[id]}
-            </TabPanel>
-          ))}
+          <TabPanel id="conversation" active={active}>
+            <div
+              role="group"
+              aria-label="Filtro da Atividade"
+              className="mission-dock__filters filter-chips"
+            >
+              <button
+                type="button"
+                className="filter-chip"
+                aria-pressed={technical}
+                onClick={() => setTechnical((current) => !current)}
+              >
+                Técnico
+              </button>
+            </div>
+            <div hidden={technical}>{panels.conversation}</div>
+            <div hidden={!technical}>
+              <LogsPanel events={events} />
+            </div>
+          </TabPanel>
+          <TabPanel id="diff" active={active}>
+            {changedFiles}
+            {panels.diff}
+          </TabPanel>
+          <TabPanel id="tests" active={active}>
+            {panels.tests}
+          </TabPanel>
         </div>
       </Panel>
     </Group>

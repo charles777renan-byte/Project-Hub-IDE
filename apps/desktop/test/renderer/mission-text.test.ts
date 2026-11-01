@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Icons from '../../src/renderer/components/Icon';
-import type { MissionEventDto } from '@project-hub/contracts';
+import { MISSION_STATUS_VALUES, type MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
   decisionAnnouncement,
@@ -12,7 +12,9 @@ import {
   primaryActionOf,
   ROLE_DESCRIPTIONS,
   roleLabel,
+  statusFamily,
   statusIcon,
+  statusLabel,
   statusTone,
   stepStatus,
   verificationOutcome,
@@ -23,8 +25,7 @@ import {
 
 /**
  * Cada estado mantém o seu sentido na cor, igual ao da marca de estado (●◐✓✕○) na barra lateral: lima roda
- * ou concluiu, amarelo (warn) aguarda, vermelho falhou, laranja pausou (aparência neutra), e o resto fica
- * neutro (muted).
+ * ou concluiu, amarelo (warn) aguarda, vermelho falhou, e a pausa e o resto ficam neutros (muted).
  */
 describe('tom dos estados da missão', () => {
   const expected: Record<MissionStatus, ReturnType<typeof statusTone>> = {
@@ -34,7 +35,7 @@ describe('tom dos estados da missão', () => {
     running: 'lime',
     waiting_approval: 'warn',
     waiting_input: 'warn',
-    paused: 'orange',
+    paused: 'muted',
     review: 'warn',
     succeeded: 'lime',
     failed: 'red',
@@ -43,6 +44,64 @@ describe('tom dos estados da missão', () => {
 
   it.each(Object.entries(expected) as [MissionStatus, string][])('%s é %s', (status, tone) => {
     expect(statusTone(status)).toBe(tone);
+  });
+});
+
+/**
+ * O vocabulário da missão (A6): onze rótulos, um por estado do domínio, e a família de cada um. A cor
+ * sai da família: espera da pessoa em âmbar (warn), execução em lima, falha em vermelho, rascunho e
+ * pausa em neutro. "Planejando" não é estado: é só o indicador transitório do plano.
+ */
+describe('vocabulário dos estados da missão', () => {
+  const expected: Record<MissionStatus, { label: string; family: string }> = {
+    draft: { label: 'Rascunho', family: 'neutral' },
+    planned: { label: 'Aguarda aprovação do plano', family: 'waiting' },
+    queued: { label: 'Plano aprovado, aguardando início', family: 'waiting' },
+    running: { label: 'Em execução', family: 'running' },
+    waiting_approval: { label: 'Aguarda sua aprovação', family: 'waiting' },
+    waiting_input: { label: 'Aguarda sua resposta', family: 'waiting' },
+    paused: { label: 'Pausada', family: 'neutral' },
+    review: { label: 'Aguarda sua revisão', family: 'waiting' },
+    succeeded: { label: 'Concluída', family: 'done' },
+    failed: { label: 'Falhou', family: 'failed' },
+    cancelled: { label: 'Cancelada', family: 'neutral' },
+  };
+
+  it('há um rótulo para cada um dos onze estados do domínio, e todos são diferentes', () => {
+    expect(MISSION_STATUS_VALUES).toHaveLength(11);
+    const labels = MISSION_STATUS_VALUES.map((status) => statusLabel(status));
+    expect(new Set(labels).size).toBe(11);
+    expect(Object.keys(expected).sort()).toEqual([...MISSION_STATUS_VALUES].sort());
+  });
+
+  it.each(Object.entries(expected) as [MissionStatus, { label: string; family: string }][])(
+    '%s tem o rótulo e a família certos',
+    (status, { label, family }) => {
+      expect(statusLabel(status)).toBe(label);
+      expect(statusFamily(status)).toBe(family);
+    },
+  );
+
+  it('a cor segue a família: espera em warn, execução e conclusão em lima, falha em red, resto em muted', () => {
+    const toneOf = (family: string) => {
+      const tones = new Set(
+        MISSION_STATUS_VALUES.filter((status) => statusFamily(status) === family).map((status) =>
+          statusTone(status),
+        ),
+      );
+      return [...tones];
+    };
+    expect(toneOf('waiting')).toEqual(['warn']);
+    expect(toneOf('running')).toEqual(['lime']);
+    expect(toneOf('done')).toEqual(['lime']);
+    expect(toneOf('failed')).toEqual(['red']);
+    expect(toneOf('neutral')).toEqual(['muted']);
+  });
+
+  it('a aprovação do plano e a aprovação de uma ação protegida têm rótulos distintos', () => {
+    expect(statusLabel('planned')).toBe('Aguarda aprovação do plano');
+    expect(statusLabel('waiting_approval')).toBe('Aguarda sua aprovação');
+    expect(statusLabel('planned')).not.toBe(statusLabel('waiting_approval'));
   });
 });
 
@@ -87,6 +146,19 @@ describe('resultado de uma verificação', () => {
     expect(verificationOutcome({ passed: 3, failed: 0 })).toBe('passed');
     expect(verificationOutcome({ passed: 3, failed: 1 })).toBe('failed');
     expect(verificationOutcome({ passed: 0, failed: 2 })).toBe('failed');
+  });
+});
+
+describe('rótulo dos estados das etapas', () => {
+  it.each([
+    ['pending', 'Pendente'],
+    ['running', 'Em execução'],
+    ['blocked', 'Bloqueada'],
+    ['succeeded', 'Concluída'],
+    ['failed', 'Falhou'],
+    ['skipped', 'Ignorada'],
+  ] as const)('%s tem o rótulo %s', (status, label) => {
+    expect(stepStatus(status).label).toBe(label);
   });
 });
 
@@ -191,36 +263,19 @@ describe('worktreeName', () => {
 });
 
 describe('missionTabCounts', () => {
-  const step = (id: string) => ({
-    id,
-    position: 1,
-    title: id,
-    status: 'pending' as const,
-    agent: 'claude-code' as const,
-  });
   const run = (passed: number, failed: number) =>
     event({
       eventType: 'verification.completed',
       payload: { command: 'pnpm test', passed, failed, durationMs: 10 },
     });
 
-  it('sem plano, sem diff e sem verificação, nenhuma aba tem contagem', () => {
-    expect(missionTabCounts({ steps: [], diff: undefined, events: [] })).toEqual({});
+  it('sem diff e sem verificação, nenhuma aba tem contagem', () => {
+    expect(missionTabCounts({ diff: undefined, events: [] })).toEqual({});
   });
 
-  it('Plano conta as etapas, no singular e no plural', () => {
-    expect(missionTabCounts({ steps: [step('a')], diff: undefined, events: [] }).plan).toEqual({
-      value: '1',
-      label: '1 etapa',
-    });
-    expect(
-      missionTabCounts({ steps: [step('a'), step('b')], diff: undefined, events: [] }).plan,
-    ).toEqual({ value: '2', label: '2 etapas' });
-  });
-
-  it('Diff conta os arquivos só quando há algum, e marca a lista cortada com +', () => {
+  it('Alterações conta os arquivos só quando há algum, e marca a lista cortada com +', () => {
     const counts = (count: number, truncated: boolean) =>
-      missionTabCounts({ steps: [], diff: { count, truncated }, events: [] }).diff;
+      missionTabCounts({ diff: { count, truncated }, events: [] }).diff;
     expect(counts(0, false)).toBeUndefined();
     expect(counts(1, false)).toEqual({ value: '1', label: '1 arquivo alterado' });
     expect(counts(4, false)).toEqual({ value: '4', label: '4 arquivos alterados' });
@@ -229,7 +284,7 @@ describe('missionTabCounts', () => {
 
   it('Testes mostra passaram/total só quando a verificação contou testes', () => {
     const tests = (events: MissionEventDto[]) =>
-      missionTabCounts({ steps: [], diff: undefined, events }).tests;
+      missionTabCounts({ diff: undefined, events }).tests;
     expect(tests([])).toBeUndefined();
     expect(tests([run(0, 0)])).toBeUndefined();
     expect(tests([run(12, 2)])).toEqual({ value: '12/14', label: '12 de 14 testes passaram' });
@@ -262,7 +317,9 @@ describe('conversationEvents', () => {
       types.map((eventType, index) => event({ id: eventType, eventType, sequence: index })),
     ).map((item) => item.eventType);
 
-    expect(kept).toEqual(types.slice(0, 11));
+    // A mudança de situação sai da Conversa: o chip do cabeçalho é o único lugar que mostra a situação.
+    expect(kept).not.toContain('mission.status_changed');
+    expect(kept).toEqual(types.slice(0, 11).filter((type) => type !== 'mission.status_changed'));
   });
 });
 

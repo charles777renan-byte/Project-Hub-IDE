@@ -1,14 +1,16 @@
+import { useState } from 'react';
 import type { MissionDto, MissionStepDto, PlanEditInput } from '@project-hub/contracts';
-import { PLAN_TEXT } from '../mission-text';
+import { PLAN_TEXT, agentLabel } from '../mission-text';
 import { OrchestratorBoard } from './OrchestratorBoard';
-import { PlanStepRow } from './PlanStepRow';
+import { StepList } from './mission/StepList';
 
 /**
- * O plano no centro da missão (seção 10.7, RF-MIS-003): o quadro do orquestrador (quando há tarefas com
- * papel, só leitura) e a tabela de tarefas (TAREFA, AGENTE, STATUS). Com a missão planejada, a pessoa
- * edita as tarefas (renomear, mover, remover e trocar o programa). Fora desse estado a tabela é só
- * leitura. Orquestrar, aprovar e pedir outro plano ficam no bloco "Sua decisão". Enquanto o plano não
- * é aprovado, nada muda no código.
+ * O plano no centro da missão (seção 10.7, RF-MIS-003). Enquanto o planejamento roda, mostra o quadro do
+ * orquestrador (só leitura), que diz o que o agente está fazendo, e a lista de etapas não aparece. Fora do
+ * planejamento, só a lista (o quadro não aparece), e a mensagem de plano vazio é dela. Com a missão
+ * planejada, a pessoa edita as tarefas pelo menu de cada linha (renomear, mover, remover); fora desse
+ * estado a lista é só leitura. Orquestrar, aprovar e pedir outro plano ficam no bloco "Sua decisão".
+ * Enquanto o plano não é aprovado, nada muda no código.
  */
 export function PlanPanel({
   mission,
@@ -31,6 +33,26 @@ export function PlanPanel({
   const editable = mission.status === 'planned';
   /** Uma regra só: com qualquer chamada em curso, planejar inclusive, nada do painel muda o plano. */
   const locked = busy || planning;
+  /** Tarefas com a descrição aberta: é só estado de tela, a descrição já vem com a tarefa. */
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const agents = [...new Set(steps.map((step) => agentLabel(step.agent)))];
+  const agentName = agents.length === 0 ? agentLabel('claude-code') : agents.join(', ');
+
+  function toggleDescription(stepId: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(stepId)) next.add(stepId);
+      return next;
+    });
+  }
+  function move(stepId: string, direction: 'up' | 'down') {
+    const step = steps.find((candidate) => candidate.id === stepId);
+    if (step === undefined) return;
+    onEditStep(stepId, {
+      op: 'move',
+      toPosition: direction === 'up' ? step.position - 1 : step.position + 1,
+    });
+  }
 
   return (
     <section aria-label="Plano da missão">
@@ -46,34 +68,20 @@ export function PlanPanel({
         </p>
       )}
 
-      <OrchestratorBoard steps={steps} />
-
-      {steps.length === 0 ? (
-        <p className="empty">{PLAN_TEXT.empty}</p>
+      {planning ? (
+        <OrchestratorBoard steps={steps} />
       ) : (
-        <table className="plan-table" aria-label={PLAN_TEXT.tableLabel}>
-          <thead>
-            <tr>
-              <th scope="col">{PLAN_TEXT.columns.task}</th>
-              <th scope="col">{PLAN_TEXT.columns.agent}</th>
-              <th scope="col">{PLAN_TEXT.columns.status}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {steps.map((step, index) => (
-              <PlanStepRow
-                key={step.id}
-                step={step}
-                steps={steps}
-                editable={editable}
-                busy={locked}
-                isFirst={index === 0}
-                isLast={index === steps.length - 1}
-                onEdit={(edit) => onEditStep(step.id, edit)}
-              />
-            ))}
-          </tbody>
-        </table>
+        <StepList
+          steps={steps}
+          agentName={agentName}
+          expandedIds={expanded}
+          editable={editable}
+          disabled={locked}
+          onRename={(stepId, edit) => onEditStep(stepId, { op: 'rename', ...edit })}
+          onMove={move}
+          onRemove={(stepId) => onEditStep(stepId, { op: 'remove' })}
+          onViewDescription={toggleDescription}
+        />
       )}
     </section>
   );

@@ -76,11 +76,13 @@ function createMission(page: Page): Promise<void> {
  */
 async function approvePlanAndStart(page: Page): Promise<void> {
   await orchestrate(page);
-  // A tabela das tarefas está no corpo da missão (o plano não é mais uma aba).
-  const table = page.getByRole('table', { name: 'Etapas do plano' });
-  await expect(table).toBeVisible();
-  // Um passo por critério de aceite: o critério da missão vira a tarefa da tabela.
-  await expect(table.getByRole('row', { name: new RegExp(MISSION.criterion) })).toBeVisible();
+  // A lista das etapas está no corpo da missão (o plano não é mais uma aba).
+  const steps = page.getByRole('list', { name: 'Etapas do plano' });
+  await expect(steps).toBeVisible();
+  // Um passo por critério de aceite: o critério da missão vira a tarefa da lista.
+  await expect(
+    steps.getByRole('listitem').filter({ hasText: new RegExp(MISSION.criterion) }),
+  ).toBeVisible();
   await decisionBlock(page).getByRole('button', { name: 'Aprovar plano' }).click();
 
   await expect(
@@ -189,7 +191,8 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
   await expect(
     missionSummary(page).getByText('Aguarda sua revisão', { exact: true }),
   ).toBeVisible();
-  await expect(timeline.getByText('Situação: Aguarda sua revisão.')).toBeVisible();
+  // A situação mora só no resumo da missão (checada acima): a linha do tempo não repete "Situação: ...".
+  await expect(timeline.getByText(/^Situação:/)).toHaveCount(0);
   await expect(decisionBlock(page).getByRole('region', { name: APPROVAL_TITLE })).toHaveCount(0);
 
   // 6. A pessoa aprova a conclusão no bloco "Sua decisão": a missão fica concluída e a decisão some.
@@ -204,11 +207,10 @@ test('projeto Git → missão simulada → aprovação → eventos persistidos',
     0,
   );
   await expect(timeline.getByText('Conclusão aprovada por você.')).toBeVisible();
-  await expect(timeline.getByText('Situação: Concluída.')).toBeVisible();
-  // "Arquivos alterados", no corpo da missão, e a aba Diff listam o arquivo que o agente criou no worktree.
+  // A aba Alterações resume os arquivos do worktree e lista, uma vez só, o que o agente criou nele.
+  await page.getByRole('tab', { name: /^Alterações/ }).click();
   const changedFiles = page.getByRole('region', { name: 'Arquivos alterados' });
-  await expect(changedFiles.getByText('project-hub-demo.md')).toBeVisible();
-  await page.getByRole('tab', { name: 'Diff' }).click();
+  await expect(changedFiles.getByText('1 arquivo alterado')).toBeVisible();
   const changes = page.getByRole('list', { name: 'Arquivos alterados' });
   await expect(changes.getByRole('button', { name: /project-hub-demo\.md/ })).toBeVisible();
   // A linha do tempo mora na aba Atividade: volta para ela antes de contar os eventos.
@@ -328,7 +330,8 @@ test('fechar o app durante aprovação e reabrir mostra execução interrompida'
   const timeline = page.getByRole('list', { name: 'Eventos da missão' });
   await expect(timeline.getByText('Execução interrompida ao fechar o aplicativo.')).toBeVisible();
   await expect(timeline.getByText('Aprovação expirou sem decisão.')).toBeVisible();
-  await expect(timeline.getByText('Situação: Falhou.')).toBeVisible();
+  // O estado "Falhou" já foi checado no resumo; a linha do tempo não repete "Situação: ...".
+  await expect(timeline.getByText(/^Situação:/)).toHaveCount(0);
   await expect(timeline.getByText('Sessão do agente concluída.')).toHaveCount(0);
 
   // O banco guarda o motivo (seção 15.7): a tentativa falhou com `interrupted_by_restart`.

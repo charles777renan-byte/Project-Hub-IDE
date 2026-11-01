@@ -1,5 +1,4 @@
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import type { MissionDiffDto, MissionDiffFileDto, ProjectHubApi } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { ArtifactsPanel } from '../../src/renderer/components/workspace/ArtifactsPanel';
@@ -14,7 +13,7 @@ function file(
 }
 
 describe('ArtifactsPanel', () => {
-  it('lista só os arquivos novos, com o caminho relativo e as linhas adicionadas', () => {
+  it('conta só os arquivos novos, sem listar caminhos nem linhas', () => {
     render(
       <ArtifactsPanel
         files={[
@@ -26,63 +25,104 @@ describe('ArtifactsPanel', () => {
       />,
     );
 
-    const list = screen.getByRole('list', { name: 'Arquivos criados' });
-    const items = within(list).getAllByRole('listitem');
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent('docs/novo.md');
-    expect(items[0]).toHaveTextContent('+2 linhas');
-    expect(items[1]).toHaveTextContent('src/b.ts');
-    expect(items[1]).toHaveTextContent('+1 linha');
-    expect(items[1]).not.toHaveTextContent('+1 linhas');
+    expect(screen.getByText('2 arquivos criados, listados acima')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(document.body).not.toHaveTextContent('docs/novo.md');
+    expect(document.body).not.toHaveTextContent('src/b.ts');
+    expect(document.body).not.toHaveTextContent('linha');
   });
 
-  it('sem arquivos novos, diz que a missão ainda não criou arquivos', () => {
+  it('um arquivo novo diz "1 arquivo criado, listado acima", no singular', () => {
+    render(<ArtifactsPanel files={[file('a.txt', 'modified', 1), file('b.md', 'added', 3)]} />);
+
+    expect(screen.getByText('1 arquivo criado, listado acima')).toBeInTheDocument();
+  });
+
+  it('sem arquivos novos, diz "Nenhum arquivo criado"', () => {
     render(<ArtifactsPanel files={[file('a.txt', 'modified', 1)]} />);
 
-    expect(screen.getByText('A missão ainda não criou arquivos.')).toBeInTheDocument();
+    expect(screen.getByText('Nenhum arquivo criado')).toBeInTheDocument();
   });
 
-  it('mostra o caminho com acento correto', () => {
-    render(<ArtifactsPanel files={[file('relatórios/avaliação-ção.md', 'untracked', 4)]} />);
+  it('com a lista cortada, não dá a entender que ela está completa', () => {
+    const { rerender } = render(
+      <ArtifactsPanel files={[file('b.md', 'added', 3), file('c.md', 'added', 1)]} truncated />,
+    );
+    expect(screen.getByText('Pelo menos 2 arquivos criados, listados acima')).toBeInTheDocument();
 
-    expect(screen.getByText('relatórios/avaliação-ção.md')).toBeInTheDocument();
+    rerender(<ArtifactsPanel files={[file('b.md', 'added', 3)]} truncated />);
+    expect(screen.getByText('Pelo menos 1 arquivo criado, listado acima')).toBeInTheDocument();
+
+    rerender(<ArtifactsPanel files={[file('a.txt', 'modified', 1)]} truncated />);
+    expect(screen.getByText('Nenhum arquivo criado entre os listados')).toBeInTheDocument();
+    expect(screen.queryByText('Nenhum arquivo criado')).toBeNull();
   });
 });
 
-describe('DiffPanel com a aba Artefatos', () => {
+describe('DiffPanel com a seção Artefatos', () => {
   const DIFF: MissionDiffDto = {
     files: [file('a.txt', 'modified', 1), file('novo.md', 'untracked', 5)],
     truncatedFiles: false,
   };
 
-  it('abre em Alterações e troca para Artefatos sem nova consulta', async () => {
+  it('mostra as alterações e, abaixo, a seção Artefatos, sem sub-abas e com uma consulta só', async () => {
     const diff = vi.fn(() => Promise.resolve({ ok: true, data: DIFF }));
     window.projectHub = { missions: { diff } } as unknown as ProjectHubApi;
-    const user = userEvent.setup();
 
     render(<DiffPanel missionId="m1" hasWorktree refreshKey={0} />);
 
-    expect(screen.getByRole('tab', { name: 'Alterações' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.queryByRole('tablist')).toBeNull();
     await screen.findByRole('list', { name: 'Arquivos alterados' });
-
-    await user.click(screen.getByRole('tab', { name: 'Artefatos' }));
-
-    const list = screen.getByRole('list', { name: 'Arquivos criados' });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
-    expect(list).toHaveTextContent('novo.md');
+    const artifacts = screen.getByRole('region', { name: 'Artefatos' });
+    expect(within(artifacts).getByText('1 arquivo criado, listado acima')).toBeInTheDocument();
+    expect(artifacts).not.toHaveTextContent('novo.md');
     expect(diff).toHaveBeenCalledTimes(1);
   });
 
-  it('sem worktree, a aba Artefatos diz que não há arquivos criados', async () => {
+  it('sem worktree, a seção Artefatos não afirma nada', () => {
     window.projectHub = { missions: { diff: vi.fn() } } as unknown as ProjectHubApi;
-    const user = userEvent.setup();
 
     render(<DiffPanel missionId="m1" hasWorktree={false} refreshKey={0} />);
-    await user.click(screen.getByRole('tab', { name: 'Artefatos' }));
 
-    expect(screen.getByText('A missão ainda não criou arquivos.')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Artefatos' })).toBeNull();
+    expect(screen.queryByText(/arquivo criado/)).toBeNull();
+  });
+
+  it('enquanto carrega e com erro, a seção Artefatos não afirma nada', async () => {
+    window.projectHub = {
+      missions: { diff: vi.fn(() => new Promise(() => {})) },
+    } as unknown as ProjectHubApi;
+    const loading = render(<DiffPanel missionId="m1" hasWorktree refreshKey={0} />);
+    expect(screen.queryByText(/arquivo criado/)).toBeNull();
+    loading.unmount();
+
+    window.projectHub = {
+      missions: {
+        diff: vi.fn(() => Promise.resolve({ ok: false, error: { code: 'X', message: 'Falhou.' } })),
+      },
+    } as unknown as ProjectHubApi;
+    render(<DiffPanel missionId="m1" hasWorktree refreshKey={0} />);
+    await screen.findByRole('alert');
+    expect(screen.queryByText(/arquivo criado/)).toBeNull();
+  });
+
+  it('com a lista cortada, a seção Artefatos diz "Pelo menos"', async () => {
+    window.projectHub = {
+      missions: {
+        diff: vi.fn(() =>
+          Promise.resolve({
+            ok: true,
+            data: { files: [file('novo.md', 'untracked', 5)], truncatedFiles: true },
+          }),
+        ),
+      },
+    } as unknown as ProjectHubApi;
+
+    render(<DiffPanel missionId="m1" hasWorktree refreshKey={0} />);
+
+    const artifacts = await screen.findByRole('region', { name: 'Artefatos' });
+    expect(
+      within(artifacts).getByText('Pelo menos 1 arquivo criado, listado acima'),
+    ).toBeInTheDocument();
   });
 });
