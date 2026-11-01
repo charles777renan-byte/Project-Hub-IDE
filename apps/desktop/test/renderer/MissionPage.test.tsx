@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AppResult,
@@ -958,7 +958,9 @@ describe('MissionPage: ações e decisão', () => {
   it('a aba Alterações lê o diff uma vez só, sem repetir carregando nem alerta', async () => {
     const hub = installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     let resolve: (value: never) => void = () => undefined;
-    hub.api.missions.diff.mockImplementation((() => new Promise((done) => (resolve = done as never))) as never);
+    hub.api.missions.diff.mockImplementation(
+      (() => new Promise((done) => (resolve = done as never))) as never,
+    );
     renderPage();
 
     const panel = await openTab('Alterações');
@@ -1137,7 +1139,7 @@ describe('MissionPage: resumo de conclusão', () => {
   });
 });
 
-describe('MissionPage: "Sua decisão" fixo no topo', () => {
+describe('MissionPage: "Sua decisão" no fluxo da missão', () => {
   /** Situações em que a missão espera algo da pessoa: o bloco aparece. */
   const WAITING = [
     'draft',
@@ -1233,29 +1235,30 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
     expect(within(decision).getByText('Login corrigido.')).toBeInTheDocument();
   });
 
-  it('com decisão pendente, a região "Sua decisão" está no topo da página, logo abaixo do cabeçalho', async () => {
+  it('com decisão pendente, a região "Sua decisão" vem logo depois do grupo fixo do cabeçalho, no fluxo do corpo', async () => {
     installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
     renderPage();
 
     const decision = await screen.findByRole('region', { name: 'Sua decisão' });
     const wrapper = wrapperOf(decision);
     const header = screen.getByRole('region', { name: 'Resumo da missão' });
-    const group = wrapper.parentElement;
+    const group = header.closest('.mission-top');
     expect(wrapper).toHaveClass('mission-decision');
-    // No topo do corpo: o grupo fixo é o primeiro bloco, o cabeçalho é o primeiro dentro dele, e o
-    // invólucro do bloco vem logo depois do cabeçalho.
-    expect(group).toHaveClass('mission-top');
+    // No topo do corpo: o grupo fixo é o primeiro bloco e o cabeçalho é o primeiro dentro dele. O invólucro do
+    // bloco vem logo depois do grupo, no fluxo do corpo, e não dentro dele.
     expect(group?.parentElement?.firstElementChild).toBe(group);
-    expect(group?.firstElementChild).toBe(header);
-    expect(wrapper.previousElementSibling).toBe(header);
-    // O plano vem depois, fora do grupo.
+    expect(group?.firstElementChild).toHaveClass('mission-top__body');
+    expect(group?.firstElementChild?.firstElementChild).toBe(header);
+    expect(group?.contains(wrapper)).toBe(false);
+    expect(wrapper.previousElementSibling).toBe(group);
+    expect(wrapper.parentElement).toBe(group?.parentElement);
+    // O plano vem depois do bloco.
     const plan = screen.getByRole('region', { name: 'Plano da missão' });
     expect(precedes(wrapper, plan)).toBe(true);
-    expect(group?.contains(plan)).toBe(false);
   });
 
   it.each(['running', 'waiting_approval'] as const)(
-    'com a missão %s, o cabeçalho fica no grupo fixo, com ou sem decisão',
+    'com a missão %s, o grupo fixo tem o cabeçalho e o encaixe da barra, vazio, e o bloco fica fora dele',
     async (status) => {
       installApi(
         viewOf({ status }, status === 'waiting_approval' ? { pendingApprovals: [APPROVAL] } : {}),
@@ -1265,14 +1268,19 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
       const header = await screen.findByRole('region', { name: 'Resumo da missão' });
       const group = header.closest('.mission-top');
       expect(group).not.toBeNull();
-      // O invólucro do bloco está no mesmo grupo: o bloco fica sempre logo abaixo do cabeçalho.
-      expect(group?.contains(wrapperOf(screen.getByRole('region', { name: 'Sua decisão' })))).toBe(
-        true,
-      );
+      const slot = group?.querySelector('.decision-bar-slot');
+      expect(slot).not.toBeNull();
+      // O encaixe vem depois do corpo do grupo (cabeçalho e falhas), que é onde o cabeçalho mora.
+      expect(slot?.previousElementSibling).toBe(header.parentElement);
+      expect(header.parentElement).toHaveClass('mission-top__body');
+      // O jsdom não mede layout: o bloco conta como à vista, e a barra não ocupa o encaixe.
+      expect(slot?.childElementCount).toBe(0);
+      expect(group?.lastElementChild).toBe(slot);
+      expect(group?.contains(screen.getByRole('region', { name: 'Sua decisão' }))).toBe(false);
     },
   );
 
-  it('o aviso de falha do cabeçalho fica entre o cabeçalho e o bloco', async () => {
+  it('o aviso de falha do cabeçalho fica no grupo fixo, entre o cabeçalho e o bloco', async () => {
     const { api } = installApi(viewOf({ status: 'failed' }));
     api.missions.delete.mockResolvedValueOnce({
       ok: false,
@@ -1294,7 +1302,8 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
     const header = screen.getByRole('region', { name: 'Resumo da missão' });
     expect(precedes(header, alert)).toBe(true);
     expect(precedes(alert, decision)).toBe(true);
-    expect(alert.parentElement).toBe(wrapperOf(decision).parentElement);
+    expect(alert.parentElement).toBe(header.parentElement);
+    expect(alert.closest('.mission-top')).not.toBeNull();
   });
 
   it('a região de anúncio e o invólucro são os mesmos quando a decisão chega', async () => {
@@ -1322,69 +1331,47 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
   });
 
   describe('folha de estilo (mission.css)', () => {
-    /**
-     * O bloco `@container <consulta> { ... }` inteiro, das chaves de abertura e de fechamento dele. O
-     * `ruleDeclarations` só deixa de fora o `@media`, então as regras do `@container` entrariam como regras
-     * base, e a última venceria.
-     */
-    function containerBlock(source: string, query: string): string {
-      const start = source.indexOf(`@container ${query}`);
-      if (start < 0) return '';
-      let depth = 0;
-      for (let index = source.indexOf('{', start); index < source.length; index += 1) {
-        if (source[index] === '{') depth += 1;
-        if (source[index] === '}') depth -= 1;
-        if (depth === 0) return source.slice(start, index + 1);
-      }
-      return '';
-    }
+    const css = readCss('mission.css');
 
-    const full = readCss('mission.css');
-    const low = containerBlock(full, '(max-height: 31rem)');
-    /** As regras base: o CSS sem o regime de corpo baixo. */
-    const css = full.replace(low, '');
-
-    it('o grupo do cabeçalho e da decisão fica fixo no alto do corpo, acima do que rola, com fundo opaco e no máximo 75% do corpo', () => {
+    it('o grupo do cabeçalho fica fixo no alto do corpo, acima do que rola, com fundo opaco', () => {
       const group = ruleDeclarations(css, '.mission-top');
       expect(group.get('position')).toBe('sticky');
       expect(group.get('top')).toBe('0');
       expect(group.get('z-index')).toBeDefined();
       expect(group.get('background')).toBe('var(--bg)');
-      expect(group.get('max-height')).toBe('75%');
-      expect(group.get('display')).toBe('flex');
-      expect(group.get('flex-direction')).toBe('column');
-      // Último recurso: se o cabeçalho e o piso do bloco passarem do limite, o grupo rola por dentro, em vez
-      // de cortar o fim do bloco (onde fica a ação principal) com uma rolagem que ninguém alcança.
-      expect(group.get('overflow')).toBe('hidden auto');
-      // Quem encolhe dentro do grupo é o invólucro do bloco, que nunca fica menor que o piso dele.
-      const wrapper = ruleDeclarations(css, '.mission-top > .mission-decision');
-      expect(wrapper.get('flex')).toBe('0 1 auto');
-      expect(wrapper.get('min-height')).toBe('11rem');
-      expect(wrapper.get('scroll-margin-top')).toBeDefined();
-      // O cabeçalho não encolhe no grupo.
-      expect(ruleDeclarations(css, '.mission-top > *').get('flex')).toBe('none');
+      // O grupo não corta nada: a barra que flutua sobre o corpo tem de poder passar da borda dele.
+      expect(group.get('overflow')).toBeUndefined();
     });
 
-    it('num corpo baixo, o bloco fica no piso e o grupo pode ocupar todo o corpo, sem passar dele', () => {
-      expect(low).not.toBe('');
-      expect(ruleDeclarations(low, '.mission-top').get('max-height')).toBe('100%');
-      expect(ruleDeclarations(low, '.mission-top > .mission-decision').get('max-height')).toBe(
-        '11rem',
-      );
-      // 11rem é o piso do invólucro: o bloco fica nele, e nunca abaixo. Ele cobre o título, a frase, a nota e o
-      // topo do cartão a pelo menos uma linha de botões da borda de baixo; com menos, a nota do bloco fica por
-      // baixo da linha fixa de botões e o texto é cortado (medido no app real, nas janelas 1360x840, 1200x800 e
-      // 900x700).
-      expect(ruleDeclarations(css, '.mission-top > .mission-decision').get('min-height')).toBe(
-        '11rem',
-      );
+    it('o corpo do grupo tem no máximo 75% da altura do corpo da missão e rola por dentro, em último caso', () => {
+      const inner = ruleDeclarations(css, '.mission-top__body');
+      expect(inner.get('max-height')).toBe('75cqh');
+      expect(inner.get('overflow')).toBe('hidden auto');
+      expect(inner.get('display')).toBe('flex');
+      expect(inner.get('flex-direction')).toBe('column');
+      // Nada encolhe no corpo do grupo.
+      expect(ruleDeclarations(css, '.mission-top__body > *').get('flex')).toBe('none');
     });
 
-    it('o invólucro não tem posição própria: quem fica fixo é o grupo, e o bloco fica logo abaixo do cabeçalho', () => {
-      expect(ruleDeclarations(css, '.mission-decision').get('position')).toBeUndefined();
-      expect(ruleDeclarations(css, '.mission-top > .mission-decision').get('position')).toBe(
-        undefined,
-      );
+    it('o encaixe tem altura zero e a barra flutua sobre o que rola: a barra não muda a altura do grupo', () => {
+      const slot = ruleDeclarations(css, '.decision-bar-slot');
+      expect(slot.get('height')).toBe('0');
+      expect(slot.get('position')).toBe('relative');
+      // `display: none` deixaria a caixa sem medida, e a barra nunca apareceria.
+      expect(slot.get('display')).toBeUndefined();
+      expect(css).not.toContain('.decision-bar-slot:empty');
+      const bar = ruleDeclarations(css, '.decision-bar');
+      expect(bar.get('position')).toBe('absolute');
+      expect(bar.get('top')).toBe('0');
+    });
+
+    it('o invólucro do bloco não tem posição, altura mínima nem regime de corpo baixo: o bloco vive no fluxo', () => {
+      const wrapper = ruleDeclarations(css, '.mission-decision');
+      expect(wrapper.get('position')).toBeUndefined();
+      expect(wrapper.get('min-height')).toBeUndefined();
+      expect(wrapper.get('max-height')).toBeUndefined();
+      expect(css).not.toContain('@container');
+      expect(css).not.toContain('11rem');
     });
 
     it('o corpo é uma coluna flexível, sem respiro de cima, para o grupo fixo valer em toda a rolagem e colar na borda', () => {
@@ -1392,7 +1379,6 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
       expect(main.get('display')).toBe('flex');
       expect(main.get('flex-direction')).toBe('column');
       expect(main.get('padding')).toBe('0 var(--space-4) var(--space-4)');
-      // Contêiner de tamanho: a altura do corpo decide o regime do grupo (`@container (max-height: ...)`).
       expect(main.get('container-type')).toBe('size');
       expect(main.get('height')).toBe('100%');
       expect(ruleDeclarations(css, '.mission-main > *').get('flex')).toBe('none');
@@ -1401,7 +1387,7 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
       );
       // O grupo leva o respiro de cima no padding dele, então a margem do primeiro bloco desconta esse padding.
       // O respiro dos lados (com a margem negativa) guarda o contorno de foco que o `overflow` cortaria.
-      expect(ruleDeclarations(css, '.mission-top').get('padding')).toBe(
+      expect(ruleDeclarations(css, '.mission-top__body').get('padding')).toBe(
         'var(--space-2) var(--space-1)',
       );
       expect(ruleDeclarations(css, '.mission-top').get('margin')).toBe(
@@ -1412,128 +1398,52 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
       ).toBe('calc(var(--space-3) - var(--space-2))');
     });
 
-    it('o bloco tem no máximo 40% da altura da janela e rola por dentro', () => {
+    it('o bloco aparece inteiro: sem altura máxima, sem rolagem por dentro e sem nada grudado', () => {
       const block = ruleDeclarations(css, '.decision-block');
-      expect(block.get('max-height')).toBe('40vh');
-      expect(block.get('overflow-y')).toBe('auto');
-      // O foco por teclado num campo não o deixa atrás do título e da linha fixos.
-      expect(block.get('scroll-padding')).toBeDefined();
-      expect(ruleDeclarations(css, '.mission-decision > .decision-block').get('min-height')).toBe(
-        '0',
-      );
+      expect(block.get('max-height')).toBeUndefined();
+      expect(block.get('overflow')).toBeUndefined();
+      expect(block.get('overflow-y')).toBeUndefined();
+      expect(block.get('scroll-padding')).toBeUndefined();
+      expect(block.get('display')).toBe('flex');
+      expect(block.get('flex-direction')).toBe('column');
+      // Só o grupo do cabeçalho gruda: nem o título, nem as linhas de botões do bloco.
+      const sticky = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter(([, , body = '']) => /position:\s*sticky/.test(body))
+        .map(([, selector = '']) => selector.trim());
+      expect(sticky).toEqual(['.mission-top']);
     });
 
-    it('o título fica no alto do bloco, mesmo com a rolagem de dentro', () => {
+    it('o título do bloco é um título de cartão comum', () => {
       const title = ruleDeclarations(css, '.decision-block > .mission-section-title');
-      // O "gruda" é medido sem o padding do bloco: o deslocamento negativo leva o título até a borda.
-      expect(title.get('position')).toBe('sticky');
-      expect(title.get('top')).toBe('calc(-1 * var(--space-4))');
-      // A linha de aprovação da revisão cola logo abaixo dele com a mesma conta (linha de 1.2 + respiro).
+      expect(title.get('position')).toBeUndefined();
       expect(title.get('line-height')).toBe('1.2');
-      expect(ruleDeclarations(css, '.decision-block > .form-actions').get('top')).toBe(
-        'calc(var(--text-lg) * 1.2 + var(--space-2))',
-      );
-    });
-  });
-
-  /**
-   * A linha da ação principal de cada situação precisa grudar no fim do bloco, ou o botão fica abaixo da
-   * dobra quando o bloco rola por dentro. O jsdom não mede layout, então o teste faz o que ele sabe:
-   * monta a tela de cada situação e confere que a linha do botão principal casa com um seletor de
-   * `mission.css` que declara `position: sticky` com `bottom`. (A medida de verdade, com o layout real,
-   * está nas capturas do E2E, que a pessoa que revisa abre.)
-   */
-  describe('a linha da ação principal gruda no fim do bloco (mission.css)', () => {
-    const css = readCss('mission.css');
-
-    /** Os seletores das regras que declaram `position: sticky` junto de um `bottom`. */
-    function stickyBottomSelectors(): string[] {
-      const found: string[] = [];
-      for (const [, selectors = '', body = ''] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-        if (/position:\s*sticky/.test(body) && /(?:^|[;\s])bottom\s*:/.test(body)) {
-          found.push(...selectors.split(',').map((item) => item.trim()));
-        }
-      }
-      return found;
-    }
-
-    const sticky = stickyBottomSelectors();
-
-    /** O botão principal de cada situação, com o que a visão precisa para ele existir. */
-    const PRIMARY: [MissionViewDto['mission']['status'], string, Partial<MissionViewDto>][] = [
-      ['draft', 'Orquestrar', {}],
-      ['planned', 'Aprovar plano', {}],
-      ['queued', 'Iniciar missão', {}],
-      ['paused', 'Retomar', {}],
-      ['failed', 'Tentar de novo', {}],
-      ['cancelled', 'Tentar de novo', {}],
-      ['waiting_approval', 'Aprovar', { pendingApprovals: [APPROVAL] }],
-      ['waiting_input', 'Enviar resposta', {}],
-      ['review', 'Aprovar conclusão', {}],
-    ];
-
-    it('há seletores que fixam linhas no fim do bloco, e todos têm fundo opaco e o mesmo deslocamento', () => {
-      expect(sticky.length).toBeGreaterThanOrEqual(4);
-      for (const selector of sticky) {
-        const rule = ruleDeclarations(css, selector);
-        expect(rule.get('bottom'), selector).toBe('calc(-1 * var(--space-4))');
-        // Fundo opaco (a superfície ou o vidro sobre ela), para o que rola passar por baixo.
-        expect(rule.get('background'), selector).toMatch(
-          /^(?:var\(--surface\)|linear-gradient\(.*\), var\(--surface\))$/,
-        );
-      }
+      expect(title.get('text-transform')).toBe('none');
     });
 
-    it.each(PRIMARY)(
-      'com a missão %s, a linha do botão "%s" casa com um seletor que gruda',
-      async (status, label, rest) => {
-        installApi(viewOf({ status }, rest));
-        renderPage();
-
-        const decision = await screen.findByRole('region', { name: 'Sua decisão' });
-        const button = within(decision).getByRole('button', { name: label });
-        const row = button.parentElement;
-        expect(row).not.toBeNull();
-        expect(row?.matches(sticky.join(', ')), `${status}: ${row?.className}`).toBe(true);
-      },
-    );
-
-    it('em revisão, a linha de "Pedir ajustes" é secundária e não ganha uma segunda barra fixa', async () => {
-      installApi(viewOf({ status: 'review' }));
-      renderPage();
-
-      const decision = await screen.findByRole('region', { name: 'Sua decisão' });
-      const row = within(decision).getByRole('button', { name: 'Pedir ajustes' }).parentElement;
-      expect(row?.matches(sticky.join(', '))).toBe(false);
-    });
-
-    it('o cartão de aprovação e o formulário são colunas flexíveis: filho de grade não gruda', () => {
+    it('o cartão de aprovação e o formulário são colunas flexíveis que esticam até a largura de leitura', () => {
       for (const selector of ['.decision-block .decision-card', '.decision-block .form']) {
         const rule = ruleDeclarations(css, selector);
         expect(rule.get('display'), selector).toBe('flex');
         expect(rule.get('flex-direction'), selector).toBe('column');
       }
+      expect(ruleDeclarations(css, '.decision-block__actions').get('flex-wrap')).toBe('wrap');
     });
 
-    it('a linha do cartão e a do formulário usam o fundo e o respiro do próprio cartão', () => {
-      // O vidro do cartão (translúcido) sobre a superfície do bloco, em camadas: opaco, e da mesma cor.
-      const GLASS = 'linear-gradient(var(--surface-glass), var(--surface-glass)), var(--surface)';
-      const card = ruleDeclarations(css, '.decision-block .decision-card > .inline-actions');
-      expect(card.get('background')).toBe(GLASS);
-      // O respiro é o padding de baixo do cartão (--space-3), para a linha não cobrir a borda dele.
-      expect(card.get('padding-bottom')).toBe('var(--space-3)');
-      expect(card.get('margin-bottom')).toBe('calc(-1 * var(--space-3))');
-      const form = ruleDeclarations(
-        css,
-        ".decision-block form[aria-label='Resposta ao agente'] > .form-actions",
-      );
-      expect(form.get('background')).toBe(GLASS);
-      expect(form.get('padding-bottom')).toBe('var(--space-4)');
+    it('a barra de decisão quebra de linha em janela estreita e usa só tokens', () => {
+      const bar = ruleDeclarations(css, '.decision-bar');
+      expect(bar.get('display')).toBe('flex');
+      expect(bar.get('flex-wrap')).toBe('wrap');
+      expect(bar.get('background')).toBe('var(--surface)');
+      expect(bar.get('border')).toBe('1px solid var(--brand)');
+      const text = ruleDeclarations(css, '.decision-bar__text');
+      expect(text.get('min-width')).toBe('0');
+      expect(text.get('overflow-wrap')).toBe('anywhere');
+      expect(ruleDeclarations(css, '.decision-bar__actions').get('flex-wrap')).toBe('wrap');
     });
   });
 
   describe('o foco', () => {
-    it('com a missão esperando aprovação, o foco vai para o bloco, que está no invólucro fixo', async () => {
+    it('com a missão esperando aprovação, o foco vai para o bloco, que está no invólucro da decisão', async () => {
       installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
       renderPage();
 
@@ -1541,6 +1451,242 @@ describe('MissionPage: "Sua decisão" fixo no topo', () => {
       await waitFor(() => expect(decision).toHaveFocus());
       expect(decision.closest('.mission-decision')).not.toBeNull();
     });
+  });
+});
+
+describe('MissionPage: barra compacta da decisão', () => {
+  /** O topo do encaixe da barra: o fim do cabeçalho fixo. */
+  const SLOT_TOP = 60;
+  /** Onde o bloco "Sua decisão" está agora, medido a partir do topo da tela. */
+  let blockTop = 200;
+  const BLOCK_HEIGHT = 150;
+
+  function rect(top: number, height: number): DOMRect {
+    return {
+      x: 0,
+      y: top,
+      left: 0,
+      right: 100,
+      top,
+      bottom: top + height,
+      width: 100,
+      height,
+      toJSON: () => ({}),
+    };
+  }
+
+  /** O jsdom não tem layout: o teste diz onde o encaixe e o bloco estão. */
+  beforeEach(() => {
+    blockTop = 200;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this.classList.contains('decision-bar-slot')) return rect(SLOT_TOP, 0);
+      if (this.classList.contains('decision-block')) return rect(blockTop, BLOCK_HEIGHT);
+      // As divisórias ficam longe de (0, 0), como em `moveSeparatorsAway`.
+      if (this.getAttribute('role') === 'separator') return rect(9000, 8);
+      return rect(0, 0);
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollBy');
+  });
+
+  /** O corpo da missão, que rola. */
+  function body(): HTMLElement {
+    const main = document.querySelector<HTMLElement>('.mission-main');
+    if (main === null) throw new Error('O corpo da missão não está na tela.');
+    return main;
+  }
+
+  /** Move o bloco e avisa a página, como a rolagem do corpo faz. */
+  function moveBlockTo(top: number) {
+    blockTop = top;
+    fireEvent.scroll(body());
+  }
+
+  const BAR = { name: 'Decisão pendente' };
+
+  it('com o bloco à vista, não há barra e o encaixe fica vazio', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Sua decisão' });
+    expect(screen.queryByRole('group', BAR)).toBeNull();
+    expect(document.querySelector('.decision-bar-slot')?.childElementCount).toBe(0);
+  });
+
+  it('com o bloco atrás do cabeçalho, a barra aparece no encaixe do grupo fixo, fora do bloco', async () => {
+    blockTop = -300;
+    installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    const decision = screen.getByRole('region', { name: 'Sua decisão' });
+    expect(bar.parentElement).toHaveClass('decision-bar-slot');
+    expect(bar.closest('.mission-top')).not.toBeNull();
+    expect(decision.contains(bar)).toBe(false);
+    expect(bar).toHaveTextContent('Sua decisão');
+    expect(bar).toHaveTextContent('Gravar arquivo');
+    // O bloco continua inteiro, com os botões dele: a barra não tira nada de lá.
+    expect(within(decision).getByRole('button', { name: 'Aprovar' })).toBeInTheDocument();
+  });
+
+  it('a barra aparece e some conforme o corpo rola', async () => {
+    const hub = installApi(viewOf({ status: 'planned' }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Sua decisão' });
+    expect(screen.queryByRole('group', BAR)).toBeNull();
+
+    moveBlockTo(-300);
+    expect(await screen.findByRole('group', BAR)).toBeInTheDocument();
+
+    moveBlockTo(200);
+    await waitFor(() => expect(screen.queryByRole('group', BAR)).toBeNull());
+    expect(hub.api.missions.approvePlan).not.toHaveBeenCalled();
+  });
+
+  it('com uma aprovação só, Aprovar e Recusar da barra vão para approvals.decide', async () => {
+    blockTop = -300;
+    const hub = installApi(
+      viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }),
+    );
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    await userEvent.click(within(bar).getByRole('button', { name: 'Aprovar' }));
+    await waitFor(() =>
+      expect(hub.api.approvals.decide).toHaveBeenCalledWith({
+        approvalId: 'ap1',
+        decision: 'approved',
+      }),
+    );
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Recusar' }));
+    await waitFor(() =>
+      expect(hub.api.approvals.decide).toHaveBeenCalledWith({
+        approvalId: 'ap1',
+        decision: 'rejected',
+      }),
+    );
+  });
+
+  it('com mais de uma aprovação, a barra não decide por elas: só leva ao bloco', async () => {
+    blockTop = -300;
+    installApi(
+      viewOf(
+        { status: 'waiting_approval' },
+        { pendingApprovals: [APPROVAL, { ...APPROVAL, id: 'ap2', title: 'Apagar pasta' }] },
+      ),
+    );
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    expect(within(bar).queryByRole('button', { name: 'Aprovar' })).toBeNull();
+    expect(within(bar).queryByRole('button', { name: 'Recusar' })).toBeNull();
+    expect(within(bar).getByRole('button', { name: 'Ver decisão' })).toBeInTheDocument();
+  });
+
+  it('em revisão, Aprovar conclusão da barra vai para missions.approveReview', async () => {
+    blockTop = -300;
+    const hub = installApi(viewOf({ status: 'review' }));
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    await userEvent.click(within(bar).getByRole('button', { name: 'Aprovar conclusão' }));
+
+    await waitFor(() => expect(hub.api.missions.approveReview).toHaveBeenCalledWith('m1'));
+    // O campo de ajustes fica no bloco: a barra só leva até ele.
+    expect(within(bar).queryByRole('textbox')).toBeNull();
+  });
+
+  it('a ação principal da situação também está na barra, com o mesmo nome e a mesma chamada', async () => {
+    blockTop = -300;
+    const hub = installApi(viewOf({ status: 'planned' }));
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    await userEvent.click(within(bar).getByRole('button', { name: 'Aprovar plano' }));
+
+    await waitFor(() => expect(hub.api.missions.approvePlan).toHaveBeenCalledWith('m1'));
+  });
+
+  it('quando o agente espera uma resposta, a caixa de texto fica no bloco e a barra só leva até ele', async () => {
+    blockTop = -300;
+    installApi(viewOf({ status: 'waiting_input' }));
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    expect(within(bar).queryByRole('textbox')).toBeNull();
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Ver decisão']);
+  });
+
+  it.each(['running', 'succeeded'] as const)(
+    'com a missão %s, não há o que decidir e a barra não aparece, mesmo com o bloco fora de vista',
+    async (status) => {
+      blockTop = -300;
+      installApi(viewOf({ status }));
+      renderPage();
+
+      await screen.findByRole('region', { name: 'Resumo da missão' });
+      await act(async () => {});
+      expect(screen.queryByRole('group', BAR)).toBeNull();
+    },
+  );
+
+  it('"Ver decisão" leva o bloco para baixo do cabeçalho e dá o foco a ele', async () => {
+    blockTop = -300;
+    installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    renderPage();
+
+    const bar = await screen.findByRole('group', BAR);
+    const decision = screen.getByRole('region', { name: 'Sua decisão' });
+    const scrollBy = vi.fn();
+    body().scrollBy = scrollBy;
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Ver decisão' }));
+
+    // O topo do bloco vai até o fim do cabeçalho, com uma folga de 8px.
+    expect(scrollBy).toHaveBeenCalledWith({ top: -300 - SLOT_TOP - 8 });
+    expect(decision).toHaveFocus();
+  });
+
+  it('ao abrir a missão com o topo do bloco escondido atrás do cabeçalho, o corpo desce até a borda do cabeçalho', async () => {
+    blockTop = 20;
+    const scrollBy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+      configurable: true,
+      writable: true,
+      value: scrollBy,
+    });
+    installApi(viewOf({ status: 'planned' }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Sua decisão' });
+    await waitFor(() => expect(scrollBy).toHaveBeenCalledTimes(1));
+    expect(scrollBy).toHaveBeenCalledWith({ top: 20 - SLOT_TOP - 8 });
+  });
+
+  it('ao abrir a missão com o topo do bloco à vista, o corpo não rola', async () => {
+    blockTop = 200;
+    const scrollBy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+      configurable: true,
+      writable: true,
+      value: scrollBy,
+    });
+    installApi(viewOf({ status: 'planned' }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Sua decisão' });
+    await act(async () => {});
+    expect(scrollBy).not.toHaveBeenCalled();
   });
 });
 
