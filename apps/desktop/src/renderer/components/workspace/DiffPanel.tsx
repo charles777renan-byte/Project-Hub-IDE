@@ -1,19 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { MissionDiffDto, MissionDiffFileDto } from '@project-hub/contracts';
 import { MISSION_TEXT } from '../../mission-text';
 import { PanelEmpty } from '../Panel';
-import { Tabs, type TabItem } from '../Tabs';
 import { ArtifactsPanel } from './ArtifactsPanel';
 
-/** O que o resumo da missão mostra do diff: quantos arquivos mudaram e se a lista foi cortada. */
-export type DiffSummary = { count: number; truncated: boolean };
-
-type DiffView = 'changes' | 'artifacts';
-
-const VIEWS: readonly TabItem<DiffView>[] = [
-  { id: 'changes', label: 'Alterações' },
-  { id: 'artifacts', label: 'Artefatos' },
-];
+/**
+ * O que o resumo da missão mostra do diff: quantos arquivos mudaram, se a lista foi cortada e o total de
+ * linhas a mais e a menos.
+ */
+export type DiffSummary = { count: number; truncated: boolean; added: number; removed: number };
 
 const GENERIC_ERROR = 'Não foi possível ler as alterações da missão. Tente de novo.';
 
@@ -30,10 +25,11 @@ type DiffState =
   | { status: 'error'; message: string };
 
 /**
- * Conteúdo da aba "Diff": os arquivos que a missão alterou no worktree e o diff do arquivo
- * escolhido, com as linhas adicionadas e removidas. A lista carrega ao abrir a missão e de novo quando
- * `refreshKey` muda (a página passa a contagem de eventos). Caminho e conteúdo entram como texto.
- * `onSummary` recebe a contagem de arquivos para o resumo da missão, ou `undefined` enquanto não há
+ * Conteúdo da aba "Alterações": os arquivos que a missão alterou no worktree e o diff do arquivo
+ * escolhido, com as linhas adicionadas e removidas, e depois a seção "Artefatos" com os arquivos criados.
+ * A lista carrega ao abrir a missão e de novo quando `refreshKey` muda (a página passa a contagem de eventos). Caminho e conteúdo entram como texto.
+ * A seção Artefatos só aparece com o diff lido: sem worktree, carregando ou com erro, não afirma nada.
+ * `onSummary` recebe o resumo (arquivos e linhas) para a missão, ou `undefined` enquanto não há
  * diff lido (sem worktree, carregando ou com erro).
  */
 export function DiffPanel({
@@ -49,7 +45,7 @@ export function DiffPanel({
 }) {
   const [state, setState] = useState<DiffState>({ status: 'loading' });
   const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
-  const [view, setView] = useState<DiffView>('changes');
+  const artifactsTitleId = useId();
 
   useEffect(() => {
     if (!hasWorktree) return;
@@ -76,29 +72,37 @@ export function DiffPanel({
   useEffect(() => {
     onSummary?.(
       hasWorktree && state.status === 'ready'
-        ? { count: state.diff.files.length, truncated: state.diff.truncatedFiles }
+        ? {
+            count: state.diff.files.length,
+            truncated: state.diff.truncatedFiles,
+            added: state.diff.files.reduce((sum, file) => sum + file.added, 0),
+            removed: state.diff.files.reduce((sum, file) => sum + file.removed, 0),
+          }
         : undefined,
     );
   }, [state, hasWorktree, onSummary]);
 
   return (
     <div className="diff-tabs">
-      <Tabs label="Visões do painel" tabs={VIEWS} active={view} onChange={setView} filled />
-      {view === 'artifacts' ? (
-        <ArtifactsPanel files={hasWorktree && state.status === 'ready' ? state.diff.files : []} />
-      ) : (
-        <ChangesView
-          state={state}
-          hasWorktree={hasWorktree}
-          selectedPath={selectedPath}
-          onSelect={setSelectedPath}
-        />
-      )}
+      <ChangesView
+        state={state}
+        hasWorktree={hasWorktree}
+        selectedPath={selectedPath}
+        onSelect={setSelectedPath}
+      />
+      {hasWorktree && state.status === 'ready' ? (
+        <section aria-labelledby={artifactsTitleId} className="diff-artifacts">
+          <h2 id={artifactsTitleId} className="mission-section-title">
+            Artefatos
+          </h2>
+          <ArtifactsPanel files={state.diff.files} truncated={state.diff.truncatedFiles} />
+        </section>
+      ) : null}
     </div>
   );
 }
 
-/** A aba "Alterações": a lista de arquivos e o diff do escolhido. */
+/** A lista de arquivos alterados e o diff do escolhido. */
 function ChangesView({
   state,
   hasWorktree,

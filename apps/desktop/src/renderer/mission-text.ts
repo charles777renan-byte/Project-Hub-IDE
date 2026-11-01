@@ -29,18 +29,34 @@ export type Tone = 'lime' | 'warn' | 'violet' | 'red' | 'muted' | 'blue' | 'oran
 
 export type MissionStatus = MissionDto['status'];
 
-const STATUS: Record<MissionStatus, { label: string; tone: Tone }> = {
-  draft: { label: 'Rascunho', tone: 'muted' },
-  planned: { label: 'Aguarda aprovação do plano', tone: 'warn' },
-  queued: { label: 'Plano aprovado, aguardando início', tone: 'warn' },
-  running: { label: 'Em execução', tone: 'lime' },
-  waiting_approval: { label: 'Aguarda sua aprovação', tone: 'warn' },
-  waiting_input: { label: 'Aguarda sua resposta', tone: 'warn' },
-  paused: { label: 'Pausada', tone: 'orange' },
-  review: { label: 'Aguarda sua revisão', tone: 'warn' },
-  succeeded: { label: 'Concluída', tone: 'lime' },
-  failed: { label: 'Falhou', tone: 'red' },
-  cancelled: { label: 'Cancelada', tone: 'muted' },
+/**
+ * Família de um estado da missão. A cor sai da família, e não de cada estado: `waiting` é a espera da
+ * pessoa (âmbar), `running` a execução (lima), `done` a conclusão (lima), `failed` a falha (vermelho)
+ * e `neutral` o rascunho, a pausa e o cancelamento (sem destaque).
+ */
+export type StatusFamily = 'waiting' | 'running' | 'done' | 'failed' | 'neutral';
+
+const FAMILY_TONE: Record<StatusFamily, Tone> = {
+  waiting: 'warn',
+  running: 'lime',
+  done: 'lime',
+  failed: 'red',
+  neutral: 'muted',
+};
+
+/** Os onze rótulos da missão (A6), um por estado do domínio. "Planejando" não é estado, só o indicador do plano. */
+const STATUS: Record<MissionStatus, { label: string; family: StatusFamily }> = {
+  draft: { label: 'Rascunho', family: 'neutral' },
+  planned: { label: 'Aguarda aprovação do plano', family: 'waiting' },
+  queued: { label: 'Plano aprovado, aguardando início', family: 'waiting' },
+  running: { label: 'Em execução', family: 'running' },
+  waiting_approval: { label: 'Aguarda sua aprovação', family: 'waiting' },
+  waiting_input: { label: 'Aguarda sua resposta', family: 'waiting' },
+  paused: { label: 'Pausada', family: 'neutral' },
+  review: { label: 'Aguarda sua revisão', family: 'waiting' },
+  succeeded: { label: 'Concluída', family: 'done' },
+  failed: { label: 'Falhou', family: 'failed' },
+  cancelled: { label: 'Cancelada', family: 'neutral' },
 };
 
 /**
@@ -100,7 +116,7 @@ const REQUIRED_ACTION: Partial<Record<MissionStatus, string>> = {
 
 const STEP_STATUS: Record<MissionStepDto['status'], { label: string; tone: Tone }> = {
   pending: { label: 'Pendente', tone: 'muted' },
-  running: { label: 'Em andamento', tone: 'lime' },
+  running: { label: 'Em execução', tone: 'lime' },
   blocked: { label: 'Bloqueada', tone: 'violet' },
   succeeded: { label: 'Concluída', tone: 'muted' },
   failed: { label: 'Falhou', tone: 'red' },
@@ -111,8 +127,12 @@ export function statusLabel(status: MissionStatus): string {
   return STATUS[status].label;
 }
 
+export function statusFamily(status: MissionStatus): StatusFamily {
+  return STATUS[status].family;
+}
+
 export function statusTone(status: MissionStatus): Tone {
-  return STATUS[status].tone;
+  return FAMILY_TONE[STATUS[status].family];
 }
 
 export function statusIcon(status: MissionStatus): LucideIcon | undefined {
@@ -238,7 +258,6 @@ export const PLAN_TEXT = {
   empty: 'Ainda não há plano. Clique em Orquestrar para gerar as tarefas.',
   reviewHint: 'Revise as tarefas. Nenhuma alteração é feita no código antes da sua aprovação.',
   tableLabel: 'Etapas do plano',
-  columns: { task: 'Tarefa', agent: 'Agente', status: 'Status' },
   soon: 'em breve',
   save: 'Salvar',
   cancel: 'Cancelar',
@@ -640,25 +659,17 @@ export function worktreeName(path: string): string {
 export type TabCountText = { value: string; label: string };
 
 /**
- * Contagens das abas da missão, só onde dizem algo: Plano (número de etapas, quando há plano), Diff
- * (arquivos alterados, quando há algum) e Testes (passaram/total, quando houve verificação com testes).
+ * Contagens das abas da missão, só onde dizem algo: Alterações (chave `diff`: arquivos alterados, quando há
+ * algum) e Testes (passaram/total, quando houve verificação com testes). A Atividade não tem contagem.
  */
 export function missionTabCounts({
-  steps,
   diff,
   events,
 }: {
-  steps: readonly MissionStepDto[];
   diff: { count: number; truncated: boolean } | undefined;
   events: readonly MissionEventDto[];
-}): { plan?: TabCountText; diff?: TabCountText; tests?: TabCountText } {
-  const counts: { plan?: TabCountText; diff?: TabCountText; tests?: TabCountText } = {};
-  if (steps.length > 0) {
-    counts.plan = {
-      value: String(steps.length),
-      label: steps.length === 1 ? '1 etapa' : `${steps.length} etapas`,
-    };
-  }
+}): { diff?: TabCountText; tests?: TabCountText } {
+  const counts: { diff?: TabCountText; tests?: TabCountText } = {};
   if (diff !== undefined && diff.count > 0) {
     const value = `${diff.count}${diff.truncated ? '+' : ''}`;
     const single = diff.count === 1 && !diff.truncated;
@@ -678,14 +689,14 @@ export function missionTabCounts({
 }
 
 /**
- * Tipos de evento que contam a história da missão para a pessoa: a criação, o plano, as mudanças de
- * situação, o que o agente disse, os pedidos e as respostas, e como a execução terminou. O detalhe
- * técnico (worktree, tentativas, ferramentas e verificações) fica só nos Logs e nos Testes.
+ * Tipos de evento que contam a história da missão para a pessoa: a criação, o plano, o que o agente
+ * disse, os pedidos e as respostas, e como a execução terminou. A mudança de situação não entra: o
+ * chip do cabeçalho da missão é o único lugar que mostra a situação. O detalhe técnico (mudanças de
+ * situação, worktree, tentativas, ferramentas e verificações) fica só nos Logs e nos Testes.
  */
 const CONVERSATION_EVENTS: ReadonlySet<string> = new Set([
   'mission.created',
   'plan.generated',
-  'mission.status_changed',
   'message.delta',
   'input.requested',
   'input.provided',

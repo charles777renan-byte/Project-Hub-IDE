@@ -69,17 +69,17 @@ test('capturas: Início, Terminais, Missões, Nova missão, missão planejada e 
   await shoot(page, '4-nova-missao');
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
 
-  // A missão planejada: quadro do orquestrador, tabela das tarefas e o bloco "Sua decisão".
+  // A missão planejada: a lista de etapas e o bloco "Sua decisão". O quadro do orquestrador só aparece
+  // durante o planejamento, então não é capturado aqui.
   await createMission(page, MISSION);
   await orchestrate(page);
-  await expect(page.getByRole('region', { name: 'Quadro do orquestrador' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Etapas do plano' })).toBeVisible();
   await shoot(page, '5-missao-planejada');
-  // O mesmo corpo rolado até a tabela das tarefas e o bloco "Sua decisão".
-  await page.getByRole('table', { name: 'Etapas do plano' }).scrollIntoViewIfNeeded();
+  // O mesmo corpo rolado até a lista de etapas e o bloco "Sua decisão".
+  await page.getByRole('list', { name: 'Etapas do plano' }).scrollIntoViewIfNeeded();
   await decisionBlock(page).scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
   await shoot(page, '5b-missao-tarefas-e-decisao');
-  await page.getByRole('region', { name: 'Quadro do orquestrador' }).scrollIntoViewIfNeeded();
 
   // Janela estreita (900px) com a mesma missão.
   await app.evaluate(({ BrowserWindow }) => {
