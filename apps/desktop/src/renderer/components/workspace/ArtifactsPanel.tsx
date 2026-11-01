@@ -1,5 +1,4 @@
 import type { MissionDiffFileDto } from '@project-hub/contracts';
-import { PanelEmpty } from '../Panel';
 
 /** Arquivos que a missão criou: no diff, os que entraram como `added` ou `untracked`. */
 export function createdFiles(files: readonly MissionDiffFileDto[]): MissionDiffFileDto[] {
@@ -7,27 +6,32 @@ export function createdFiles(files: readonly MissionDiffFileDto[]): MissionDiffF
 }
 
 /**
- * Aba "Artefatos" (laranja) do painel Diff: os arquivos novos da missão, com o caminho relativo e o
- * tamanho. O contrato do diff traz as linhas adicionadas, não bytes, então o tamanho é "+N linhas".
- * Os dados vêm do `DiffPanel`, que já leu o diff; o caminho entra como texto.
+ * Seção "Artefatos" da aba Alterações: só quantos arquivos novos a missão criou. Os caminhos aparecem uma
+ * vez só, na lista de alterações logo acima, então aqui não se repetem. Os dados vêm do `DiffPanel`, que já
+ * leu o diff. Com a lista cortada (`truncated`), a contagem vale só para os arquivos listados e o texto diz
+ * isso, em vez de afirmar que não há mais.
  */
-export function ArtifactsPanel({ files }: { files: readonly MissionDiffFileDto[] }) {
-  const created = createdFiles(files);
-  if (created.length === 0) {
-    return <PanelEmpty>A missão ainda não criou arquivos.</PanelEmpty>;
+export function ArtifactsPanel({
+  files,
+  truncated = false,
+}: {
+  files: readonly MissionDiffFileDto[];
+  truncated?: boolean;
+}) {
+  const count = createdFiles(files).length;
+  if (count === 0) {
+    return (
+      <p className="diff__note">
+        {truncated ? 'Nenhum arquivo criado entre os listados' : 'Nenhum arquivo criado'}
+      </p>
+    );
   }
+  const prefix = truncated ? 'Pelo menos ' : '';
   return (
-    <ul className="diff__files" aria-label="Arquivos criados">
-      {created.map((file) => (
-        <li key={file.path} className="diff__file">
-          <span className="diff__path">{file.path}</span>
-          <span className="diff__counts">
-            <span className="diff__added">
-              +{file.added} {file.added === 1 ? 'linha' : 'linhas'}
-            </span>
-          </span>
-        </li>
-      ))}
-    </ul>
+    <p className="diff__note">
+      {count === 1
+        ? `${prefix}1 arquivo criado, listado acima`
+        : `${prefix}${count} arquivos criados, listados acima`}
+    </p>
   );
 }

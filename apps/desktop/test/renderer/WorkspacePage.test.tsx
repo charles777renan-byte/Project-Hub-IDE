@@ -1344,6 +1344,29 @@ describe('aba do projeto: missão aberta', () => {
     expect(await screen.findByText('O projeto não foi encontrado.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 1, name: 'Ajustar login' })).toBeNull();
   });
+
+  it('com a pasta indisponível, a missão aberta mostra o aviso da pasta acima do conteúdo', async () => {
+    api.projects.list.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: 'p1',
+          name: 'app',
+          path: 'C:\\Projetos\\app',
+          repositoryKind: 'git',
+          available: false,
+        },
+      ],
+    });
+    renderMission();
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Ajustar login' }),
+    ).toBeInTheDocument();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('A pasta deste projeto não está disponível.');
+    expect(alert).toHaveAttribute('id', PROJECT_UNAVAILABLE_NOTICE_ID);
+  });
 });
 
 describe('pasta do projeto indisponível', () => {

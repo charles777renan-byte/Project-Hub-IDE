@@ -506,6 +506,10 @@ describe('classes removidas', () => {
     'sidebar__meta',
     'sidebar__project',
     'conclusion__item--failed',
+    'plan-table',
+    'plan-row',
+    'plan-actions',
+    'plan-agent',
   ];
 
   it('nenhum CSS do renderer cita uma classe que já não existe', () => {
@@ -536,6 +540,43 @@ describe('classes removidas', () => {
   it('o texto do link "Ver a decisão" do banner apagado não sobrou em mission-text', () => {
     const text = readFileSync(join(rendererDirectory, 'mission-text.ts'), 'utf8');
     expect(text).not.toContain('decisionLink');
+  });
+});
+
+/**
+ * Lista de etapas (plan.css). O jsdom não carrega CSS: nenhum teste de componente enxerga o corte do título
+ * com reticências. Este confere o texto das regras, que é o que o navegador aplica. O título longo (acento,
+ * emoji) só trunca se a cadeia inteira deixar o bloco encolher: o item flex precisa de `min-width: 0`, e o
+ * título, de `overflow: hidden`, `text-overflow: ellipsis` e `white-space: nowrap`. O "⋯" fica fora desse
+ * bloco e não encolhe (`flex: none`), então continua visível. Que ele é irmão do bloco, e não filho, está
+ * em StepList.test.tsx.
+ */
+describe('lista de etapas: título longo trunca e o menu continua visível (plan.css)', () => {
+  const css = readCss('plan.css');
+  const rule = (selector: string) => ruleDeclarations(css, selector);
+
+  it('o bloco do título encolhe: min-width 0 e ocupa o espaço que sobra', () => {
+    const main = rule('.step-row__main');
+    expect(main.get('min-width')).toBe('0');
+    expect(main.get('flex')).toMatch(/^1 1 /);
+  });
+
+  it('o título corta com reticências numa linha só', () => {
+    const title = rule('.step-row__title');
+    expect(title.get('overflow')).toBe('hidden');
+    expect(title.get('text-overflow')).toBe('ellipsis');
+    expect(title.get('white-space')).toBe('nowrap');
+  });
+
+  it('a linha é flex, e o "⋯" e a alça não encolhem', () => {
+    expect(rule('.step-row').get('display')).toBe('flex');
+    expect(rule('.step-row__menu').get('flex')).toBe('none');
+    expect(rule('.step-row__handle').get('flex')).toBe('none');
+  });
+
+  it('nenhuma regra põe o "⋯" dentro do bloco que encolhe', () => {
+    expect(css).not.toMatch(/\.step-row__main\s+\.step-row__menu/);
+    expect(css).not.toMatch(/\.step-row__main\s*>\s*\.step-row__menu/);
   });
 });
 

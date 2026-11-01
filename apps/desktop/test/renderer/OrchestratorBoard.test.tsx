@@ -214,30 +214,36 @@ describe('PlanPanel com o quadro do orquestrador', () => {
     updatedAt: '2026-10-20T09:00:00.000Z',
   };
 
-  function renderPanel(steps: MissionStepDto[]) {
+  function renderPanel(steps: MissionStepDto[], planning = true) {
     render(
       <PlanPanel
         mission={mission}
         steps={steps}
         busy={false}
-        planning={false}
+        planning={planning}
         onEditStep={vi.fn()}
       />,
     );
   }
 
-  it('mostra o quadro acima da tabela quando há tarefas com papel', () => {
+  it('mostra o quadro, sem a lista, quando há tarefas com papel e o plano é gerado', () => {
     renderPanel([stepOf('a', 1, 'backend'), stepOf('b', 2, 'frontend')]);
 
-    const board = screen.getByRole('region', { name: 'Quadro do orquestrador' });
-    const table = screen.getByRole('table', { name: 'Etapas do plano' });
-    expect(board.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Quadro do orquestrador' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Etapas do plano' })).toBeNull();
   });
 
-  it('não mostra o quadro quando nenhuma tarefa tem papel', () => {
+  it('não mostra o quadro quando nenhuma tarefa tem papel, e a lista também fica de fora', () => {
     renderPanel([stepOf('a', 1, undefined)]);
 
     expect(screen.queryByRole('region', { name: 'Quadro do orquestrador' })).toBeNull();
-    expect(screen.getByRole('table', { name: 'Etapas do plano' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Etapas do plano' })).toBeNull();
+  });
+
+  it('fora do planejamento, o quadro não aparece: só a lista de etapas', () => {
+    renderPanel([stepOf('a', 1, 'backend'), stepOf('b', 2, 'frontend')], false);
+
+    expect(screen.queryByRole('region', { name: 'Quadro do orquestrador' })).toBeNull();
+    expect(screen.getByRole('list', { name: 'Etapas do plano' })).toBeInTheDocument();
   });
 });

@@ -423,11 +423,21 @@ describe('MissionPage: cabeçalho', () => {
   });
 });
 
-const TAB_NAMES = ['Atividade', 'Diff', 'Testes', 'Terminal', 'Logs'];
+const TAB_NAMES = ['Atividade', 'Alterações', 'Testes'];
+
+/**
+ * A aba do painel inferior pelo nome. Dentro de Alterações o `DiffPanel` tem as próprias sub-abas, e uma
+ * delas também se chama "Alterações": por isso a busca fica na barra de abas da missão.
+ */
+function dockTab(name: string): HTMLElement {
+  const tablist = screen.getByRole('tablist', { name: 'Abas da missão' });
+  return within(tablist).getByRole('tab', { name });
+}
 
 /** Troca para a aba pelo nome e devolve o painel dela. */
 async function openTab(name: string): Promise<HTMLElement> {
-  await userEvent.click(await screen.findByRole('tab', { name }));
+  await screen.findByRole('tablist', { name: 'Abas da missão' });
+  await userEvent.click(dockTab(name));
   return screen.getByRole('tabpanel', { name });
 }
 
@@ -473,7 +483,7 @@ function verificationEvent(
 }
 
 describe('MissionPage: abas', () => {
-  it('mostra as cinco abas na ordem, com a Atividade aberta e só o painel dela visível', async () => {
+  it('mostra as três abas na ordem, com a Atividade aberta e só o painel dela visível', async () => {
     installApi(viewOf());
     renderPage();
 
@@ -481,14 +491,14 @@ describe('MissionPage: abas', () => {
     const tabs = within(tablist).getAllByRole('tab');
     // O nome é o primeiro texto da aba; a contagem (quando há) vem depois e não entra no nome.
     expect(tabs.map((tab) => tab.firstChild?.textContent)).toEqual(TAB_NAMES);
-    expect(tabs[1]).toHaveAccessibleName('Diff');
+    expect(tabs[1]).toHaveAccessibleName('Alterações');
     expect(screen.getByRole('tab', { name: 'Atividade' })).toHaveAttribute('aria-selected', 'true');
     for (const tab of tabs.slice(1)) expect(tab).toHaveAttribute('aria-selected', 'false');
     // Os painéis de fora seguem montados, mas escondidos: só um é acessível.
     const panels = screen.getAllByRole('tabpanel');
     expect(panels).toHaveLength(1);
     expect(panels[0]).toHaveAccessibleName('Atividade');
-    expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(5);
+    expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(3);
   });
 
   it('a página não tem a aba Plano nem a faixa do fluxo da missão', async () => {
@@ -504,7 +514,7 @@ describe('MissionPage: abas', () => {
     installApi(viewOf());
     renderPage();
 
-    const ids = ['conversation', 'diff', 'tests', 'terminal', 'logs'];
+    const ids = ['conversation', 'diff', 'tests'];
     const tabs = within(
       await screen.findByRole('tablist', { name: 'Abas da missão' }),
     ).getAllByRole('tab');
@@ -522,7 +532,7 @@ describe('MissionPage: abas', () => {
     }
   });
 
-  it('Diff conta os arquivos alterados e Testes os que passaram, sem mudar o nome da aba', async () => {
+  it('Alterações conta os arquivos alterados e Testes os que passaram, sem mudar o nome da aba', async () => {
     const hub = installApi(
       viewOf(
         { status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' },
@@ -548,7 +558,8 @@ describe('MissionPage: abas', () => {
     } as never);
     renderPage();
 
-    const diff = await screen.findByRole('tab', { name: 'Diff' });
+    await screen.findByRole('tablist', { name: 'Abas da missão' });
+    const diff = dockTab('Alterações');
     await waitFor(() => expect(diff.querySelector('.tab__count')).toHaveTextContent('3'));
     expect(diff).toHaveAccessibleDescription('3 arquivos alterados');
 
@@ -558,18 +569,16 @@ describe('MissionPage: abas', () => {
     // O número fica escondido do leitor de tela: ele lê a descrição.
     expect(tests.querySelector('.tab__count')).toHaveAttribute('aria-hidden', 'true');
 
-    for (const name of ['Atividade', 'Terminal', 'Logs']) {
-      expect(screen.getByRole('tab', { name }).querySelector('.tab__count')).toBeNull();
-    }
+    expect(screen.getByRole('tab', { name: 'Atividade' }).querySelector('.tab__count')).toBeNull();
   });
 
-  it('com o worktree sem alterações, o Diff não mostra contagem', async () => {
+  it('com o worktree sem alterações, Alterações não mostra contagem', async () => {
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     renderPage();
 
-    const diffPanel = await openTab('Diff');
+    const diffPanel = await openTab('Alterações');
     await within(diffPanel).findByText('A missão ainda não alterou arquivos.');
-    expect(screen.getByRole('tab', { name: 'Diff' }).querySelector('.tab__count')).toBeNull();
+    expect(dockTab('Alterações').querySelector('.tab__count')).toBeNull();
   });
 
   it('trocar de aba mostra o painel certo e esconde o anterior', async () => {
@@ -597,46 +606,41 @@ describe('MissionPage: abas', () => {
     conversation.focus();
 
     await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('tab', { name: 'Diff' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Diff' })).toHaveFocus();
+    expect(dockTab('Alterações')).toHaveAttribute('aria-selected', 'true');
+    expect(dockTab('Alterações')).toHaveFocus();
 
     await user.keyboard('{ArrowLeft}{ArrowLeft}');
-    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Testes' })).toHaveAttribute('aria-selected', 'true');
 
     await user.keyboard('{Home}');
     expect(screen.getByRole('tab', { name: 'Atividade' })).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{End}');
-    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Testes' })).toHaveFocus();
   });
 
-  it('com a missão em rascunho, o Diff diz que ainda não há worktree, e Testes e Terminal dizem que nada foi executado', async () => {
+  it('com a missão em rascunho, Alterações diz que ainda não há worktree, e Testes diz que nada foi executado', async () => {
     installApi(viewOf({ status: 'draft' }));
     renderPage();
 
-    const diff = await openTab('Diff');
+    const diff = await openTab('Alterações');
     expect(within(diff).getByText(/A missão ainda não tem worktree/)).toBeInTheDocument();
     const tests = await openTab('Testes');
     expect(
       within(tests).getByText('Nenhum comando de verificação foi executado'),
     ).toBeInTheDocument();
-    const terminal = await openTab('Terminal');
-    expect(within(terminal).getByText('O agente ainda não executou comandos.')).toBeInTheDocument();
   });
 
-  it('com worktree e sem eventos, Diff, Testes e Terminal mostram o estado vazio', async () => {
+  it('com worktree e sem eventos, Alterações e Testes mostram o estado vazio', async () => {
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     renderPage();
 
     // O diff chega depois da primeira pintura: a espera é pelo texto, não pelo painel.
-    const diff = await openTab('Diff');
+    const diff = await openTab('Alterações');
     expect(
       await within(diff).findByText('A missão ainda não alterou arquivos.'),
     ).toBeInTheDocument();
     expect(
       within(await openTab('Testes')).getByText('Nenhum comando de verificação foi executado'),
-    ).toBeInTheDocument();
-    expect(
-      within(await openTab('Terminal')).getByText('O agente ainda não executou comandos.'),
     ).toBeInTheDocument();
   });
 
@@ -644,10 +648,10 @@ describe('MissionPage: abas', () => {
     installApi(viewOf({ status: 'running' }));
     renderPage();
 
-    const terminal = await openTab('Terminal');
+    const terminal = await openTab('Testes');
 
     expect(terminal.querySelector('.panel')).toBeNull();
-    const empty = within(terminal).getByText('O agente ainda não executou comandos.');
+    const empty = within(terminal).getByText('Nenhum comando de verificação foi executado');
     expect(empty).toHaveClass('empty-state__title');
     expect(empty.closest('.panel__empty')).not.toBeNull();
   });
@@ -663,7 +667,7 @@ describe('MissionPage: abas', () => {
     expect(within(criteria).getByText('○ não verificado')).toBeInTheDocument();
   });
 
-  it('com 300 eventos, a lista fica no painel da aba Logs, que rola sozinho', async () => {
+  it('com 300 eventos, a lista do filtro Técnico fica no painel da aba Atividade, que rola sozinho', async () => {
     const events = Array.from({ length: 300 }, (_, index) =>
       eventOf({
         id: `e${index}`,
@@ -675,7 +679,8 @@ describe('MissionPage: abas', () => {
     installApi(viewOf({ status: 'running' }, { events }));
     renderPage();
 
-    const logs = await openTab('Logs');
+    const logs = await openTab('Atividade');
+    await userEvent.click(within(logs).getByRole('button', { name: 'Técnico' }));
     const list = within(logs).getByRole('list', { name: 'Eventos do sistema' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(300);
     expect(logs).toContainElement(list);
@@ -697,7 +702,7 @@ describe('MissionPage: abas', () => {
     expect(document.querySelector('img')).toBeNull();
   });
 
-  it('a Atividade mostra só a história da missão; o detalhe técnico fica nos Logs', async () => {
+  it('a Atividade mostra só a história da missão; o detalhe técnico fica no filtro Técnico', async () => {
     installApi(
       viewOf(
         { status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' },
@@ -723,11 +728,14 @@ describe('MissionPage: abas', () => {
     renderPage();
 
     const conversation = await screen.findByRole('tabpanel', { name: 'Atividade' });
-    expect(within(conversation).getByText('Vou aplicar o plano.')).toBeInTheDocument();
-    expect(within(conversation).queryByText(/Worktree criado em/)).toBeNull();
-    expect(within(conversation).queryByText(/Ferramenta solicitada/)).toBeNull();
+    // Os Logs ficam montados, escondidos: a história é a lista "Eventos da missão".
+    const story = within(conversation).getByRole('list', { name: 'Eventos da missão' });
+    expect(within(story).getByText('Vou aplicar o plano.')).toBeInTheDocument();
+    expect(within(story).queryByText(/Worktree criado em/)).toBeNull();
+    expect(within(story).queryByText(/Ferramenta solicitada/)).toBeNull();
 
-    const logs = await openTab('Logs');
+    await userEvent.click(within(conversation).getByRole('button', { name: 'Técnico' }));
+    const logs = within(conversation).getByRole('list', { name: 'Eventos do sistema' });
     expect(within(logs).getByText('Vou aplicar o plano.')).toBeInTheDocument();
     expect(within(logs).getByText(/Worktree criado em/)).toBeInTheDocument();
     expect(within(logs).getByText('Ferramenta solicitada: write_file.')).toBeInTheDocument();
@@ -750,7 +758,7 @@ describe('MissionPage: abas', () => {
     renderPage();
     await userEvent.type(await screen.findByLabelText('Qual o nome do arquivo?'), 'notas');
 
-    await openTab('Logs');
+    await openTab('Testes');
     await openTab('Atividade');
 
     expect(screen.getByLabelText('Qual o nome do arquivo?')).toHaveValue('notas');
@@ -920,7 +928,7 @@ describe('MissionPage: ações e decisão', () => {
     expect(screen.getByRole('button', { name: 'Orquestrar' })).toBeEnabled();
   });
 
-  it('"Arquivos alterados" lista cada arquivo do worktree com as linhas a mais e a menos', async () => {
+  it('"Arquivos alterados" resume o worktree e a lista logo abaixo mostra cada arquivo uma vez, com as linhas a mais e a menos', async () => {
     const hub = installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     hub.api.missions.diff.mockResolvedValue({
       ok: true,
@@ -934,17 +942,43 @@ describe('MissionPage: ações e decisão', () => {
     } as never);
     renderPage();
 
-    const section = await screen.findByRole('region', { name: 'Arquivos alterados' });
-    const items = await within(section).findAllByRole('listitem');
-    expect(items.map((item) => item.textContent)).toEqual(['src/a.ts +3 −1', 'src/b.ts +2 −0']);
+    const panel = await openTab('Alterações');
+    const section = within(panel).getByRole('region', { name: 'Arquivos alterados' });
+    expect(await within(section).findByText('2 arquivos alterados')).toBeInTheDocument();
+    const list = await within(panel).findByRole('list', { name: 'Arquivos alterados' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      expect.stringMatching(/src\/a\.ts.*\+3.*−1/),
+      expect.stringMatching(/src\/b\.ts.*\+2.*−0/),
+    ]);
+    expect(within(panel).getAllByText('src/a.ts')).toHaveLength(1);
     expect(hub.api.missions.diff).toHaveBeenCalledWith('m1');
+  });
+
+  it('a aba Alterações lê o diff uma vez só, sem repetir carregando nem alerta', async () => {
+    const hub = installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
+    let resolve: (value: never) => void = () => undefined;
+    hub.api.missions.diff.mockImplementation((() => new Promise((done) => (resolve = done as never))) as never);
+    renderPage();
+
+    const panel = await openTab('Alterações');
+    expect(within(panel).getAllByText('Carregando alterações…')).toHaveLength(1);
+    resolve({
+      ok: false,
+      error: { code: 'INTERNAL', message: 'O Git não respondeu.' },
+    } as never);
+    await within(panel).findByRole('alert');
+    expect(within(panel).getAllByRole('alert')).toHaveLength(1);
+    expect(hub.api.missions.diff).toHaveBeenCalledTimes(1);
   });
 
   it('sem worktree, "Arquivos alterados" diz "Nenhuma alteração pendente." e o diff não é lido', async () => {
     const hub = installApi(viewOf({ status: 'draft' }));
     renderPage();
 
-    const section = await screen.findByRole('region', { name: 'Arquivos alterados' });
+    const section = within(await openTab('Alterações')).getByRole('region', {
+      name: 'Arquivos alterados',
+    });
     expect(within(section).getByText('Nenhuma alteração pendente.')).toBeInTheDocument();
     expect(hub.api.missions.diff).not.toHaveBeenCalled();
   });
@@ -953,35 +987,41 @@ describe('MissionPage: ações e decisão', () => {
     installApi(viewOf({ status: 'running', worktreePath: 'C:\\app\\.worktrees\\m1' }));
     renderPage();
 
-    const section = await screen.findByRole('region', { name: 'Arquivos alterados' });
+    const section = within(await openTab('Alterações')).getByRole('region', {
+      name: 'Arquivos alterados',
+    });
     expect(await within(section).findByText('Nenhuma alteração pendente.')).toBeInTheDocument();
   });
 
-  it('a missão mostra, de cima para baixo, o cabeçalho, as tarefas, os arquivos alterados e a decisão', async () => {
+  it('a missão mostra, de cima para baixo, o cabeçalho, a decisão e as tarefas, e os arquivos alterados ficam no painel inferior', async () => {
     installApi(viewOf({ status: 'planned' }));
     renderPage();
 
     const regions = [
       await screen.findByRole('region', { name: 'Resumo da missão' }),
-      screen.getByRole('region', { name: 'Plano da missão' }),
-      screen.getByRole('region', { name: 'Arquivos alterados' }),
       screen.getByRole('region', { name: 'Sua decisão' }),
+      screen.getByRole('region', { name: 'Plano da missão' }),
     ];
     for (let index = 1; index < regions.length; index += 1) {
       const before = regions[index - 1] as HTMLElement;
       const after = regions[index] as HTMLElement;
       expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
-    // O painel inferior vem depois do corpo.
+    // O painel inferior vem depois do corpo, e os arquivos alterados moram nele, na aba Alterações.
     const tablist = screen.getByRole('tablist', { name: 'Abas da missão' });
     expect(
-      (regions[3] as HTMLElement).compareDocumentPosition(tablist) &
+      (regions[2] as HTMLElement).compareDocumentPosition(tablist) &
         Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const files = screen.getByRole('region', { name: 'Arquivos alterados', hidden: true });
+    expect(files.closest('[role="tabpanel"]')).toHaveAttribute('id', 'mission-panel-diff');
+    expect(
+      (regions[2] as HTMLElement).compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it('com tarefas que têm papel, o quadro do orquestrador mostra a descrição de cada papel e a entrega aguardando', async () => {
-    installApi(
+  it('enquanto o plano é gerado, o quadro do orquestrador mostra a descrição de cada papel e a entrega aguardando', async () => {
+    const hub = installApi(
       viewOf(
         { status: 'planned' },
         {
@@ -1006,13 +1046,20 @@ describe('MissionPage: ações e decisão', () => {
         },
       ),
     );
+    hub.api.missions.plan.mockImplementationOnce(() => new Promise(() => undefined));
     renderPage();
+    const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+    // Fora do planejamento, só a lista de etapas: o quadro aparece só enquanto o plano é gerado.
+    expect(screen.queryByRole('region', { name: 'Quadro do orquestrador' })).toBeNull();
+    expect(screen.getByRole('list', { name: 'Etapas do plano' })).toBeInTheDocument();
+
+    await userEvent.click(within(decision).getByRole('button', { name: 'Planejar de novo' }));
 
     const board = await screen.findByRole('region', { name: 'Quadro do orquestrador' });
     expect(within(board).getByText('Interface e componentes')).toBeInTheDocument();
     expect(within(board).getByText('APIs e lógica do sistema')).toBeInTheDocument();
     expect(within(board).getByText('aguardando tarefas')).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Etapas do plano' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Etapas do plano' })).toBeNull();
   });
 });
 
@@ -1087,6 +1134,413 @@ describe('MissionPage: resumo de conclusão', () => {
     const decision = await screen.findByRole('region', { name: 'Sua decisão' });
     expect(screen.queryByRole('region', { name: 'Resumo da conclusão' })).toBeNull();
     expect(within(decision).getByText('Missão concluída.')).toBeInTheDocument();
+  });
+});
+
+describe('MissionPage: "Sua decisão" fixo no topo', () => {
+  /** Situações em que a missão espera algo da pessoa: o bloco aparece. */
+  const WAITING = [
+    'draft',
+    'planned',
+    'queued',
+    'paused',
+    'failed',
+    'cancelled',
+    'waiting_approval',
+    'waiting_input',
+    'review',
+  ] as const;
+
+  /** O invólucro do bloco: o elemento que aparece ou se recolhe, sem remontar o bloco dentro dele. */
+  function wrapperOf(decision: HTMLElement): HTMLElement {
+    const wrapper = decision.parentElement;
+    if (wrapper === null) throw new Error('O bloco "Sua decisão" não tem invólucro.');
+    return wrapper;
+  }
+
+  /** Verdadeiro quando `after` vem depois de `before` na ordem do documento. */
+  function precedes(before: Element, after: Element): boolean {
+    return Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }
+
+  it('o bloco de decisão vem antes do plano na ordem do DOM', async () => {
+    installApi(viewOf({ status: 'planned' }));
+    renderPage();
+
+    const header = await screen.findByRole('region', { name: 'Resumo da missão' });
+    const decision = screen.getByRole('region', { name: 'Sua decisão' });
+    const plan = screen.getByRole('region', { name: 'Plano da missão' });
+    const files = screen.getByRole('region', { name: 'Arquivos alterados', hidden: true });
+    const tablist = screen.getByRole('tablist', { name: 'Abas da missão' });
+
+    expect(precedes(header, decision)).toBe(true);
+    expect(precedes(decision, plan)).toBe(true);
+    expect(precedes(decision, files)).toBe(true);
+    expect(precedes(decision, tablist)).toBe(true);
+  });
+
+  it.each(['running', 'succeeded'] as const)(
+    'com a missão %s e sem decisão pendente, o bloco não aparece',
+    async (status) => {
+      installApi(viewOf({ status }));
+      renderPage();
+
+      // Sem esperar a visão, o teste passaria antes de a página existir.
+      await screen.findByRole('region', { name: 'Resumo da missão' });
+      const wrapper = wrapperOf(screen.getByRole('region', { name: 'Sua decisão' }));
+
+      expect(wrapper).toHaveAttribute('data-decision', 'idle');
+      expect(wrapper).toHaveClass('visually-hidden');
+      expect(wrapper).not.toHaveClass('mission-decision');
+      // A classe recolhe de verdade (o jsdom não carrega o CSS), e a região de anúncio segue montada.
+      expect(ruleDeclarations(readCss('home.css'), '.visually-hidden').get('clip-path')).toBe(
+        'inset(50%)',
+      );
+      expect(document.querySelector('[role="status"].decision-announce')).not.toBeNull();
+    },
+  );
+
+  it.each(WAITING)('com a missão %s, o bloco aparece', async (status) => {
+    installApi(viewOf({ status }));
+    renderPage();
+
+    await screen.findByRole('region', { name: 'Resumo da missão' });
+    const wrapper = wrapperOf(screen.getByRole('region', { name: 'Sua decisão' }));
+
+    expect(wrapper).toHaveAttribute('data-decision', 'pending');
+    expect(wrapper).toHaveClass('mission-decision');
+    expect(wrapper).not.toHaveClass('visually-hidden');
+  });
+
+  it('a missão concluída com resumo mantém o bloco à vista, para o resumo não sumir', async () => {
+    installApi(
+      viewOf(
+        { status: 'succeeded' },
+        {
+          conclusion: {
+            summary: 'Login corrigido.',
+            verification: { passed: 14, failed: 0 },
+            changedFiles: 3,
+            gitState: 'uncommitted',
+          },
+        },
+      ),
+    );
+    renderPage();
+
+    const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+    expect(wrapperOf(decision)).toHaveAttribute('data-decision', 'pending');
+    expect(within(decision).getByText('Login corrigido.')).toBeInTheDocument();
+  });
+
+  it('com decisão pendente, a região "Sua decisão" está no topo da página, logo abaixo do cabeçalho', async () => {
+    installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    renderPage();
+
+    const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+    const wrapper = wrapperOf(decision);
+    const header = screen.getByRole('region', { name: 'Resumo da missão' });
+    const group = wrapper.parentElement;
+    expect(wrapper).toHaveClass('mission-decision');
+    // No topo do corpo: o grupo fixo é o primeiro bloco, o cabeçalho é o primeiro dentro dele, e o
+    // invólucro do bloco vem logo depois do cabeçalho.
+    expect(group).toHaveClass('mission-top');
+    expect(group?.parentElement?.firstElementChild).toBe(group);
+    expect(group?.firstElementChild).toBe(header);
+    expect(wrapper.previousElementSibling).toBe(header);
+    // O plano vem depois, fora do grupo.
+    const plan = screen.getByRole('region', { name: 'Plano da missão' });
+    expect(precedes(wrapper, plan)).toBe(true);
+    expect(group?.contains(plan)).toBe(false);
+  });
+
+  it.each(['running', 'waiting_approval'] as const)(
+    'com a missão %s, o cabeçalho fica no grupo fixo, com ou sem decisão',
+    async (status) => {
+      installApi(
+        viewOf({ status }, status === 'waiting_approval' ? { pendingApprovals: [APPROVAL] } : {}),
+      );
+      renderPage();
+
+      const header = await screen.findByRole('region', { name: 'Resumo da missão' });
+      const group = header.closest('.mission-top');
+      expect(group).not.toBeNull();
+      // O invólucro do bloco está no mesmo grupo: o bloco fica sempre logo abaixo do cabeçalho.
+      expect(group?.contains(wrapperOf(screen.getByRole('region', { name: 'Sua decisão' })))).toBe(
+        true,
+      );
+    },
+  );
+
+  it('o aviso de falha do cabeçalho fica entre o cabeçalho e o bloco', async () => {
+    const { api } = installApi(viewOf({ status: 'failed' }));
+    api.missions.delete.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'WORKTREE_HAS_UNSAVED_CHANGES',
+        message: 'O worktree tem alterações não salvas.',
+        retryable: false,
+      },
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await openActionsMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Excluir missão' }));
+    await user.click(screen.getByRole('button', { name: 'Excluir' }));
+
+    const alert = await screen.findByRole('alert');
+    const decision = screen.getByRole('region', { name: 'Sua decisão' });
+    const header = screen.getByRole('region', { name: 'Resumo da missão' });
+    expect(precedes(header, alert)).toBe(true);
+    expect(precedes(alert, decision)).toBe(true);
+    expect(alert.parentElement).toBe(wrapperOf(decision).parentElement);
+  });
+
+  it('a região de anúncio e o invólucro são os mesmos quando a decisão chega', async () => {
+    const hub = installApi(viewOf({ status: 'running' }));
+    renderPage();
+
+    const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+    const wrapper = wrapperOf(decision);
+    const announce = document.querySelector('[role="status"].decision-announce');
+    expect(wrapper).toHaveAttribute('data-decision', 'idle');
+
+    hub.setView(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+    hub.emit({
+      eventType: 'mission.status_changed',
+      payload: { from: 'running', to: 'waiting_approval' },
+    });
+
+    await waitFor(() => expect(wrapper).toHaveAttribute('data-decision', 'pending'));
+    expect(wrapper).toHaveClass('mission-decision');
+    expect(wrapper).not.toHaveClass('visually-hidden');
+    // Nada foi remontado: é a mesma região, e só assim o leitor de tela anuncia a decisão nova.
+    expect(screen.getByRole('region', { name: 'Sua decisão' })).toBe(decision);
+    expect(document.querySelector('[role="status"].decision-announce')).toBe(announce);
+    expect(announce).toHaveTextContent('Aguardando você: aprovação, Gravar arquivo.');
+  });
+
+  describe('folha de estilo (mission.css)', () => {
+    /**
+     * O bloco `@container <consulta> { ... }` inteiro, das chaves de abertura e de fechamento dele. O
+     * `ruleDeclarations` só deixa de fora o `@media`, então as regras do `@container` entrariam como regras
+     * base, e a última venceria.
+     */
+    function containerBlock(source: string, query: string): string {
+      const start = source.indexOf(`@container ${query}`);
+      if (start < 0) return '';
+      let depth = 0;
+      for (let index = source.indexOf('{', start); index < source.length; index += 1) {
+        if (source[index] === '{') depth += 1;
+        if (source[index] === '}') depth -= 1;
+        if (depth === 0) return source.slice(start, index + 1);
+      }
+      return '';
+    }
+
+    const full = readCss('mission.css');
+    const low = containerBlock(full, '(max-height: 31rem)');
+    /** As regras base: o CSS sem o regime de corpo baixo. */
+    const css = full.replace(low, '');
+
+    it('o grupo do cabeçalho e da decisão fica fixo no alto do corpo, acima do que rola, com fundo opaco e no máximo 75% do corpo', () => {
+      const group = ruleDeclarations(css, '.mission-top');
+      expect(group.get('position')).toBe('sticky');
+      expect(group.get('top')).toBe('0');
+      expect(group.get('z-index')).toBeDefined();
+      expect(group.get('background')).toBe('var(--bg)');
+      expect(group.get('max-height')).toBe('75%');
+      expect(group.get('display')).toBe('flex');
+      expect(group.get('flex-direction')).toBe('column');
+      // Último recurso: se o cabeçalho e o piso do bloco passarem do limite, o grupo rola por dentro, em vez
+      // de cortar o fim do bloco (onde fica a ação principal) com uma rolagem que ninguém alcança.
+      expect(group.get('overflow')).toBe('hidden auto');
+      // Quem encolhe dentro do grupo é o invólucro do bloco, que nunca fica menor que o piso dele.
+      const wrapper = ruleDeclarations(css, '.mission-top > .mission-decision');
+      expect(wrapper.get('flex')).toBe('0 1 auto');
+      expect(wrapper.get('min-height')).toBe('11rem');
+      expect(wrapper.get('scroll-margin-top')).toBeDefined();
+      // O cabeçalho não encolhe no grupo.
+      expect(ruleDeclarations(css, '.mission-top > *').get('flex')).toBe('none');
+    });
+
+    it('num corpo baixo, o bloco fica no piso e o grupo pode ocupar todo o corpo, sem passar dele', () => {
+      expect(low).not.toBe('');
+      expect(ruleDeclarations(low, '.mission-top').get('max-height')).toBe('100%');
+      expect(ruleDeclarations(low, '.mission-top > .mission-decision').get('max-height')).toBe(
+        '11rem',
+      );
+      // 11rem é o piso do invólucro: o bloco fica nele, e nunca abaixo. Ele cobre o título, a frase, a nota e o
+      // topo do cartão a pelo menos uma linha de botões da borda de baixo; com menos, a nota do bloco fica por
+      // baixo da linha fixa de botões e o texto é cortado (medido no app real, nas janelas 1360x840, 1200x800 e
+      // 900x700).
+      expect(ruleDeclarations(css, '.mission-top > .mission-decision').get('min-height')).toBe(
+        '11rem',
+      );
+    });
+
+    it('o invólucro não tem posição própria: quem fica fixo é o grupo, e o bloco fica logo abaixo do cabeçalho', () => {
+      expect(ruleDeclarations(css, '.mission-decision').get('position')).toBeUndefined();
+      expect(ruleDeclarations(css, '.mission-top > .mission-decision').get('position')).toBe(
+        undefined,
+      );
+    });
+
+    it('o corpo é uma coluna flexível, sem respiro de cima, para o grupo fixo valer em toda a rolagem e colar na borda', () => {
+      const main = ruleDeclarations(css, '.mission-main');
+      expect(main.get('display')).toBe('flex');
+      expect(main.get('flex-direction')).toBe('column');
+      expect(main.get('padding')).toBe('0 var(--space-4) var(--space-4)');
+      // Contêiner de tamanho: a altura do corpo decide o regime do grupo (`@container (max-height: ...)`).
+      expect(main.get('container-type')).toBe('size');
+      expect(main.get('height')).toBe('100%');
+      expect(ruleDeclarations(css, '.mission-main > *').get('flex')).toBe('none');
+      expect(ruleDeclarations(css, '.mission-main > :first-child').get('margin-top')).toBe(
+        'var(--space-3)',
+      );
+      // O grupo leva o respiro de cima no padding dele, então a margem do primeiro bloco desconta esse padding.
+      // O respiro dos lados (com a margem negativa) guarda o contorno de foco que o `overflow` cortaria.
+      expect(ruleDeclarations(css, '.mission-top').get('padding')).toBe(
+        'var(--space-2) var(--space-1)',
+      );
+      expect(ruleDeclarations(css, '.mission-top').get('margin')).toBe(
+        '0 calc(-1 * var(--space-1)) calc(-1 * var(--space-2))',
+      );
+      expect(
+        ruleDeclarations(css, '.mission-main > .mission-top:first-child').get('margin-top'),
+      ).toBe('calc(var(--space-3) - var(--space-2))');
+    });
+
+    it('o bloco tem no máximo 40% da altura da janela e rola por dentro', () => {
+      const block = ruleDeclarations(css, '.decision-block');
+      expect(block.get('max-height')).toBe('40vh');
+      expect(block.get('overflow-y')).toBe('auto');
+      // O foco por teclado num campo não o deixa atrás do título e da linha fixos.
+      expect(block.get('scroll-padding')).toBeDefined();
+      expect(ruleDeclarations(css, '.mission-decision > .decision-block').get('min-height')).toBe(
+        '0',
+      );
+    });
+
+    it('o título fica no alto do bloco, mesmo com a rolagem de dentro', () => {
+      const title = ruleDeclarations(css, '.decision-block > .mission-section-title');
+      // O "gruda" é medido sem o padding do bloco: o deslocamento negativo leva o título até a borda.
+      expect(title.get('position')).toBe('sticky');
+      expect(title.get('top')).toBe('calc(-1 * var(--space-4))');
+      // A linha de aprovação da revisão cola logo abaixo dele com a mesma conta (linha de 1.2 + respiro).
+      expect(title.get('line-height')).toBe('1.2');
+      expect(ruleDeclarations(css, '.decision-block > .form-actions').get('top')).toBe(
+        'calc(var(--text-lg) * 1.2 + var(--space-2))',
+      );
+    });
+  });
+
+  /**
+   * A linha da ação principal de cada situação precisa grudar no fim do bloco, ou o botão fica abaixo da
+   * dobra quando o bloco rola por dentro. O jsdom não mede layout, então o teste faz o que ele sabe:
+   * monta a tela de cada situação e confere que a linha do botão principal casa com um seletor de
+   * `mission.css` que declara `position: sticky` com `bottom`. (A medida de verdade, com o layout real,
+   * está nas capturas do E2E, que a pessoa que revisa abre.)
+   */
+  describe('a linha da ação principal gruda no fim do bloco (mission.css)', () => {
+    const css = readCss('mission.css');
+
+    /** Os seletores das regras que declaram `position: sticky` junto de um `bottom`. */
+    function stickyBottomSelectors(): string[] {
+      const found: string[] = [];
+      for (const [, selectors = '', body = ''] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        if (/position:\s*sticky/.test(body) && /(?:^|[;\s])bottom\s*:/.test(body)) {
+          found.push(...selectors.split(',').map((item) => item.trim()));
+        }
+      }
+      return found;
+    }
+
+    const sticky = stickyBottomSelectors();
+
+    /** O botão principal de cada situação, com o que a visão precisa para ele existir. */
+    const PRIMARY: [MissionViewDto['mission']['status'], string, Partial<MissionViewDto>][] = [
+      ['draft', 'Orquestrar', {}],
+      ['planned', 'Aprovar plano', {}],
+      ['queued', 'Iniciar missão', {}],
+      ['paused', 'Retomar', {}],
+      ['failed', 'Tentar de novo', {}],
+      ['cancelled', 'Tentar de novo', {}],
+      ['waiting_approval', 'Aprovar', { pendingApprovals: [APPROVAL] }],
+      ['waiting_input', 'Enviar resposta', {}],
+      ['review', 'Aprovar conclusão', {}],
+    ];
+
+    it('há seletores que fixam linhas no fim do bloco, e todos têm fundo opaco e o mesmo deslocamento', () => {
+      expect(sticky.length).toBeGreaterThanOrEqual(4);
+      for (const selector of sticky) {
+        const rule = ruleDeclarations(css, selector);
+        expect(rule.get('bottom'), selector).toBe('calc(-1 * var(--space-4))');
+        // Fundo opaco (a superfície ou o vidro sobre ela), para o que rola passar por baixo.
+        expect(rule.get('background'), selector).toMatch(
+          /^(?:var\(--surface\)|linear-gradient\(.*\), var\(--surface\))$/,
+        );
+      }
+    });
+
+    it.each(PRIMARY)(
+      'com a missão %s, a linha do botão "%s" casa com um seletor que gruda',
+      async (status, label, rest) => {
+        installApi(viewOf({ status }, rest));
+        renderPage();
+
+        const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+        const button = within(decision).getByRole('button', { name: label });
+        const row = button.parentElement;
+        expect(row).not.toBeNull();
+        expect(row?.matches(sticky.join(', ')), `${status}: ${row?.className}`).toBe(true);
+      },
+    );
+
+    it('em revisão, a linha de "Pedir ajustes" é secundária e não ganha uma segunda barra fixa', async () => {
+      installApi(viewOf({ status: 'review' }));
+      renderPage();
+
+      const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+      const row = within(decision).getByRole('button', { name: 'Pedir ajustes' }).parentElement;
+      expect(row?.matches(sticky.join(', '))).toBe(false);
+    });
+
+    it('o cartão de aprovação e o formulário são colunas flexíveis: filho de grade não gruda', () => {
+      for (const selector of ['.decision-block .decision-card', '.decision-block .form']) {
+        const rule = ruleDeclarations(css, selector);
+        expect(rule.get('display'), selector).toBe('flex');
+        expect(rule.get('flex-direction'), selector).toBe('column');
+      }
+    });
+
+    it('a linha do cartão e a do formulário usam o fundo e o respiro do próprio cartão', () => {
+      // O vidro do cartão (translúcido) sobre a superfície do bloco, em camadas: opaco, e da mesma cor.
+      const GLASS = 'linear-gradient(var(--surface-glass), var(--surface-glass)), var(--surface)';
+      const card = ruleDeclarations(css, '.decision-block .decision-card > .inline-actions');
+      expect(card.get('background')).toBe(GLASS);
+      // O respiro é o padding de baixo do cartão (--space-3), para a linha não cobrir a borda dele.
+      expect(card.get('padding-bottom')).toBe('var(--space-3)');
+      expect(card.get('margin-bottom')).toBe('calc(-1 * var(--space-3))');
+      const form = ruleDeclarations(
+        css,
+        ".decision-block form[aria-label='Resposta ao agente'] > .form-actions",
+      );
+      expect(form.get('background')).toBe(GLASS);
+      expect(form.get('padding-bottom')).toBe('var(--space-4)');
+    });
+  });
+
+  describe('o foco', () => {
+    it('com a missão esperando aprovação, o foco vai para o bloco, que está no invólucro fixo', async () => {
+      installApi(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
+      renderPage();
+
+      const decision = await screen.findByRole('region', { name: 'Sua decisão' });
+      await waitFor(() => expect(decision).toHaveFocus());
+      expect(decision.closest('.mission-decision')).not.toBeNull();
+    });
   });
 });
 
@@ -1191,8 +1645,8 @@ describe('MissionPage: aviso e leitor de tela', () => {
   it('com outra aba do painel inferior aberta, a decisão que chega é anunciada, sem trocar de aba nem tomar o foco', async () => {
     const hub = installApi(viewOf({ status: 'running' }));
     renderPage();
-    await openTab('Logs');
-    const logsTab = screen.getByRole('tab', { name: 'Logs' });
+    await openTab('Testes');
+    const testsTab = screen.getByRole('tab', { name: 'Testes' });
     expect(announceRegion()).toBeEmptyDOMElement();
 
     hub.setView(viewOf({ status: 'waiting_input' }));
@@ -1204,8 +1658,8 @@ describe('MissionPage: aviso e leitor de tela', () => {
     await waitFor(() =>
       expect(announceRegion()).toHaveTextContent('Aguardando você: o agente espera uma resposta.'),
     );
-    expect(logsTab).toHaveAttribute('aria-selected', 'true');
-    expect(logsTab).toHaveFocus();
+    expect(testsTab).toHaveAttribute('aria-selected', 'true');
+    expect(testsTab).toHaveFocus();
   });
 
   it('o bloco é nomeado pelo próprio título, sem aria-label repetido', async () => {
@@ -1254,22 +1708,20 @@ describe('MissionPage: troca de missão', () => {
       </MemoryRouter>,
     );
     await screen.findByRole('heading', { level: 1, name: 'Missão A' });
-    const files = await screen.findByRole('region', { name: 'Arquivos alterados' });
+    const files = await openTab('Alterações');
     expect(await within(files).findByText('a.ts')).toBeInTheDocument();
     await waitFor(() =>
-      expect(
-        screen.getByRole('tab', { name: 'Diff' }).querySelector('.tab__count'),
-      ).toHaveTextContent('2'),
+      expect(dockTab('Alterações').querySelector('.tab__count')).toHaveTextContent('2'),
     );
-    await openTab('Logs');
-    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+    await openTab('Testes');
+    expect(screen.getByRole('tab', { name: 'Testes' })).toHaveAttribute('aria-selected', 'true');
 
     await userEvent.click(screen.getByRole('link', { name: 'Ir para a missão B' }));
 
     await screen.findByRole('heading', { level: 1, name: 'Missão B' });
     expect(screen.getByRole('tab', { name: 'Atividade' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'false');
-    expect(screen.getByRole('tab', { name: 'Diff' }).querySelector('.tab__count')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Testes' })).toHaveAttribute('aria-selected', 'false');
+    expect(dockTab('Alterações').querySelector('.tab__count')).toBeNull();
     expect(screen.queryByText('a.ts')).toBeNull();
   });
 });
@@ -1318,24 +1770,38 @@ describe('MissionPage: plano e início', () => {
     ).toBeInTheDocument();
   });
 
-  it('enquanto o novo plano é gerado, as tarefas não podem ser editadas', async () => {
+  it('enquanto o novo plano é gerado, a lista de etapas some e as tarefas não podem ser editadas', async () => {
     const hub = installApi(viewOf());
-    hub.api.missions.plan.mockImplementationOnce(() => new Promise(() => undefined));
+    type PlanResult = Awaited<ReturnType<typeof hub.api.missions.plan>>;
+    let finish: (value: PlanResult) => void = () => undefined;
+    hub.api.missions.plan.mockImplementationOnce(
+      () => new Promise<PlanResult>((resolve) => (finish = resolve)),
+    );
     renderPage();
     const decision = await screen.findByRole('region', { name: 'Sua decisão' });
     const plan = screen.getByRole('region', { name: 'Plano da missão' });
+    expect(within(plan).getByRole('list', { name: 'Etapas do plano' })).toBeInTheDocument();
 
     await userEvent.click(within(decision).getByRole('button', { name: 'Planejar de novo' }));
 
     expect(await within(decision).findByRole('button', { name: 'Planejando…' })).toBeDisabled();
     expect(within(decision).getByRole('button', { name: 'Aprovar plano' })).toBeDisabled();
-    expect(
-      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
-    ).toBeDisabled();
-    expect(
-      within(plan).getByRole('button', { name: 'Remover tarefa Login funciona' }),
-    ).toBeDisabled();
+    // Durante o planejamento só o quadro aparece (se as tarefas têm papel): a lista e os controles somem.
+    expect(within(plan).getByRole('status')).toHaveTextContent('Planejando…');
+    expect(within(plan).queryByRole('list', { name: 'Etapas do plano' })).toBeNull();
+    expect(within(plan).queryByText('Login funciona')).toBeNull();
+    expect(within(plan).queryByRole('button')).toBeNull();
     expect(hub.api.missions.editPlanStep).not.toHaveBeenCalled();
+
+    // Terminado o planejamento, a lista volta com os controles de edição.
+    finish({
+      ok: false,
+      error: { code: 'PROCESS_START_FAILED', message: 'O Claude não respondeu.', retryable: true },
+    });
+    expect(
+      await within(plan).findByRole('button', { name: 'Ações da tarefa Login funciona' }),
+    ).toBeEnabled();
+    expect(within(plan).queryByRole('region', { name: 'Quadro do orquestrador' })).toBeNull();
   });
 
   it('dois cliques seguidos no Planejar de novo chamam o planejamento uma vez só', async () => {
@@ -1364,7 +1830,7 @@ describe('MissionPage: plano e início', () => {
     expect(await within(decision).findByRole('alert')).toHaveTextContent('O Claude não respondeu.');
     expect(within(plan).getByText('Login funciona')).toBeInTheDocument();
     expect(
-      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
+      within(plan).getByRole('button', { name: 'Ações da tarefa Login funciona' }),
     ).toBeEnabled();
     expect(within(decision).getByRole('button', { name: 'Planejar de novo' })).toBeEnabled();
   });
@@ -1404,12 +1870,15 @@ describe('MissionPage: plano e início', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Aprovar plano' }));
 
+    // Renomear e Remover moram no menu "⋯" da linha: com o menu e a alça parados, nada edita.
     expect(
-      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
+      within(plan).getByRole('button', { name: 'Ações da tarefa Login funciona' }),
     ).toBeDisabled();
     expect(
-      within(plan).getByRole('button', { name: 'Remover tarefa Login funciona' }),
+      within(plan).getByRole('button', { name: /^Reordenar tarefa Login funciona/ }),
     ).toBeDisabled();
+    await userEvent.dblClick(within(plan).getByText('Login funciona'));
+    expect(within(plan).queryByRole('textbox')).toBeNull();
     expect(hub.api.missions.editPlanStep).not.toHaveBeenCalled();
   });
 
@@ -1419,9 +1888,7 @@ describe('MissionPage: plano e início', () => {
     const plan = await screen.findByRole('region', { name: 'Plano da missão' });
     const loads = hub.api.missions.get.mock.calls.length;
 
-    await userEvent.click(
-      within(plan).getByRole('button', { name: 'Renomear tarefa Login funciona' }),
-    );
+    await userEvent.dblClick(within(plan).getByText('Login funciona'));
     await userEvent.type(within(plan).getByRole('textbox', { name: /Novo nome/ }), ' bem{Enter}');
 
     await waitFor(() =>
@@ -1448,8 +1915,9 @@ describe('MissionPage: plano e início', () => {
     const plan = await screen.findByRole('region', { name: 'Plano da missão' });
 
     await userEvent.click(
-      within(plan).getByRole('button', { name: 'Remover tarefa Login funciona' }),
+      within(plan).getByRole('button', { name: 'Ações da tarefa Login funciona' }),
     );
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remover' }));
     await userEvent.click(within(plan).getByRole('button', { name: 'Remover' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -1668,7 +2136,12 @@ describe('MissionPage: decisões no bloco, história na Atividade', () => {
       renderPage();
 
       const conversation = await screen.findByRole('tabpanel', { name: 'Atividade' });
-      expect(within(conversation).queryByRole('button')).toBeNull();
+      // O único controle da Atividade é o filtro Técnico.
+      expect(
+        within(conversation)
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ).toEqual(['Técnico']);
       expect(within(conversation).queryByRole('textbox')).toBeNull();
       expect(within(conversation).queryByRole('form')).toBeNull();
       expect(within(conversation).queryByText('Aprovação necessária')).toBeNull();
@@ -2047,9 +2520,9 @@ describe('MissionPage: foco da decisão (R182)', () => {
   it('quando a missão passa a esperar a decisão com outra aba aberta, nada troca e nada toma o foco; o aviso fica na região de anúncio', async () => {
     const hub = installApi(viewOf({ status: 'running' }));
     renderPage();
-    await openTab('Logs');
-    const logsTab = screen.getByRole('tab', { name: 'Logs' });
-    expect(logsTab).toHaveFocus();
+    await openTab('Testes');
+    const testsTab = screen.getByRole('tab', { name: 'Testes' });
+    expect(testsTab).toHaveFocus();
 
     hub.setView(viewOf({ status: 'waiting_approval' }, { pendingApprovals: [APPROVAL] }));
     hub.emit({
@@ -2059,12 +2532,12 @@ describe('MissionPage: foco da decisão (R182)', () => {
 
     const decision = screen.getByRole('region', { name: 'Sua decisão' });
     expect(await within(decision).findByRole('region', { name: 'Gravar arquivo' })).toBeVisible();
-    expect(logsTab).toHaveAttribute('aria-selected', 'true');
+    expect(testsTab).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Atividade' })).toHaveAttribute(
       'aria-selected',
       'false',
     );
-    expect(logsTab).toHaveFocus();
+    expect(testsTab).toHaveFocus();
     expect(focusIsIn(decision)).toBe(false);
     expect(document.querySelector('.decision-announce')).toHaveTextContent(
       'Aguardando você: aprovação, Gravar arquivo.',
@@ -2278,13 +2751,13 @@ describe('MissionPage: gasto de tokens', () => {
     ...(usage === undefined ? {} : { usage }),
   });
 
-  it('a seção fica entre as tarefas e os arquivos alterados', async () => {
+  it('a seção fica depois das tarefas e antes dos arquivos alterados, que moram no painel inferior', async () => {
     installApi(viewOf({ status: 'running' }, { executions: [execution('e1', usageOf(100, 20))] }));
     renderPage();
 
     const plan = await screen.findByRole('region', { name: 'Plano da missão' });
     const usage = screen.getByRole('region', { name: 'Gasto de tokens' });
-    const files = screen.getByRole('region', { name: 'Arquivos alterados' });
+    const files = screen.getByRole('region', { name: 'Arquivos alterados', hidden: true });
     expect(plan.compareDocumentPosition(usage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(usage.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
