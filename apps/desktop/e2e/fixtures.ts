@@ -260,6 +260,9 @@ export const test = base.extend<Fixtures>({
       }
       Object.assign(env, gitEnv);
       env['PROJECT_HUB_ENV'] = 'test';
+      // A janela do app fica invisível e sem receber o mouse, para a rodada não abrir janelas na frente de
+      // quem a roda. `E2E_VISIVEL=1` a mostra, para acompanhar um teste a olho.
+      env['PROJECT_HUB_E2E_HIDDEN'] = process.env['E2E_VISIVEL'] === '1' ? '0' : '1';
       env['PROJECT_HUB_DATA_DIR'] = dataDir;
       delete env['PROJECT_HUB_TEST_DIALOG_PATH'];
       if (options.dialogPath !== undefined)
