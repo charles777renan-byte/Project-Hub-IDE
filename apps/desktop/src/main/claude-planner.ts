@@ -70,6 +70,11 @@ export type ClaudePlannerOptions = {
   timeoutMs?: number;
   /** Executor do processo. Os testes passam um falso. */
   run?: PlannerRunner;
+  /**
+   * Mensagem para quando a cota do Claude acabou, ou `undefined` se ela não acabou. Só é perguntada quando a falha
+   * seria "não respondeu": a composição responde com o último estado dos limites, que já sabe quando a cota renova.
+   */
+  quotaMessage?: () => string | undefined;
 };
 
 /** Schema do plano (JSON Schema) que o CLI aplica à resposta. Espelha `PlannedTask`, dentro de `tasks`. */
@@ -279,7 +284,7 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const args = [...(options.commandPrefix ?? []), ...buildPlannerArgs()];
   const env = { ...options.env, ...options.extraEnv };
-  return {
+  const processPlanner: Planner = {
     async plan(input) {
       let output: { stdout: string; exitCode: number };
       try {
@@ -310,6 +315,17 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
         );
       }
       return parsePlannerOutput(output.stdout);
+    },
+  };
+  return {
+    async plan(input) {
+      const result = await processPlanner.plan(input);
+      // A cota esgotada aparece como "não respondeu": se o último estado de limites diz que ela acabou, a mensagem é a da cota.
+      if (!result.ok && result.error.message === NO_RESPONSE_MESSAGE) {
+        const quota = options.quotaMessage?.();
+        if (quota !== undefined) return failure('AGENT_UNAVAILABLE', quota);
+      }
+      return result;
     },
   };
 }

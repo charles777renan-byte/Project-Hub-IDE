@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { MissionDto, TerminalSummary } from '@project-hub/contracts';
 import { useAttention, type AttentionEntry } from '../attention';
@@ -17,6 +17,7 @@ import {
   parseStatusFilter,
   requiredActionOf,
   STATUS_FILTERS,
+  textoDeBusca,
   type MissionStatusFilter,
 } from '../mission-text';
 import { ADD_PROJECT_REQUEST_EVENT, type AddProjectRequest } from '../projects-events';
@@ -167,6 +168,8 @@ function Missions({
 }) {
   const board = useMissionsBoard();
   const attention = useAttention();
+  const [query, setQuery] = useState('');
+  const needle = textoDeBusca(query.trim());
   const attentionView = filter === 'attention';
   // Sem filtro e sob `attention`, a lista depende da leitura de atenção; com `running` ou `failed`, não.
   const readsAttention = filter === undefined || attentionView;
@@ -182,11 +185,19 @@ function Missions({
     : filter === undefined
       ? board.items.filter((item) => !listedInNeeds.has(item.mission.id))
       : board.items.filter((item) => matchesStatusFilter(item.mission.status, filter));
-  const shown = sessions.length + missionItems.length;
+  // A busca é local: procura no título e no nome do projeto, sem acento e sem maiúsculas.
+  const searchedItems =
+    needle === ''
+      ? missionItems
+      : missionItems.filter((item) =>
+          textoDeBusca(`${item.mission.title} ${item.projectName}`).includes(needle),
+        );
+  const shown = sessions.length + searchedItems.length;
   const loading = board.status === 'loading' || (readsAttention && !attention.known);
 
   let emptyText: string = HOME_TEXT.missionsEmpty;
-  if (filter !== undefined) emptyText = HOME_TEXT.missionsEmptyFiltered;
+  if (needle !== '') emptyText = HOME_TEXT.missionsEmptySearch;
+  else if (filter !== undefined) emptyText = HOME_TEXT.missionsEmptyFiltered;
   else if (board.items.length > 0) emptyText = HOME_TEXT.allInNeeds;
 
   let body: ReactNode;
@@ -210,7 +221,7 @@ function Missions({
             ))}
           </ul>
         )}
-        <MissionProgressList items={missionItems} />
+        <MissionProgressList items={searchedItems} showProject />
       </div>
     );
   }
@@ -241,6 +252,14 @@ function Missions({
           </button>
         )}
       </div>
+      <input
+        type="search"
+        className="missions-search"
+        aria-label={HOME_TEXT.searchMissions}
+        placeholder={HOME_TEXT.searchMissions}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
       {body}
     </Band>
   );

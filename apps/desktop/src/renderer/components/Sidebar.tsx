@@ -694,6 +694,11 @@ function SessionCard({
         </span>
         <span className="sidebar__card-side">
           <span className="state-mark__sr">{stateText}</span>
+          {session.state === 'waiting' ? (
+            <span className="state-label" aria-hidden="true">
+              {stateText}
+            </span>
+          ) : null}
           {time === null ? null : <time dateTime={session.startedAt}>{time}</time>}
           {levels === undefined ? null : (
             <span className={`activity activity--${session.state}`} aria-hidden="true">

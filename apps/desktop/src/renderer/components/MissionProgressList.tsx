@@ -22,9 +22,12 @@ export type { MissionStatusFilter } from '../mission-text';
 export function MissionProgressList({
   items,
   filter,
+  showProject = false,
 }: {
   items: readonly MissionBoardItem[];
   filter?: MissionStatusFilter;
+  /** No Início, de vários projetos: o nome do projeto vai antes do estado. Na visão do projeto, não repete. */
+  showProject?: boolean;
 }) {
   const motion = useListMotion<HTMLUListElement>();
   const shown =
@@ -34,8 +37,10 @@ export function MissionProgressList({
   if (shown.length === 0) return null;
   return (
     <ul ref={motion} className="mission-progress">
-      {shown.map(({ mission, projectId, done, total }) => {
-        const state = boardStatusLabel(mission.status);
+      {shown.map(({ mission, projectId, projectName, done, total }) => {
+        const state = showProject
+          ? `${projectName} · ${boardStatusLabel(mission.status)}`
+          : boardStatusLabel(mission.status);
         return (
           <li key={mission.id} className="mission-progress__item">
             <div className="mission-progress__head">

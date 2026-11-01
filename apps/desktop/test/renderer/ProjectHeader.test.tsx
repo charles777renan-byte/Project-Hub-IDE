@@ -10,6 +10,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectHeader,
+  PROJECT_NO_GIT_NOTICE_ID,
   PROJECT_UNAVAILABLE_NOTICE_ID,
 } from '../../src/renderer/components/project/ProjectHeader';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
@@ -376,6 +377,17 @@ describe('ProjectHeader: pasta indisponível', () => {
     const button = screen.getByRole('button', { name: 'Nova missão' });
     expect(button).toBeEnabled();
     expect(button).not.toHaveAttribute('aria-describedby');
+  });
+});
+
+describe('ProjectHeader: projeto sem Git', () => {
+  it('Nova missão fica desabilitado e aponta para o aviso de Git da página', () => {
+    installApi();
+    renderAt('/workspaces/p1', { project: { ...project, repositoryKind: 'none' } });
+
+    const button = screen.getByRole('button', { name: 'Nova missão' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-describedby', PROJECT_NO_GIT_NOTICE_ID);
   });
 });
 
