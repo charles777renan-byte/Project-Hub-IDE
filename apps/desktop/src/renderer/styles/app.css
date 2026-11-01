@@ -454,12 +454,6 @@ button:disabled {
   font-weight: 600;
 }
 
-/* Sub-abas do workspace da missão e do painel Diff: mesma pílula, em mono. */
-.tabs--filled .tab {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-
 /* Lista de cartões (a lista de worktrees do projeto). */
 .card-list {
   display: grid;
@@ -862,6 +856,12 @@ button:disabled {
 .diff__note {
   margin: 0;
   color: var(--muted);
+}
+
+/* Artefatos, abaixo das alterações: um filete e o respiro de cima marcam a seção. */
+.diff-artifacts {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
 }
 
 .diff__files {

@@ -1,47 +1,66 @@
 /*
- * Tarefas da missão: a tabela (TAREFA, AGENTE, STATUS) e as ações de edição de cada tarefa. Ligado por <link> no
+ * Plano da missão: a lista de etapas (components/mission/StepList.tsx) e o aviso do planejamento. Ligado por <link> no
  * index.html, depois do home.css e antes do workspace.css; só usa tokens de tokens.css, sem cor literal, sem estilo
  * escrito em texto (CSP) e sem animação. O nome do programa é texto, e a cor só o reforça: o laranja (--orange) é o papel do Claude. O lima fica fora: é só
  * da ação principal.
  */
 
-.plan-table {
-  width: 100%;
+.step-list {
   margin: 0 0 var(--space-4);
-  border-collapse: collapse;
   background: var(--surface-glass);
   border: 1px solid var(--line);
 }
 
-.plan-table th {
+.step-list__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.08em;
-  text-align: left;
   text-transform: uppercase;
 }
 
-.plan-table td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--line);
-  vertical-align: top;
+.step-list__heading {
+  min-width: 0;
+  color: inherit;
+  overflow-wrap: anywhere;
 }
 
-.plan-table tbody tr:last-child td {
+.step-list__agent {
+  font-family: var(--font-mono);
+  color: var(--orange);
+}
+
+.step-list__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Alça, número, status, bloco do título (cresce e encolhe) e "⋯" (nunca encolhe). */
+.step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.step-row:last-child {
   border-bottom: 0;
 }
 
-/* Número e título lado a lado; o detalhe e as ações ficam embaixo do título. */
-.plan-row__task {
-  display: flex;
-  gap: var(--space-2);
-  min-width: 0;
+.step-row__handle,
+.step-row__menu {
+  flex: none;
 }
 
-.plan-row__number {
+.step-row__number {
   flex: none;
   min-width: 1.5rem;
   color: var(--blue);
@@ -49,56 +68,39 @@
   font-weight: 700;
 }
 
-.plan-row__body {
+/* min-width: 0 deixa o bloco encolher abaixo do texto; sem ele, o título longo empurra o "⋯" para fora. */
+.step-row__main {
   display: grid;
+  flex: 1 1 0;
   gap: var(--space-1);
   min-width: 0;
-  overflow-wrap: break-word;
 }
 
-.plan-row__title {
+.step-row__title {
+  overflow: hidden;
   font-weight: 600;
-}
-
-.plan-row__detail {
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-
-.plan-row__agent,
-.plan-row__status {
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-agent {
+.step-row__detail {
+  overflow: hidden;
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.plan-agent--claude-code {
-  color: var(--orange);
+.step-row__description {
+  margin: 0;
+  font-size: var(--text-sm);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
-/* O seletor de programa mantém o contorno de campo e o texto na cor do programa. */
-select.plan-agent {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--field-line);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.plan-row__rename {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.plan-row__rename input,
-.plan-row__rename textarea {
-  flex: 1 1 10rem;
+.step-row__rename {
+  width: 100%;
   min-width: 0;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--field-line);
@@ -108,47 +110,26 @@ select.plan-agent {
   font: inherit;
 }
 
-/* Descrição da tarefa, que vai ao prompt do agente: texto corrido, recolhido em poucas linhas quando longo. */
-.plan-row__description {
-  margin: 0;
-  color: var(--text);
+/* Renomear: título, descrição e as ações (Salvar, Cancelar), empilhados na largura do bloco. */
+.step-row__editor {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.step-row__rename--description {
+  min-height: 5rem;
   font-size: var(--text-sm);
-  white-space: pre-line;
-}
-
-.plan-row__description--clamped {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.plan-row__toggle {
-  justify-self: start;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
-}
-
-/* A descrição ocupa a linha inteira do formulário de renomear; os botões vêm depois dela. */
-.plan-row__rename textarea {
-  flex: 1 1 100%;
   resize: vertical;
 }
 
-/* Renomear, subir, descer e remover: botões pequenos, quebrando linha em painel estreito. */
-.plan-actions {
+.step-row__editor-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
+  gap: var(--space-2);
 }
 
-.plan-actions button {
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-sm);
-}
-
-/* Planejando: o aviso da espera longa, acima da tabela. */
+/* Planejando: o aviso da espera longa, acima da lista. */
 .plan-status {
   margin: 0 0 var(--space-2);
   color: var(--muted);

@@ -11,6 +11,7 @@ import {
 } from '../../mission-text';
 import { notify } from '../../notify';
 import { projectViewPath } from '../../routes';
+import { useTerminals } from '../../terminals-data';
 import { ConfirmInline } from '../ConfirmButton';
 import { Copy, ICON_PROPS } from '../Icon';
 import { MenuAcoes, type AcaoMenu } from '../MenuAcoes';
@@ -68,6 +69,28 @@ function WorktreeMeta({ path }: { path: string | undefined }) {
         {copy === 'copied' ? 'Copiado' : ''}
       </span>
     </span>
+  );
+}
+
+/**
+ * Leva à visão Terminais do projeto, onde a sessão do agente da missão tem painel próprio. Com a sessão
+ * viva na lista (a mesma regra do antigo painel Terminal da missão), o pedido de foco vai no estado da rota
+ * e a visão a mostra; sem ela, o link só abre a visão.
+ */
+function TerminalLink({ projectId, missionId }: { projectId: string; missionId: string }) {
+  const { terminals } = useTerminals();
+  const session = terminals.find(
+    (terminal) =>
+      terminal.kind === 'agent' && terminal.missionId === missionId && terminal.state !== 'exited',
+  );
+  return (
+    <Link
+      className="mission-terminal-link"
+      to={projectViewPath(projectId, 'terminais')}
+      {...(session === undefined ? {} : { state: { showTerminal: session.id } })}
+    >
+      Ver no terminal
+    </Link>
   );
 }
 
@@ -151,8 +174,8 @@ function SecondaryActions({
  * Cabeçalho da missão (seção 10.7), no formato do protótipo: o "← Missões" que volta à lista, a linha
  * "MISSÃO · {PROJETO}", o título, o objetivo em linha menor, o selo da situação (chip com texto e cor) e
  * "Mais ações" (pausar, cancelar ou excluir). Com o worktree criado, mostra o nome curto dele e o botão
- * que copia o caminho. A ação principal e o resumo da conclusão ficam no bloco "Sua decisão". Este
- * componente só mostra e chama o que a página passa: o comportamento das ações fica na página.
+ * que copia o caminho, e o link "Ver no terminal". A ação principal e o resumo da conclusão ficam no bloco
+ * "Sua decisão". Este componente só mostra e chama o que a página passa: o comportamento das ações fica na página.
  */
 export function MissionSummary({
   mission,
@@ -203,6 +226,7 @@ export function MissionSummary({
       {mission.worktreePath === undefined ? null : (
         <p className="mission-meta">
           <WorktreeMeta path={mission.worktreePath} />
+          <TerminalLink projectId={project.id} missionId={mission.id} />
         </p>
       )}
     </section>
