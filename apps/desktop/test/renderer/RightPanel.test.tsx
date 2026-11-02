@@ -1,6 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, useLocation } from 'react-router';
+import type { ProjectHubApi } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { openFile } from '../../src/renderer/open-files';
 import { RightPanel } from '../../src/renderer/components/right-panel/RightPanel';
 import {
   RIGHT_TABS,
@@ -8,7 +11,30 @@ import {
   saveRightTab,
 } from '../../src/renderer/components/right-panel/right-panel-state';
 
+// O store dos arquivos abertos tem teste próprio: aqui só importa que o painel o chame.
+vi.mock('../../src/renderer/open-files', () => ({ openFile: vi.fn() }));
+
 const STORAGE_KEY = 'project-hub:right-panel-tab';
+
+let location: { pathname: string; search: string } = { pathname: '', search: '' };
+function Probe() {
+  const current = useLocation();
+  location = { pathname: current.pathname, search: current.search };
+  return null;
+}
+
+/** O painel dentro de um roteador: abrir um arquivo leva a rota para a visão Terminais. */
+function renderPanel(
+  props: Parameters<typeof RightPanel>[0],
+  at = '/workspaces/p1?visao=terminais',
+) {
+  return render(
+    <MemoryRouter initialEntries={[at]}>
+      <Probe />
+      <RightPanel {...props} />
+    </MemoryRouter>,
+  );
+}
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -26,7 +52,7 @@ function tab(name: string): HTMLElement {
 
 describe('RightPanel', () => {
   it('tem a lista de abas "Painéis laterais" com as quatro abas, só de ícone, pelo nome acessível', () => {
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     const tabs = within(screen.getByRole('tablist', { name: 'Painéis laterais' })).getAllByRole(
       'tab',
@@ -41,7 +67,7 @@ describe('RightPanel', () => {
   });
 
   it('é um complemento com nome, e a aba Arquivos nasce selecionada', () => {
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     expect(screen.getByRole('complementary', { name: 'Painel direito' })).toBeInTheDocument();
     expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
@@ -52,7 +78,7 @@ describe('RightPanel', () => {
   });
 
   it('as três abas sem conteúdo ficam aria-disabled e Arquivos não', () => {
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     expect(tab('Arquivos')).not.toHaveAttribute('aria-disabled');
     for (const name of ['Sessões', 'Código-fonte', 'Checks']) {
@@ -62,7 +88,7 @@ describe('RightPanel', () => {
 
   it('clicar numa aba desligada não a seleciona nem guarda', async () => {
     const user = userEvent.setup();
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     await user.click(tab('Código-fonte'));
 
@@ -73,7 +99,7 @@ describe('RightPanel', () => {
 
   it('andar pelas abas com as setas foca as desligadas, mas não as seleciona', async () => {
     const user = userEvent.setup();
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     await user.click(tab('Arquivos'));
     await user.keyboard('{ArrowRight}');
@@ -85,7 +111,7 @@ describe('RightPanel', () => {
 
   it('a dica das abas desligadas diz "Em breve"', async () => {
     const user = userEvent.setup();
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     await user.tab();
     await user.keyboard('{ArrowRight}');
@@ -95,7 +121,7 @@ describe('RightPanel', () => {
 
   it('a dica da aba Arquivos é o nome dela', async () => {
     const user = userEvent.setup();
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     await user.tab();
 
@@ -106,7 +132,7 @@ describe('RightPanel', () => {
   it('a aba guardada volta ao abrir', () => {
     window.localStorage.setItem(STORAGE_KEY, 'sessoes');
 
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     expect(tab('Sessões')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'false');
@@ -114,16 +140,94 @@ describe('RightPanel', () => {
   });
 
   it('sem projeto, mostra o aviso para abrir um projeto e mantém as abas', () => {
-    render(<RightPanel projectId={null} />);
+    renderPanel({ projectId: null });
 
     expect(screen.getByText('Abra um projeto para ver os arquivos')).toBeInTheDocument();
     expect(screen.getByRole('tablist', { name: 'Painéis laterais' })).toBeInTheDocument();
   });
 
   it('com projeto, não mostra o aviso de abrir um projeto', () => {
-    render(<RightPanel projectId="p1" />);
+    renderPanel({ projectId: 'p1' });
 
     expect(screen.queryByText('Abra um projeto para ver os arquivos')).not.toBeInTheDocument();
+  });
+});
+
+describe('RightPanel: abrir arquivo', () => {
+  const ROOT = [
+    { name: 'src', path: 'src', kind: 'directory' as const, ignored: false },
+    { name: 'README.md', path: 'README.md', kind: 'file' as const, ignored: false },
+  ];
+
+  beforeEach(() => {
+    vi.mocked(openFile).mockClear();
+    window.projectHub = {
+      files: { list: vi.fn(() => Promise.resolve({ ok: true as const, data: ROOT })) },
+      projects: { list: vi.fn(() => Promise.resolve({ ok: true as const, data: [] })) },
+      missions: {
+        list: vi.fn(() => Promise.resolve({ ok: true as const, data: [] })),
+        subscribe: vi.fn(() => () => undefined),
+      },
+    } as unknown as ProjectHubApi;
+  });
+
+  it('sem espião injetado, clicar num arquivo da árvore chama openFile(projectId, path)', async () => {
+    const user = userEvent.setup();
+    renderPanel({ projectId: 'p1' });
+
+    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
+
+    expect(openFile).toHaveBeenCalledTimes(1);
+    expect(openFile).toHaveBeenCalledWith('p1', 'README.md');
+  });
+
+  it('fora da visão Terminais, leva a rota para ela com replace, mantendo o projeto', async () => {
+    const user = userEvent.setup();
+    renderPanel({ projectId: 'p1' }, '/workspaces/p1?visao=missoes');
+
+    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
+
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+  });
+
+  it('de uma página que não é do projeto (o Início), leva a rota para os Terminais dele', async () => {
+    const user = userEvent.setup();
+    renderPanel({ projectId: 'p1' }, '/');
+
+    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
+
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+  });
+
+  it('já na visão Terminais, a rota não muda', async () => {
+    const user = userEvent.setup();
+    renderPanel({ projectId: 'p1' });
+
+    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
+
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+    expect(openFile).toHaveBeenCalledWith('p1', 'README.md');
+  });
+
+  it('sem ?visao= (a visão padrão, Terminais), a rota também não muda', async () => {
+    const user = userEvent.setup();
+    renderPanel({ projectId: 'p1' }, '/workspaces/p1');
+
+    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
+
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '' });
+  });
+
+  it('com onOpenFile injetado, só o espião é chamado: nem openFile nem a rota', async () => {
+    const user = userEvent.setup();
+    const spy = vi.fn();
+    renderPanel({ projectId: 'p1', onOpenFile: spy }, '/workspaces/p1?visao=missoes');
+
+    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
+
+    expect(spy).toHaveBeenCalledWith('README.md');
+    expect(openFile).not.toHaveBeenCalled();
+    expect(location.search).toBe('?visao=missoes');
   });
 });
 
