@@ -239,8 +239,10 @@ export type ProjectHubApi = {
     discard(input: GitPathsInput): Promise<AppResult<void>>;
     /** Cria o commit com o que está em stage. Os hooks rodam; se um recusar, volta GIT_HOOK_FAILED. */
     commit(input: GitCommitInput): Promise<AppResult<GitCommitResultDto>>;
-    /** Envia a branch atual para `origin`. Nunca força; o nome da branch sai do processo principal. */
+    /** Envia a branch atual para `origin`. Exige upstream, nunca força; o nome da branch sai do processo principal. */
     push(input: GitProjectInput): Promise<AppResult<GitPushResultDto>>;
+    /** Publica a branch atual (`push -u origin`). Exige que ela ainda não tenha upstream; o nome da branch sai do processo principal. */
+    publish(input: GitProjectInput): Promise<AppResult<GitPushResultDto>>;
     /** Traz os commits do remoto só se a branch puder avançar (sem commit de merge). */
     pull(input: GitProjectInput): Promise<AppResult<GitPullResultDto>>;
     /** Atualiza as refs remotas, sem mexer na branch local. */

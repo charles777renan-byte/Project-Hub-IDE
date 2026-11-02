@@ -288,6 +288,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       discard: (input: GitPathsInput) => call<void>(CHANNELS.gitDiscard, input),
       commit: (input: GitCommitInput) => call<GitCommitResultDto>(CHANNELS.gitCommit, input),
       push: (input: GitProjectInput) => call<GitPushResultDto>(CHANNELS.gitPush, input),
+      publish: (input: GitProjectInput) => call<GitPushResultDto>(CHANNELS.gitPublish, input),
       pull: (input: GitProjectInput) => call<GitPullResultDto>(CHANNELS.gitPull, input),
       fetch: (input: GitProjectInput) => call<void>(CHANNELS.gitFetch, input),
       log: (input: GitProjectInput) => call<GitLogEntryDto[]>(CHANNELS.gitLog, input),

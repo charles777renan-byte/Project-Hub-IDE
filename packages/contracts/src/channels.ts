@@ -111,8 +111,10 @@ export const CHANNELS = {
   gitDiscard: 'git:discard:v1',
   /** Cria o commit com o que está em stage. */
   gitCommit: 'git:commit:v1',
-  /** Envia a branch atual para `origin`; o nome da branch sai do processo principal. */
+  /** Envia a branch atual, que já tem upstream, para `origin`; o nome da branch sai do processo principal. */
   gitPush: 'git:push:v1',
+  /** Publica a branch atual, que ainda não tem upstream (`push -u`); o nome da branch sai do processo principal. */
+  gitPublish: 'git:publish:v1',
   /** Traz os commits do remoto só se a branch puder avançar (sem commit de merge). */
   gitPull: 'git:pull:v1',
   /** Atualiza as refs remotas, sem mexer na branch local. */
