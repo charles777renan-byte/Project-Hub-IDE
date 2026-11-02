@@ -240,15 +240,16 @@ async function readSearchableText(absolute: string): Promise<string | null> {
 /**
  * Busca texto dentro dos arquivos do projeto, linha a linha, sem diferenciar maiúsculas. Com `regex`
  * falso a consulta é literal; regex inválida lança `VALIDATION_FAILED`. Só abre arquivos de texto de até
- * 1 MiB. Para em 200 resultados ou em 5 s, e então `truncated` fica verdadeiro, como ao ser abortada.
+ * 1 MiB. Para em 200 resultados ou em 5 s, e então `truncated` fica verdadeiro, como ao ser abortada. O limite de
+ * tempo (`timeoutMs`) só muda em teste: a produção usa sempre o padrão.
  */
 export async function searchContent(
   root: string,
   query: string,
   regex: boolean,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<ContentSearchDto> {
-  const { signal } = options;
+  const { signal, timeoutMs = CONTENT_TIMEOUT_MS } = options;
   let pattern: RegExp;
   try {
     // Sem a flag `g`: `test` não guarda estado entre as linhas.
@@ -258,7 +259,7 @@ export async function searchContent(
   }
 
   const realRoot = await realpath(root);
-  const deadline = Date.now() + CONTENT_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
   const matches: ContentMatchDto[] = [];
   let truncated = false;
 
