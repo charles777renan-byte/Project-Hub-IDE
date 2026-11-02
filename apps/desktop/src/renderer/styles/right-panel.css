@@ -1,0 +1,95 @@
+/*
+ * Painel direito (components/right-panel/): o terceiro painel do corpo da janela, à direita da página. Só tokens
+ * de tokens.css, sem cor literal. O lima fica com o anel de foco (--focus), herdado de app.css; a aba ativa
+ * usa --fill, que sustenta texto (4,5:1). Ligado depois do workspace.css, que define o corpo da janela.
+ */
+
+/* A coluna redimensionável: o painel enche a largura e a altura que a divisória deixa. */
+.app-right {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.app-right > .right-panel {
+  flex: 1;
+}
+
+/* Um cartão como o da barra lateral: superfície opaca, raio de cartão e contorno de 1px por sombra interna. */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    var(--shadow-card);
+  color: var(--text);
+}
+
+/* A barra de abas: só ícones, com a divisória --line embaixo. */
+.right-panel__tabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+/* Sem o padding e a borda do botão padrão, a caixa fica do tamanho declarado e o ícone centrado. */
+.right-panel__tab {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+}
+
+.right-panel__tab svg {
+  display: block;
+}
+
+.right-panel__tab:hover:not([aria-disabled='true']):not([aria-selected='true']) {
+  background: var(--surface-2);
+}
+
+/* A aba ativa: o preenchimento --fill e, além da cor, um contorno de 1px (3:1), para o estado não ficar só na cor. */
+.right-panel__tab[aria-selected='true'] {
+  background: var(--fill);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+}
+
+/* Aba ainda sem conteúdo: apagada, sem mão no cursor e sem realce. O estado também vai no aria-disabled e na dica. */
+.right-panel__tab[aria-disabled='true'] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* O anel de foco fica por dentro: o cartão corta o que passa da borda dele. */
+.right-panel__tab:focus-visible {
+  outline-offset: -2px;
+}
+
+/* O conteúdo da aba rola sozinho, com a barra de abas parada. */
+.right-panel__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.right-panel__content:focus-visible {
+  outline-offset: -2px;
+}

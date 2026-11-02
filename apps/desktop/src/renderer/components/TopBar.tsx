@@ -19,7 +19,15 @@ import { previewDrop, stepId, type DropPreview, type TabSlot } from '../workspac
 import { showWorkspaceOrder, useOpenWorkspaces } from '../workspaces-data';
 import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
 import { Hint } from './Hint';
-import { ICON_PROPS, PanelLeftClose, PanelLeftOpen, Plus, X } from './Icon';
+import {
+  ICON_PROPS,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  X,
+} from './Icon';
 
 /** Nome mostrado na aba quando o projeto dela ainda não chegou na lista (ou saiu dela). */
 const UNKNOWN_PROJECT = 'Projeto';
@@ -40,7 +48,8 @@ function prefersReducedMotion(): boolean {
 /**
  * Barra superior de 36px, que é também a barra de título da janela (TITLE_BAR_OVERLAY em window.ts):
  * a marca, a aba fixa Início (link para `/`, sempre a primeira, sem botão de fechar e fora da
- * reordenação), as abas dos workspaces abertos e o botão que abre outro workspace. Arrastar pelo fundo
+ * reordenação), as abas dos workspaces abertos e o botão que abre outro workspace. Antes da marca ficam os dois
+ * botões de layout: o que esconde a barra lateral e, ao lado dele, o que esconde o painel direito. Arrastar pelo fundo
  * move a janela; abas, botão e menu ficam fora da área de arrastar (workspace.css). Os nomes dos projetos entram sempre como
  * texto. A aba de um projeto que espera a pessoa (terminal em `waiting` ou missão que pede decisão) ganha
  * a marca de atenção, escondida dos leitores de tela, com a descrição "Precisa de você" no link.
@@ -48,11 +57,17 @@ function prefersReducedMotion(): boolean {
 export function TopBar({
   sidebarCollapsed = false,
   onToggleSidebar,
+  rightCollapsed = false,
+  onToggleRight,
 }: {
   /** A barra lateral está recolhida: o botão passa a mostrá-la. */
   sidebarCollapsed?: boolean;
   /** Esconde ou mostra a barra lateral. Sem ela, a barra não tem o botão. */
   onToggleSidebar?: () => void;
+  /** O painel direito está recolhido: o botão passa a mostrá-lo. */
+  rightCollapsed?: boolean;
+  /** Esconde ou mostra o painel direito. Sem ela, a barra não tem o botão. */
+  onToggleRight?: () => void;
 } = {}) {
   const navigate = useNavigate();
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
@@ -312,6 +327,29 @@ export function TopBar({
               <PanelLeftOpen {...ICON_PROPS} />
             ) : (
               <PanelLeftClose {...ICON_PROPS} />
+            )}
+          </button>
+        </Hint>
+      )}
+      {onToggleRight === undefined ? null : (
+        <Hint
+          label={
+            rightCollapsed
+              ? 'Mostrar painel direito (Ctrl+Alt+B)'
+              : 'Ocultar painel direito (Ctrl+Alt+B)'
+          }
+        >
+          <button
+            type="button"
+            className="topbar__right-toggle"
+            aria-label={rightCollapsed ? 'Mostrar painel direito' : 'Ocultar painel direito'}
+            aria-expanded={!rightCollapsed}
+            onClick={onToggleRight}
+          >
+            {rightCollapsed ? (
+              <PanelRightOpen {...ICON_PROPS} />
+            ) : (
+              <PanelRightClose {...ICON_PROPS} />
             )}
           </button>
         </Hint>
