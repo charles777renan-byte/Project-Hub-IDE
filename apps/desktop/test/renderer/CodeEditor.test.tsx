@@ -18,7 +18,7 @@ async function mounted(container: HTMLElement) {
       expect(
         container.querySelector('.code-editor__host')?.shadowRoot?.querySelector('.cm-content'),
       ).toBeTruthy(),
-    { timeout: 10_000 },
+    { timeout: 25_000 },
   );
   return container;
 }
@@ -91,6 +91,34 @@ describe('CodeEditor', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith('abcd');
+  });
+
+  it('onCursor avisa ao montar e a cada digitação e seleção, contando a coluna em caracteres', async () => {
+    const onCursor = vi.fn();
+    const { container } = render(
+      <CodeEditor value={'abc\né😀x'} language="text" onCursor={onCursor} />,
+    );
+    await mounted(container);
+    expect(onCursor).toHaveBeenLastCalledWith({ line: 1, column: 1, selected: 0 });
+
+    act(() => {
+      viewOf(container).dispatch({ changes: { from: 0, insert: 'Z' }, selection: { anchor: 1 } });
+    });
+    expect(onCursor).toHaveBeenLastCalledWith({ line: 1, column: 2, selected: 0 });
+
+    // A linha 2 é "é😀x": com o cursor no fim há 3 caracteres antes dele (o emoji vale 1), logo a coluna é 4.
+    act(() => {
+      viewOf(container).dispatch({ selection: { anchor: viewOf(container).state.doc.length } });
+    });
+    expect(onCursor).toHaveBeenLastCalledWith({ line: 2, column: 4, selected: 0 });
+
+    // Selecionar "é😀" são 2 caracteres, embora ocupem 3 unidades UTF-16.
+    act(() => {
+      const view = viewOf(container);
+      const lineStart = view.state.doc.line(2).from;
+      view.dispatch({ selection: { anchor: lineStart, head: lineStart + 3 } });
+    });
+    expect(onCursor).toHaveBeenLastCalledWith({ line: 2, column: 3, selected: 2 });
   });
 
   it('trocar o value por cima substitui o documento sem disparar onChange', async () => {

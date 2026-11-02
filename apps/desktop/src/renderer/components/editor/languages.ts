@@ -24,6 +24,22 @@ const BY_EXTENSION: Readonly<Record<string, LanguageId>> = {
   yaml: 'yaml',
 };
 
+const LABELS: Readonly<Record<LanguageId, string>> = {
+  typescript: 'TypeScript',
+  javascript: 'JavaScript',
+  json: 'JSON',
+  css: 'CSS',
+  html: 'HTML',
+  markdown: 'Markdown',
+  yaml: 'YAML',
+  text: 'Texto simples',
+};
+
+/** O nome da linguagem como o VS Code mostra na barra de status. */
+export function languageLabel(id: LanguageId): string {
+  return LABELS[id];
+}
+
 /** A linguagem pela extensão do último trecho do caminho, sem diferenciar maiúsculas. Sem extensão vale `'text'`. */
 export function languageOf(path: string): LanguageId {
   const name = path.slice(path.lastIndexOf('/') + 1);

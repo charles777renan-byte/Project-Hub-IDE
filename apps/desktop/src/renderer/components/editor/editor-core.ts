@@ -35,6 +35,9 @@ export type EditorHandle = {
   destroy: () => void;
 };
 
+/** A posição do cursor para a barra de status: 1-based, em caracteres (não em bytes nem em unidades UTF-16). */
+export type CursorInfo = { line: number; column: number; selected: number };
+
 export type MountOptions = {
   host: HTMLElement;
   doc: string;
@@ -42,7 +45,29 @@ export type MountOptions = {
   readOnly: boolean;
   ariaLabel: string;
   onChange: (text: string) => void;
+  onCursor?: (info: CursorInfo) => void;
 };
+
+/** Quantos caracteres tem o trecho: um emoji conta 1, mesmo ocupando duas unidades UTF-16. */
+function charCount(text: string): number {
+  let count = 0;
+  for (const _ of text) count += 1;
+  return count;
+}
+
+function cursorOf(state: EditorState): CursorInfo {
+  const main = state.selection.main;
+  const line = state.doc.lineAt(main.head);
+  let selected = 0;
+  for (const range of state.selection.ranges) {
+    if (!range.empty) selected += charCount(state.sliceDoc(range.from, range.to));
+  }
+  return {
+    line: line.number,
+    column: charCount(state.sliceDoc(line.from, main.head)) + 1,
+    selected,
+  };
+}
 
 /** Marca a troca de documento que veio de fora (recarga do disco): ela não é uma edição da pessoa. */
 const external = Annotation.define<boolean>();
@@ -54,7 +79,7 @@ const readOnlyCompartment = new Compartment();
  * <style>, que a CSP (`style-src 'self'`) bloqueia; na raiz de um Shadow Root ele usa `adoptedStyleSheets`.
  */
 export function mountEditor(options: MountOptions): EditorHandle {
-  const { host, doc, language, readOnly, ariaLabel, onChange } = options;
+  const { host, doc, language, readOnly, ariaLabel, onChange, onCursor } = options;
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
   const extensions: Extension[] = [
     lineNumbers(),
@@ -73,6 +98,7 @@ export function mountEditor(options: MountOptions): EditorHandle {
     EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
     readOnlyCompartment.of(EditorState.readOnly.of(readOnly)),
     EditorView.updateListener.of((update) => {
+      if (update.selectionSet || update.docChanged) onCursor?.(cursorOf(update.state));
       if (!update.docChanged) return;
       if (update.transactions.some((transaction) => transaction.annotation(external) === true))
         return;
@@ -85,6 +111,7 @@ export function mountEditor(options: MountOptions): EditorHandle {
     parent: shadow,
     state: EditorState.create({ doc, extensions }),
   });
+  onCursor?.(cursorOf(view.state));
   return {
     setValue(text) {
       if (view.state.doc.toString() === text) return;

@@ -151,6 +151,37 @@ describe('FileEditorTab', () => {
     expect(await screen.findByText('O arquivo não existe mais no projeto.')).toBeInTheDocument();
   });
 
+  it('a barra de status mostra o fim de linha, o BOM, a linguagem e a posição do cursor do arquivo lido', async () => {
+    api.read.mockResolvedValue({
+      ok: true,
+      data: content({ text: 'a\nb', eol: 'crlf', bom: true }),
+    });
+    const { container } = await mountEditor();
+
+    const bar = await screen.findByRole('status', { name: 'Informações do arquivo' });
+    expect(bar).toHaveTextContent('CRLF');
+    expect(bar).toHaveTextContent('UTF-8 com BOM');
+    expect(bar).toHaveTextContent('TypeScript');
+    expect(bar).toHaveTextContent('Ln 1, Col 1');
+
+    act(() => {
+      viewOf(container).dispatch({ selection: { anchor: 3 } });
+    });
+    expect(bar).toHaveTextContent('Ln 2, Col 2');
+  });
+
+  it('não mostra a barra de status quando o arquivo não é texto', async () => {
+    api.read.mockResolvedValue({
+      ok: false,
+      error: { code: 'FILE_NOT_TEXT', message: 'Arquivo binário.', retryable: false },
+    });
+    render(<Harness path="img.png" />);
+    act(() => openFile('p1', 'img.png'));
+
+    expect(await screen.findByText('Este arquivo não pode ser editado aqui')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Informações do arquivo' })).toBeNull();
+  });
+
   it('o botão Salvar fica desligado enquanto não há alteração e liga ao editar', async () => {
     const { container } = await mountEditor();
     expect(saveButton()).toBeDisabled();

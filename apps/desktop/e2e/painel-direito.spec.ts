@@ -371,6 +371,39 @@ test('o editor realça o código com mais de uma cor, sem <style> e sem violaç�
   await expectNoViolations(page, consoleCsp, { allowXterm: true });
 });
 
+test('a barra de status do editor mostra posição, fim de linha e linguagem, sem violação de CSP', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  seedFiles(gitRepo.path);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const consoleCsp = await watchCsp(page);
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  await openFileFromPanel(page, 'src/a.ts');
+  await expect(editorOf(page, 'a.ts')).toBeVisible();
+
+  const status = page.getByRole('status', { name: 'Informações do arquivo' });
+  await expect(status).toContainText('Ln 1, Col 1');
+  await expect(status).toContainText('LF');
+  await expect(status).toContainText('TypeScript');
+  await editorOf(page, 'a.ts').click();
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(status).toContainText('Ln 1, Col 3');
+  await page.keyboard.press('ArrowDown');
+  await expect(status).toContainText('Ln 2, Col 1');
+
+  await openFileFromPanel(page, 'notas.txt');
+  await expect(editorOf(page, 'notas.txt')).toBeVisible();
+  await expect(status).toContainText('CRLF');
+  await expect(status).toContainText('Texto simples');
+
+  await expectNoViolations(page, consoleCsp, { allowXterm: true });
+});
+
 test('as guias de indentação aparecem alinhadas e a digitação segue fluida num arquivo grande', async ({
   launchApp,
   gitRepo,

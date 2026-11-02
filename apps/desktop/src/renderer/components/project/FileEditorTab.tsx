@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { checkFileOnDisk, saveFile, updateText, useOpenFiles } from '../../open-files';
-import { CodeEditor } from '../editor/CodeEditor';
+import { CodeEditor, type CursorInfo } from '../editor/CodeEditor';
+import { EditorStatusBar } from '../editor/EditorStatusBar';
 import { languageOf } from '../editor/languages';
 import { PathText } from '../PathText';
 import { FileConflictBar } from './FileConflictBar';
@@ -29,6 +30,7 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
   const [recreateAsked, setRecreateAsked] = useState(false);
   // O segundo Ctrl+S antes de a primeira gravação responder: a ref barra, o estado só desliga o botão.
   const savingRef = useRef(false);
+  const [cursor, setCursor] = useState<CursorInfo>({ line: 1, column: 1, selected: 0 });
   const notice = file?.notice;
 
   // Um aviso novo (ou nenhum) deixa para trás o alerta de gravação e a pergunta de recriar: a faixa diz o que vale.
@@ -143,13 +145,24 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
           </button>
         </div>
       ) : (
-        <CodeEditor
-          value={file.text}
-          language={languageOf(path)}
-          readOnly={mixed}
-          ariaLabel={TEXT.label(fileName(path))}
-          onChange={(text) => updateText(projectId, path, text)}
-        />
+        <>
+          <CodeEditor
+            value={file.text}
+            language={languageOf(path)}
+            readOnly={mixed}
+            ariaLabel={TEXT.label(fileName(path))}
+            onChange={(text) => updateText(projectId, path, text)}
+            onCursor={setCursor}
+          />
+          {file.saved === undefined ? null : (
+            <EditorStatusBar
+              cursor={cursor}
+              eol={file.saved.eol}
+              bom={file.saved.bom}
+              language={languageOf(path)}
+            />
+          )}
+        </>
       )}
     </div>
   );
