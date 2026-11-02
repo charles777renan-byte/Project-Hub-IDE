@@ -65,6 +65,7 @@ import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
 import { registerWorktreeHandlers } from './ipc/worktrees';
 import { handleWindowLoadFailure } from './startup-failure';
+import { registerUnsavedGuard } from './unsaved-guard';
 import {
   applyContentSecurityPolicy,
   confirmUnlessClosing,
@@ -153,6 +154,24 @@ const startupFailure = {
   exit: (code: number) => app.exit(code),
 };
 
+/**
+ * Fechar a janela com arquivo não salvo (o `beforeunload` do renderer só está ativo nesse caso). A caixa é nativa e
+ * síncrona: o evento `will-prevent-unload` espera a resposta. "Voltar" é o botão padrão e também a resposta do Esc;
+ * só "Sair sem salvar" libera o fechamento.
+ */
+function confirmQuitWithUnsavedFiles(owner: BrowserWindow): boolean {
+  const response = dialog.showMessageBoxSync(owner, {
+    type: 'warning',
+    title: 'Project Hub',
+    message: 'Há arquivos com alterações não salvas. Sair mesmo assim?',
+    buttons: ['Voltar', 'Sair sem salvar'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  return response === 1;
+}
+
 /** Janela principal enquanto ela existe: é a única que recebe os eventos das missões. */
 let mainWindow: BrowserWindow | undefined;
 
@@ -209,6 +228,7 @@ function createMainWindow(): void {
   win.once('closed', () => {
     if (mainWindow === win) mainWindow = undefined;
   });
+  registerUnsavedGuard(win.webContents, () => confirmQuitWithUnsavedFiles(win));
   restrictNavigation(win.webContents, appOrigin, {
     confirmExternal: (url) => confirmExternal(win, url, closing),
     openExternal: (url) => shell.openExternal(url),
