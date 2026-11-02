@@ -517,6 +517,44 @@ describe('planMission com o planejador', () => {
       expect(h.repo.getMission(SECOND)?.status).toBe('planned');
     });
 
+    it('cancelPlanning aborta só o planejamento da missão e ela segue como estava, sem auditoria', async () => {
+      const { h, planner, signals, gates } = twoMissions();
+      const first = h.orchestrator.planMission(MISSION);
+      const second = h.orchestrator.planMission(SECOND);
+      await vi.waitFor(() => expect(planner.calls).toHaveLength(2));
+
+      data(await h.orchestrator.cancelPlanning(MISSION));
+
+      expect(signals.get('objetivo um')?.aborted).toBe(true);
+      expect(signals.get('objetivo dois')?.aborted).toBe(false);
+      expect(codeOf(await first)).toBe('AGENT_UNAVAILABLE');
+      expect(h.repo.getMission(MISSION)?.status).toBe('draft');
+      expect(h.repo.listSteps(MISSION)).toEqual([]);
+      expect(h.repo.audit()).toEqual([]);
+      gates.get('objetivo dois')?.resolve(OK_PLAN);
+      data(await second);
+      expect(h.repo.getMission(SECOND)?.status).toBe('planned');
+    });
+
+    it('cancelPlanning sem planejamento em curso é recusado, e a missão pode planejar depois', async () => {
+      const { h, planner, gates } = twoMissions();
+
+      expect(codeOf(await h.orchestrator.cancelPlanning(MISSION))).toBe('MISSION_INVALID_STATE');
+
+      const pending = h.orchestrator.planMission(MISSION);
+      await vi.waitFor(() => expect(planner.calls).toHaveLength(1));
+      data(await h.orchestrator.cancelPlanning(MISSION));
+      expect(codeOf(await pending)).toBe('AGENT_UNAVAILABLE');
+      // O controlador do planejamento que acabou não fica guardado: um segundo pedido é recusado.
+      expect(codeOf(await h.orchestrator.cancelPlanning(MISSION))).toBe('MISSION_INVALID_STATE');
+
+      const again = h.orchestrator.planMission(MISSION);
+      await vi.waitFor(() => expect(planner.calls).toHaveLength(2));
+      gates.get('objetivo um')?.resolve(OK_PLAN);
+      data(await again);
+      expect(h.repo.getMission(MISSION)?.status).toBe('planned');
+    });
+
     it('dispose aborta o planejamento de todas as missões', async () => {
       const { h, planner, signals } = twoMissions();
       const first = h.orchestrator.planMission(MISSION);

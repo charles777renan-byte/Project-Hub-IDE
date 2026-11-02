@@ -116,7 +116,15 @@ export function handleEditPlanStep(orchestrator: Orchestrator, payload: unknown)
 export function handleMissionAction(
   orchestrator: Orchestrator,
   action:
-    'plan' | 'approvePlan' | 'start' | 'cancel' | 'pause' | 'resume' | 'retry' | 'approveReview',
+    | 'plan'
+    | 'approvePlan'
+    | 'cancelPlanning'
+    | 'start'
+    | 'cancel'
+    | 'pause'
+    | 'resume'
+    | 'retry'
+    | 'approveReview',
   payload: unknown,
 ) {
   if (action === 'plan') return handlePlanMission(orchestrator, payload);
@@ -126,6 +134,8 @@ export function handleMissionAction(
   switch (action) {
     case 'approvePlan':
       return orchestrator.approvePlan(missionId);
+    case 'cancelPlanning':
+      return orchestrator.cancelPlanning(missionId);
     case 'start':
       return orchestrator.startMission(missionId);
     case 'cancel':
@@ -177,6 +187,9 @@ export function registerMissionHandlers(
   on(CHANNELS.missionsEditPlan, (payload) => handleEditPlanStep(orchestrator, payload));
   on(CHANNELS.missionsApprovePlan, (payload) =>
     handleMissionAction(orchestrator, 'approvePlan', payload),
+  );
+  on(CHANNELS.missionsCancelPlanning, (payload) =>
+    handleMissionAction(orchestrator, 'cancelPlanning', payload),
   );
   on(CHANNELS.missionsStart, (payload) => handleMissionAction(orchestrator, 'start', payload));
   on(CHANNELS.missionsCancel, (payload) => handleMissionAction(orchestrator, 'cancel', payload));

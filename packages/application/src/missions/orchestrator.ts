@@ -97,6 +97,11 @@ export interface Orchestrator {
   }): Promise<AppResult<MissionPlan>>;
   /** `planned` -> `queued`. Recusada enquanto o plano da missão está sendo gerado. */
   approvePlan(missionId: string): Promise<AppResult<void>>;
+  /**
+   * Interrompe o planejamento em andamento da missão: o processo do planejador é encerrado e o plano
+   * anterior, se havia, fica como estava. A missão não muda de estado. Sem planejamento em curso, é recusada.
+   */
+  cancelPlanning(missionId: string): Promise<AppResult<void>>;
   /** `queued` -> `running`. Devolve a execução no estado em que o agente parou. */
   startMission(missionId: string): Promise<AppResult<Execution>>;
   /** Cancela a missão e, se o plano dela está sendo gerado, também encerra o planejador dessa missão. */
@@ -1634,6 +1639,16 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return startMission(input.missionId);
   }
 
+  /** O pedido de cancelar só vale enquanto o planejamento roda; depois dele não há o que interromper. */
+  async function cancelPlanning(missionId: string): Promise<AppResult<void>> {
+    const abort = plannerAborts.get(missionId);
+    if (abort === undefined) {
+      return failure('MISSION_INVALID_STATE', 'Esta missão não está sendo planejada agora.');
+    }
+    abort.abort();
+    return { ok: true, data: undefined };
+  }
+
   // A recuperação das execuções abertas roda ao criar o orquestrador. Cada chamada pública espera por ela,
   // para não mexer numa execução que ainda está sendo reanexada ou fechada.
   const ready: Promise<void> = recoverAll().catch((error: unknown) => {
@@ -1650,6 +1665,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     planMission: gated(planMission),
     editPlanStep: gated(editPlanStep),
     approvePlan: gated(approvePlan),
+    cancelPlanning: gated(cancelPlanning),
     startMission: gated(startMission),
     cancelMission: gated(cancelMission),
     pauseMission: gated(pauseMission),

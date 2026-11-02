@@ -2,9 +2,11 @@
 // (`APP_PLANNER_SCRIPT` + `ELECTRON_RUN_AS_NODE=1`, só com `PROJECT_HUB_ENV=test`). Lê o prompt inteiro do
 // stdin e imprime o envelope que o CLI real imprime (ver test/fixtures/claude-plan-output.json).
 // Se a instrução da pessoa traz o marcador `trocar-plano`, devolve outro plano, o que prova que a
-// instrução chegou ao planejador.
+// instrução chegou ao planejador. Se o prompt traz `demorar-plano`, ele não responde nunca: só o aborto do
+// app o encerra (teste do botão Cancelar planejamento).
 
 const MARKER = 'trocar-plano';
+const HANG_MARKER = 'demorar-plano';
 
 const FIRST_PLAN = [
   {
@@ -48,6 +50,11 @@ process.stdin.on('data', (chunk) => {
   prompt += chunk;
 });
 process.stdin.on('end', () => {
+  if (prompt.includes(HANG_MARKER)) {
+    // Mantém o processo vivo até receber o sinal de encerramento.
+    setInterval(() => undefined, 60_000);
+    return;
+  }
   const tasks = prompt.includes(MARKER) ? SECOND_PLAN : FIRST_PLAN;
   const envelope = {
     type: 'result',
