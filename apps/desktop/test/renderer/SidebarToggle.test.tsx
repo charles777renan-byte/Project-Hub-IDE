@@ -300,15 +300,16 @@ describe('painel direito: esconder e mostrar', () => {
     ).toBeInTheDocument();
   });
 
-  it('o botão fica ao lado do da barra lateral, antes do nome do aplicativo', () => {
+  it('o botão fica no canto da barra, depois do botão de abrir workspace; o da lateral segue antes do nome do aplicativo', () => {
     renderApp();
 
     const left = within(topBar()).getByRole('button', { name: 'Ocultar barra lateral' });
     const right = rightToggle('Ocultar painel direito');
-    expect(left.compareDocumentPosition(right)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(right.compareDocumentPosition(screen.getByText('Project Hub'))).toBe(
+    const add = within(topBar()).getByRole('button', { name: 'Abrir workspace' });
+    expect(left.compareDocumentPosition(screen.getByText('Project Hub'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+    expect(add.compareDocumentPosition(right)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it('o botão esconde o painel, que fica inert, e vira Mostrar painel direito; clicar de novo o devolve', async () => {

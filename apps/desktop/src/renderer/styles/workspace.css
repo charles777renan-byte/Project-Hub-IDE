@@ -70,6 +70,11 @@
   color: var(--text);
 }
 
+/* O botão do painel direito vai para o canto: empurrado à direita, logo antes dos 140px dos botões do Windows. */
+.topbar__right-toggle {
+  margin-left: auto;
+}
+
 .topbar__brand {
   display: flex;
   flex: none;
