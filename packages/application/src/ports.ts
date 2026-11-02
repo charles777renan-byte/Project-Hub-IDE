@@ -126,7 +126,10 @@ export interface GitPanelPort {
   unstage(repoPath: string, paths: readonly string[]): Promise<void>;
   discard(repoPath: string, paths: readonly string[]): Promise<void>;
   commit(repoPath: string, message: string): Promise<GitCommitResultDto>;
-  /** `push -u origin HEAD`: serve para enviar e para publicar a branch. */
+  /**
+   * `push -u origin HEAD`. A porta tem um método só de envio: o caso de uso de enviar (exige upstream) e o de
+   * publicar (exige a ausência dele) chamam este mesmo método, e a regra do upstream fica nos casos de uso.
+   */
   push(repoPath: string): Promise<GitPushResultDto>;
   pull(repoPath: string): Promise<GitPullResultDto>;
   fetch(repoPath: string): Promise<void>;
