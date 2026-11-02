@@ -158,7 +158,7 @@ const NOT_HOOK_COMMIT_PATTERNS = [
  *   escrevem essa frase, e o `pre-push` nem chega a rodar.
  * Um hook do servidor (`pre-receive hook declined`) é reconhecido pelo texto, sem depender de hook local.
  *
- * O `stderr` bruto só entra na mensagem de `GIT_HOOK_FAILED`: é a saída do hook, e é isso que a pessoa
+ * A saída bruta (`stdout` e `stderr`) só entra na mensagem de `GIT_HOOK_FAILED`: é a saída do hook, e é isso que a pessoa
  * precisa ler. Nos demais, a mensagem é fixa e o `stderr` fica só no campo `stderr` do erro.
  */
 export function translateGitWriteError(
@@ -171,6 +171,8 @@ export function translateGitWriteError(
   }
   const details = { exitCode: error.exitCode, stderr: error.stderr, cause: error };
   const { stderr } = error;
+  // Um hook pode escrever em qualquer das duas saídas (o `pre-push` escreve no `stdout`).
+  const hookText = [error.stdout, stderr].filter((text) => text !== '').join('\n');
 
   if (hasAny(stderr, AUTH_PATTERNS))
     return new GitError('GIT_AUTH_REQUIRED', AUTH_MESSAGE, details);
@@ -187,11 +189,11 @@ export function translateGitWriteError(
     return new GitError('GIT_NOTHING_TO_COMMIT', NOTHING_TO_COMMIT_MESSAGE, details);
   }
   if (
-    REMOTE_HOOK_PATTERN.test(stderr) ||
-    (options.hookPresent === true && localHookRejected(stderr, context))
+    REMOTE_HOOK_PATTERN.test(hookText) ||
+    (options.hookPresent === true && localHookRejected(hookText, context))
   ) {
     const operation = context === 'push' ? 'o envio' : 'o commit';
-    const output = hookOutputForMessage(stderr);
+    const output = hookOutputForMessage(hookText);
     const message = `Um hook do Git recusou ${operation}.${output === '' ? '' : `\n\n${output}`}`;
     return new GitError('GIT_HOOK_FAILED', message, details);
   }

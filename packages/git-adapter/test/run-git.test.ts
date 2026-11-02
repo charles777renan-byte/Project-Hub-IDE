@@ -209,6 +209,20 @@ describe('runGit: falhas', () => {
     });
   });
 
+  it('o stdout de um comando que falhou chega ao GitError, ao lado do stderr', async () => {
+    respondWith(
+      Object.assign(new Error('Command failed'), { code: 1 }),
+      'saida do hook\n',
+      'error: failed\n',
+    );
+
+    await expect(runGit(['status'], { cwd })).rejects.toMatchObject({
+      exitCode: 1,
+      stdout: 'saida do hook\n',
+      stderr: 'error: failed\n',
+    });
+  });
+
   it('a mensagem não repete a saída de erro do Git', async () => {
     respondWith(
       Object.assign(new Error('Command failed'), { code: 128 }),

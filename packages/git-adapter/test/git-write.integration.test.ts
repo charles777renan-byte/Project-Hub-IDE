@@ -398,20 +398,24 @@ describe('pushBranch', () => {
     expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
   });
 
-  it('pre-push que sai com erro: GIT_HOOK_FAILED com a saída do hook, e o remoto não recebe', async () => {
-    const remote = addBareRemote();
-    const remoteHead = git(remote, ['rev-parse', 'main']).trim();
-    // O Git manda o `stdout` do pre-push para o `stdout` dele, que o adaptador não guarda quando o comando
-    // falha (só o `stderr`). Por isso o hook escreve no `stderr`, como os hooks que usam `>&2`.
-    writeHook(repoPath, 'pre-push', 'echo "testes falharam antes do push" >&2\nexit 1');
-    commitFile(repoPath, 'b.txt', 'b\n', 'Segundo commit');
+  it.each([
+    ['em stdout (echo sem >&2)', 'echo "testes falharam antes do push"'],
+    ['em stderr (echo >&2)', 'echo "testes falharam antes do push" >&2'],
+  ])(
+    'pre-push que sai com erro, escrevendo %s: GIT_HOOK_FAILED com a saída do hook, e o remoto não recebe',
+    async (_label, echo) => {
+      const remote = addBareRemote();
+      const remoteHead = git(remote, ['rev-parse', 'main']).trim();
+      writeHook(repoPath, 'pre-push', `${echo}\nexit 1`);
+      commitFile(repoPath, 'b.txt', 'b\n', 'Segundo commit');
 
-    const error = await failureOf(pushBranch({ repo: repoPath, setUpstream: false }));
+      const error = await failureOf(pushBranch({ repo: repoPath, setUpstream: false }));
 
-    expect(error.code).toBe('GIT_HOOK_FAILED');
-    expect(error.message).toContain('testes falharam antes do push');
-    expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
-  });
+      expect(error.code).toBe('GIT_HOOK_FAILED');
+      expect(error.message).toContain('testes falharam antes do push');
+      expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
+    },
+  );
 
   it('remoto que não existe, com um pre-push presente que passa: não é GIT_HOOK_FAILED', async () => {
     writeHook(repoPath, 'pre-push', 'exit 0');
