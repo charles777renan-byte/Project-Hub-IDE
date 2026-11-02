@@ -82,7 +82,7 @@ function installApi({
       list: () => (terminals === 'pending' ? new Promise<never>(() => {}) : ok(terminals)),
     },
     workspaces: { list: () => ok([]) },
-    activity: { daily: () => ok([]) },
+    activity: { agents: () => ok({ agents: [], days: [], since: null }) },
     profile: {
       get: () => ok({ displayName: null }),
       setDisplayName: () => ok({}),

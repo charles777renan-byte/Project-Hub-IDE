@@ -54,6 +54,12 @@
   --warn: #ffd23f; /* = --yellow */
   --brand: #b583ff; /* = --violet */
 
+  /* Cor de referência de cada agente no bloco "Visão geral" do Início (rampas em home.css). Cada uma tem
+     pelo menos 3:1 contra --surface, e o teste de contraste confere. */
+  --agent-claude: #d97757; /* laranja do ícone do Claude */
+  --agent-codex: #e6e4ee; /* branco acinzentado: a marca do Codex é preto e branco */
+  --agent-antigravity: #3186ff; /* azul do ícone do Antigravity */
+
   /* Inter no texto e JetBrains Mono nos dados: arquivos locais declarados em fonts.css. A pilha do
      sistema fica depois como reserva, enquanto a fonte carrega (font-display: swap) e para os
      símbolos que o subconjunto latin não cobre. */

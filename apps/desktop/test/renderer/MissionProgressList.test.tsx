@@ -41,16 +41,16 @@ function renderList(items: MissionBoardItem[], filter?: 'running' | 'attention' 
 }
 
 describe('MissionProgressList', () => {
-  it('mostra o estado e as tarefas, a contagem à direita e a barra com o valor', () => {
+  it('mostra o selo do estado, as tarefas embaixo e a barra com o valor', () => {
     renderList([item('m1', 'running', 4, 5)]);
 
     const card = screen.getByRole('listitem');
-    expect(within(card).getByText('Em andamento · 4/5 tarefas')).toBeInTheDocument();
+    expect(card.querySelector('.chip')).toHaveTextContent('Em andamento');
+    expect(card.querySelector('.mission-progress__foot')).toHaveTextContent('4/5 tarefas');
     expect(within(card).getByRole('link', { name: 'Missão m1' })).toHaveAttribute(
       'href',
       '/workspaces/p1/missoes/m1',
     );
-    expect(card.querySelector('.mission-progress__count')).toHaveTextContent('5');
     const bar = within(card).getByRole('progressbar', { name: /Missão m1/ });
     expect(bar).toHaveAttribute('value', '4');
     expect(bar).toHaveAttribute('max', '5');
@@ -78,8 +78,11 @@ describe('MissionProgressList', () => {
       item('m4', 'running', 1, 2),
     ]);
 
-    expect(screen.getByText('Aguardando aprovação · 3/3 tarefas')).toBeInTheDocument();
-    expect(screen.getByText('Aguardando início · 0/5 tarefas')).toBeInTheDocument();
+    const chips = [...document.querySelectorAll('.chip')].map((chip) => chip.textContent);
+    expect(chips.slice(0, 2)).toEqual(['Aguardando aprovação', 'Aguardando início']);
+    expect(document.querySelectorAll('.chip')[0]).toHaveClass('chip--warn');
+    expect(screen.getByText('3/3 tarefas')).toBeInTheDocument();
+    expect(screen.getByText('0/5 tarefas')).toBeInTheDocument();
     const bars = screen.getAllByRole('progressbar');
     expect(bars[0]).toHaveClass('mission-progress__bar--warn');
     expect(bars[2]).toHaveClass('mission-progress__bar--red');
@@ -105,6 +108,32 @@ describe('MissionProgressList', () => {
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(
       shown.map((id) => `Missão ${id}`),
     );
+  });
+
+  it('com o projeto, o agente e os tokens: a linha de detalhes e os tokens curtos', () => {
+    render(
+      <MemoryRouter>
+        <MissionProgressList
+          items={[{ ...item('m1', 'succeeded', 3, 3), agents: ['claude-code'], tokens: 12_480 }]}
+          showProject
+        />
+      </MemoryRouter>,
+    );
+
+    const card = screen.getByRole('listitem');
+    expect(card.querySelector('.mission-progress__meta')?.textContent).toMatch(
+      /^Projeto 1 · Claude · /,
+    );
+    const foot = card.querySelector('.mission-progress__foot') as HTMLElement;
+    expect(foot.querySelector('[aria-hidden="true"]')).toHaveTextContent('12,4k tokens');
+    expect(foot.querySelector('.visually-hidden')).toHaveTextContent('12.480 tokens');
+    expect(foot).toHaveTextContent(/^3\/3 tarefas · /);
+  });
+
+  it('sem tokens, o rodapé mostra só as tarefas', () => {
+    renderList([{ ...item('m1', 'running', 1, 2), tokens: 0 }]);
+
+    expect(document.querySelector('.mission-progress__foot')?.textContent).toBe('1/2 tarefas');
   });
 
   it('sem nada a mostrar, não desenha lista', () => {

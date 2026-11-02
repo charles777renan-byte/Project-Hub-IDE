@@ -67,8 +67,8 @@ export const CHANNELS = {
   workspacesReorder: 'workspaces:reorder:v1',
   /** Programas que os painéis sabem abrir, com a disponibilidade de cada um. */
   providersList: 'providers:list:v1',
-  /** Eventos de missão por dia local nos últimos 90 dias, para o painel de atividade. Só leitura. */
-  activityDaily: 'activity:daily:v1',
+  /** Mensagens e tokens por agente e por dia, para o bloco "Visão geral" do Início. Só leitura. */
+  activityAgents: 'activity:agents:v1',
   /** Perfil local: o nome da saudação do Início. Só leitura. */
   profileGet: 'profile:get:v1',
   profileSetDisplayName: 'profile:set-display-name:v1',

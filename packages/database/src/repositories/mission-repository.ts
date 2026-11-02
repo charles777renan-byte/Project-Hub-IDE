@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -444,4 +444,24 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
       return db.transaction(() => work());
     },
   };
+}
+
+/**
+ * Tokens de cada execução que terminou com uso gravado: entrada nova mais saída, sem o cache (a mesma
+ * conta da seção "Gasto de tokens"). Execução sem `usage` ou sem `finished_at` não entra. Só leitura.
+ */
+export function listExecutionTokens(
+  db: AppDatabase,
+): Array<{ finishedAt: string; tokens: number }> {
+  return db
+    .select({ usage: executions.usage, finishedAt: executions.finishedAt })
+    .from(executions)
+    .where(and(isNotNull(executions.usage), isNotNull(executions.finishedAt)))
+    .orderBy(asc(executions.finishedAt), asc(executions.id))
+    .all()
+    .flatMap((row) =>
+      row.usage === null || row.finishedAt === null
+        ? []
+        : [{ finishedAt: row.finishedAt, tokens: row.usage.inputTokens + row.usage.outputTokens }],
+    );
 }

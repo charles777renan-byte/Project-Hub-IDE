@@ -3,11 +3,14 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { z } from 'zod';
 import {
   addProjectInputSchema,
+  agentActivityInputSchema,
+  agentActivityResponseSchema,
   CHANNELS,
   ERROR_CODES,
   responseSchemas,
   setProjectGroupInputSchema,
   setProjectNicknameInputSchema,
+  type AgentActivity,
   type AppError,
   type AppResult,
   type ErrorCode,
@@ -77,6 +80,55 @@ describe('setProjectNicknameInputSchema', () => {
   });
 });
 
+describe('agentActivityInputSchema', () => {
+  it('aceita a chamada sem corpo ou com objeto vazio', () => {
+    expect(agentActivityInputSchema.safeParse(undefined).success).toBe(true);
+    expect(agentActivityInputSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('recusa qualquer parâmetro', () => {
+    expect(agentActivityInputSchema.safeParse({ dias: 7 }).success).toBe(false);
+  });
+});
+
+describe('agentActivityResponseSchema', () => {
+  const resposta = {
+    agents: [
+      { id: 'claude', label: 'Claude Code', messagesAvailable: true, tokensAvailable: true },
+    ],
+    days: [{ date: '2026-11-01', agent: 'claude', messages: 3, tokens: 1200 }],
+    since: '2026-10-22',
+  };
+
+  it('aceita agentes, dias e a data mais antiga que o app conhece', () => {
+    expect(agentActivityResponseSchema.safeParse(resposta).success).toBe(true);
+  });
+
+  it('aceita tokens nulo, que é dado indisponível e não zero', () => {
+    const semTokens = { ...resposta, days: [{ ...resposta.days[0], tokens: null }] };
+    expect(agentActivityResponseSchema.safeParse(semTokens).success).toBe(true);
+  });
+
+  it('aceita since nulo quando o app não tem nenhum terminal', () => {
+    expect(agentActivityResponseSchema.safeParse({ ...resposta, since: null }).success).toBe(true);
+  });
+
+  it.each([
+    ['contagem de mensagens negativa', { messages: -1 }],
+    ['data fora do formato AAAA-MM-DD', { date: '1/11/2026' }],
+    ['tokens fracionados', { tokens: 1.5 }],
+  ])('recusa %s', (_nome, campo) => {
+    const dia = { ...resposta.days[0], ...campo };
+    expect(agentActivityResponseSchema.safeParse({ ...resposta, days: [dia] }).success).toBe(false);
+  });
+
+  it('o canal tem resposta conferida pelo AppResult', () => {
+    const schema = responseSchemas[CHANNELS.activityAgents];
+    expect(schema.safeParse({ ok: true, data: resposta }).success).toBe(true);
+    expect(schema.safeParse({ ok: true, data: { agents: [] } }).success).toBe(false);
+  });
+});
+
 describe('CHANNELS', () => {
   // As tarefas seguintes acrescentam canais, então o teste confere presença, não igualdade.
   it('inclui os canais da seção 13.4 e da Tarefa 2', () => {
@@ -107,7 +159,10 @@ describe('CHANNELS', () => {
   });
 
   it('inclui o canal de atividade, só de leitura', () => {
-    expect(Object.values(CHANNELS)).toContain('activity:daily:v1');
+  });
+
+  it('inclui o canal de atividade por agente, só de leitura', () => {
+    expect(CHANNELS.activityAgents).toBe('activity:agents:v1');
   });
 
   it('todo canal tem versão no nome e nenhum se repete', () => {
@@ -295,6 +350,13 @@ describe('ProjectHubApi', () => {
     expectTypeOf<ProjectHubApi['projects']['add']>().parameter(0).toEqualTypeOf<{ path: string }>();
     expectTypeOf<ProjectHubApi['projects']['add']>().returns.toEqualTypeOf<
       Promise<AppResult<ProjectSummary>>
+    >();
+  });
+
+  it('activity.agents não recebe parâmetro e devolve AppResult<AgentActivity>', () => {
+    expectTypeOf<ProjectHubApi['activity']['agents']>().parameters.toEqualTypeOf<[]>();
+    expectTypeOf<ProjectHubApi['activity']['agents']>().returns.toEqualTypeOf<
+      Promise<AppResult<AgentActivity>>
     >();
   });
 

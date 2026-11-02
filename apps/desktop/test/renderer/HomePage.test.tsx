@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import type {
-  ActivityDay,
+  AgentActivity,
   AppResult,
   ApprovalDto,
   MissionDto,
@@ -19,7 +19,7 @@ import { missionPath, ROUTE_PATHS, workspacePath } from '../../src/renderer/rout
 
 /**
  * Início como painel de abertura: saudação numa linha, "Precisa de você", missões com progresso (e o
- * filtro `?estado=` dos contadores da barra de status), atividade compacta e uso dos agentes. A API do
+ * filtro `?estado=` dos contadores da barra de status), o bloco "Visão geral" de largura toda e o uso dos agentes. A API do
  * preload é falsa; cada teste monta projetos, missões e as leituras de `missions.get`.
  */
 
@@ -64,13 +64,31 @@ function approval(missionId: string): ApprovalDto {
   };
 }
 
+const EMPTY_ACTIVITY: AppResult<AgentActivity> = {
+  ok: true,
+  data: {
+    agents: [
+      { id: 'claude', label: 'Claude Code', messagesAvailable: true, tokensAvailable: true },
+      { id: 'codex', label: 'Codex', messagesAvailable: true, tokensAvailable: true },
+      {
+        id: 'antigravity',
+        label: 'Antigravity CLI',
+        messagesAvailable: true,
+        tokensAvailable: false,
+      },
+    ],
+    days: [],
+    since: null,
+  },
+};
+
 type Setup = {
   projects?: ProjectSummary[] | 'error';
   missions?: Record<string, MissionDto[]>;
   /** Resposta de `missions.get` por missão; `undefined` devolve a aprovação da missão. */
   get?: (missionId: string) => AppResult<MissionViewDto> | 'pending' | undefined;
-  /** Resposta de `activity.daily`; sem ela, a consulta devolve banco vazio. */
-  activity?: AppResult<ActivityDay[]>;
+  /** Resposta de `activity.agents`; sem ela, a consulta devolve os três agentes e nenhum dia. */
+  activity?: AppResult<AgentActivity>;
   /** Nome do perfil local (`profile.get`). */
   displayName?: string | null;
   /** Terminais (`terminals.list`). Sem a opção, a API de terminais nem existe; `'pending'` nunca responde. */
@@ -103,9 +121,7 @@ function installApi({
   const setDisplayName = vi.fn(() => Promise.resolve({ ok: true }));
   const api = {
     activity: {
-      daily: vi.fn(() =>
-        Promise.resolve<AppResult<ActivityDay[]>>(activity ?? { ok: true, data: [] }),
-      ),
+      agents: vi.fn(() => Promise.resolve<AppResult<AgentActivity>>(activity ?? EMPTY_ACTIVITY)),
     },
     profile: {
       get: vi.fn(() => Promise.resolve({ ok: true, data: { displayName } })),
@@ -237,7 +253,7 @@ describe('HomePage', () => {
     expect(screen.queryByText('Executando', { selector: ':not(button)' })).not.toBeInTheDocument();
   });
 
-  it('monta as faixas na ordem: saudação, Precisa de você, Missões, Atividade e Uso dos agentes', async () => {
+  it('monta as faixas na ordem: saudação, Visão geral, Precisa de você, Missões e Uso dos agentes', async () => {
     installApi({ projects: [project('p1')] });
 
     renderHome();
@@ -245,9 +261,9 @@ describe('HomePage', () => {
     await screen.findByText('Nada espera por você.');
     const order = [
       screen.getByRole('heading', { level: 1, name: 'Início' }),
+      panel('Visão geral'),
       panel('Precisa de você'),
       panel('Missões'),
-      panel('Atividade'),
       panel('Uso dos agentes'),
     ];
     for (let index = 1; index < order.length; index += 1) {
@@ -342,8 +358,13 @@ describe('HomePage', () => {
     expect(within(missions).getAllByRole('listitem')).toHaveLength(3);
     expect(within(missions).queryByRole('link', { name: 'Missão m3' })).not.toBeInTheDocument();
     expect(within(missions).queryByRole('link', { name: 'Missão m4' })).not.toBeInTheDocument();
-    // O nome do projeto vem antes do estado, para dizer de onde é a missão quando a lista junta vários.
-    expect(within(missions).getByText('Projeto p1 · Falhou')).toBeInTheDocument();
+    // O nome do projeto abre a linha de detalhes, para dizer de onde é a missão quando a lista junta vários; o
+    // estado vai no selo.
+    const failed = within(missions)
+      .getByRole('link', { name: 'Missão m2' })
+      .closest('li') as HTMLElement;
+    expect(failed.querySelector('.chip')).toHaveTextContent('Falhou');
+    expect(failed.querySelector('.mission-progress__meta')?.textContent).toMatch(/^Projeto p1 · /);
     expect(within(missions).getByText('3')).toBeInTheDocument();
   });
 
@@ -659,18 +680,18 @@ describe('HomePage', () => {
     );
   });
 
-  it('sem eventos, a atividade é uma linha só e não desenha a grade', async () => {
+  it('sem nenhum dado, a Visão geral é uma linha só e não desenha o mapa', async () => {
     installApi({ projects: [project('p1')] });
 
     renderHome();
 
     expect(
-      await within(panel('Atividade')).findByText('Nenhuma atividade nos últimos 90 dias.'),
+      await within(panel('Visão geral')).findByText('Nenhuma mensagem pelo app neste período.'),
     ).toBeInTheDocument();
-    expect(document.querySelector('.activity-grid')).toBeNull();
+    expect(document.querySelector('.overview-grid')).toBeNull();
   });
 
-  it('com a atividade em falha, o bloco mostra a mensagem e o resto da tela segue', async () => {
+  it('com o uso dos agentes em falha, o bloco mostra a mensagem e o resto da tela segue', async () => {
     installApi({
       projects: [project('p1')],
       missions: { p1: [mission('m1', 'p1', 'running')] },
@@ -680,9 +701,28 @@ describe('HomePage', () => {
     renderHome();
 
     expect(
-      await within(panel('Atividade')).findByText('Não foi possível carregar a atividade.'),
+      await within(panel('Visão geral')).findByText('Não foi possível carregar o uso dos agentes.'),
     ).toBeInTheDocument();
     expect(await within(panel('Missões')).findByText('Missão m1')).toBeInTheDocument();
+  });
+
+  it('a Visão geral ocupa uma linha de largura toda entre a saudação e as colunas, fora da lateral', async () => {
+    installApi({ projects: [project('p1')] });
+
+    const { container } = renderHome();
+
+    const block = await screen.findByRole('region', { name: 'Visão geral' });
+    expect(block.parentElement).toBe(container.querySelector('.home'));
+    expect(block.closest('.home-side')).toBeNull();
+    expect(block.closest('.home-columns')).toBeNull();
+    const hero = container.querySelector('.home > .home-hero') as HTMLElement;
+    const columns = container.querySelector('.home > .home-columns') as HTMLElement;
+    expect(hero.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(block.compareDocumentPosition(columns) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // A lateral fica só com o uso dos agentes.
+    expect(
+      within(container.querySelector('.home-side') as HTMLElement).getAllByRole('region'),
+    ).toHaveLength(1);
   });
 
   it('Uso dos agentes mostra o cartão do Claude e "Em breve" para os outros programas', async () => {
@@ -760,7 +800,7 @@ describe('HomePage sem nenhum projeto', () => {
     expect(screen.getByText('2. Criar a primeira missão')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Precisa de você' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Missões' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Atividade' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Visão geral' })).not.toBeInTheDocument();
     expect(screen.queryByText('Nada espera por você.')).not.toBeInTheDocument();
     expect(screen.queryByText('Nenhuma missão ainda.')).not.toBeInTheDocument();
     // Uso dos agentes não é faixa vazia: segue na tela sem projeto.
