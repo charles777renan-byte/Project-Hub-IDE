@@ -93,3 +93,280 @@
 .right-panel__content:focus-visible {
   outline-offset: -2px;
 }
+
+/*
+ * Aba Arquivos (FilesTab, FileTree, FileSearch). Linhas de 28px; o recuo de cada nível é o padding-left que o React
+ * escreve no elemento pelo CSSOM. Seleção em --fill e texto esmaecido em --muted (que sustenta 4,5:1), nunca por
+ * opacidade. O anel de foco lima vem do app.css, por dentro da linha.
+ */
+.files-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.files-tab__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) 0 var(--space-3);
+}
+
+.files-tab__project {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-tab__refresh {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-color: var(--field-line);
+  font-size: var(--text-xs);
+}
+
+.files-tab__modes {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) 0;
+}
+
+.files-tab__mode {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.files-tab__mode:hover:not([aria-selected='true']) {
+  background: var(--surface-2);
+}
+
+/* O modo escolhido: --fill e, além da cor, o contorno de 1px, para o estado não ficar só na cor. */
+.files-tab__mode[aria-selected='true'] {
+  background: var(--fill);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--text);
+}
+
+.files-tab__mode:focus-visible,
+.files-tab__refresh:focus-visible {
+  outline-offset: -2px;
+}
+
+.files-tab__search {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.files-tab__field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--muted);
+}
+
+.files-tab__field svg {
+  flex: none;
+}
+
+.files-tab__field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.files-tab__field input::placeholder {
+  color: var(--muted);
+}
+
+.files-tab__field input:focus-visible {
+  outline-offset: 4px;
+}
+
+.files-tab__regex {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.files-tab__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+/* A árvore: lista sem marcador; cada nível de grupo é só a continuação da lista. */
+.files-tree,
+.files-tree__group,
+.files-search__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.files-tree__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding-left: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.files-tree__item:hover:not([aria-selected='true']) {
+  background: var(--surface-2);
+}
+
+.files-tree__item[aria-selected='true'] {
+  background: var(--fill);
+}
+
+.files-tree__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.files-tree__item svg {
+  flex: none;
+}
+
+/* Ignorada pelo Git: --muted e itálico (além da cor), com a descrição também no aria-description. */
+.files-tree__item--ignored {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* O espaço da seta nos arquivos mantém o nome alinhado ao das pastas. */
+.files-tree__chevron {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.files-tree__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.files-tree__note {
+  padding: var(--space-1) var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* Resultados das buscas. */
+.files-search__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 28px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  text-align: left;
+}
+
+.files-search__item:hover {
+  background: var(--surface-2);
+}
+
+.files-search__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.files-search__item svg {
+  flex: none;
+}
+
+.files-search__name,
+.files-search__path {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-search__dir,
+.files-search__line {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Resultado de conteúdo: o caminho e a linha na primeira fileira, o trecho embaixo. */
+.files-search__item--match {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 var(--space-2);
+}
+
+.files-search__snippet {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-search__note,
+.files-search__error {
+  padding: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* O erro leva o ícone, além do texto, e o contorno de --field-line: nada de aviso só em cor. */
+.files-search__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--text);
+}
+
+.files-search__error svg {
+  flex: none;
+}
