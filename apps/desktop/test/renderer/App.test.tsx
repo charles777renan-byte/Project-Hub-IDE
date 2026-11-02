@@ -67,10 +67,12 @@ describe('App', () => {
         </MemoryRouter>,
       );
 
-      // A barra superior vem antes da lateral: primeiro o botão da barra lateral, depois a aba fixa Início e o botão
-      // de abrir workspace.
+      // A barra superior vem antes da lateral: primeiro o botão da barra lateral e o do painel direito, depois a
+      // aba fixa Início e o botão de abrir workspace.
       await user.tab();
       expect(screen.getByRole('button', { name: 'Ocultar barra lateral' })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Ocultar painel direito' })).toHaveFocus();
       await user.tab();
       expect(homeTab()).toHaveFocus();
       await user.tab();
@@ -157,6 +159,40 @@ describe('barra superior', () => {
     expect(
       screen.getByRole('separator', { name: 'Redimensionar barra lateral' }),
     ).toBeInTheDocument();
+  });
+
+  it('a divisória do painel direito tem nome', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole('separator', { name: 'Redimensionar painel direito' }),
+    ).toBeInTheDocument();
+  });
+
+  it('o painel direito fica depois da página e mostra o aviso no Início', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    const panel = screen.getByRole('complementary', { name: 'Painel direito' });
+    expect(screen.getByRole('main').compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(within(panel).getByText('Abra um projeto para ver os arquivos')).toBeInTheDocument();
+  });
+
+  it('o painel direito pega o projeto da aba ativa: na rota do projeto, não pede para abrir um', () => {
+    render(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <App />
+      </MemoryRouter>,
+    );
+    const panel = screen.getByRole('complementary', { name: 'Painel direito' });
+    expect(within(panel).queryByText('Abra um projeto para ver os arquivos')).toBeNull();
   });
 
   it('a marca tem o símbolo escondido dos leitores de tela', () => {

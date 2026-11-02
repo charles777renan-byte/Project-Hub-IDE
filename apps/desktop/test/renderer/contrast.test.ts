@@ -434,6 +434,67 @@ describe.each([
   });
 });
 
+/**
+ * Painel direito (right-panel.css): só tokens de tokens.css, sem cor literal e sem animação. O lima (--accent) fica
+ * de fora (o anel de foco é o --focus, herdado de app.css). A aba ativa usa --fill, o preenchimento que sustenta
+ * texto, com um contorno de --field-line além da cor; a divisória é --line.
+ */
+describe('cores do painel direito (right-panel.css)', () => {
+  const css = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles/right-panel.css'),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ALLOWED = new Set([
+    '--surface',
+    '--surface-2',
+    '--line',
+    '--field-line',
+    '--fill',
+    '--muted',
+    '--text',
+  ]);
+  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)|^--shadow-card$/;
+
+  it('só usa var() de tokens permitidos', () => {
+    const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((token) => !ALLOWED.has(token) && !NOT_COLOR.test(token))).toEqual([]);
+  });
+
+  it('não escreve cor literal, não usa o lima e não tem animação nem transição', () => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix)\(/i);
+    expect(css).not.toContain('var(--accent)');
+    expect(css).not.toMatch(/\b(?:animation|transition)\b/);
+  });
+
+  it('o ícone e o texto sobre a aba ativa (--fill) passam de 4,5:1', () => {
+    const fill = tokens.get('--fill') ?? '';
+    for (const color of ['--text', '--muted']) {
+      expect(contrastRatio(tokens.get(color) ?? '', fill), color).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+
+  it('os ícones e o aviso passam de 4,5:1 sobre o cartão e sobre o realce do mouse (--surface-2)', () => {
+    for (const surface of ['--surface', '--surface-2']) {
+      for (const color of ['--text', '--muted']) {
+        expect(
+          contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    }
+  });
+
+  it('o contorno da aba ativa (--field-line) passa de 3:1 sobre o cartão', () => {
+    expect(
+      contrastRatio(tokens.get('--field-line') ?? '', tokens.get('--surface') ?? ''),
+    ).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe('cores dos programas no quadro do orquestrador', () => {
   const PROGRAM_COLORS = ['--orange'] as const;
   const BORDERS = ['--brand', ...PROGRAM_COLORS] as const;

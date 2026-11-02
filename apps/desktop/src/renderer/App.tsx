@@ -1,49 +1,115 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Group, Panel, Separator, usePanelRef, type Layout } from 'react-resizable-panels';
-import { useNavigate } from 'react-router';
+import {
+  Group,
+  Panel,
+  Separator,
+  usePanelRef,
+  type Layout,
+  type PanelImperativeHandle,
+} from 'react-resizable-panels';
+import { useMatch, useNavigate } from 'react-router';
 import { PaletaComandos } from './components/PaletaComandos';
+import { RightPanel } from './components/right-panel/RightPanel';
 import { Sidebar } from './components/Sidebar';
 import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { buildPaletteItems } from './palette-items';
-import { AppRoutes } from './routes';
+import { TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
+import { AppRoutes, ROUTE_PATHS } from './routes';
 import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 import { useSidebarData } from './use-sidebar-data';
 
-const SIDE_STORAGE_KEY = 'project-hub:sidebar-layout';
+const LAYOUT_STORAGE_KEY = 'project-hub:app-layout';
+/** A chave de antes do painel direito: só guardava a largura da lateral. Ainda é lida, se a nova não existir. */
+const OLD_SIDE_STORAGE_KEY = 'project-hub:sidebar-layout';
 const SIDE_ID = 'side';
 const MAIN_ID = 'main';
-const DEFAULT_LAYOUT: Layout = { [SIDE_ID]: 22, [MAIN_ID]: 78 };
+const RIGHT_ID = 'right';
+const DEFAULT_SIDE = 22;
+const DEFAULT_RIGHT = 24;
+/** Larguras máximas das colunas, em %, e o mínimo que sobra para a página (o `minSize` do painel central). */
+const MAX_SIDE = 40;
+const MAX_RIGHT = 45;
+const MIN_MAIN = 30;
+/** Folga para o ruído de ponto flutuante das larguras que a biblioteca devolve. */
+const TOLERANCE = 0.01;
 
-/** A largura guardada da barra lateral (0 = recolhida); sem `localStorage` ou com valor estranho, a padrão. */
-function readSideLayout(): Layout {
+/** O layout dos três painéis, em %; a página fica com o que as colunas deixam. */
+function layoutOf(side: number, right: number): Layout {
+  return { [SIDE_ID]: side, [MAIN_ID]: 100 - side - right, [RIGHT_ID]: right };
+}
+
+const DEFAULT_LAYOUT = layoutOf(DEFAULT_SIDE, DEFAULT_RIGHT);
+
+/** Uma largura em % de 0 (recolhida) até `max`; qualquer outra coisa não é largura. */
+function percentOf(value: unknown, max: number): number | null {
+  const ok = typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  return ok && value <= max + TOLERANCE ? value : null;
+}
+
+function readStored(key: string): Record<string, unknown> | null {
+  const raw = window.localStorage.getItem(key);
+  if (raw === null) return null;
+  const parsed: unknown = JSON.parse(raw);
+  return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+}
+
+/**
+ * As larguras guardadas das colunas (0 = recolhida); sem `localStorage` ou com valor estranho, as padrão. A chave
+ * nova (`side` e `right`) vale mais; sem ela, a antiga dá a largura da lateral e o painel direito abre na padrão.
+ */
+function readAppLayout(): Layout {
   try {
-    const raw = window.localStorage.getItem(SIDE_STORAGE_KEY);
-    if (raw === null) return DEFAULT_LAYOUT;
-    const parsed: unknown = JSON.parse(raw);
-    const side = (parsed as Record<string, unknown> | null)?.[SIDE_ID];
-    if (typeof side !== 'number' || !Number.isFinite(side) || side < 0 || side > 40) {
-      return DEFAULT_LAYOUT;
+    const stored = readStored(LAYOUT_STORAGE_KEY);
+    if (stored !== null) {
+      const side = percentOf(stored[SIDE_ID], MAX_SIDE);
+      const right = percentOf(stored[RIGHT_ID], MAX_RIGHT);
+      const fits = side !== null && right !== null && side + right <= 100 - MIN_MAIN + TOLERANCE;
+      return fits ? layoutOf(side, right) : DEFAULT_LAYOUT;
     }
-    return { [SIDE_ID]: side, [MAIN_ID]: 100 - side };
+    const old = readStored(OLD_SIDE_STORAGE_KEY);
+    const side = percentOf(old?.[SIDE_ID], MAX_SIDE);
+    return side === null ? DEFAULT_LAYOUT : layoutOf(side, DEFAULT_RIGHT);
   } catch {
     return DEFAULT_LAYOUT;
   }
 }
 
-function saveSideLayout(layout: Layout) {
+function saveAppLayout(layout: Layout) {
   try {
-    window.localStorage.setItem(SIDE_STORAGE_KEY, JSON.stringify(layout));
+    const stored = { [SIDE_ID]: layout[SIDE_ID], [RIGHT_ID]: layout[RIGHT_ID] };
+    window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(stored));
   } catch {
-    // Sem armazenamento, a largura só vale até fechar a janela.
+    // Sem armazenamento, as larguras só valem até fechar a janela.
   }
+}
+
+/**
+ * Recolhe ou expande uma coluna. Recolhendo com o foco dentro dela, o `inert` que vem a seguir o jogaria no body.
+ * Por isso ele vai antes para o botão da barra superior (ou para o conteúdo principal, se o botão não existir).
+ */
+function toggleColumn(panel: PanelImperativeHandle | null, region: string, toggleButton: string) {
+  if (panel === null) return;
+  if (panel.isCollapsed()) {
+    panel.expand();
+    return;
+  }
+  const ativo = document.activeElement;
+  if (ativo instanceof Element && ativo.closest(region) !== null) {
+    const destino =
+      document.querySelector<HTMLElement>(toggleButton) ??
+      document.querySelector<HTMLElement>('.app-main');
+    destino?.focus();
+  }
+  panel.collapse();
 }
 
 /**
  * Estrutura da janela: barra superior de 36px com a marca, a aba fixa Início e as abas dos
  * workspaces; abaixo, a coluna lateral (a barra lateral, o explorador: busca, adicionar projeto, os projetos
- * com as sessões e os arquivados; redimensionável e recolhível, com a largura lembrada) e a área da página, que
- * ocupa o resto da altura e rola sozinha; e, no rodapé, a barra de status (projeto e branch da aba ativa,
+ * com as sessões e os arquivados; redimensionável e recolhível, com a largura lembrada), a área da página, que
+ * ocupa o resto da altura e rola sozinha, e a coluna do painel direito (as abas de arquivos e afins do projeto da
+ * aba ativa; também redimensionável e recolhível, com a largura lembrada); e, no rodapé, a barra de status (projeto e branch da aba ativa,
  * contadores da visão geral, uso do computador e "Parar todos"). A janela não tem fundo decorativo: o fundo topográfico
  * vive só na faixa do topo do Início e nos estados vazios, nunca atrás de listas, tabelas, formulários ou terminais.
  * O roteador fica fora (HashRouter em main.tsx, MemoryRouter nos testes), então o App
@@ -53,34 +119,35 @@ export function App() {
   const [paletaAberta, setPaletaAberta] = useState(false);
   const sidebar = useSidebarData();
   const navigate = useNavigate();
+  // O painel direito acompanha o projeto da aba ativa; fora de uma aba de projeto (o Início), não há projeto.
+  const projectId = useMatch(ROUTE_PATHS.workspace)?.params.projectId ?? null;
   const itensPaleta = useMemo(() => buildPaletteItems(sidebar, navigate), [sidebar, navigate]);
-  // A lateral recolhida (arrastada até o fim, ou guardada assim): fica escondida, e o botão da barra superior, o
-  // Ctrl+B e a paleta a trazem de volta. O estado nasce da largura guardada e segue o painel (`onResize`).
+  // As colunas recolhidas (arrastadas até o fim, ou guardadas assim): ficam escondidas, e o botão da barra superior, o
+  // atalho e a paleta as trazem de volta. O estado nasce da largura guardada e segue o painel (`onResize`). O layout
+  // guardado é lido uma vez só, na montagem.
+  const [initialLayout] = useState(readAppLayout);
   const sidePanel = usePanelRef();
-  const [sideCollapsed, setSideCollapsed] = useState(() => readSideLayout()[SIDE_ID] === 0);
-  const toggleSidebar = useCallback(() => {
-    const panel = sidePanel.current;
-    if (panel === null) return;
-    if (panel.isCollapsed()) {
-      panel.expand();
-      return;
-    }
-    // Recolhendo com o foco dentro da lateral, o `inert` que vem a seguir o jogaria no body. Por isso ele vai antes
-    // para o botão da barra superior (ou para o conteúdo principal, se o botão não existir).
-    const ativo = document.activeElement;
-    if (ativo instanceof Element && ativo.closest('.app-side') !== null) {
-      const destino =
-        document.querySelector<HTMLElement>('.topbar__sidebar-toggle') ??
-        document.querySelector<HTMLElement>('.app-main');
-      destino?.focus();
-    }
-    panel.collapse();
-  }, [sidePanel]);
+  const rightPanel = usePanelRef();
+  const [sideCollapsed, setSideCollapsed] = useState(() => initialLayout[SIDE_ID] === 0);
+  const [rightCollapsed, setRightCollapsed] = useState(() => initialLayout[RIGHT_ID] === 0);
+  const toggleSidebar = useCallback(
+    () => toggleColumn(sidePanel.current, '.app-side', '.topbar__sidebar-toggle'),
+    [sidePanel],
+  );
+  const toggleRight = useCallback(
+    () => toggleColumn(rightPanel.current, '.app-right', '.topbar__right-toggle'),
+    [rightPanel],
+  );
 
   useEffect(() => {
     window.addEventListener(TOGGLE_SIDEBAR_EVENT, toggleSidebar);
     return () => window.removeEventListener(TOGGLE_SIDEBAR_EVENT, toggleSidebar);
   }, [toggleSidebar]);
+
+  useEffect(() => {
+    window.addEventListener(TOGGLE_RIGHT_PANEL_EVENT, toggleRight);
+    return () => window.removeEventListener(TOGGLE_RIGHT_PANEL_EVENT, toggleRight);
+  }, [toggleRight]);
 
   // Ctrl+K abre a paleta em qualquer tela; quem fecha é o Escape. Com a paleta aberta, o Ctrl+K já é do cmdk
   // (sobe na lista), que o marca como tratado. Dentro do terminal ele segue para o programa: no Claude Code,
@@ -121,22 +188,52 @@ export function App() {
     return () => window.removeEventListener('keydown', atalhoLateral);
   }, [toggleSidebar]);
 
+  // Ctrl+Alt+B esconde ou mostra o painel direito. Como os outros dois atalhos, dentro do terminal ele segue para o
+  // programa.
+  useEffect(() => {
+    function atalhoPainelDireito(event: KeyboardEvent) {
+      const ctrlAltB =
+        (event.ctrlKey || event.metaKey) &&
+        event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'b';
+      if (!ctrlAltB || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('.terminal-view') !== null)
+        return;
+      event.preventDefault();
+      toggleRight();
+    }
+    window.addEventListener('keydown', atalhoPainelDireito);
+    return () => window.removeEventListener('keydown', atalhoPainelDireito);
+  }, [toggleRight]);
+
   return (
     <div className="app-shell">
       <RestoreWorkspace />
-      <TopBar sidebarCollapsed={sideCollapsed} onToggleSidebar={toggleSidebar} />
+      <TopBar
+        sidebarCollapsed={sideCollapsed}
+        onToggleSidebar={toggleSidebar}
+        rightCollapsed={rightCollapsed}
+        onToggleRight={toggleRight}
+      />
       <Group
-        className={sideCollapsed ? 'app-body app-body--side-collapsed' : 'app-body'}
+        className={[
+          'app-body',
+          sideCollapsed ? 'app-body--side-collapsed' : '',
+          rightCollapsed ? 'app-body--right-collapsed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         orientation="horizontal"
-        defaultLayout={readSideLayout()}
-        onLayoutChanged={saveSideLayout}
+        defaultLayout={initialLayout}
+        onLayoutChanged={saveAppLayout}
       >
         <Panel
           id={SIDE_ID}
           className="app-body__panel"
-          defaultSize="22"
+          defaultSize={`${DEFAULT_SIDE}`}
           minSize={200}
-          maxSize="40"
+          maxSize={`${MAX_SIDE}`}
           collapsible
           collapsedSize={0}
           panelRef={sidePanel}
@@ -148,12 +245,29 @@ export function App() {
           </div>
         </Panel>
         <Separator className="pane-tree__separator" aria-label="Redimensionar barra lateral" />
-        <Panel id={MAIN_ID} className="app-body__panel" minSize="30">
+        <Panel id={MAIN_ID} className="app-body__panel" minSize={`${MIN_MAIN}`}>
           <main className="app-main" tabIndex={-1}>
             <div className="app-main__content">
               <AppRoutes />
             </div>
           </main>
+        </Panel>
+        <Separator className="pane-tree__separator" aria-label="Redimensionar painel direito" />
+        <Panel
+          id={RIGHT_ID}
+          className="app-body__panel"
+          defaultSize={`${DEFAULT_RIGHT}`}
+          minSize={260}
+          maxSize={`${MAX_RIGHT}`}
+          collapsible
+          collapsedSize={0}
+          panelRef={rightPanel}
+          onResize={(size) => setRightCollapsed(size.inPixels === 0)}
+        >
+          {/* Recolhido, o painel sai do Tab também, como a lateral. */}
+          <div className="app-right" inert={rightCollapsed}>
+            <RightPanel projectId={projectId} />
+          </div>
         </Panel>
       </Group>
       <StatusBar />
