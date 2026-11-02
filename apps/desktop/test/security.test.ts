@@ -464,11 +464,12 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade, perfil, limites e aprovações, sem envio genérico', () => {
+  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade, perfil, limites, arquivos e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
       'activity',
       'approvals',
+      'files',
       'limits',
       'missions',
       'ping',
@@ -528,6 +529,15 @@ describe('buildProjectHubApi', () => {
       'saveLayout',
       'startSession',
     ]);
+    expect(Object.keys(api.files).sort()).toEqual([
+      'list',
+      'openDefault',
+      'read',
+      'searchContent',
+      'searchNames',
+      'stat',
+      'write',
+    ]);
     expect(Object.keys(api.providers)).toEqual(['list']);
     expect(Object.keys(api.terminals).sort()).toEqual([
       'list',
@@ -545,6 +555,41 @@ describe('buildProjectHubApi', () => {
     for (const generic of ['invoke', 'send', 'sendSync', 'on', 'once', 'ipcRenderer']) {
       expect(everyName).not.toContain(generic);
     }
+  });
+
+  it('files chama só os canais de arquivos, levando o id do projeto e o caminho relativo', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = hubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: undefined });
+    });
+    const version = { size: 1, mtimeMs: 2, hash: 'a'.repeat(64) };
+    const write = {
+      projectId: 'p1',
+      path: 'a.ts',
+      text: 'x',
+      eol: 'lf',
+      bom: false,
+      expected: null,
+    };
+
+    await api.files.list('p1', '');
+    await api.files.stat('p1', 'a.ts');
+    await api.files.read('p1', 'a.ts');
+    await api.files.write({ ...write, eol: 'lf', expected: version });
+    await api.files.searchNames('p1', 'abc');
+    await api.files.searchContent('p1', 'abc', true);
+    await api.files.openDefault('p1', 'a.ts');
+
+    expect(calls).toEqual([
+      [CHANNELS.filesList, { projectId: 'p1', dir: '' }],
+      [CHANNELS.filesStat, { projectId: 'p1', path: 'a.ts' }],
+      [CHANNELS.filesRead, { projectId: 'p1', path: 'a.ts' }],
+      [CHANNELS.filesWrite, { ...write, expected: version }],
+      [CHANNELS.filesSearchNames, { projectId: 'p1', query: 'abc' }],
+      [CHANNELS.filesSearchContent, { projectId: 'p1', query: 'abc', regex: true }],
+      [CHANNELS.filesOpenDefault, { projectId: 'p1', path: 'a.ts' }],
+    ]);
   });
 
   it('workspaces e providers chamam só os próprios canais, levando ids e o layout', async () => {

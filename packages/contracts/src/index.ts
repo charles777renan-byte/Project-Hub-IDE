@@ -2,6 +2,7 @@ export * from './agent-activity';
 export * from './api';
 export * from './channels';
 export * from './errors';
+export * from './files';
 export * from './limits';
 export * from './mission';
 export * from './profile';

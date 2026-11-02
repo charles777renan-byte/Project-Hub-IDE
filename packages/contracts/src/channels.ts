@@ -82,4 +82,13 @@ export const CHANNELS = {
   limitsRefresh: 'limits:refresh:v1',
   /** Mudança nos limites (leitura nova ou em andamento), do processo principal para o renderer. Não tem resposta. */
   limitsEvent: 'limits:event:v1',
+  /** Arquivos do projeto (painel direito, fase 1). Só entram o id do projeto e um caminho relativo POSIX. */
+  filesList: 'files:list:v1',
+  filesStat: 'files:stat:v1',
+  filesRead: 'files:read:v1',
+  filesWrite: 'files:write:v1',
+  filesSearchNames: 'files:search-names:v1',
+  filesSearchContent: 'files:search-content:v1',
+  /** Abre o arquivo no programa padrão do sistema. */
+  filesOpenDefault: 'files:open-default:v1',
 } as const;

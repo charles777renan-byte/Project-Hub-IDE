@@ -42,6 +42,11 @@ export const ERROR_CODES = [
   // Acrescentado pelo plano de travas do Git: nenhum código da seção 13.7 diz "o Git está travado,
   // tente depois".
   'GIT_LOCKED',
+  // Acrescentados pelo plano do painel direito: arquivos do projeto lidos e gravados pelo editor.
+  'FILE_NOT_FOUND',
+  'FILE_TOO_LARGE',
+  'FILE_NOT_TEXT',
+  'FILE_CHANGED_ON_DISK',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
