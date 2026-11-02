@@ -275,13 +275,19 @@
 
 .mission-progress__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
   min-width: 0;
 }
 
+/*
+ * Com o painel direito aberto o Início fica estreito: a base impede o título de sumir ao lado do chip,
+ * que passa para a linha de baixo.
+ */
 .mission-progress__title {
+  flex: 1 1 8rem;
   min-width: 0;
   overflow: hidden;
   color: var(--text);
