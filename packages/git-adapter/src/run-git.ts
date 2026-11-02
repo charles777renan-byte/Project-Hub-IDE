@@ -190,11 +190,12 @@ const COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 /**
  * `diff` tem duas famílias de forma. Contra `HEAD`: as opções de `DIFF_READ_OPTIONS` e, depois de `--`,
  * só caminhos, que o Git lê como arquivos e nunca como opção. Contra a base do painel de código-fonte
- * (ADR 0010), o nome inteiro de um commit (o `merge-base` calculado pelo adaptador, e não um nome de
- * branch), em uma de três formas exatas:
- * - `diff --name-status -z <commit>` e `diff --numstat -z <commit>`: uma só das duas listas, com `-z`, sem
- *   `--` nem caminhos;
- * - `diff <commit> --patch ... -- <caminho>`: um caminho só, com `--no-ext-diff` e `--no-textconv` (que
+ * (ADR 0010): o nome inteiro de um commit (o `merge-base` calculado pelo adaptador, e não um nome de
+ * branch) e `HEAD`, nessa ordem, para comparar só o que está commitado (com um operando só o Git compara com a
+ * pasta de trabalho). Três formas exatas:
+ * - `diff --name-status -z <commit> HEAD` e `diff --numstat -z <commit> HEAD`: uma só das duas listas, com `-z`,
+ *   sem `--` nem caminhos;
+ * - `diff <commit> HEAD --patch ... -- <caminho>`: um caminho só, com `--no-ext-diff` e `--no-textconv` (que
  *   desligam programas que o repositório configura, seção 17.1), sem `-z`, `--numstat` nem `--name-status`.
  * As opções de cada forma saem de `DIFF_READ_OPTIONS`.
  */
@@ -204,13 +205,13 @@ function isDiffRead(rest: readonly string[]): boolean {
   const paths = separator === -1 ? undefined : rest.slice(separator + 1);
   const operands = revisions.filter((arg) => !arg.startsWith('-'));
   const options = revisions.filter((arg) => arg.startsWith('-'));
-  if (operands.length !== 1 || !options.every((option) => DIFF_READ_OPTIONS.has(option))) {
+  if (!options.every((option) => DIFF_READ_OPTIONS.has(option))) return false;
+  if (operands.length === 1) return operands[0] === 'HEAD';
+
+  const [commit, head, ...extra] = operands;
+  if (commit === undefined || !COMMIT_ID.test(commit) || head !== 'HEAD' || extra.length > 0) {
     return false;
   }
-  const [operand] = operands;
-  if (operand === 'HEAD') return true;
-  if (operand === undefined || !COMMIT_ID.test(operand)) return false;
-
   const lists = options.filter((option) => option === '--numstat' || option === '--name-status');
   if (lists.length > 0) {
     return lists.length === 1 && options.includes('-z') && paths === undefined;

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTempRepo, revParse, type TempRepo } from '@project-hub/test-utils';
@@ -188,7 +188,7 @@ describe('parsePorcelainStatus (sem o Git)', () => {
     expect(parsed).toMatchObject({ branch: 'main', hasCommits: false });
   });
 
-  it('conflito (`u`) entra como arquivo alterado fora do stage; o caminho com espaço fica inteiro', () => {
+  it('conflito (`u`) entra como `U` fora do stage; o caminho com espaço fica inteiro', () => {
     const output = [
       '# branch.oid 0123456789abcdef0123456789abcdef01234567',
       '# branch.head main',
@@ -197,7 +197,7 @@ describe('parsePorcelainStatus (sem o Git)', () => {
     ].join('\0');
 
     expect(parsePorcelainStatus(output).files).toEqual([
-      { path: 'em conflito.txt', staged: null, unstaged: 'M' },
+      { path: 'em conflito.txt', staged: null, unstaged: 'U' },
     ]);
   });
 
@@ -274,7 +274,7 @@ describe('getGitPanelStatus', () => {
     expect(files).toEqual([{ path: 'duas\nlinhas.txt', staged: null, unstaged: 'U' }]);
   });
 
-  it('conflito de merge: o arquivo aparece como alterado fora do stage', async () => {
+  it('conflito de merge: o arquivo aparece como `U` fora do stage', async () => {
     git(repoPath, ['checkout', '-b', 'outra']);
     commitFile(repoPath, 'a.txt', 'versão da outra\n', 'Muda na outra');
     git(repoPath, ['checkout', 'main']);
@@ -283,10 +283,122 @@ describe('getGitPanelStatus', () => {
 
     const { files } = await getGitPanelStatus({ repo: repoPath });
 
-    expect(files).toEqual([{ path: 'a.txt', staged: null, unstaged: 'M' }]);
+    expect(files).toEqual([{ path: 'a.txt', staged: null, unstaged: 'U' }]);
   });
 
-  it('ahead e behind com upstream local; o upstream é a base', async () => {
+  it('pasta nova com dois arquivos aparece como dois registros, e não como `pasta/`', async () => {
+    mkdirSync(join(repoPath, 'pasta nova'));
+    writeFileSync(join(repoPath, 'pasta nova', 'um.txt'), '1\n');
+    writeFileSync(join(repoPath, 'pasta nova', 'dois.txt'), '2\n');
+
+    const { files } = await getGitPanelStatus({ repo: repoPath });
+
+    expect(files).toEqual([
+      { path: 'pasta nova/dois.txt', staged: null, unstaged: 'U' },
+      { path: 'pasta nova/um.txt', staged: null, unstaged: 'U' },
+    ]);
+  });
+
+  it('branch publicada, com um commit local novo: lista o commit e as linhas contra origin/main, e não zera', async () => {
+    const remote = addBareRemote({ setUpstream: false });
+    git(repoPath, ['checkout', '-b', 'feat']);
+    commitFile(repoPath, 'primeira.txt', '1\n2\n', 'Publicado');
+    git(repoPath, ['push', '-u', 'origin', 'feat']);
+    commitFile(repoPath, 'segunda.txt', 'a\nb\nc\n', 'Local, ainda não enviado');
+    expect(git(remote, ['rev-parse', '--verify', 'refs/heads/feat']).trim()).not.toBe(
+      revParse(repoPath, 'HEAD'),
+    );
+
+    const status = await getGitPanelStatus({ repo: repoPath });
+    const changes = await getBranchChanges({ repo: repoPath });
+
+    expect(status).toMatchObject({
+      upstream: 'origin/feat',
+      ahead: 1,
+      behind: 0,
+      baseRef: 'origin/main',
+      linesAdded: 5,
+      linesRemoved: 0,
+    });
+    expect(changes.baseRef).toBe('origin/main');
+    expect(changes.files.map((file) => file.path)).toEqual(['primeira.txt', 'segunda.txt']);
+  });
+
+  it('branch publicada e sem nada novo: a lista segue contra origin/main, e não zera', async () => {
+    addBareRemote({ setUpstream: false });
+    git(repoPath, ['checkout', '-b', 'feat']);
+    commitFile(repoPath, 'primeira.txt', '1\n2\n', 'Publicado');
+    git(repoPath, ['push', '-u', 'origin', 'feat']);
+
+    const status = await getGitPanelStatus({ repo: repoPath });
+
+    expect(status).toMatchObject({ ahead: 0, behind: 0, baseRef: 'origin/main', linesAdded: 2 });
+    expect((await getBranchChanges({ repo: repoPath })).files).toHaveLength(1);
+  });
+
+  it('com upstream mas sem origin/main: a base é null, e o upstream segue informado', async () => {
+    const remote = newScratchDir('remoto-');
+    git(remote, ['init', '--bare', '--initial-branch=main']);
+    git(repoPath, ['remote', 'add', 'origin', remote]);
+    git(repoPath, ['push', '-u', 'origin', 'main:trunk']);
+    commitFile(repoPath, 'local.txt', 'x\n', 'Local');
+
+    const status = await getGitPanelStatus({ repo: repoPath });
+
+    expect(status).toMatchObject({
+      upstream: 'origin/trunk',
+      ahead: 1,
+      behind: 0,
+      baseRef: null,
+      linesAdded: null,
+      linesRemoved: null,
+    });
+    expect(await getBranchChanges({ repo: repoPath })).toEqual({
+      baseRef: null,
+      mergeBase: null,
+      files: [],
+    });
+  });
+
+  it('edição não commitada não entra nas linhas nem na lista; a commitada entra', async () => {
+    addBareRemote({ setUpstream: false });
+    git(repoPath, ['checkout', '-b', 'feat']);
+    commitFile(repoPath, 'a.txt', 'conteudo inicial\ncommitada\n', 'Linha commitada');
+    commitFile(repoPath, 'b.txt', 'b\n', 'Outro arquivo');
+    // Uma edição fora do stage num arquivo, e outra em stage no segundo.
+    writeFileSync(
+      join(repoPath, 'a.txt'),
+      'conteudo inicial\ncommitada\nnao commitada 1\nnao commitada 2\n',
+    );
+    writeFileSync(join(repoPath, 'b.txt'), 'b\nem stage\n');
+    git(repoPath, ['add', '--', 'b.txt']);
+
+    const status = await getGitPanelStatus({ repo: repoPath });
+    const changes = await getBranchChanges({ repo: repoPath });
+
+    expect(status).toMatchObject({ baseRef: 'origin/main', linesAdded: 2, linesRemoved: 0 });
+    expect(changes.files).toEqual([
+      { path: 'a.txt', status: 'M', added: 1, removed: 0 },
+      { path: 'b.txt', status: 'A', added: 1, removed: 0 },
+    ]);
+    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' });
+    expect(diff?.patch).toContain('+commitada');
+    expect(diff?.patch).not.toContain('nao commitada');
+  });
+
+  it('arquivo só editado, sem nenhum commit na branch, não aparece', async () => {
+    addBareRemote({ setUpstream: false });
+    git(repoPath, ['checkout', '-b', 'feat']);
+    writeFileSync(join(repoPath, 'a.txt'), 'só no disco\n');
+
+    const status = await getGitPanelStatus({ repo: repoPath });
+
+    expect(status).toMatchObject({ baseRef: 'origin/main', linesAdded: 0, linesRemoved: 0 });
+    expect((await getBranchChanges({ repo: repoPath })).files).toEqual([]);
+    expect((await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' }))?.patch).toBe('');
+  });
+
+  it('ahead e behind com upstream local, e a base é origin/main', async () => {
     const remote = addBareRemote({ setUpstream: true });
     const other = cloneOther(remote);
     commitFile(other, 'o1.txt', 'x\n', 'Remoto 1');
@@ -324,7 +436,7 @@ describe('getGitPanelStatus', () => {
     });
   });
 
-  it('upstream cuja ref remota sumiu: ahead e behind null, e a base cai para origin/main', async () => {
+  it('upstream cuja ref remota sumiu: ahead e behind null, e a base segue sendo origin/main', async () => {
     const remote = addBareRemote({ setUpstream: false });
     git(repoPath, ['checkout', '-b', 'feat']);
     commitFile(repoPath, 'nova.txt', 'x\n', 'Na feat');
