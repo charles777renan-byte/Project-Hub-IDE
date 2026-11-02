@@ -20,6 +20,7 @@
 - Bibliotecas do renderer em `devDependencies` de `@project-hub/desktop`, versão exata (sem `^`), licença permissiva.
 - Constantes (spec): arquivo editável até 2 MiB (`FILE_SIZE_LIMIT_BYTES = 2 * 1024 * 1024`); busca de nomes até 20 000 entradas; busca de conteúdo até 200 resultados, arquivos até 1 MiB, 5 s; pastas ignoradas nas buscas: `.git`, `node_modules`, `out`, `dist`, `coverage`.
 - `CLAUDE.md`: só commitar quando a pessoa pedir, sem nenhuma atribuição ao Claude (sem `Co-Authored-By`). Os passos "Commit" abaixo valem **só se a pessoa autorizou commits por tarefa ao escolher o método de execução**; sem essa autorização, pule-os e deixe as mudanças no worktree.
+- Testes do renderer (`*.test.tsx` e tudo em `apps/desktop/test/renderer/`) rodam pela **raiz**, que carrega o projeto `renderer` (jsdom e setup): `pnpm exec vitest run <caminhos a partir da raiz>`. `pnpm --filter @project-hub/desktop exec vitest run ...` e `pnpm --filter @project-hub/desktop test` não carregam esse projeto e servem só para testes de Node; para a suíte inteira use `pnpm test` na raiz.
 - Gate de cada tarefa que mexe em código: `pnpm lint`, `pnpm typecheck`, `pnpm test` (e `pnpm test:integration` quando a tarefa o cita) verdes. Antes de integrar a fase: `pnpm test:e2e` com o app fechado.
 - Atualizar `brain/` ao fim (Task 12) e registrar o diário da sessão.
 
@@ -188,7 +189,7 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
 - [ ] **Step 1: Write the failing test** no formato de `ipc-worktrees.test.ts`: cada canal recusa remetente de outra origem (`PERMISSION_DENIED`) sem chamar o serviço; entrada fora do contrato vira `VALIDATION_FAILED`; `FilesError` vira `failure(code, message)`; um erro inesperado vira `UNKNOWN`; o handler nunca recebe nem devolve caminho absoluto (a resposta de `list` só tem caminhos relativos); `openDefault` passa ao `openPath` o caminho absoluto resolvido dentro do projeto e **recusa** `'../x'`; busca nova do mesmo projeto aborta a anterior (o `signal` da primeira fica `aborted`).
 - [ ] **Step 2: Run to verify it fails.** Run: `pnpm --filter @project-hub/desktop exec vitest run test/ipc-files.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement** e ligar em `index.ts` perto de `registerWorktreeHandlers`, com o `openPath` de `shell.openPath`. Conferir que `security.test.ts` continua verde e, se ele (ou outro teste) lista os canais registrados, acrescentar os sete canais novos.
-- [ ] **Step 4: Run to verify it passes.** Run: `pnpm --filter @project-hub/desktop test`. Expected: PASS.
+- [ ] **Step 4: Run to verify it passes.** Run: `pnpm test`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(arquivos): canais IPC dos arquivos do projeto`
 
 ---
@@ -210,9 +211,9 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
   - Atalho **Ctrl+Alt+B** (igual ao Ctrl+B: não vale dentro de `.terminal-view`) e o item "Mostrar/Esconder painel direito" na paleta.
 
 - [ ] **Step 1: Write the failing tests**: `RightPanel` renderiza quatro abas com os nomes acessíveis; Arquivos selecionada por padrão; clicar numa aba desligada não a seleciona; a aba escolhida volta de `localStorage`; sem projeto mostra o aviso; `readRightTab` com valor lixo devolve `'arquivos'` e não lança sem `localStorage`. `App`: o botão da barra superior recolhe e mostra o painel e o foco volta ao botão; Ctrl+Alt+B alterna fora do terminal e **não** dentro de `.terminal-view`; a largura guardada na chave antiga ainda é lida; o painel recolhido tem `inert`. Os testes de guarda aceitam `right-panel.css` ligado depois do `workspace.css` e antes do `motion.css`, sem cor literal e só com os tokens permitidos.
-- [ ] **Step 2: Run to verify it fails.** Run: `pnpm --filter @project-hub/desktop exec vitest run test/renderer/RightPanel.test.tsx test/renderer/App.test.tsx test/renderer/renderer-styles.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run to verify it fails.** Run: `pnpm exec vitest run apps/desktop/test/renderer/RightPanel.test.tsx apps/desktop/test/renderer/App.test.tsx apps/desktop/test/renderer/renderer-styles.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement** a casca, o terceiro `Panel` com `Separator` (`aria-label="Redimensionar painel direito"`), o botão, o atalho, o item da paleta e `right-panel.css` (abas em `--fill` quando ativas; ícones 15 px; divisória `--line`). Não alterar o comportamento da lateral esquerda além do necessário para o layout de três painéis.
-- [ ] **Step 4: Run to verify it passes.** Run: `pnpm --filter @project-hub/desktop test`. Expected: PASS.
+- [ ] **Step 4: Run to verify it passes.** Run: `pnpm test`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(interface): painel direito com abas`
 
 ---
@@ -232,9 +233,9 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
   - `FilesTab({ projectId, onOpenFile })`: cabeçalho (nome do projeto e "Atualizar"), alternância **Nomes | Conteúdo** (`role="tablist"`), campo "Encontrar arquivos" (nomes: busca depois de 150 ms; conteúdo: 300 ms, com opção "Regex"), a árvore quando o campo está vazio e a lista de resultados quando não está. Resultado de conteúdo mostra caminho, número da linha e trecho; Enter ou clique abre o arquivo. Ignora resposta velha (número de sequência por busca). Estados: "Carregando…", "Nenhum arquivo encontrado", "Índice parcial: refine a busca" (`truncated`), erro com a mensagem do processo principal e `role="alert"`.
 
 - [ ] **Step 1: Write the failing tests**: a árvore chama `files.list(projectId, '')` ao montar e `files.list(projectId, 'src')` ao expandir `src`; recolher e reexpandir não duplica entradas; setas, Home, End e Enter funcionam com o teclado (sem mouse); resposta atrasada de um projeto anterior não aparece; digitar rápido em "Nomes" dispara uma única chamada depois dos 150 ms (timers falsos) e mostra só o último resultado mesmo se a resposta antiga chegar depois; "Conteúdo" mostra `linha 12` e o trecho; erro mostra o alerta; `refresh` recarrega as pastas abertas; nenhum caminho absoluto é exibido.
-- [ ] **Step 2: Run to verify it fails.** Run: `pnpm --filter @project-hub/desktop exec vitest run test/renderer/FilesTab.test.tsx test/renderer/FileTree.test.tsx test/renderer/use-project-files.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run to verify it fails.** Run: `pnpm exec vitest run apps/desktop/test/renderer/FilesTab.test.tsx apps/desktop/test/renderer/FileTree.test.tsx apps/desktop/test/renderer/use-project-files.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement** os quatro componentes e o CSS (linhas com 28 px de altura, recuo por nível, ícones de pasta e arquivo do `Icon.tsx`, seleção em `--fill`).
-- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm --filter @project-hub/desktop test`. Expected: PASS.
+- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm test`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(interface): aba Arquivos com árvore e buscas`
 
 ---
@@ -244,7 +245,7 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
 **Files:**
 - Create: `apps/desktop/src/renderer/open-files.ts`, `apps/desktop/src/renderer/components/project/FileTabs.tsx`
 - Modify: `pages/WorkspacePage.tsx`, `components/right-panel/RightPanel.tsx` (liga `onOpenFile`), `styles/project.css` ou `right-panel.css`
-- Test: `apps/desktop/test/renderer/open-files.test.ts`, `FileTabs.test.tsx`, ajustar `WorkspacePage.test.tsx`
+- Test: `apps/desktop/test/renderer/open-files.test.ts`, `FileTabs.test.tsx`, ajustar `WorkspacePage.test.tsx` e `RightPanel.test.tsx`
 
 **Interfaces:**
 - Produces (`open-files.ts`, store do renderer com `useSyncExternalStore`, no estilo de `terminals-data.ts`):
@@ -252,12 +253,12 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
   - `openFile(projectId: string, path: string): void` (abre ou ativa; carrega por `files.read`); `closeFile(projectId, path): void`; `setActive(projectId, key: 'terminals' | string): void`; `updateText(projectId, path, text: string): void` (marca `dirty` quando difere de `saved.text`); `useOpenFiles(projectId): { files: OpenFileBuffer[]; active: 'terminals' | string; anyDirty: boolean }`; `hasDirtyFiles(): boolean` (qualquer projeto).
   - Persistência: só a lista de caminhos e a aba ativa por projeto, em `localStorage` `project-hub:open-files:v1:<projectId>`, restaurada na primeira leitura do projeto; nunca o texto.
 - `FileTabs({ projectId })`: faixa `role="tablist"` "Arquivos abertos" com a aba fixa "Terminais" e uma aba por arquivo (nome, `title` com o caminho, ponto de "não salvo" com texto escondido "alterações não salvas", botão "Fechar <nome>"); Setas/Home/End, Ctrl+W fecha a ativa. Só aparece quando há arquivo aberto.
-- `WorkspacePage`: com arquivo aberto mostra `FileTabs` acima do workspace; o workspace de painéis **continua montado** e fica `hidden` enquanto um arquivo está ativo (os terminais não são desmontados). `RightPanel` abre arquivo com `openFile` e, se a rota não está em `?visao=terminais`, navega para ela (`replace`) em seguida.
+- `WorkspacePage`: com arquivo aberto mostra `FileTabs` acima do workspace; o workspace de painéis **continua montado** e fica `hidden` enquanto um arquivo está ativo (os terminais não são desmontados). `RightPanel` abre arquivo com `openFile` e, se a rota não está em `?visao=terminais`, navega para ela (`replace`) em seguida. Esta tarefa fecha a ligação deixada pela Task 8: `RightPanel` passa a `FilesTab` um `onOpenFile` próprio (o padrão vazio da Task 8 sai), então `App.tsx` **não** passa `onOpenFile` e não muda; a prop de `RightPanel` fica só para os testes injetarem um espião. Um teste de `RightPanel` confere que clicar num arquivo da árvore chama `openFile(projectId, path)`.
 
-- [ ] **Step 1: Write the failing tests**: `openFile` carrega uma vez e ativa a aba; abrir de novo o mesmo caminho só ativa; `updateText` marca e desmarca `dirty`; `closeFile` ativa a aba vizinha (ou "Terminais"); a lista volta do `localStorage` e não guarda texto; `load: 'not-text'` e `'too-large'` vêm dos códigos de erro; `WorkspacePage`: abrir arquivo mostra a faixa, esconde (sem desmontar) o workspace — o nó do terminal continua no DOM —, e fechar o último arquivo remove a faixa; trocar de visão com um arquivo aberto não perde o buffer.
-- [ ] **Step 2: Run to verify it fails.** Run: `pnpm --filter @project-hub/desktop exec vitest run test/renderer/open-files.test.ts test/renderer/FileTabs.test.tsx test/renderer/WorkspacePage.test.tsx`. Expected: FAIL.
+- [ ] **Step 1: Write the failing tests**: `openFile` carrega uma vez e ativa a aba; abrir de novo o mesmo caminho só ativa; `updateText` marca e desmarca `dirty`; `closeFile` ativa a aba vizinha (ou "Terminais"); a lista volta do `localStorage` e não guarda texto; `load: 'not-text'` e `'too-large'` vêm dos códigos de erro; `WorkspacePage`: abrir arquivo mostra a faixa, esconde (sem desmontar) o workspace — o nó do terminal continua no DOM —, e fechar o último arquivo remove a faixa; trocar de visão com um arquivo aberto não perde o buffer. `RightPanel`: sem espião injetado, clicar num arquivo da árvore chama `openFile(projectId, path)`.
+- [ ] **Step 2: Run to verify it fails.** Run: `pnpm exec vitest run apps/desktop/test/renderer/open-files.test.ts apps/desktop/test/renderer/FileTabs.test.tsx apps/desktop/test/renderer/WorkspacePage.test.tsx apps/desktop/test/renderer/RightPanel.test.tsx`. Expected: FAIL.
 - [ ] **Step 3: Implement** o store, a faixa e a integração.
-- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm --filter @project-hub/desktop test`. Expected: PASS.
+- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm test`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(interface): abas de arquivo ao lado dos terminais`
 
 ---
@@ -278,9 +279,9 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
   - `FileEditorTab({ projectId, path })`: barra do caminho (`PathText`) e o botão **Salvar** (Ctrl+S, desligado sem alteração e em arquivo `mixed`); para `not-text` e `too-large`, o aviso "Este arquivo não pode ser editado aqui" e o botão "Abrir no programa padrão" (`files.openDefault`); `eol: 'mixed'` abre somente leitura com a faixa "Este arquivo mistura fins de linha; edite no seu editor"; salvar chama `files.write({ …, expected: saved.version })`, atualiza `saved` e zera `dirty`; falha mostra a mensagem do processo principal (`role="alert"`) e mantém o texto.
 
 - [ ] **Step 1: Write the failing tests**: `languageOf('a.TSX') === 'typescript'`, `'Dockerfile' → 'text'`; `CodeEditor` monta, mostra o texto, `onChange` dispara ao digitar e **não** dispara ao trocar `value` por cima; `readOnly` impede digitar; `FileEditorTab` salva com Ctrl+S chamando `files.write` com `expected` igual à versão lida, `eol` e `bom` originais; botão Salvar desligado sem alteração; falha de gravação mantém o texto e mostra o alerta; arquivo `mixed` não deixa salvar; `not-text` mostra o aviso e o botão do programa padrão.
-- [ ] **Step 2: Run to verify it fails.** Run: `pnpm --filter @project-hub/desktop exec vitest run test/renderer/CodeEditor.test.tsx test/renderer/FileEditorTab.test.tsx test/renderer/languages.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run to verify it fails.** Run: `pnpm exec vitest run apps/desktop/test/renderer/CodeEditor.test.tsx apps/desktop/test/renderer/FileEditorTab.test.tsx apps/desktop/test/renderer/languages.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement** os componentes; `WorkspacePage` mostra `FileEditorTab` para a aba de arquivo ativa. Ctrl+S só salva quando o foco está dentro do editor ou da aba, e `preventDefault`.
-- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm --filter @project-hub/desktop test`. Expected: PASS.
+- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm test`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(interface): editor de arquivos com salvamento`
 
 ---
@@ -301,9 +302,9 @@ git commit -m "feat(contratos): canais e tipos de arquivos do projeto"
   - `registerUnsavedGuard(contents: { on(event: 'will-prevent-unload', listener: (event: { preventDefault(): void }) => void): void }, confirmQuit: () => boolean): void`: ao fechar a janela com o `beforeunload` do renderer ativo, pergunta (`dialog.showMessageBoxSync`: "Há arquivos com alterações não salvas. Sair mesmo assim?", botões "Voltar" e "Sair sem salvar") e só deixa fechar se a pessoa escolheu sair. O renderer registra `beforeunload` enquanto `hasDirtyFiles()`.
 
 - [ ] **Step 1: Write the failing tests**: arquivo mudado no disco sem edição é recarregado e mostra o aviso que some; com edição vira `changed-on-disk` e **nenhuma** gravação acontece; "Salvar por cima" exige dois cliques e só então grava com `expected` igual à versão do disco; "Recarregar" troca o texto e zera `dirty`; arquivo apagado marca `missing` e manter o texto; gravação recusada com `FILE_CHANGED_ON_DISK` abre a faixa; fechar com `dirty` mostra as três opções e "Voltar" não fecha; `registerUnsavedGuard`: com `confirmQuit` devolvendo `true`, chama `preventDefault`; com `false`, não chama; `beforeunload` só é registrado com arquivo sujo.
-- [ ] **Step 2: Run to verify it fails.** Run: `pnpm --filter @project-hub/desktop exec vitest run test/renderer/FileConflict.test.tsx test/renderer/FileTabs.test.tsx test/unsaved-guard.test.ts`. Expected: FAIL.
+- [ ] **Step 2: Run to verify it fails.** Run: `pnpm exec vitest run apps/desktop/test/renderer/FileConflict.test.tsx apps/desktop/test/renderer/FileTabs.test.tsx apps/desktop/test/unsaved-guard.test.ts`. Expected: FAIL.
 - [ ] **Step 3: Implement** e ligar `registerUnsavedGuard(win.webContents, …)` em `index.ts` quando a janela é criada.
-- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm --filter @project-hub/desktop test`. Expected: PASS.
+- [ ] **Step 4: Run to verify it passes.** Mesmo comando e depois `pnpm test`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(interface): arquivo alterado no disco e fechar sem salvar`
 
 ---
