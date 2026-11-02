@@ -1,4 +1,4 @@
-import type { ActivityDay } from './activity';
+import type { AgentActivity } from './agent-activity';
 import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
 import type { SystemUsageDto } from './system';
@@ -143,8 +143,8 @@ export type ProjectHubApi = {
     list(): Promise<AppResult<ProviderInfo[]>>;
   };
   activity: {
-    /** Eventos de missão por dia local nos últimos 90 dias. Dias sem evento não vêm na lista. */
-    daily(): Promise<AppResult<ActivityDay[]>>;
+    /** Mensagens e tokens por agente e por dia, do uso feito pelo app. Só leitura, sem parâmetro. */
+    agents(): Promise<AppResult<AgentActivity>>;
   };
   profile: {
     /** O nome da saudação, ou `null` quando a pessoa não informou um. */

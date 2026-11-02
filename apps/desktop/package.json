@@ -30,6 +30,7 @@
     "@project-hub/application": "workspace:*",
     "@project-hub/contracts": "workspace:*",
     "@project-hub/database": "workspace:*",
+    "@project-hub/domain": "workspace:*",
     "@project-hub/git-adapter": "workspace:*",
     "@project-hub/test-utils": "workspace:*",
     "@testing-library/dom": "10.4.2",

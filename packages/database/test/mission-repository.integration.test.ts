@@ -7,6 +7,7 @@ import { openDatabase, type AppDatabase } from '../src/client';
 import { migrateDatabase } from '../src/migrate';
 import {
   createMissionRepository,
+  listExecutionTokens,
   type MissionRepository,
 } from '../src/repositories/mission-repository';
 import { createProjectRepository } from '../src/repositories/project-repository';
@@ -511,5 +512,63 @@ describe('tarefas da missão', () => {
       .run();
 
     expect(repo.listSteps('missao-1')[0]?.agent).toBe('claude-code');
+  });
+});
+
+describe('listExecutionTokens', () => {
+  const FINISHED = '2026-10-21T12:00:00.000Z';
+
+  beforeEach(() => {
+    repo.insertMission(mission());
+  });
+
+  it('soma entrada nova e saída de cada execução com uso e término, sem o cache', () => {
+    repo.insertExecution(
+      execution({
+        id: 'exec-1',
+        attempt: 1,
+        status: 'succeeded',
+        usage: { inputTokens: 100, outputTokens: 40, cacheReadInputTokens: 9_000 },
+        finishedAt: FINISHED,
+      }),
+    );
+
+    expect(listExecutionTokens(db)).toEqual([{ finishedAt: FINISHED, tokens: 140 }]);
+  });
+
+  it('ignora execução sem uso ou sem término', () => {
+    repo.insertExecution(
+      execution({
+        id: 'exec-1',
+        attempt: 1,
+        status: 'succeeded',
+        finishedAt: FINISHED,
+      }),
+    );
+    repo.insertExecution(
+      execution({
+        id: 'exec-2',
+        attempt: 2,
+        status: 'running',
+        usage: { inputTokens: 5, outputTokens: 5 },
+      }),
+    );
+    repo.insertExecution(
+      execution({
+        id: 'exec-3',
+        attempt: 3,
+        status: 'succeeded',
+        usage: { inputTokens: 7, outputTokens: 3 },
+        finishedAt: '2026-10-22T08:00:00.000Z',
+      }),
+    );
+
+    expect(listExecutionTokens(db)).toEqual([
+      { finishedAt: '2026-10-22T08:00:00.000Z', tokens: 10 },
+    ]);
+  });
+
+  it('banco sem execuções devolve lista vazia', () => {
+    expect(listExecutionTokens(db)).toEqual([]);
   });
 });

@@ -514,7 +514,7 @@ describe('buildProjectHubApi', () => {
     ]);
     expect(Object.keys(api.limits).sort()).toEqual(['get', 'refresh', 'subscribe']);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
-    expect(Object.keys(api.activity)).toEqual(['daily']);
+    expect(Object.keys(api.activity)).toEqual(['agents']);
     expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);
     expect(Object.keys(api.workspaces).sort()).toEqual([
       'addPane',
@@ -960,31 +960,60 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     });
   });
 
-  it('activity.daily chama só o canal de atividade, sem entrada, e confere a resposta', async () => {
+  it('activity.agents chama só o canal de atividade por agente, sem entrada, e confere a resposta', async () => {
     const calls: Array<[string, unknown]> = [];
     const api = buildProjectHubApi((channel, payload) => {
       calls.push([channel, payload]);
       return Promise.resolve({
         ok: true,
-        data: [{ date: '2026-10-24', count: 3, interno: 'não passa' }],
+        data: {
+          agents: [
+            {
+              id: 'claude',
+              label: 'Claude Code',
+              messagesAvailable: true,
+              tokensAvailable: true,
+              interno: 'não passa',
+            },
+          ],
+          days: [{ date: '2026-11-01', agent: 'claude', messages: 3, tokens: null }],
+          since: '2026-10-22',
+        },
       });
     }, noEvents);
 
-    const result = await api.activity.daily();
+    const result = await api.activity.agents();
 
-    expect(calls).toEqual([[CHANNELS.activityDaily, undefined]]);
-    expect(result).toEqual({ ok: true, data: [{ date: '2026-10-24', count: 3 }] });
+    expect(calls).toEqual([[CHANNELS.activityAgents, undefined]]);
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        agents: [
+          { id: 'claude', label: 'Claude Code', messagesAvailable: true, tokensAvailable: true },
+        ],
+        days: [{ date: '2026-11-01', agent: 'claude', messages: 3, tokens: null }],
+        since: '2026-10-22',
+      },
+    });
   });
 
-  it('activity.daily recusa uma resposta fora do contrato', async () => {
+  it('activity.agents recusa uma resposta fora do contrato', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const api = buildProjectHubApi(
-      () => Promise.resolve({ ok: true, data: [{ date: 'ontem', count: -2 }] }),
+      () =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            agents: [],
+            days: [{ date: 'ontem', agent: 'claude', messages: -1, tokens: 1.5 }],
+            since: null,
+          },
+        }),
       noEvents,
     );
 
     try {
-      expect(await api.activity.daily()).toMatchObject({
+      expect(await api.activity.agents()).toMatchObject({
         ok: false,
         error: { code: 'VALIDATION_FAILED' },
       });
@@ -1072,7 +1101,10 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
 
     api.missions.subscribeUsage((evento) => received.push(evento));
     required(registered, 'o canal de gasto')(usage);
-    required(registered, 'o canal de gasto')({ ...usage, usage: { inputTokens: -1, outputTokens: 0 } });
+    required(
+      registered,
+      'o canal de gasto',
+    )({ ...usage, usage: { inputTokens: -1, outputTokens: 0 } });
 
     expect(channels).toEqual([CHANNELS.missionsUsage]);
     expect(received).toEqual([usage]);

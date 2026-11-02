@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ActivityDay } from '@project-hub/contracts';
 import {
   createOrchestrator,
   type MissionRepository,
@@ -21,17 +20,18 @@ import {
   type RemoveWorktreeDeps,
 } from '@project-hub/application';
 import {
-  countAuditEventsByLocalDay,
   createAppSettingsRepository,
   createMissionRepository,
   createProjectRepository,
   createTerminalSessionRepository,
   createWorkspaceRepository,
+  listExecutionTokens,
   migrateDatabase,
   openDatabase,
   type TerminalSessionRepository,
   type WorkspaceRepository,
 } from '@project-hub/database';
+import type { AppTerminal, MissionTokens } from '@project-hub/domain';
 import {
   buildWorktreeNames,
   createGitDetector,
@@ -73,8 +73,8 @@ export type AppServices = AddProjectDeps & {
   };
   /** Repositórios do serviço de workspaces: os workspaces e os projetos. */
   workspaceDeps: { repo: WorkspaceRepository; projects: ProjectRepository };
-  /** Atividade da tela Início: eventos de auditoria por dia local (só leitura). */
-  activityDeps: { countByLocalDay(sinceIso: string): ActivityDay[] };
+  /** Atividade por agente do Início: os terminais do app (com a pasta do projeto) e os tokens das missões. Só leitura. */
+  agentActivityDeps: { terminals(): AppTerminal[]; missions(): MissionTokens[] };
   /** Perfil local: o nome da saudação, guardado nas configurações do banco. */
   profileDeps: ProfileDeps;
   close(): void;
@@ -313,6 +313,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   }
 
   const projects = createProjectRepository(db);
+  const terminalSessions = createTerminalSessionRepository(db);
   const repo = withMissionEvents(
     createMissionRepository(db),
     options.publishMissionEvent,
@@ -347,9 +348,24 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     now,
     newId,
     lifecycle: { repo: projects, missions: repo, fs, now },
-    terminalDeps: { repo, projects, sessions: createTerminalSessionRepository(db) },
+    terminalDeps: { repo, projects, sessions: terminalSessions },
     workspaceDeps: { repo: createWorkspaceRepository(db), projects },
-    activityDeps: { countByLocalDay: (sinceIso) => countAuditEventsByLocalDay(db, sinceIso) },
+    agentActivityDeps: {
+      terminals: () =>
+        terminalSessions.listAll().flatMap((session) => {
+          const project = projects.get(session.projectId);
+          if (project === undefined) return [];
+          const terminal: AppTerminal = {
+            provider: session.provider,
+            folder: project.path,
+            createdAt: session.createdAt,
+          };
+          // Com exactOptionalPropertyTypes, terminal aberto fica sem a chave.
+          if (session.closedAt !== undefined) terminal.closedAt = session.closedAt;
+          return [terminal];
+        }),
+      missions: () => listExecutionTokens(db),
+    },
     profileDeps: { settings: createAppSettingsRepository(db), now },
     missions: {
       orchestrator,

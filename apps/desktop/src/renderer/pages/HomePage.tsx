@@ -4,7 +4,7 @@ import type { MissionDto, TerminalSummary } from '@project-hub/contracts';
 import { useAttention, type AttentionEntry } from '../attention';
 import { EmptyState } from '../components/EmptyState';
 import { FolderPlus } from '../components/Icon';
-import { ActivityHeatmap } from '../components/home/ActivityHeatmap';
+import { AgentOverview } from '../components/home/AgentOverview';
 import { AgentUsage } from '../components/home/AgentUsage';
 import { Greeting } from '../components/home/Greeting';
 import { MissionProgressList } from '../components/MissionProgressList';
@@ -302,10 +302,11 @@ function FirstSteps() {
 
 /**
  * Início, o painel de abertura, de cima para baixo: a faixa do topo (a saudação numa linha, sobre o fundo
- * topográfico, que não aparece em mais nenhum ponto do Início), "Precisa de você", Missões com
- * progresso (e o filtro `?estado=`), Atividade e Uso dos agentes. Os números vêm da carga compartilhada
- * da visão geral; nada é simulado. Sem nenhum projeto, o estado vazio (`FirstSteps`) toma o lugar de "Precisa de você",
- * Missões e Atividade; o Uso dos agentes segue, porque não é uma faixa vazia.
+ * topográfico, que não aparece em mais nenhum ponto do Início), a "Visão geral" do uso dos agentes (uma linha
+ * de largura toda) e as duas colunas: "Precisa de você" e Missões com progresso (e o filtro `?estado=`) à
+ * esquerda, Uso dos agentes à direita. Os números vêm da carga compartilhada da visão geral e do canal de
+ * atividade por agente; nada é simulado. Sem nenhum projeto, o estado vazio (`FirstSteps`) toma o lugar de
+ * "Precisa de você" e Missões, e a Visão geral não aparece; o Uso dos agentes segue, porque não é uma faixa vazia.
  * `?editar-nome=1` (o item "Alterar meu nome" da paleta) abre o campo do nome na saudação, e o parâmetro sai
  * quando o campo fecha.
  */
@@ -345,6 +346,7 @@ export function HomePage() {
         <TopographicBackground />
         <Greeting editRequested={editRequested} onEditClose={closeNameEditor} />
       </div>
+      {semProjetos ? null : <AgentOverview />}
       <div className="home-columns">
         <div className="home-main">
           {semProjetos ? (
@@ -357,7 +359,6 @@ export function HomePage() {
           )}
         </div>
         <div className="home-side">
-          {semProjetos ? null : <ActivityHeatmap />}
           <AgentUsage />
         </div>
       </div>

@@ -134,6 +134,7 @@ function memorySessions(initial: TerminalSessionRecord[] = []) {
     },
     get: (id) => rows.get(id),
     listOpen: () => [...rows.values()].filter((row) => row.closedAt === undefined),
+    listAll: () => [...rows.values()],
     close: (id, closedAt) => {
       const row = rows.get(id);
       if (row !== undefined) rows.set(id, { ...row, closedAt });

@@ -64,7 +64,11 @@ function install(
   const get = vi.fn((missionId: string) =>
     Promise.resolve<AppResult<MissionViewDto>>({
       ok: true,
-      data: { steps: stepsOf(missionId), pendingApprovals: [] } as unknown as MissionViewDto,
+      data: {
+        steps: stepsOf(missionId),
+        executions: [],
+        pendingApprovals: [],
+      } as unknown as MissionViewDto,
     }),
   );
   window.projectHub = {
@@ -160,7 +164,7 @@ describe('useMissionsBoard', () => {
     expect(last?.total).toBe(0);
   });
 
-  it('missão encerrada não gasta leitura de etapas e vem depois das abertas', async () => {
+  it('missão encerrada vem depois das abertas e também é lida (tarefas e tokens no cartão)', async () => {
     const { get } = install({
       p1: [
         mission('velha', 'p1', 'succeeded', '2026-10-25T09:00:00.000Z'),
@@ -173,7 +177,53 @@ describe('useMissionsBoard', () => {
     await waitFor(() => expect(result.current.items).toHaveLength(2));
     expect(result.current.items.map((entry) => entry.mission.id)).toEqual(['aberta', 'velha']);
     await waitFor(() => expect(get).toHaveBeenCalledWith('aberta'));
-    expect(get).not.toHaveBeenCalledWith('velha');
+    await waitFor(() => expect(get).toHaveBeenCalledWith('velha'));
+  });
+
+  it('soma os tokens das tentativas e junta os agentes das tarefas', async () => {
+    const { get } = install({ p1: [mission('m1', 'p1', 'succeeded')] }, () => [
+      step('a', 'succeeded'),
+    ]);
+    const usage = (inputTokens: number, outputTokens: number) => ({
+      inputTokens,
+      outputTokens,
+      cacheReadInputTokens: 0,
+      cacheWrite5mInputTokens: 0,
+      cacheWrite1hInputTokens: 0,
+    });
+    get.mockImplementation(() =>
+      Promise.resolve<AppResult<MissionViewDto>>({
+        ok: true,
+        data: {
+          steps: [step('a', 'succeeded'), step('b', 'succeeded')],
+          executions: [{ usage: usage(1000, 200) }, {}, { usage: usage(300, 50) }],
+          pendingApprovals: [],
+        } as unknown as MissionViewDto,
+      }),
+    );
+
+    const { result } = renderHook(() => useMissionsBoard(), { wrapper });
+
+    await waitFor(() => expect(result.current.items[0]?.tokens).toBe(1550));
+    expect(result.current.items[0]?.agents).toEqual(['claude-code']);
+  });
+
+  it('missão antiga, com etapa sem papel, não tem tarefas mas mostra o agente', async () => {
+    install({ p1: [mission('m1', 'p1', 'review')] }, () => [step('a', 'pending', false)]);
+
+    const { result } = renderHook(() => useMissionsBoard(), { wrapper });
+
+    await waitFor(() => expect(result.current.items[0]?.agents).toEqual(['claude-code']));
+    expect(result.current.items[0]?.total).toBe(0);
+  });
+
+  it('sem tentativa com uso, a missão fica sem tokens (não zero)', async () => {
+    install({ p1: [mission('m1', 'p1', 'running')] }, () => [step('a', 'running')]);
+
+    const { result } = renderHook(() => useMissionsBoard(), { wrapper });
+
+    await waitFor(() => expect(result.current.items[0]?.total).toBe(1));
+    expect(result.current.items[0]?.tokens).toBeUndefined();
   });
 
   it('um evento de missão atualiza o progresso sem mudar a lista', async () => {

@@ -112,3 +112,59 @@ describe('TerminalSessionRepository', () => {
     expect(repo.get('s1')?.closedAt).toBe('2026-10-22T11:00:00Z');
   });
 });
+
+describe('TerminalSessionRepository.listAll', () => {
+  it('devolve as abertas e as fechadas, da mais antiga para a mais nova', () => {
+    repo.insert({
+      id: 's2',
+      projectId: 'p1',
+      provider: 'codex',
+      title: 'Codex',
+      createdAt: '2026-10-22T10:05:00Z',
+    });
+    repo.insert({
+      id: 's1',
+      projectId: 'p1',
+      provider: 'claude',
+      title: 'Claude Code',
+      createdAt: '2026-10-22T10:00:00Z',
+    });
+    repo.insert({
+      id: 's3',
+      projectId: 'p1',
+      provider: 'shell',
+      title: 'PowerShell',
+      createdAt: '2026-10-22T10:10:00Z',
+    });
+    repo.close('s1', '2026-10-22T11:00:00Z');
+
+    expect(repo.listAll()).toStrictEqual([
+      {
+        id: 's1',
+        projectId: 'p1',
+        provider: 'claude',
+        title: 'Claude Code',
+        createdAt: '2026-10-22T10:00:00Z',
+        closedAt: '2026-10-22T11:00:00Z',
+      },
+      {
+        id: 's2',
+        projectId: 'p1',
+        provider: 'codex',
+        title: 'Codex',
+        createdAt: '2026-10-22T10:05:00Z',
+      },
+      {
+        id: 's3',
+        projectId: 'p1',
+        provider: 'shell',
+        title: 'PowerShell',
+        createdAt: '2026-10-22T10:10:00Z',
+      },
+    ]);
+  });
+
+  it('banco sem sessões devolve lista vazia', () => {
+    expect(repo.listAll()).toEqual([]);
+  });
+});

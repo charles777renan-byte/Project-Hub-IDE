@@ -69,7 +69,7 @@ function installApi({ missions = [], projects = [project], steps = [] }: Options
       get: vi.fn(() =>
         Promise.resolve<AppResult<MissionViewDto>>({
           ok: true,
-          data: { steps, pendingApprovals: [] } as unknown as MissionViewDto,
+          data: { steps, executions: [], pendingApprovals: [] } as unknown as MissionViewDto,
         }),
       ),
       subscribe: vi.fn(() => () => undefined),

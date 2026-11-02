@@ -245,6 +245,9 @@ importers:
       '@project-hub/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@project-hub/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@project-hub/git-adapter':
         specifier: workspace:*
         version: link:../../packages/git-adapter
