@@ -9,13 +9,15 @@ import { createSaveBeforeClose } from '../src/main/save-before-close';
 function setup() {
   const ids: string[] = [];
   const closeWindow = vi.fn();
+  const notifyFailure = vi.fn();
   let n = 0;
   const coordinator = createSaveBeforeClose({
     requestSave: (requestId) => ids.push(requestId),
     closeWindow,
+    notifyFailure,
     newId: () => `req-${++n}`,
   });
-  return { coordinator, ids, closeWindow };
+  return { coordinator, ids, closeWindow, notifyFailure };
 }
 
 describe('createSaveBeforeClose', () => {
@@ -83,5 +85,68 @@ describe('createSaveBeforeClose', () => {
     coordinator.finish('req-1', true);
 
     expect(closeWindow).not.toHaveBeenCalled();
+  });
+
+  it('resultado negativo do pedido atual mostra o aviso uma vez e não fecha a janela', () => {
+    const { coordinator, closeWindow, notifyFailure } = setup();
+    coordinator.start();
+
+    coordinator.finish('req-1', false);
+
+    expect(notifyFailure).toHaveBeenCalledTimes(1);
+    expect(closeWindow).not.toHaveBeenCalled();
+  });
+
+  it('resultado repetido, de pedido antigo ou sem pedido não mostra aviso nenhum', () => {
+    const { coordinator, notifyFailure } = setup();
+
+    coordinator.finish('req-1', false);
+    coordinator.start();
+    coordinator.start();
+    coordinator.finish('req-1', false);
+    coordinator.finish('outro', false);
+    expect(notifyFailure).not.toHaveBeenCalled();
+
+    coordinator.finish('req-2', false);
+    coordinator.finish('req-2', false);
+    expect(notifyFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('resultado positivo fecha a janela e não mostra aviso', () => {
+    const { coordinator, closeWindow, notifyFailure } = setup();
+    coordinator.start();
+
+    coordinator.finish('req-1', true);
+
+    expect(closeWindow).toHaveBeenCalledTimes(1);
+    expect(notifyFailure).not.toHaveBeenCalled();
+  });
+
+  it('cancelar (Voltar ou Descartar depois do Salvar) ignora o resultado que chegar depois: sem fechar e sem aviso', () => {
+    const { coordinator, closeWindow, notifyFailure } = setup();
+    coordinator.start();
+
+    coordinator.cancel();
+    coordinator.finish('req-1', true);
+    expect(closeWindow).not.toHaveBeenCalled();
+
+    coordinator.start();
+    coordinator.cancel();
+    coordinator.finish('req-2', false);
+    expect(notifyFailure).not.toHaveBeenCalled();
+  });
+
+  it('cancelar sem pedido em andamento não faz nada, e um Salvar novo depois do cancelamento volta a valer', () => {
+    const { coordinator, closeWindow } = setup();
+
+    coordinator.cancel();
+    coordinator.start();
+    coordinator.cancel();
+    coordinator.start();
+    coordinator.finish('req-1', true);
+    expect(closeWindow).not.toHaveBeenCalled();
+
+    coordinator.finish('req-2', true);
+    expect(closeWindow).toHaveBeenCalledTimes(1);
   });
 });

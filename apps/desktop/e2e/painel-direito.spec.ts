@@ -381,6 +381,8 @@ async function dirtyWindow(
   files: ReturnType<typeof seedFiles>;
   answer: (button: 0 | 1 | 2) => Promise<void>;
   asked: () => Promise<number>;
+  /** Quantas vezes a caixa nativa de "não foi possível salvar" foi mostrada. */
+  notified: () => Promise<number>;
   closeWindow: () => Promise<void>;
 }> {
   const files = seedFiles(repoPath);
@@ -393,14 +395,20 @@ async function dirtyWindow(
   await openFileFromPanel(page, 'src/a.ts');
   await typeAtEnd(page, 'a.ts', 'sem salvar');
 
-  type Guard = { asked: number; answer: number };
+  type Guard = { asked: number; answer: number; notified: number };
   await app.evaluate(({ dialog }) => {
-    const guard: Guard = { asked: 0, answer: 2 };
+    const guard: Guard = { asked: 0, answer: 2, notified: 0 };
     Object.assign(globalThis, { unsavedGuard: guard });
     (dialog as unknown as { showMessageBoxSync: () => number }).showMessageBoxSync = () => {
       guard.asked += 1;
       return guard.answer;
     };
+    // O aviso de "não foi possível salvar" é uma caixa nativa assíncrona: ninguém a responde numa rodada sem pessoa.
+    (dialog as unknown as { showMessageBox: () => Promise<{ response: number }> }).showMessageBox =
+      () => {
+        guard.notified += 1;
+        return Promise.resolve({ response: 0 });
+      };
   });
   return {
     page,
@@ -413,6 +421,8 @@ async function dirtyWindow(
       }, button),
     asked: () =>
       app.evaluate(() => (globalThis as unknown as { unsavedGuard: Guard }).unsavedGuard.asked),
+    notified: () =>
+      app.evaluate(() => (globalThis as unknown as { unsavedGuard: Guard }).unsavedGuard.notified),
     closeWindow: () =>
       app.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.close();
@@ -469,10 +479,8 @@ test('fechar a janela com arquivo não salvo: Salvar que não consegue gravar ma
   launchApp,
   gitRepo,
 }) => {
-  const { page, close, consoleCsp, files, answer, asked, closeWindow } = await dirtyWindow(
-    launchApp,
-    gitRepo.path,
-  );
+  const { page, close, consoleCsp, files, answer, asked, notified, closeWindow } =
+    await dirtyWindow(launchApp, gitRepo.path);
   // Um agente muda o arquivo por fora enquanto a pessoa edita: gravar por cima perderia o trabalho dele.
   writeFileSync(files.a, 'export const externo = true;\n');
 
@@ -484,9 +492,12 @@ test('fechar a janela com arquivo não salvo: Salvar que não consegue gravar ma
   // tem só o que o agente escreveu.
   await expect(page.getByText('O arquivo mudou no disco enquanto você editava')).toBeVisible();
   await expect(editorOf(page, 'a.ts')).toContainText('sem salvar');
+  // A caixa nativa avisa uma vez que nem tudo foi salvo (o arquivo que falhou poderia estar fora da tela).
+  await expect.poll(notified).toBe(1);
   // Negativo: dá tempo a um fechamento ou a uma gravação indevidos antes de conferir.
   await page.waitForTimeout(500);
   expect(page.isClosed()).toBe(false);
+  expect(await notified()).toBe(1);
   expect(readDisk(files.a)).toBe('export const externo = true;\n');
   await expectNoViolations(page, consoleCsp);
 
