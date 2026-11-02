@@ -312,6 +312,43 @@ describe('arquivos de um projeto de verdade', () => {
     },
   );
 
+  it('openDefault recusa arquivo que executa programa, em qualquer caixa, sem abrir nada', async () => {
+    await mkdir(join(root, 'tools'), { recursive: true });
+    await writeFile(join(root, 'setup.exe'), 'MZ');
+    await writeFile(join(root, 'RODAR.BAT'), '@echo off\n');
+    await writeFile(join(root, 'tools', 'x.js'), 'run();\n');
+    const { fake, openPath } = setup();
+
+    for (const path of ['setup.exe', 'RODAR.BAT', 'tools/x.js']) {
+      const result = await fake.call(CHANNELS.filesOpenDefault, { projectId: 'p1', path });
+      expect(result).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+      expect(JSON.stringify(result)).not.toContain(base);
+    }
+    expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('openDefault recusa pasta, que abriria o gerenciador de arquivos', async () => {
+    const { fake, openPath } = setup();
+
+    expect(await fake.call(CHANNELS.filesOpenDefault, { projectId: 'p1', path: 'src' })).toMatchObject({
+      ok: false,
+      error: { code: 'PERMISSION_DENIED' },
+    });
+    expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it.each(['foto.png', 'manual.PDF'])('openDefault abre %s, que não executa nada', async (name) => {
+    await writeFile(join(root, name), 'conteúdo');
+    const { fake, openPath } = setup();
+
+    expect(await fake.call(CHANNELS.filesOpenDefault, { projectId: 'p1', path: name })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(openPath).toHaveBeenCalledTimes(1);
+    expect(openPath).toHaveBeenCalledWith(await realpath(join(root, name)));
+  });
+
   it('openDefault devolve UNKNOWN quando o sistema não consegue abrir', async () => {
     const { fake, openPath } = setup();
     openPath.mockResolvedValueOnce('Não há programa associado.');

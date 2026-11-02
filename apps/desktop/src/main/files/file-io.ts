@@ -63,9 +63,11 @@ function sha256OfFile(absolute: string): Promise<string> {
 
 /**
  * Fim de linha de um texto: `crlf` se todo `\n` vem precedido de `\r`, `lf` se nenhum vem (inclusive
- * sem quebra alguma) e `mixed` nos demais casos.
+ * sem quebra alguma) e `mixed` nos demais casos. Um `\r` solto (sem `\n` depois) também é `mixed`: o
+ * editor separa linhas em `\r`, `\r\n` e `\n` e as junta com `\n`, então gravar reescreveria esse `\r`.
  */
 export function detectEol(text: string): 'lf' | 'crlf' | 'mixed' {
+  if (/\r(?!\n)/.test(text)) return 'mixed';
   const total = text.match(/\n/g)?.length ?? 0;
   const crlf = text.match(/\r\n/g)?.length ?? 0;
   if (crlf === 0) return 'lf';

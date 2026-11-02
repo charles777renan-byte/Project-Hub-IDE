@@ -482,6 +482,11 @@ export async function reloadFromDisk(projectId: string, path: string): Promise<b
   }
 }
 
+/** O arquivo aberto tem alterações não salvas agora (lido do store, não de uma tela já renderizada). */
+export function isFileDirty(projectId: string, path: string): boolean {
+  return fileOf(projectId, path)?.dirty === true;
+}
+
 /** Algum projeto tem arquivo com alterações não salvas. */
 export function hasDirtyFiles(): boolean {
   return [...states.values()].some((state) => state.anyDirty);

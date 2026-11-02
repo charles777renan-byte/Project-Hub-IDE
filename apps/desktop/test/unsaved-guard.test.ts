@@ -55,6 +55,19 @@ describe('registerUnsavedGuard', () => {
     expect(confirmQuit).toHaveBeenCalledTimes(1);
   });
 
+  it('avisa quando a pessoa escolhe voltar, e só nesse caso, para quem marcou a janela como fechando', () => {
+    const fake = fakeContents();
+    const answers = [false, true];
+    const onStay = vi.fn();
+    registerUnsavedGuard(fake.contents, () => answers.shift() ?? false, onStay);
+
+    fake.unload();
+    expect(onStay).toHaveBeenCalledTimes(1);
+
+    fake.unload();
+    expect(onStay).toHaveBeenCalledTimes(1);
+  });
+
   it('pergunta de novo a cada tentativa de fechar', () => {
     const fake = fakeContents();
     const answers = [false, true];
