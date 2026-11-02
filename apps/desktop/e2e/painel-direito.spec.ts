@@ -371,6 +371,87 @@ test('o editor realça o código com mais de uma cor, sem <style> e sem violaç�
   await expectNoViolations(page, consoleCsp, { allowXterm: true });
 });
 
+test('as guias de indentação aparecem alinhadas e a digitação segue fluida num arquivo grande', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  // 40 000 linhas, recuo de 4 espaços e 3 níveis: as 192 regras de guia do tema vão para o Shadow Root.
+  const linhas: string[] = [];
+  for (let n = 0; n < 5000; n += 1) {
+    linhas.push(`function f${n}() {`, '    if (x) {', '        while (y) {', '            z();');
+    linhas.push('        }', '    }', '}', '');
+  }
+  mkdirSync(join(gitRepo.path, 'src'));
+  writeFileSync(join(gitRepo.path, 'src', 'grande.ts'), linhas.join('\n'));
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const consoleCsp = await watchCsp(page);
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  await openFileFromPanel(page, 'src/grande.ts');
+  await expect(editorOf(page, 'grande.ts')).toBeVisible();
+
+  // A linha `z();` (12 espaços, unidade 4, nível 3) leva 3 guias; a última (posição 2 x 4ch) cai exatamente uma
+  // unidade (4ch) antes do primeiro caractere do texto, medido em pixels na janela real.
+  const medir = () =>
+    page.evaluate(() => {
+      const root = document.querySelector('.code-editor__host')?.shadowRoot;
+      const line = [...(root?.querySelectorAll('.cm-line.cm-indent-3') ?? [])].find(
+        (el) => el.textContent?.trim() === 'z();',
+      );
+      if (!line) return null;
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && /^\s*$/.test(node.textContent ?? '')) node = walker.nextNode();
+      if (!node) return null;
+      const offset = (node.textContent ?? '').search(/\S/);
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + 1);
+      const probe = document.createElement('span');
+      probe.style.width = '4ch';
+      probe.style.display = 'inline-block';
+      line.append(probe);
+      const unitPx = probe.getBoundingClientRect().width;
+      probe.remove();
+      const style = getComputedStyle(line);
+      const contentLeft =
+        line.getBoundingClientRect().left +
+        Number.parseFloat(style.paddingLeft) +
+        Number.parseFloat(style.borderLeftWidth);
+      return {
+        gradients: (style.backgroundImage.match(/linear-gradient/g) ?? []).length,
+        positions: style.backgroundPosition.split(',').map((p) => Number.parseFloat(p)),
+        lastGuideX: contentLeft + 2 * unitPx,
+        textLeft: range.getBoundingClientRect().left,
+        unitPx,
+      };
+    });
+  await expect.poll(medir, { message: 'a linha com guias renderizou' }).not.toBeNull();
+  const dados = (await medir())!;
+  expect(dados.gradients, 'uma guia por nível').toBe(3);
+  expect(dados.positions[0]).toBeCloseTo(0, 1);
+  expect(dados.positions[1]).toBeCloseTo(dados.unitPx, 0);
+  expect(dados.positions[2]).toBeCloseTo(2 * dados.unitPx, 0);
+  expect(Math.abs(dados.textLeft - (dados.lastGuideX + dados.unitPx))).toBeLessThan(1);
+
+  // 60 teclas no começo do arquivo: cada uma refaz as decorações das linhas visíveis (e a unidade em 1000 linhas).
+  await editorOf(page, 'grande.ts').click();
+  await page.keyboard.press('Control+Home');
+  const inicio = Date.now();
+  await page.keyboard.type('a'.repeat(60));
+  await expect(editorOf(page, 'grande.ts')).toContainText('a'.repeat(60));
+  const porTecla = (Date.now() - inicio) / 60;
+  console.log(`digitação em arquivo de ${linhas.length} linhas: ${porTecla.toFixed(1)} ms por tecla`);
+  expect(porTecla).toBeLessThan(50);
+
+  // Salva antes de fechar: arquivo alterado faria a janela abrir a caixa nativa de "não salvo".
+  await saveButton(page).click();
+  await expect(saveButton(page)).toBeDisabled();
+
+  await expectNoViolations(page, consoleCsp, { allowXterm: true });
+});
+
 test('o conferidor de CSP do teste enxerga as violações de verdade', async ({ launchApp }) => {
   const { page } = await launchApp();
   const consoleCsp = await watchCsp(page);
