@@ -13,7 +13,7 @@ import {
 import { FilesError } from './files-error';
 
 /** Quantos bytes do começo entram na procura por NUL: o mesmo critério que o Git usa para "binário". */
-const BINARY_SCAN_BYTES = 8 * 1024;
+export const BINARY_SCAN_BYTES = 8 * 1024;
 
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
@@ -28,7 +28,7 @@ function filesError(code: keyof typeof FILE_ERROR_MESSAGES): FilesError {
  * Traduz o erro do sistema de arquivos num `FilesError` de mensagem fixa. A mensagem original traz o
  * caminho absoluto e não sai daqui.
  */
-function toFilesError(error: unknown): FilesError {
+export function toFilesError(error: unknown): FilesError {
   if (error instanceof FilesError) return error;
   const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
   switch (code) {
