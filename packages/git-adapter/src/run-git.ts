@@ -62,25 +62,35 @@ export type RunGitOptions = {
 
 /**
  * Falha ao rodar o Git. Os campos `code` e `message` seguem o `AppError` do contrato (a mensagem é
- * segura para exibir). A saída de erro do Git fica só em `stderr`, porque pode trazer conteúdo do
- * repositório (seção 17.1), que não é texto confiável.
+ * segura para exibir). A saída do Git fica só em `stderr` e `stdout`, e nunca na mensagem, porque pode
+ * trazer conteúdo do repositório (seção 17.1), que não é texto confiável. `stdout` só vem preenchido
+ * quando o comando falhou depois de escrever nele: um hook `pre-push` que recusa escreve ali, e a
+ * mensagem de `GIT_HOOK_FAILED` (git-write.ts) mostra as duas saídas.
  */
 export class GitError extends Error {
   readonly code: ErrorCode;
   /** Código de saída do processo, quando o Git chegou a rodar e terminou com erro. */
   readonly exitCode: number | undefined;
   readonly stderr: string;
+  /** Saída padrão do processo que falhou. Vazia quando o erro não vem de um processo que terminou. */
+  readonly stdout: string;
 
   constructor(
     code: ErrorCode,
     message: string,
-    details: { exitCode?: number | undefined; stderr?: string | undefined; cause?: unknown } = {},
+    details: {
+      exitCode?: number | undefined;
+      stderr?: string | undefined;
+      stdout?: string | undefined;
+      cause?: unknown;
+    } = {},
   ) {
     super(message, details.cause === undefined ? undefined : { cause: details.cause });
     this.name = 'GitError';
     this.code = code;
     this.exitCode = details.exitCode;
     this.stderr = details.stderr ?? '';
+    this.stdout = details.stdout ?? '';
   }
 }
 
@@ -191,7 +201,8 @@ function gitEnvironment(extra: Readonly<Record<string, string>> = {}): NodeJS.Pr
   return env;
 }
 
-type Outcome = { error: null; stdout: string } | { error: ExecFileException; stderr: string };
+type Outcome =
+  { error: null; stdout: string } | { error: ExecFileException; stdout: string; stderr: string };
 
 /**
  * Roda o executável sem shell, com os argumentos em array, depois da lista de permissão. Nunca
@@ -217,7 +228,7 @@ function execGit(
         windowsHide: true,
       },
       (error, stdout, stderr) => {
-        resolve(error === null ? { error: null, stdout } : { error, stderr });
+        resolve(error === null ? { error: null, stdout } : { error, stdout, stderr });
       },
     );
   });
@@ -233,6 +244,7 @@ async function isDirectory(path: string): Promise<boolean> {
 
 async function toGitError(
   error: ExecFileException,
+  stdout: string,
   stderr: string,
   args: readonly string[],
   options: RunGitOptions,
@@ -252,6 +264,7 @@ async function toGitError(
   }
   if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
     return new GitError('UNKNOWN', 'A saída do Git passou do limite aceito.', {
+      stdout,
       stderr,
       cause: error,
     });
@@ -259,6 +272,7 @@ async function toGitError(
   if (error.killed === true) {
     const seconds = (options.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000;
     return new GitError('UNKNOWN', `O Git demorou mais de ${seconds} s e foi interrompido.`, {
+      stdout,
       stderr,
       cause: error,
     });
@@ -267,10 +281,14 @@ async function toGitError(
     return new GitError(
       'UNKNOWN',
       `O comando "git ${args[0] ?? ''}" terminou com erro (código ${error.code}).`,
-      { exitCode: error.code, stderr, cause: error },
+      { exitCode: error.code, stdout, stderr, cause: error },
     );
   }
-  return new GitError('UNKNOWN', 'Não foi possível executar o Git.', { stderr, cause: error });
+  return new GitError('UNKNOWN', 'Não foi possível executar o Git.', {
+    stdout,
+    stderr,
+    cause: error,
+  });
 }
 
 /**
@@ -288,7 +306,7 @@ export async function runApproved(
 ): Promise<{ stdout: string }> {
   const outcome = await execGit(options.gitBinary ?? 'git', args, config, options, env);
   if (outcome.error === null) return { stdout: outcome.stdout };
-  throw await toGitError(outcome.error, outcome.stderr, args, options);
+  throw await toGitError(outcome.error, outcome.stdout, outcome.stderr, args, options);
 }
 
 /**
