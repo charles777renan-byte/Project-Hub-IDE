@@ -658,7 +658,7 @@ export const RIGHT_PANEL_TEXT = {
     statusBar: {
       label: 'Informações do arquivo',
       position: (line: number, column: number) => `Ln ${line}, Col ${column}`,
-      selected: (count: number) => ` (${count} selecionados)`,
+      selected: (count: number) => ` (${count} ${count === 1 ? 'selecionado' : 'selecionados'})`,
       utf8: 'UTF-8',
       utf8Bom: 'UTF-8 com BOM',
       eol: { lf: 'LF', crlf: 'CRLF', mixed: 'Misto' },
