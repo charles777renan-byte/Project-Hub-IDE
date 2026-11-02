@@ -1,4 +1,4 @@
-import type { GitPanelDeps } from '@project-hub/application';
+import * as application from '@project-hub/application';
 import { CHANNELS, responseSchemas, type GitStatusDto } from '@project-hub/contracts';
 import type { ProjectRecord } from '@project-hub/domain';
 import { GitError } from '@project-hub/git-adapter';
@@ -6,6 +6,25 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerGitHandlers } from '../src/main/ipc/git';
 import type { IpcRegistry } from '../src/main/ipc/trusted-handler';
+
+// Os casos de uso reais rodam por baixo; o espião só mostra com que argumento cada um foi chamado.
+vi.mock('@project-hub/application', async (importOriginal) => {
+  const actual = await importOriginal<typeof application>();
+  return {
+    ...actual,
+    getGitStatus: vi.fn(actual.getGitStatus),
+    pushProjectBranch: vi.fn(actual.pushProjectBranch),
+    publishProjectBranch: vi.fn(actual.publishProjectBranch),
+    pullProject: vi.fn(actual.pullProject),
+    fetchProject: vi.fn(actual.fetchProject),
+    getProjectBranchLog: vi.fn(actual.getProjectBranchLog),
+    getProjectBranchChanges: vi.fn(actual.getProjectBranchChanges),
+    commitChanges: vi.fn(actual.commitChanges),
+    stagePaths: vi.fn(actual.stagePaths),
+  };
+});
+
+type GitPanelDeps = application.GitPanelDeps;
 
 const TRUSTED = 'file:///app/index.html';
 const isTrusted = (event: IpcMainInvokeEvent) => event.senderFrame?.url === TRUSTED;
@@ -112,6 +131,7 @@ const NO_UPSTREAM: GitStatusDto = { ...STATUS, upstream: null, ahead: null, behi
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  vi.clearAllMocks();
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => {
@@ -162,6 +182,9 @@ describe('registerGitHandlers: entrada conferida antes do caso de uso', () => {
   const INVALID: Array<[string, string, unknown]> = [
     ['projectId vazio', CHANNELS.gitStatus, { projectId: '' }],
     ['sem projectId', CHANNELS.gitPush, {}],
+    ['pull com projectId vazio', CHANNELS.gitPull, { projectId: '' }],
+    ['log com projectId vazio', CHANNELS.gitLog, { projectId: '' }],
+    ['alterações da branch com projectId vazio', CHANNELS.gitBranchChanges, { projectId: '' }],
     ['publicar sem projectId', CHANNELS.gitPublish, {}],
     ['sem payload', CHANNELS.gitFetch, undefined],
     ['caminho com ..', CHANNELS.gitStage, { projectId: 'p1', paths: ['../x'] }],
@@ -186,24 +209,28 @@ describe('registerGitHandlers: entrada conferida antes do caso de uso', () => {
     },
   );
 
-  it('um campo branch no payload não chega ao caso de uso nem à porta', async () => {
-    const { fake, git } = setup();
-    const branch = 'main; rm -rf /';
-    for (const channel of [CHANNELS.gitPush, CHANNELS.gitPull, CHANNELS.gitFetch]) {
-      const result = await fake.call(channel, { projectId: 'p1', branch });
-      expect(result).toMatchObject({ ok: true });
-    }
-    git.status.mockResolvedValue(NO_UPSTREAM);
-    expect(await fake.call(CHANNELS.gitPublish, { projectId: 'p1', branch })).toMatchObject({
-      ok: true,
-    });
-    // A porta recebe só a pasta do projeto: o nome da branch sai do processo principal.
-    expect(git.push).toHaveBeenCalledTimes(2);
-    for (const call of git.push.mock.calls) expect(call).toEqual([PROJECT.path]);
-    expect(git.push).toHaveBeenCalledWith(PROJECT.path);
-    expect(git.pull).toHaveBeenCalledWith(PROJECT.path);
-    expect(git.fetch).toHaveBeenCalledWith(PROJECT.path);
-  });
+  it.each([
+    ['git:status:v1', CHANNELS.gitStatus, 'getGitStatus'],
+    ['git:push:v1', CHANNELS.gitPush, 'pushProjectBranch'],
+    ['git:publish:v1', CHANNELS.gitPublish, 'publishProjectBranch'],
+    ['git:pull:v1', CHANNELS.gitPull, 'pullProject'],
+    ['git:fetch:v1', CHANNELS.gitFetch, 'fetchProject'],
+    ['git:log:v1', CHANNELS.gitLog, 'getProjectBranchLog'],
+    ['git:branch-changes:v1', CHANNELS.gitBranchChanges, 'getProjectBranchChanges'],
+  ] as const)(
+    '%s: um campo branch no payload não chega ao caso de uso',
+    async (_name, channel, useCase) => {
+      const { fake, git } = setup();
+      await fake.call(channel, { projectId: 'p1', branch: 'main; rm -rf /' });
+      // O argumento é exatamente o que o contrato declara: o nome da branch sai do processo principal.
+      expect(application[useCase]).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(application[useCase]).mock.calls[0]?.[1]).toStrictEqual({ projectId: 'p1' });
+      // E nenhum argumento da porta leva o nome da branch.
+      for (const method of Object.values(git)) {
+        for (const call of method.mock.calls) expect(JSON.stringify(call)).not.toContain('rm -rf');
+      }
+    },
+  );
 
   it('git:push:v1 com upstream chama a porta de push', async () => {
     const { fake, git } = setup();
