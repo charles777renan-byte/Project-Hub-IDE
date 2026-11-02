@@ -60,6 +60,27 @@
   --agent-codex: #e6e4ee; /* branco acinzentado: a marca do Codex é preto e branco */
   --agent-antigravity: #3186ff; /* azul do ícone do Antigravity */
 
+  /* Realce de sintaxe do editor de arquivos: a paleta Dark+ do VS Code. Única parte do app com estas cores
+     literais; o editor (editor-theme.ts) só usa var(--syntax-...). Todas passam de 4,5:1 contra --surface
+     (o fundo do editor) e contra --surface-2 (a linha atual), conferido em contrast.test.ts; nenhuma precisou
+     ser clareada em relação ao Dark+. --syntax-link e --syntax-invalid não vêm da gramática do Dark+: são o
+     azul de link e o vermelho de erro do próprio tema. */
+  --syntax-keyword: #569cd6; /* palavras-chave, tags HTML */
+  --syntax-control: #c586c0; /* if, for, return, import */
+  --syntax-type: #4ec9b0; /* tipos e classes */
+  --syntax-function: #dcdcaa;
+  --syntax-variable: #9cdcfe;
+  --syntax-property: #9cdcfe;
+  --syntax-string: #ce9178;
+  --syntax-number: #b5cea8;
+  --syntax-comment: #6a9955;
+  --syntax-regexp: #d16969;
+  --syntax-tag: #569cd6;
+  --syntax-attribute: #9cdcfe;
+  --syntax-heading: #569cd6; /* títulos do Markdown, em negrito */
+  --syntax-link: #4fc1ff;
+  --syntax-invalid: #f44747;
+
   /* Inter no texto e JetBrains Mono nos dados: arquivos locais declarados em fonts.css. A pilha do
      sistema fica depois como reserva, enquanto a fonte carrega (font-display: swap) e para os
      símbolos que o subconjunto latin não cobre. */

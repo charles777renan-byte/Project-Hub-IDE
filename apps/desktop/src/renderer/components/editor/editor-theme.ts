@@ -1,13 +1,13 @@
-import { HighlightStyle } from '@codemirror/language';
+import { HighlightStyle, type TagStyle } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
-import { tags } from '@lezer/highlight';
+import { tags, type Tag } from '@lezer/highlight';
 
 /*
  * O visual do editor. O CodeMirror mora num Shadow Root (a CSP bloqueia o <style> que ele injetaria no documento),
  * e o CSS global não entra lá dentro: tema e realce são escritos aqui, só com `var(--token)` de tokens.css, que
  * herdam pelo Shadow Root. Nenhuma cor literal. O CodeMirror aplica estas regras por CSSOM (`adoptedStyleSheets`),
- * que a CSP deixa passar. Violeta nas palavras-chave, ciano nos tipos, amarelo no texto entre aspas e --muted nos
- * comentários; o lima fica só com o anel de foco.
+ * que a CSP deixa passar. As cores do código são as `--syntax-*` (a paleta Dark+ do VS Code); o lima fica só com
+ * o anel de foco.
  */
 
 export const editorTheme = EditorView.theme(
@@ -32,6 +32,19 @@ export const editorTheme = EditorView.theme(
       color: 'var(--muted)',
       border: 'none',
       borderRight: '1px solid var(--line)',
+    },
+    // Colchete pareado e ocorrências da palavra selecionada: contorno além do fundo, para não depender da cor.
+    '&.cm-focused .cm-matchingBracket': {
+      backgroundColor: 'var(--fill)',
+      outline: '1px solid var(--field-line)',
+    },
+    '&.cm-focused .cm-nonmatchingBracket': {
+      backgroundColor: 'transparent',
+      outline: '1px solid var(--syntax-invalid)',
+    },
+    '.cm-selectionMatch': {
+      backgroundColor: 'var(--fill)',
+      outline: '1px solid var(--field-line)',
     },
     '.cm-activeLineGutter': { backgroundColor: 'var(--surface-2)', color: 'var(--text)' },
     '.cm-lineNumbers .cm-gutterElement': { padding: '0 var(--space-2) 0 var(--space-3)' },
@@ -79,30 +92,68 @@ export const editorTheme = EditorView.theme(
   { dark: true },
 );
 
+/** A cor de um grupo de tags, sempre por token `--syntax-*` (ou `--text` no que não tem cor própria). */
+const colored = (color: string, ...group: Tag[]): TagStyle => ({
+  tag: group,
+  color: `var(${color})`,
+});
+
 export const editorHighlight = HighlightStyle.define([
+  colored(
+    '--syntax-keyword',
+    tags.keyword,
+    tags.operatorKeyword,
+    tags.definitionKeyword,
+    tags.modifier,
+    tags.self,
+    tags.atom,
+    tags.bool,
+    tags.null,
+  ),
+  colored('--syntax-control', tags.controlKeyword, tags.moduleKeyword),
+  colored('--syntax-type', tags.typeName, tags.className, tags.namespace),
+  colored(
+    '--syntax-function',
+    tags.function(tags.variableName),
+    tags.function(tags.propertyName),
+    tags.definition(tags.function(tags.variableName)),
+    tags.definition(tags.function(tags.propertyName)),
+    tags.macroName,
+  ),
+  colored(
+    '--syntax-variable',
+    tags.variableName,
+    tags.definition(tags.variableName),
+    tags.labelName,
+    tags.constant(tags.variableName),
+  ),
+  colored('--syntax-property', tags.propertyName, tags.definition(tags.propertyName)),
+  colored('--syntax-number', tags.number, tags.integer, tags.float),
+  colored(
+    '--syntax-string',
+    tags.string,
+    tags.special(tags.string),
+    tags.character,
+    tags.attributeValue,
+    tags.monospace,
+  ),
+  colored('--syntax-regexp', tags.regexp, tags.escape),
   {
-    tag: [
-      tags.keyword,
-      tags.controlKeyword,
-      tags.operatorKeyword,
-      tags.definitionKeyword,
-      tags.moduleKeyword,
-      tags.modifier,
-    ],
-    color: 'var(--violet)',
-  },
-  {
-    tag: [tags.typeName, tags.className, tags.namespace, tags.tagName],
-    color: 'var(--cyan)',
-  },
-  { tag: [tags.string, tags.special(tags.string), tags.regexp], color: 'var(--yellow)' },
-  {
-    tag: [tags.comment, tags.lineComment, tags.blockComment],
-    color: 'var(--muted)',
+    ...colored(
+      '--syntax-comment',
+      tags.comment,
+      tags.lineComment,
+      tags.blockComment,
+      tags.docComment,
+    ),
     fontStyle: 'italic',
   },
-  { tag: tags.heading, fontWeight: 'bold' },
+  colored('--text', tags.operator, tags.punctuation, tags.separator, tags.bracket, tags.content),
+  colored('--syntax-tag', tags.tagName, tags.angleBracket),
+  colored('--syntax-attribute', tags.attributeName),
+  { ...colored('--syntax-heading', tags.heading), fontWeight: 'bold' },
   { tag: tags.strong, fontWeight: 'bold' },
   { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: tags.link, textDecoration: 'underline' },
+  { ...colored('--syntax-link', tags.link, tags.url), textDecoration: 'underline' },
+  { ...colored('--syntax-invalid', tags.invalid), textDecoration: 'underline' },
 ]);

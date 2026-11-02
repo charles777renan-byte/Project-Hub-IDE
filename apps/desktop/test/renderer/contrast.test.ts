@@ -25,6 +25,25 @@ const ACCENTS = [
 /** Cor de referência de cada agente do bloco "Visão geral" do Início (a rampa de cada uma está em home.css). */
 const AGENT_COLORS = ['--agent-claude', '--agent-codex', '--agent-antigravity'] as const;
 
+/** Realce de sintaxe do editor (paleta Dark+ do VS Code): texto sobre o fundo do editor e sobre a linha atual. */
+const SYNTAX_COLORS = [
+  '--syntax-keyword',
+  '--syntax-control',
+  '--syntax-type',
+  '--syntax-function',
+  '--syntax-variable',
+  '--syntax-property',
+  '--syntax-string',
+  '--syntax-number',
+  '--syntax-comment',
+  '--syntax-regexp',
+  '--syntax-tag',
+  '--syntax-attribute',
+  '--syntax-heading',
+  '--syntax-link',
+  '--syntax-invalid',
+] as const;
+
 const COLOR_TOKENS = [
   '--bg',
   '--panel',
@@ -44,6 +63,7 @@ const COLOR_TOKENS = [
   '--brand',
   ...ACCENTS,
   ...AGENT_COLORS,
+  ...SYNTAX_COLORS,
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
@@ -71,6 +91,11 @@ const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ['--accent-ink', '--accent'],
   // Início em painéis: o número de falhas em vermelho (--danger) fica sobre o cartão e sobre o fundo.
   ...SURFACES.map((surface): [ColorToken, ColorToken] => ['--danger', surface]),
+  // Editor de arquivos: o fundo é --surface e a linha atual é --surface-2.
+  ...SYNTAX_COLORS.flatMap((syntax): [ColorToken, ColorToken][] => [
+    [syntax, '--surface'],
+    [syntax, '--surface-2'],
+  ]),
 ];
 
 function channelToLinear(channel: number): number {

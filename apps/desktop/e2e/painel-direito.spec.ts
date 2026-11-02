@@ -341,6 +341,36 @@ test('o terminal montado antes segue montado ao abrir e fechar arquivos', async 
   }
 });
 
+test('o editor realça o código com mais de uma cor, sem <style> e sem violação de CSP', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  seedFiles(gitRepo.path);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  const consoleCsp = await watchCsp(page);
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  await openFileFromPanel(page, 'src/a.ts');
+  await expect(editorOf(page, 'a.ts')).toBeVisible();
+
+  // `export const a = 1;`: a palavra-chave de módulo, a de declaração e o número não podem ter a mesma cor.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const root = document.querySelector('.code-editor__host')?.shadowRoot;
+        const colors = [...(root?.querySelectorAll('.cm-line span') ?? [])].map(
+          (span) => getComputedStyle(span).color,
+        );
+        return new Set(colors).size;
+      }),
+    )
+    .toBeGreaterThan(1);
+
+  // expectNoViolations confere o documento e o Shadow Root do editor (nenhum <style>) e a CSP.
+  await expectNoViolations(page, consoleCsp, { allowXterm: true });
+});
+
 test('o conferidor de CSP do teste enxerga as violações de verdade', async ({ launchApp }) => {
   const { page } = await launchApp();
   const consoleCsp = await watchCsp(page);
