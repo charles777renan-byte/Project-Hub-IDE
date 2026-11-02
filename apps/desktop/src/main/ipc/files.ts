@@ -33,6 +33,7 @@ const OPEN_REFUSED = 'Só arquivos comuns, que não executam programas, abrem no
 const BLOCKED_OPEN_EXTENSIONS: ReadonlySet<string> = new Set([
   '.exe', '.com', '.bat', '.cmd', '.lnk', '.js', '.jse', '.vbs', '.vbe', '.wsf', '.hta', '.msi',
   '.scr', '.cpl', '.ps1', '.url', '.reg', '.dll', '.jar', '.sh',
+  '.pif', '.msc', '.msp', '.scf', '.inf', '.chm', '.wsh', '.psm1', '.application', '.appref-ms',
 ]);
 
 /** Extensão em minúsculas; o Windows ignora pontos e espaços no fim do nome, então `x.exe .` também é `.exe`. */

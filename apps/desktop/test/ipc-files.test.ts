@@ -317,9 +317,11 @@ describe('arquivos de um projeto de verdade', () => {
     await writeFile(join(root, 'setup.exe'), 'MZ');
     await writeFile(join(root, 'RODAR.BAT'), '@echo off\n');
     await writeFile(join(root, 'tools', 'x.js'), 'run();\n');
+    await writeFile(join(root, 'antigo.PIF'), 'MZ');
+    await writeFile(join(root, 'ajuda.chm'), 'x');
     const { fake, openPath } = setup();
 
-    for (const path of ['setup.exe', 'RODAR.BAT', 'tools/x.js']) {
+    for (const path of ['setup.exe', 'RODAR.BAT', 'tools/x.js', 'antigo.PIF', 'ajuda.chm']) {
       const result = await fake.call(CHANNELS.filesOpenDefault, { projectId: 'p1', path });
       expect(result).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
       expect(JSON.stringify(result)).not.toContain(base);
