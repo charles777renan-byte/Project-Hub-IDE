@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, posix, resolve } from 'node:path';
 import { GitError, runGit } from './run-git';
 import { runGitWrite } from './run-git-write';
 
@@ -53,7 +53,7 @@ function validationError(message: string): GitError {
 }
 
 /** Caminho relativo à pasta do projeto, em POSIX: sem `/` na frente, sem unidade, sem `\` e sem `..`. */
-function isRelativePosixPath(path: string): boolean {
+export function isRelativePosixPath(path: string): boolean {
   return (
     path !== '' &&
     !isAbsolute(path) &&
@@ -382,21 +382,56 @@ async function hasStagedChanges(options: WriteOptions): Promise<boolean> {
 }
 
 /**
- * O caminho está no índice (rastreado)? `rev-parse --verify :0:<caminho>` resolve o arquivo no estágio 0
- * do índice, como nome literal (sem padrão). Sai com 1 quando não existe. Uma pasta não é uma entrada do
- * índice: o painel desfaz arquivo a arquivo.
+ * Caminhos em conflito (`u` no `status --porcelain=v2 -z`): o campo é `u XY sub m1 m2 m3 mW h1 h2 h3 <caminho>`,
+ * e o caminho vem depois do décimo espaço (pode ter espaços). Nos registros `2` o caminho de origem vem num
+ * campo à parte, que não é um registro.
  */
-async function isTracked(options: WriteOptions, path: string): Promise<boolean> {
-  try {
-    await runGit(['rev-parse', '--verify', '--quiet', `:0:${path}`], {
-      cwd: options.repo,
-      gitBinary: options.gitBinary,
-    });
-    return true;
-  } catch (error) {
-    if (error instanceof GitError && error.exitCode === 1) return false;
-    throw error;
+async function unmergedPaths(options: WriteOptions): Promise<Set<string>> {
+  const { stdout } = await runGit(['status', '--porcelain=v2', '-z', '--untracked-files=no'], {
+    cwd: options.repo,
+    gitBinary: options.gitBinary,
+  });
+  const unmerged = new Set<string>();
+  const fields = stdout.split('\0');
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index] ?? '';
+    if (field.startsWith('2 ')) index += 1;
+    if (!field.startsWith('u ')) continue;
+    let start = 0;
+    for (let spaces = 0; spaces < 10; spaces += 1) start = field.indexOf(' ', start) + 1;
+    unmerged.add(field.slice(start));
   }
+  return unmerged;
+}
+
+/**
+ * Confere, de uma vez, o que o índice sabe dos `paths` (já validados por `checkedPaths`), com
+ * `ls-files -z -- :(literal)<caminho>…`. O prefixo `:(literal)` faz o nome valer como ele é: sem ele, `a[1].txt`
+ * casaria `a1.txt`. Pasta não é entrada do índice: o `ls-files` lista os arquivos de dentro dela, e por isso
+ * só vale uma linha da saída que seja exatamente o caminho pedido (sem o `./` da frente, que o Git tira).
+ * Um arquivo em conflito está no índice, só que em estágios de 1 a 3, e o `restore` o recusa: quem diz que há
+ * conflito é o `status`, e não a contagem de linhas do `ls-files`.
+ */
+async function indexStateOf(
+  options: WriteOptions,
+  paths: readonly string[],
+  requestedPaths: readonly string[],
+): Promise<{ untracked: string[]; conflicted: string[] }> {
+  const { stdout } = await runGit(
+    ['ls-files', '-z', '--', ...paths.map((path) => `:(literal)${path}`)],
+    { cwd: options.repo, gitBinary: options.gitBinary },
+  );
+  const listed = new Set(stdout.split('\0').filter((name) => name !== ''));
+  const unmerged = await unmergedPaths(options);
+  const untracked: string[] = [];
+  const conflicted: string[] = [];
+  paths.forEach((path, index) => {
+    const requested = requestedPaths[index] ?? path;
+    const name = posix.normalize(path);
+    if (!listed.has(name)) untracked.push(requested);
+    else if (unmerged.has(name)) conflicted.push(requested);
+  });
+  return { untracked, conflicted };
 }
 
 /**
@@ -421,22 +456,26 @@ export async function unstagePaths(
 
 /**
  * Desfaz as alterações do disco nos `paths` (`restore -- <caminhos>`), voltando ao que está no índice.
- * Só vale para arquivo rastreado: se algum caminho não estiver no índice, recusa tudo com
- * `VALIDATION_FAILED`, antes de restaurar qualquer um. Não existe `clean` (ADR 0010).
+ * Só vale para arquivo rastreado e sem conflito: se algum caminho não estiver no índice (pasta incluída) ou
+ * estiver em conflito, recusa tudo com `VALIDATION_FAILED`, antes de restaurar qualquer um. Não existe `clean` (ADR 0010).
  */
 export async function discardPaths(
   options: WriteOptions & { paths: readonly string[] },
 ): Promise<void> {
   const paths = checkedPaths(options.paths);
-  const untracked: string[] = [];
-  for (const [index, path] of paths.entries()) {
-    if (!(await isTracked(options, path))) untracked.push(options.paths[index] ?? path);
-  }
+  const { untracked, conflicted } = await indexStateOf(options, paths, options.paths);
+  const problems: string[] = [];
   if (untracked.length > 0) {
-    throw validationError(
+    problems.push(
       `Só é possível desfazer arquivos que o Git já acompanha. Não acompanhados: ${untracked.join(', ')}.`,
     );
   }
+  if (conflicted.length > 0) {
+    problems.push(
+      `Arquivos em conflito não podem ser desfeitos por aqui. Resolva o conflito antes: ${conflicted.join(', ')}.`,
+    );
+  }
+  if (problems.length > 0) throw validationError(problems.join(' '));
   return write(options, ['restore', '--', ...paths], 'stage');
 }
 
