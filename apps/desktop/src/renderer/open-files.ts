@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import type { FileContentDto } from '@project-hub/contracts';
+import type { FileContentDto, FileVersionDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from './mission-text';
 
 /*
@@ -11,6 +11,10 @@ import { RIGHT_PANEL_TEXT } from './mission-text';
  */
 
 const TEXT = RIGHT_PANEL_TEXT.openFiles;
+const EDITOR_TEXT = RIGHT_PANEL_TEXT.editor;
+
+/** Quanto tempo o aviso "Atualizado: o arquivo mudou no disco" fica na tela. */
+const RELOADED_NOTICE_MS = 5_000;
 
 /** A aba fixa dos terminais. Um caminho de arquivo nunca é este valor, mas a chave é do mesmo tipo (texto). */
 export const TERMINALS_TAB = 'terminals';
@@ -28,7 +32,9 @@ export type OpenFileBuffer = {
   /** O texto difere do salvo. */
   dirty: boolean;
   /** Aviso sobre o disco (o arquivo mudou, sumiu ou foi relido). */
-  notice?: 'changed-on-disk' | 'missing' | 'reloaded';
+  notice?: 'changed-on-disk' | 'missing' | 'reloaded' | undefined;
+  /** Com `changed-on-disk`: o que o disco tem agora (texto e versão), lido quando o conflito apareceu. */
+  disk?: FileContentDto | undefined;
 };
 
 export type OpenFilesView = {
@@ -49,7 +55,28 @@ const listeners = new Set<() => void>();
 // Arquivos restaurados do `localStorage` cuja leitura ainda não começou, por projeto.
 const unread = new Map<string, string[]>();
 
+/**
+ * Fechar a janela com arquivo sujo: o `beforeunload` só fica registrado enquanto algum arquivo tem alterações não
+ * salvas. O Chromium então avisa o processo principal (`will-prevent-unload`), que pergunta à pessoa. Sem arquivo
+ * sujo a janela fecha sem pergunta nenhuma.
+ */
+function blockUnload(event: BeforeUnloadEvent) {
+  event.preventDefault();
+  event.returnValue = '';
+}
+
+let unloadGuarded = false;
+
+function syncUnloadGuard() {
+  const needed = hasDirtyFiles();
+  if (needed === unloadGuarded) return;
+  unloadGuarded = needed;
+  if (needed) window.addEventListener('beforeunload', blockUnload);
+  else window.removeEventListener('beforeunload', blockUnload);
+}
+
 function notifyAll() {
+  syncUnloadGuard();
   for (const listener of [...listeners]) listener();
 }
 
@@ -142,6 +169,22 @@ function patch(
   );
 }
 
+/** O que um arquivo que não pôde ser lido mostra: o tipo da falha e o motivo. */
+function failedRead(error: {
+  code: string;
+  message: string;
+}): Pick<OpenFileBuffer, 'load' | 'message'> {
+  return {
+    load:
+      error.code === 'FILE_NOT_TEXT'
+        ? 'not-text'
+        : error.code === 'FILE_TOO_LARGE'
+          ? 'too-large'
+          : 'error',
+    message: error.message || TEXT.readError,
+  };
+}
+
 /** Lê o arquivo e o põe no buffer: pronto, ou com o motivo da falha. */
 async function load(projectId: string, path: string): Promise<void> {
   let outcome: Pick<OpenFileBuffer, 'load'> & Partial<OpenFileBuffer>;
@@ -150,12 +193,7 @@ async function load(projectId: string, path: string): Promise<void> {
     if (result.ok) {
       outcome = { load: 'ready', saved: result.data, text: result.data.text, dirty: false };
     } else {
-      const { code, message } = result.error;
-      outcome = {
-        load:
-          code === 'FILE_NOT_TEXT' ? 'not-text' : code === 'FILE_TOO_LARGE' ? 'too-large' : 'error',
-        message: message || TEXT.readError,
-      };
+      outcome = failedRead(result.error);
     }
   } catch {
     outcome = { load: 'error', message: TEXT.readError };
@@ -194,7 +232,9 @@ export function closeFile(projectId: string, path: string): void {
     state.active !== path
       ? state.active
       : (files[at]?.path ?? files[at - 1]?.path ?? TERMINALS_TAB);
+  clearReloadedTimer(projectId, path);
   commit(projectId, build(files, active), true);
+  if (active !== state.active && active !== TERMINALS_TAB) void checkFileOnDisk(projectId, active);
 }
 
 /** Ativa a aba dos terminais ou a de um arquivo aberto; qualquer outra chave é ignorada. */
@@ -203,6 +243,8 @@ export function setActive(projectId: string, key: 'terminals' | string): void {
   if (state.active === key) return;
   if (key !== TERMINALS_TAB && !state.files.some((file) => file.path === key)) return;
   commit(projectId, build(state.files, key), true);
+  // Ativar a aba é um bom momento para ver se um agente mexeu no arquivo enquanto ela estava de lado.
+  if (key !== TERMINALS_TAB) void checkFileOnDisk(projectId, key);
 }
 
 /** O texto novo do editor. Marca `dirty` quando difere do salvo; um arquivo ainda sem leitura não recebe texto. */
@@ -219,7 +261,225 @@ export function updateText(projectId: string, path: string, text: string): void 
  * arquivo segue com alterações não salvas, porque `dirty` é refeito contra o texto de agora.
  */
 export function markSaved(projectId: string, path: string, saved: FileContentDto): void {
-  patch(projectId, path, (buffer) => ({ ...buffer, saved, dirty: buffer.text !== saved.text }));
+  // O disco acabou de receber este texto: qualquer aviso sobre o disco (conflito, arquivo sumido) está resolvido.
+  patch(projectId, path, (buffer) => ({
+    ...settled(buffer),
+    saved,
+    dirty: buffer.text !== saved.text,
+  }));
+}
+
+export type SaveOutcome = { ok: true } | { ok: false; message: string };
+
+/**
+ * Grava o texto do editor. Vive aqui, e não na aba, porque quem grava nem sempre é o editor: a pergunta ao fechar
+ * uma aba suja e a faixa de conflito também gravam, e a aba pode nem estar montada. `expected` é a versão lida (ou,
+ * com `disk`, a que o disco tem agora: o "Salvar por cima"; com `recreate`, `null`: criar o arquivo que sumiu).
+ * Gravação recusada porque o disco mudou manda conferir o disco, o que abre a faixa de conflito.
+ */
+export async function saveFile(
+  projectId: string,
+  path: string,
+  options: { disk?: FileContentDto; recreate?: boolean } = {},
+): Promise<SaveOutcome> {
+  const file = fileOf(projectId, path);
+  const saved = file?.saved;
+  if (file === undefined || saved === undefined) {
+    return { ok: false, message: EDITOR_TEXT.saveError };
+  }
+  if (!file.dirty && options.recreate !== true) return { ok: true };
+  // Um aviso do disco só se resolve na faixa de conflito da aba: daqui, nunca se grava por cima.
+  if (file.notice === 'changed-on-disk' && options.disk === undefined) {
+    return { ok: false, message: EDITOR_TEXT.conflict.saveBlockedChanged };
+  }
+  if (file.notice === 'missing' && options.recreate !== true) {
+    return { ok: false, message: EDITOR_TEXT.conflict.saveBlockedMissing };
+  }
+  // Gravar um arquivo de fins de linha misturados normalizaria os fins de linha.
+  if (saved.eol === 'mixed') return { ok: false, message: EDITOR_TEXT.mixedEol };
+  const { text } = file;
+  const base = options.disk ?? saved;
+  const eol = base.eol === 'mixed' ? saved.eol : base.eol;
+  const { bom } = base;
+  try {
+    const result = await window.projectHub.files.write({
+      projectId,
+      path,
+      text,
+      eol,
+      bom,
+      expected: options.recreate === true ? null : base.version,
+    });
+    if (result.ok) {
+      // O salvo é o texto que foi enviado; se a pessoa digitou depois, o arquivo segue com alterações.
+      markSaved(projectId, path, { text, eol, bom, version: result.data });
+      return { ok: true };
+    }
+    if (result.error.code === 'FILE_CHANGED_ON_DISK') void checkFileOnDisk(projectId, path);
+    return { ok: false, message: result.error.message || EDITOR_TEXT.saveError };
+  } catch {
+    return { ok: false, message: EDITOR_TEXT.saveError };
+  }
+}
+
+/** Duas versões têm o mesmo conteúdo. Quem decide é o conteúdo (tamanho e hash), como no processo principal. */
+function sameContent(a: FileVersionDto, b: FileVersionDto): boolean {
+  return a.size === b.size && a.hash === b.hash;
+}
+
+const reloadedTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const fileKey = (projectId: string, path: string) => `${projectId}\u0000${path}`;
+
+function clearReloadedTimer(projectId: string, path: string) {
+  const key = fileKey(projectId, path);
+  clearTimeout(reloadedTimers.get(key));
+  reloadedTimers.delete(key);
+}
+
+/** O aviso de "atualizado" some sozinho depois de alguns segundos (se não foi trocado por outro nesse tempo). */
+function expireReloadedNotice(projectId: string, path: string) {
+  clearReloadedTimer(projectId, path);
+  const key = fileKey(projectId, path);
+  reloadedTimers.set(
+    key,
+    setTimeout(() => {
+      reloadedTimers.delete(key);
+      patch(projectId, path, (buffer) =>
+        buffer.notice === 'reloaded' ? { ...buffer, notice: undefined } : buffer,
+      );
+    }, RELOADED_NOTICE_MS),
+  );
+}
+
+/** O buffer sem aviso e sem a cópia do disco. */
+function settled(buffer: OpenFileBuffer): OpenFileBuffer {
+  const { notice: _notice, disk: _disk, ...rest } = buffer;
+  return rest;
+}
+
+function fileOf(projectId: string, path: string): OpenFileBuffer | undefined {
+  return stateOf(projectId).files.find((item) => item.path === path);
+}
+
+/** O disco ficou sem o arquivo: a aba guarda o texto e avisa. */
+function markMissing(projectId: string, path: string) {
+  if (fileOf(projectId, path)?.notice === 'missing') return;
+  patch(projectId, path, (buffer) => ({ ...settled(buffer), notice: 'missing' }));
+}
+
+const checking = new Set<string>();
+
+/**
+ * Confere se o arquivo mudou no disco depois da última leitura ou gravação (`files.stat`, comparando o conteúdo).
+ * Sem alterações não salvas, relê o arquivo sozinho e avisa por 5 s. Com alterações, guarda o que o disco tem e
+ * abre a faixa de conflito (`changed-on-disk`): o texto da pessoa nunca é trocado nem gravado aqui. Arquivo
+ * ausente vira `missing`. Uma falha ao consultar o disco não é relatada: a próxima conferência tenta de novo.
+ * Roda ao ativar a aba, quando a janela ganha foco e depois de uma gravação recusada porque o disco mudou.
+ */
+export async function checkFileOnDisk(projectId: string, path: string): Promise<void> {
+  const key = fileKey(projectId, path);
+  if (checking.has(key)) return;
+  checking.add(key);
+  try {
+    await compareWithDisk(projectId, path);
+  } catch {
+    // Sem resposta do disco, não há o que relatar.
+  } finally {
+    checking.delete(key);
+  }
+}
+
+async function compareWithDisk(projectId: string, path: string): Promise<void> {
+  const first = fileOf(projectId, path);
+  if (first?.load !== 'ready' || first.saved === undefined) return;
+
+  const stat = await window.projectHub.files.stat(projectId, path);
+  if (!stat.ok) {
+    if (stat.error.code === 'FILE_NOT_FOUND') markMissing(projectId, path);
+    return;
+  }
+  if (!stat.data.exists) {
+    markMissing(projectId, path);
+    return;
+  }
+  const { version } = stat.data;
+
+  // O estado de agora, não o de antes de perguntar ao disco: a pessoa pode ter digitado ou gravado nesse meio-tempo.
+  const file = fileOf(projectId, path);
+  if (file?.saved === undefined) return;
+  if (sameContent(version, file.saved.version)) {
+    // O disco é o que o editor tinha (o arquivo voltou, ou o conflito se desfez): o aviso não vale mais.
+    if (file.notice === 'missing' || file.notice === 'changed-on-disk') {
+      patch(projectId, path, settled);
+    }
+    return;
+  }
+  // Conflito já aberto com esta mesma versão do disco: nada novo a mostrar.
+  if (file.notice === 'changed-on-disk' && file.disk && sameContent(version, file.disk.version)) {
+    return;
+  }
+
+  const read = await window.projectHub.files.read(projectId, path);
+  const current = fileOf(projectId, path);
+  if (current?.saved === undefined) return;
+  if (!read.ok) {
+    // Não dá para ler a versão nova (grande demais, ou virou binário): sem edições, a aba mostra o motivo;
+    // com edições, o conflito fica aberto e a pessoa decide pelo que tem na tela.
+    if (current.dirty) {
+      patch(projectId, path, (buffer) => ({
+        ...buffer,
+        notice: 'changed-on-disk',
+        disk: undefined,
+      }));
+    } else {
+      patch(projectId, path, (buffer) => ({ ...settled(buffer), ...failedRead(read.error) }));
+    }
+    return;
+  }
+  const disk = read.data;
+  let reloaded = false;
+  patch(projectId, path, (buffer) => {
+    if (buffer.saved === undefined) return buffer;
+    // Entre o stat e a leitura o disco pode ter voltado ao que o editor tem.
+    if (sameContent(disk.version, buffer.saved.version)) return settled(buffer);
+    if (buffer.dirty) return { ...buffer, notice: 'changed-on-disk', disk };
+    reloaded = true;
+    return { ...settled(buffer), saved: disk, text: disk.text, dirty: false, notice: 'reloaded' };
+  });
+  if (reloaded) expireReloadedNotice(projectId, path);
+}
+
+/** Lê o disco de novo e guarda o resultado como `disk` do conflito. Devolve se conseguiu. */
+export async function readDiskVersion(projectId: string, path: string): Promise<boolean> {
+  try {
+    const read = await window.projectHub.files.read(projectId, path);
+    if (!read.ok) return false;
+    patch(projectId, path, (buffer) =>
+      buffer.notice === 'changed-on-disk' ? { ...buffer, disk: read.data } : buffer,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Troca o texto do editor pelo do disco, descartando as alterações. Devolve se conseguiu ler o disco. */
+export async function reloadFromDisk(projectId: string, path: string): Promise<boolean> {
+  try {
+    const read = await window.projectHub.files.read(projectId, path);
+    if (!read.ok) return false;
+    const disk = read.data;
+    patch(projectId, path, (buffer) => ({
+      ...settled(buffer),
+      saved: disk,
+      text: disk.text,
+      dirty: false,
+    }));
+    clearReloadedTimer(projectId, path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Algum projeto tem arquivo com alterações não salvas. */
@@ -243,4 +503,8 @@ export function useOpenFiles(projectId: string): OpenFilesView {
 export function resetOpenFilesForTests(): void {
   states.clear();
   unread.clear();
+  checking.clear();
+  for (const timer of reloadedTimers.values()) clearTimeout(timer);
+  reloadedTimers.clear();
+  syncUnloadGuard();
 }

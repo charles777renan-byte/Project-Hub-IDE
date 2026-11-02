@@ -411,4 +411,50 @@ describe('open-files', () => {
       expect(result.current.files).toEqual([]);
     });
   });
+
+  describe('beforeunload', () => {
+    /** Dispara o fechamento da janela; devolve se o renderer o bloqueou (a base do aviso do processo principal). */
+    function closeWindow(): boolean {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    }
+
+    it('sem arquivo sujo, a janela fecha sem bloqueio', async () => {
+      const { result } = mount();
+      act(() => openFile('p1', 'a.ts'));
+      await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+
+      expect(closeWindow()).toBe(false);
+    });
+
+    it('com arquivo sujo, bloqueia o fechamento; ao salvar ou fechar o arquivo, deixa de bloquear', async () => {
+      const { result } = mount();
+      act(() => openFile('p1', 'a.ts'));
+      await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+
+      act(() => updateText('p1', 'a.ts', 'mudou'));
+      expect(closeWindow()).toBe(true);
+
+      act(() => markSaved('p1', 'a.ts', { ...content('mudou') }));
+      expect(closeWindow()).toBe(false);
+
+      act(() => updateText('p1', 'a.ts', 'mudou de novo'));
+      expect(closeWindow()).toBe(true);
+      act(() => closeFile('p1', 'a.ts'));
+      expect(closeWindow()).toBe(false);
+    });
+
+    it('registra um ouvinte só, mesmo com várias edições', async () => {
+      const add = vi.spyOn(window, 'addEventListener');
+      const { result } = mount();
+      act(() => openFile('p1', 'a.ts'));
+      await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+
+      act(() => updateText('p1', 'a.ts', 'um'));
+      act(() => updateText('p1', 'a.ts', 'dois'));
+
+      expect(add.mock.calls.filter(([type]) => type === 'beforeunload')).toHaveLength(1);
+    });
+  });
 });

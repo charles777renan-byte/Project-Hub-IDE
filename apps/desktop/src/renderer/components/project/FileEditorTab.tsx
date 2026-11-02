@@ -1,9 +1,10 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
-import { markSaved, updateText, useOpenFiles } from '../../open-files';
+import { checkFileOnDisk, saveFile, updateText, useOpenFiles } from '../../open-files';
 import { CodeEditor } from '../editor/CodeEditor';
 import { languageOf } from '../editor/languages';
 import { PathText } from '../PathText';
+import { FileConflictBar } from './FileConflictBar';
 import { fileName } from './FileTabs';
 
 const OPEN_FILES_TEXT = RIGHT_PANEL_TEXT.openFiles;
@@ -15,44 +16,60 @@ const TEXT = RIGHT_PANEL_TEXT.editor;
  * (`open-files.ts`): o editor só o mostra e avisa cada edição. Arquivo com fins de linha misturados abre somente
  * leitura, porque gravá-lo normalizaria os fins de linha. Ctrl+S salva quando o foco está aqui dentro (o teclado
  * dos terminais e do resto da tela não é tocado); a gravação confere a versão lida, e uma falha mostra a mensagem do
- * processo principal e mantém o texto.
+ * processo principal e mantém o texto. Quando o arquivo muda ou some do disco (`notice`), a faixa de conflito toma
+ * conta: com o arquivo alterado, salvar daqui fica desligado (só a faixa decide); com o arquivo sumido, salvar pede
+ * a confirmação de recriá-lo. A janela ganhar o foco confere o disco.
  */
 export function FileEditorTab({ projectId, path }: { projectId: string; path: string }) {
   const { files } = useOpenFiles(projectId);
   const file = files.find((item) => item.path === path);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // O Salvar foi apertado com o arquivo sumido: a faixa pergunta se é para recriá-lo.
+  const [recreateAsked, setRecreateAsked] = useState(false);
   // O segundo Ctrl+S antes de a primeira gravação responder: a ref barra, o estado só desliga o botão.
   const savingRef = useRef(false);
+  const notice = file?.notice;
+
+  // Um aviso novo (ou nenhum) deixa para trás o alerta de gravação e a pergunta de recriar: a faixa diz o que vale.
+  useEffect(() => {
+    setProblem(null);
+    setRecreateAsked(false);
+  }, [notice]);
+
+  // A janela voltou ao foco: um agente pode ter mexido no arquivo enquanto a pessoa estava em outro programa.
+  useEffect(() => {
+    const onFocus = () => void checkFileOnDisk(projectId, path);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [projectId, path]);
+
   if (file === undefined) return null;
 
   const mixed = file.saved?.eol === 'mixed';
-  const canSave = file.load === 'ready' && file.dirty && !mixed && !saving;
+  const missing = file.notice === 'missing';
+  // Com o arquivo alterado no disco, só a faixa de conflito grava; com ele sumido, Salvar vale mesmo sem alteração.
+  const canSave =
+    file.load === 'ready' &&
+    (file.dirty || missing) &&
+    file.notice !== 'changed-on-disk' &&
+    !mixed &&
+    !saving;
 
   async function save() {
-    if (file === undefined || file.saved === undefined || !file.dirty || savingRef.current) return;
-    const { saved, text } = file;
-    if (saved.eol === 'mixed') return;
+    if (file === undefined || file.saved === undefined || savingRef.current) return;
+    if (file.saved.eol === 'mixed' || file.notice === 'changed-on-disk') return;
+    if (file.notice === 'missing') {
+      setRecreateAsked(true);
+      return;
+    }
+    if (!file.dirty) return;
     savingRef.current = true;
     setSaving(true);
     setProblem(null);
     try {
-      const result = await window.projectHub.files.write({
-        projectId,
-        path,
-        text,
-        eol: saved.eol,
-        bom: saved.bom,
-        expected: saved.version,
-      });
-      // O salvo é o texto que foi enviado; se a pessoa digitou depois, o arquivo segue com alterações.
-      if (result.ok) {
-        markSaved(projectId, path, { text, eol: saved.eol, bom: saved.bom, version: result.data });
-      } else {
-        setProblem(result.error.message || TEXT.saveError);
-      }
-    } catch {
-      setProblem(TEXT.saveError);
+      const outcome = await saveFile(projectId, path);
+      if (!outcome.ok) setProblem(outcome.message);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -96,8 +113,15 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
           </button>
         ) : null}
       </div>
+      <FileConflictBar
+        key={file.notice ?? 'none'}
+        projectId={projectId}
+        path={path}
+        recreateAsked={recreateAsked}
+        onRecreateClosed={() => setRecreateAsked(false)}
+      />
       {mixed ? <p className="file-editor__notice">{TEXT.mixedEol}</p> : null}
-      {problem === null ? null : (
+      {problem === null || file.notice === 'changed-on-disk' ? null : (
         <p role="alert" className="page-alert file-editor__alert">
           {problem}
         </p>

@@ -636,6 +636,14 @@ export const RIGHT_PANEL_TEXT = {
     close: (name: string) => `Fechar ${name}`,
     loading: 'Carregando…',
     readError: 'Não foi possível abrir o arquivo.',
+    /** A pergunta ao fechar uma aba com alterações não salvas (na faixa de abas, sem diálogo do sistema). */
+    closeAsk: {
+      group: (name: string) => `Fechar ${name} com alterações não salvas`,
+      message: (name: string) => `${name} tem alterações não salvas.`,
+      save: 'Salvar',
+      discard: 'Descartar',
+      back: 'Voltar',
+    },
   },
   /** O editor de um arquivo aberto (FileEditorTab, CodeEditor). */
   editor: {
@@ -646,6 +654,31 @@ export const RIGHT_PANEL_TEXT = {
     cannotEdit: 'Este arquivo não pode ser editado aqui',
     openDefault: 'Abrir no programa padrão',
     openDefaultError: 'Não foi possível abrir o arquivo no programa padrão.',
+    /** A faixa do arquivo que mudou ou sumiu do disco (FileConflictBar). */
+    conflict: {
+      changed: 'O arquivo mudou no disco enquanto você editava',
+      keepAndCompare: 'Manter o meu e comparar',
+      reload: 'Recarregar do disco (perde as minhas alterações)',
+      viewDisk: 'Ver só a versão do disco',
+      backToMine: 'Voltar ao meu texto',
+      mine: 'A minha versão',
+      disk: 'Versão do disco',
+      overwrite: 'Salvar por cima',
+      overwriteConfirm: 'Confirmar: salvar por cima',
+      loadingDisk: 'Lendo a versão do disco…',
+      diskError: 'Não foi possível ler a versão do disco.',
+      missing: 'O arquivo não existe mais',
+      missingHint: 'O texto continua aqui. Salvar cria o arquivo de novo.',
+      /** Salvar de fora da aba (a pergunta ao fechar) não passa por cima de um aviso do disco. */
+      saveBlockedChanged:
+        'O arquivo mudou no disco. Abra a aba e decida na faixa de aviso antes de salvar.',
+      saveBlockedMissing:
+        'O arquivo não existe mais. Abra a aba e salve por lá para criá-lo de novo.',
+      recreateAsk: 'Criar o arquivo de novo com este texto?',
+      recreate: 'Criar arquivo',
+      back: 'Voltar',
+      reloaded: 'Atualizado: o arquivo mudou no disco',
+    },
     find: {
       Find: 'Buscar',
       Replace: 'Substituir',
