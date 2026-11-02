@@ -1,0 +1,643 @@
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { ErrorCode } from '@project-hub/contracts';
+import { createTempRepo, revParse, type TempRepo } from '@project-hub/test-utils';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  commitStaged,
+  discardPaths,
+  fetchOrigin,
+  pullFastForward,
+  pushBranch,
+  stagePaths,
+  translateGitWriteError,
+  unstagePaths,
+} from '../src/git-write';
+import { GitError } from '../src/run-git';
+
+// Git de verdade, em pastas temporárias, com um remoto `--bare` local. A configuração global e a do
+// sistema do Git de quem roda os testes ficam de fora (hooks globais, `pull.rebase`, credenciais), como
+// no teste de criar o repositório (ADR 0009). Nenhum teste toca a rede.
+const REPOSITORY_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'];
+
+const scratch = mkdtempSync(join(tmpdir(), 'project-hub-escrita-teste-'));
+const emptyGlobalConfig = join(scratch, 'global-vazio.gitconfig');
+writeFileSync(emptyGlobalConfig, '');
+
+const savedGlobal = process.env.GIT_CONFIG_GLOBAL;
+const savedNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
+beforeAll(() => {
+  process.env.GIT_CONFIG_GLOBAL = emptyGlobalConfig;
+  process.env.GIT_CONFIG_NOSYSTEM = '1';
+});
+
+afterAll(() => {
+  restoreEnv('GIT_CONFIG_GLOBAL', savedGlobal);
+  restoreEnv('GIT_CONFIG_NOSYSTEM', savedNoSystem);
+  rmSync(scratch, { recursive: true, force: true, maxRetries: 3 });
+});
+
+/** O Git de verdade, para montar o cenário e conferir o resultado. Não passa pelo adaptador. */
+function git(cwd: string, args: string[]): string {
+  const env = { ...process.env };
+  for (const name of REPOSITORY_VARIABLES) delete env[name];
+  return execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: 'pipe' });
+}
+
+/** Caminhos no índice, sem a citação de acentos do Git (`-z`). */
+function indexFiles(cwd: string): string[] {
+  return git(cwd, ['ls-files', '-z'])
+    .split('\0')
+    .filter((name) => name !== '')
+    .sort();
+}
+
+/** Caminhos em stage (índice contra HEAD). */
+function stagedFiles(cwd: string): string[] {
+  return git(cwd, ['diff', '--cached', '--name-only', '-z'])
+    .split('\0')
+    .filter((name) => name !== '')
+    .sort();
+}
+
+function commitCount(cwd: string): number {
+  return Number(git(cwd, ['rev-list', '--count', 'HEAD']).trim());
+}
+
+function writeHook(repo: string, name: string, body: string): void {
+  const file = join(repo, '.git', 'hooks', name);
+  mkdirSync(join(repo, '.git', 'hooks'), { recursive: true });
+  writeFileSync(file, `#!/bin/sh\n${body}\n`);
+  chmodSync(file, 0o755);
+}
+
+function newScratchDir(prefix: string): string {
+  return mkdtempSync(join(scratch, prefix));
+}
+
+async function failureOf(promise: Promise<unknown>): Promise<GitError> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(error).toBeInstanceOf(GitError);
+    return error as GitError;
+  }
+  throw new Error('esperava uma rejeição, e a chamada terminou sem erro');
+}
+
+let repo: TempRepo;
+let repoPath: string;
+
+beforeEach(() => {
+  repo = createTempRepo();
+  repoPath = repo.path;
+});
+
+afterEach(() => {
+  repo.cleanup();
+});
+
+/** Um remoto `--bare` local, com a `main` do repositório já enviada e a `origin` apontando para ele. */
+function addBareRemote(): string {
+  const remote = newScratchDir('remoto-');
+  git(remote, ['init', '--bare', '--initial-branch=main']);
+  git(repoPath, ['remote', 'add', 'origin', remote]);
+  git(repoPath, ['push', '-u', 'origin', 'main']);
+  return remote;
+}
+
+/** Outro clone do remoto, com identidade, para simular outra pessoa enviando commits. */
+function cloneOther(remote: string): string {
+  const other = join(newScratchDir('outro-'), 'clone');
+  git(scratch, ['clone', remote, other]);
+  git(other, ['config', 'user.name', 'Outra Pessoa']);
+  git(other, ['config', 'user.email', 'outra@project-hub.invalid']);
+  git(other, ['config', 'core.autocrlf', 'false']);
+  return other;
+}
+
+function commitFile(cwd: string, name: string, content: string, message: string): void {
+  writeFileSync(join(cwd, name), content);
+  git(cwd, ['add', '--', name]);
+  git(cwd, ['commit', '--no-verify', '-m', message]);
+}
+
+describe('stagePaths', () => {
+  it('com caminhos: só eles entram no índice, com espaço, acento, aspas simples e colchetes', async () => {
+    const names = ['com espaço.txt', 'acentuação-ção.txt', "aspas'simples.txt", 'a[1].txt'];
+    for (const name of [...names, 'a1.txt', 'fora.txt']) writeFileSync(join(repoPath, name), 'x\n');
+
+    await stagePaths({ repo: repoPath, paths: names });
+
+    // `a[1].txt` é um nome, e não um padrão: `a1.txt` não entra junto.
+    expect(indexFiles(repoPath)).toEqual([...names, 'a.txt'].sort());
+  });
+
+  it('sem caminhos (add -A): entra tudo, novo, alterado e apagado', async () => {
+    writeFileSync(join(repoPath, 'novo com espaço.txt'), 'x\n');
+    writeFileSync(join(repoPath, 'a.txt'), 'alterado\n');
+    mkdirSync(join(repoPath, 'pasta'));
+    writeFileSync(join(repoPath, 'pasta', 'ação.txt'), 'y\n');
+
+    await stagePaths({ repo: repoPath });
+
+    expect(stagedFiles(repoPath)).toEqual(['a.txt', 'novo com espaço.txt', 'pasta/ação.txt']);
+  });
+
+  it('lista vazia de caminhos: VALIDATION_FAILED, sem rodar o Git', async () => {
+    const error = await failureOf(stagePaths({ repo: repoPath, paths: [] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+  });
+
+  it.each([
+    ['absoluto', '/etc/passwd'],
+    ['de unidade', 'C:/Windows/system.ini'],
+    ['que sai do projeto', '../fora.txt'],
+    ['com barra invertida', 'pasta\\a.txt'],
+    ['vazio', ''],
+  ])('caminho %s: VALIDATION_FAILED', async (_label, path) => {
+    const error = await failureOf(stagePaths({ repo: repoPath, paths: [path] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('unstagePaths', () => {
+  it('tira do stage só o caminho pedido', async () => {
+    writeFileSync(join(repoPath, 'um.txt'), '1\n');
+    writeFileSync(join(repoPath, 'dois com espaço.txt'), '2\n');
+    await stagePaths({ repo: repoPath });
+
+    await unstagePaths({ repo: repoPath, paths: ['um.txt'] });
+
+    expect(stagedFiles(repoPath)).toEqual(['dois com espaço.txt']);
+    // O arquivo continua no disco: tirar do stage não desfaz o trabalho.
+    expect(existsSync(join(repoPath, 'um.txt'))).toBe(true);
+  });
+});
+
+describe('discardPaths', () => {
+  it('restaura o arquivo rastreado ao conteúdo do índice', async () => {
+    writeFileSync(join(repoPath, 'a.txt'), 'trabalho perdido\n');
+
+    await discardPaths({ repo: repoPath, paths: ['a.txt'] });
+
+    expect(git(repoPath, ['status', '--porcelain']).trim()).toBe('');
+    expect(git(repoPath, ['show', 'HEAD:a.txt'])).toBe('conteudo inicial\n');
+  });
+
+  it('restaura um arquivo apagado', async () => {
+    rmSync(join(repoPath, 'a.txt'));
+
+    await discardPaths({ repo: repoPath, paths: ['a.txt'] });
+
+    expect(existsSync(join(repoPath, 'a.txt'))).toBe(true);
+  });
+
+  it('recusa arquivo não rastreado com VALIDATION_FAILED, sem apagá-lo', async () => {
+    writeFileSync(join(repoPath, 'novo.txt'), 'nunca commitado\n');
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['novo.txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('novo.txt');
+    expect(existsSync(join(repoPath, 'novo.txt'))).toBe(true);
+  });
+
+  it('com um caminho rastreado e outro não: recusa tudo, e o rastreado não é restaurado', async () => {
+    writeFileSync(join(repoPath, 'a.txt'), 'alterado\n');
+    writeFileSync(join(repoPath, 'novo.txt'), 'x\n');
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['a.txt', 'novo.txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(git(repoPath, ['status', '--porcelain']).includes(' M a.txt')).toBe(true);
+  });
+
+  it('caminho que não existe em lugar nenhum: VALIDATION_FAILED', async () => {
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['fantasma.txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('commitStaged', () => {
+  it('cria o commit com a mensagem e devolve o nome dele', async () => {
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath, paths: ['b.txt'] });
+
+    const { commit } = await commitStaged({ repo: repoPath, message: 'Adiciona b\n\nCom corpo.' });
+
+    expect(commit).toBe(revParse(repoPath, 'HEAD'));
+    expect(git(repoPath, ['log', '-1', '--format=%B']).trim()).toBe('Adiciona b\n\nCom corpo.');
+    expect(commitCount(repoPath)).toBe(2);
+  });
+
+  it('os hooks rodam: um pre-commit que passa deixa a marca, e o commit sai', async () => {
+    writeHook(repoPath, 'pre-commit', 'echo rodou > "$(git rev-parse --git-dir)/marca-pre-commit"');
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath });
+
+    await commitStaged({ repo: repoPath, message: 'Com hook' });
+
+    expect(existsSync(join(repoPath, '.git', 'marca-pre-commit'))).toBe(true);
+    expect(commitCount(repoPath)).toBe(2);
+  });
+
+  it('pre-commit que sai com erro: nenhum commit, GIT_HOOK_FAILED com a saída do hook, índice intacto', async () => {
+    writeHook(repoPath, 'pre-commit', 'echo "lint falhou: sobrou um console.log"\nexit 1');
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath, paths: ['b.txt'] });
+    const before = commitCount(repoPath);
+    const staged = stagedFiles(repoPath);
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Vai falhar' }));
+
+    expect(error.code).toBe('GIT_HOOK_FAILED');
+    expect(error.message).toContain('lint falhou: sobrou um console.log');
+    expect(commitCount(repoPath)).toBe(before);
+    expect(stagedFiles(repoPath)).toEqual(staged);
+  });
+
+  it('core.hooksPath absoluto: o pre-commit de lá que recusa, sem a palavra "hook" na saída, é GIT_HOOK_FAILED', async () => {
+    const hooksDir = newScratchDir('hooks-globais-');
+    const file = join(hooksDir, 'pre-commit');
+    writeFileSync(file, '#!/bin/sh\necho "lint falhou: arquivo fora do padrão" >&2\nexit 1\n');
+    chmodSync(file, 0o755);
+    git(repoPath, ['config', 'core.hooksPath', hooksDir]);
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath });
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Vai falhar' }));
+
+    expect(error.code).toBe('GIT_HOOK_FAILED');
+    expect(error.message).toContain('lint falhou: arquivo fora do padrão');
+    expect(commitCount(repoPath)).toBe(1);
+  });
+
+  it('falha de assinatura (gpg) com um pre-commit presente que passa: não é GIT_HOOK_FAILED', async () => {
+    writeHook(repoPath, 'pre-commit', 'exit 0');
+    git(repoPath, ['config', 'commit.gpgsign', 'true']);
+    git(repoPath, ['config', 'gpg.program', join(scratch, 'gpg-que-nao-existe')]);
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath });
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Sem assinatura' }));
+
+    expect(error.code).toBe('UNKNOWN');
+    expect(commitCount(repoPath)).toBe(1);
+  });
+
+  it('sem nada em stage: GIT_NOTHING_TO_COMMIT', async () => {
+    const before = commitCount(repoPath);
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Nada' }));
+
+    expect(error.code).toBe('GIT_NOTHING_TO_COMMIT');
+    expect(commitCount(repoPath)).toBe(before);
+  });
+
+  it('só com alteração fora do stage: GIT_NOTHING_TO_COMMIT, sem usar o -a', async () => {
+    writeFileSync(join(repoPath, 'a.txt'), 'alterado\n');
+    writeFileSync(join(repoPath, 'novo.txt'), 'x\n');
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Nada em stage' }));
+
+    expect(error.code).toBe('GIT_NOTHING_TO_COMMIT');
+    expect(commitCount(repoPath)).toBe(1);
+  });
+
+  it('sem identidade: a mensagem manda configurar user.name e user.email com git config --global', async () => {
+    git(repoPath, ['config', '--unset', 'user.name']);
+    git(repoPath, ['config', '--unset', 'user.email']);
+    // Sem isto o Git tentaria montar um nome e um e-mail a partir do usuário e da máquina.
+    git(repoPath, ['config', 'user.useConfigOnly', 'true']);
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath });
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Sem identidade' }));
+
+    expect(error.message).toContain('git config --global user.name');
+    expect(error.message).toContain('git config --global user.email');
+    expect(commitCount(repoPath)).toBe(1);
+  });
+
+  it.each([
+    ['vazia', ''],
+    ['só com espaços', '   \n '],
+    ['que começa com hífen', '- item da lista'],
+    ['com mais de 10 000 caracteres', 'x'.repeat(10_001)],
+  ])('mensagem %s: VALIDATION_FAILED, sem rodar o commit', async (_label, message) => {
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath });
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(commitCount(repoPath)).toBe(1);
+  });
+
+  it('index.lock ocupado: GIT_LOCKED, e nada entra no commit', async () => {
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    await stagePaths({ repo: repoPath });
+    writeFileSync(join(repoPath, '.git', 'index.lock'), '');
+
+    const error = await failureOf(commitStaged({ repo: repoPath, message: 'Travado' }));
+
+    expect(error.code).toBe('GIT_LOCKED');
+    expect(commitCount(repoPath)).toBe(1);
+  });
+});
+
+describe('pushBranch', () => {
+  it('com setUpstream: o remoto recebe o commit e a branch passa a ter upstream', async () => {
+    const remote = newScratchDir('remoto-');
+    git(remote, ['init', '--bare', '--initial-branch=main']);
+    git(repoPath, ['remote', 'add', 'origin', remote]);
+
+    const result = await pushBranch({ repo: repoPath, setUpstream: true });
+
+    expect(result).toEqual({ branch: 'main' });
+    expect(git(remote, ['rev-parse', 'main']).trim()).toBe(revParse(repoPath, 'HEAD'));
+    expect(git(repoPath, ['rev-parse', '--abbrev-ref', 'main@{upstream}']).trim()).toBe(
+      'origin/main',
+    );
+  });
+
+  it('sem setUpstream, depois de já ter upstream: envia o commit novo', async () => {
+    const remote = addBareRemote();
+    commitFile(repoPath, 'b.txt', 'b\n', 'Segundo commit');
+
+    await pushBranch({ repo: repoPath, setUpstream: false });
+
+    expect(git(remote, ['rev-parse', 'main']).trim()).toBe(revParse(repoPath, 'HEAD'));
+  });
+
+  it('depois de o remoto avançar por outro clone: GIT_NOT_FAST_FORWARD, e o remoto não é reescrito', async () => {
+    const remote = addBareRemote();
+    const other = cloneOther(remote);
+    commitFile(other, 'dele.txt', 'dele\n', 'Commit do outro');
+    git(other, ['push']);
+    const remoteHead = git(remote, ['rev-parse', 'main']).trim();
+    commitFile(repoPath, 'meu.txt', 'meu\n', 'Commit meu');
+
+    const error = await failureOf(pushBranch({ repo: repoPath, setUpstream: false }));
+
+    expect(error.code).toBe('GIT_NOT_FAST_FORWARD');
+    expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
+  });
+
+  it('pre-push que sai com erro: GIT_HOOK_FAILED com a saída do hook, e o remoto não recebe', async () => {
+    const remote = addBareRemote();
+    const remoteHead = git(remote, ['rev-parse', 'main']).trim();
+    // O Git manda o `stdout` do pre-push para o `stdout` dele, que o adaptador não guarda quando o comando
+    // falha (só o `stderr`). Por isso o hook escreve no `stderr`, como os hooks que usam `>&2`.
+    writeHook(repoPath, 'pre-push', 'echo "testes falharam antes do push" >&2\nexit 1');
+    commitFile(repoPath, 'b.txt', 'b\n', 'Segundo commit');
+
+    const error = await failureOf(pushBranch({ repo: repoPath, setUpstream: false }));
+
+    expect(error.code).toBe('GIT_HOOK_FAILED');
+    expect(error.message).toContain('testes falharam antes do push');
+    expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
+  });
+
+  it('remoto que não existe, com um pre-push presente que passa: não é GIT_HOOK_FAILED', async () => {
+    writeHook(repoPath, 'pre-push', 'exit 0');
+    git(repoPath, ['remote', 'add', 'origin', join(scratch, 'remoto-que-nao-existe.git')]);
+
+    const error = await failureOf(pushBranch({ repo: repoPath, setUpstream: true }));
+
+    expect(error.code).toBe('UNKNOWN');
+  });
+
+  it('com HEAD solto: GIT_DETACHED_HEAD, sem rodar o push', async () => {
+    addBareRemote();
+    git(repoPath, ['checkout', '--detach']);
+
+    const error = await failureOf(pushBranch({ repo: repoPath, setUpstream: true }));
+
+    expect(error.code).toBe('GIT_DETACHED_HEAD');
+  });
+});
+
+describe('pullFastForward', () => {
+  it('avança a branch que está atrás e diz que atualizou', async () => {
+    const remote = addBareRemote();
+    const other = cloneOther(remote);
+    commitFile(other, 'dele.txt', 'dele\n', 'Commit do outro');
+    git(other, ['push']);
+
+    const result = await pullFastForward({ repo: repoPath });
+
+    expect(result).toEqual({ updated: true });
+    expect(revParse(repoPath, 'HEAD')).toBe(git(remote, ['rev-parse', 'main']).trim());
+    expect(existsSync(join(repoPath, 'dele.txt'))).toBe(true);
+  });
+
+  it('com a branch em dia: não atualiza nada', async () => {
+    addBareRemote();
+
+    const result = await pullFastForward({ repo: repoPath });
+
+    expect(result).toEqual({ updated: false });
+  });
+
+  it('com a branch divergida: GIT_NOT_FAST_FORWARD, sem commit de merge e sem mexer na branch', async () => {
+    const remote = addBareRemote();
+    const other = cloneOther(remote);
+    commitFile(other, 'dele.txt', 'dele\n', 'Commit do outro');
+    git(other, ['push']);
+    commitFile(repoPath, 'meu.txt', 'meu\n', 'Commit meu');
+    const head = revParse(repoPath, 'HEAD');
+
+    const error = await failureOf(pullFastForward({ repo: repoPath }));
+
+    expect(error.code).toBe('GIT_NOT_FAST_FORWARD');
+    expect(revParse(repoPath, 'HEAD')).toBe(head);
+    expect(git(repoPath, ['rev-list', '--merges', '--count', 'HEAD']).trim()).toBe('0');
+    expect(existsSync(join(repoPath, 'dele.txt'))).toBe(false);
+  });
+
+  it('com HEAD solto: GIT_DETACHED_HEAD', async () => {
+    addBareRemote();
+    git(repoPath, ['checkout', '--detach']);
+
+    const error = await failureOf(pullFastForward({ repo: repoPath }));
+
+    expect(error.code).toBe('GIT_DETACHED_HEAD');
+  });
+});
+
+describe('fetchOrigin', () => {
+  it('atualiza as refs remotas e poda as apagadas no remoto', async () => {
+    const remote = addBareRemote();
+    const other = cloneOther(remote);
+    git(other, ['checkout', '-b', 'feature']);
+    commitFile(other, 'dele.txt', 'dele\n', 'Commit na feature');
+    git(other, ['push', '-u', 'origin', 'feature']);
+
+    await fetchOrigin({ repo: repoPath });
+
+    expect(revParse(repoPath, 'refs/remotes/origin/feature')).toBe(revParse(other, 'HEAD'));
+    // O fetch não mexe na branch local.
+    expect(commitCount(repoPath)).toBe(1);
+
+    git(other, ['push', 'origin', '--delete', 'feature']);
+    await fetchOrigin({ repo: repoPath });
+
+    expect(git(repoPath, ['branch', '--remotes', '--list', 'origin/feature']).trim()).toBe('');
+  });
+
+  it('index.lock ocupado: GIT_LOCKED não aparece, porque o fetch não escreve no índice', async () => {
+    addBareRemote();
+    writeFileSync(join(repoPath, '.git', 'index.lock'), '');
+
+    await expect(fetchOrigin({ repo: repoPath })).resolves.toBeUndefined();
+  });
+});
+
+describe('index.lock ocupado', () => {
+  it('stagePaths: GIT_LOCKED, e o índice fica como estava', async () => {
+    writeFileSync(join(repoPath, 'b.txt'), 'b\n');
+    writeFileSync(join(repoPath, '.git', 'index.lock'), '');
+
+    const error = await failureOf(stagePaths({ repo: repoPath, paths: ['b.txt'] }));
+
+    expect(error.code).toBe('GIT_LOCKED');
+    expect(indexFiles(repoPath)).toEqual(['a.txt']);
+  });
+});
+
+describe('pedido de senha (servidor HTTP local que responde 401)', () => {
+  let server: Server;
+  let url: string;
+
+  beforeAll(async () => {
+    server = createServer((_request, response) => {
+      response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="teste"' });
+      response.end();
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/projeto.git`;
+  });
+
+  afterAll(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  });
+
+  it.each([
+    ['fetchOrigin', (): Promise<unknown> => fetchOrigin({ repo: repoPath })],
+    ['pullFastForward', (): Promise<unknown> => pullFastForward({ repo: repoPath })],
+    ['pushBranch', (): Promise<unknown> => pushBranch({ repo: repoPath, setUpstream: true })],
+  ])('%s: GIT_AUTH_REQUIRED em vez de travar esperando senha', async (_name, run) => {
+    git(repoPath, ['remote', 'add', 'origin', url]);
+
+    const error = await failureOf(run());
+
+    expect(error.code).toBe('GIT_AUTH_REQUIRED');
+    expect(error.message).not.toContain(url);
+  });
+});
+
+describe('translateGitWriteError', () => {
+  function failure(stderr: string, code: ErrorCode = 'UNKNOWN', exitCode = 1): GitError {
+    return new GitError(code, 'O comando "git x" terminou com erro.', { exitCode, stderr });
+  }
+
+  it.each([
+    ["fatal: could not read Username for 'https://x.invalid': terminal prompts disabled"],
+    ['fatal: could not read Username for ...'],
+    ['fatal: Authentication failed for https://x.invalid/a.git/'],
+    ['fatal: terminal prompts disabled'],
+  ])('autenticação: %s', (stderr) => {
+    expect((translateGitWriteError(failure(stderr), 'push') as GitError).code).toBe(
+      'GIT_AUTH_REQUIRED',
+    );
+  });
+
+  it.each([
+    ['! [rejected]        main -> main (non-fast-forward)'],
+    ['! [rejected]        main -> main (fetch first)'],
+    ['fatal: Not possible to fast-forward, aborting.'],
+  ])('avanço impossível: %s', (stderr) => {
+    expect((translateGitWriteError(failure(stderr), 'push') as GitError).code).toBe(
+      'GIT_NOT_FAST_FORWARD',
+    );
+  });
+
+  it('a mensagem de avanço impossível manda resolver no terminal', () => {
+    const pull = translateGitWriteError(failure('fatal: Not possible to fast-forward'), 'pull');
+
+    expect((pull as GitError).message).toContain('terminal');
+  });
+
+  it('não traduz o que já tem código próprio (GIT_LOCKED, PERMISSION_DENIED)', () => {
+    const locked = failure('index.lock', 'GIT_LOCKED');
+
+    expect(translateGitWriteError(locked, 'commit')).toBe(locked);
+  });
+
+  it('saída de hook remoto recusando o push vira GIT_HOOK_FAILED', () => {
+    const error = translateGitWriteError(
+      failure(
+        'remote: pre-receive hook declined\nTo x\n ! [remote rejected] main -> main (pre-receive hook declined)',
+      ),
+      'push',
+    ) as GitError;
+
+    expect(error.code).toBe('GIT_HOOK_FAILED');
+  });
+
+  it('um hook local presente não transforma em GIT_HOOK_FAILED a falha de rede nem a recusa do servidor', () => {
+    const network = failure(
+      "fatal: unable to access 'https://x.invalid/webhook-service.git/': Could not resolve host: x.invalid",
+    );
+    const denied = failure(
+      "remote: Permission denied\n ! [remote rejected] main -> main (permission denied)\nerror: failed to push some refs to 'x'",
+    );
+
+    expect(translateGitWriteError(network, 'push', { hookPresent: true })).toBe(network);
+    expect(translateGitWriteError(network, 'push')).toBe(network);
+    expect(translateGitWriteError(denied, 'push', { hookPresent: true })).toBe(denied);
+  });
+
+  it('push com pre-push presente que recusa (só "failed to push some refs") é GIT_HOOK_FAILED', () => {
+    const error = translateGitWriteError(
+      failure("saída do hook\nerror: failed to push some refs to 'x'"),
+      'push',
+      { hookPresent: true },
+    ) as GitError;
+
+    expect(error.code).toBe('GIT_HOOK_FAILED');
+    expect(error.message).toContain('saída do hook');
+    expect(error.message).not.toContain('failed to push some refs');
+  });
+
+  it('o stderr bruto não vai para a mensagem de erros que não são de hook', () => {
+    const error = translateGitWriteError(
+      failure('fatal: Authentication failed for https://usuario:segredo@x.invalid/a.git/'),
+      'push',
+    ) as GitError;
+
+    expect(error.message).not.toContain('segredo');
+  });
+
+  it('o que não reconhece sobe como veio', () => {
+    const unknown = failure('fatal: algo que ninguém previu');
+
+    expect(translateGitWriteError(unknown, 'commit')).toBe(unknown);
+  });
+});
