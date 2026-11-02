@@ -1,8 +1,17 @@
 import type { AgentActivity } from './agent-activity';
+import type {
+  ContentSearchDto,
+  FileContentDto,
+  FileEntryDto,
+  FileStatDto,
+  FileVersionDto,
+  FilesWriteInput,
+  NameSearchDto,
+} from './files';
 import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
 import type { SystemUsageDto } from './system';
-import type { AddProjectInput, ProjectSummary } from './project';
+import type { AddProjectInput, ProjectSummary, RepositoryInitPreview } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
 import type { TerminalEvent, TerminalSummary } from './terminal';
@@ -38,6 +47,10 @@ export type ProjectHubApi = {
     add(input: AddProjectInput): Promise<AppResult<ProjectSummary>>;
     /** Abre a pasta do projeto no gerenciador de arquivos. O processo principal acha o caminho pelo id. */
     openFolder(projectId: string): Promise<AppResult<void>>;
+    /** O que a confirmação de criar o repositório Git mostra: o que está configurado e os nomes sensíveis. Não escreve. */
+    repositoryPreview(projectId: string): Promise<AppResult<RepositoryInitPreview>>;
+    /** Cria o repositório Git da pasta com o primeiro commit (ADR 0009). Só chamado depois da confirmação. */
+    initRepository(projectId: string): Promise<AppResult<ProjectSummary>>;
     /** Põe o projeto num grupo da barra lateral, ou o tira (`null`). */
     setGroup(projectId: string, group: string | null): Promise<AppResult<void>>;
     /** Dá um apelido ao projeto (até 24 caracteres), ou o tira (`null`). */
@@ -171,6 +184,35 @@ export type ProjectHubApi = {
     refresh(): Promise<AppResult<LimitsDto>>;
     /** Assina as mudanças dos limites. Cada evento chega validado. Devolve a função que cancela a assinatura. */
     subscribe(listener: (limits: LimitsDto) => void): () => void;
+  };
+  files: {
+    /** Entradas de uma pasta do projeto. `dir` vazio é a raiz. O caminho é relativo, em POSIX. */
+    list(projectId: string, dir: string): Promise<AppResult<FileEntryDto[]>>;
+    /** Existência e versão do arquivo. */
+    stat(projectId: string, path: string): Promise<AppResult<FileStatDto>>;
+    /** Lê o arquivo de texto (até 2 MiB). O texto sai com `\n`; `eol` e `bom` dizem como estava no disco. */
+    read(projectId: string, path: string): Promise<AppResult<FileContentDto>>;
+    /**
+     * Grava o arquivo. Com `expected`, recusa com FILE_CHANGED_ON_DISK se o disco mudou; com `null`, cria um
+     * arquivo novo. Devolve a versão gravada.
+     */
+    write(input: FilesWriteInput): Promise<AppResult<FileVersionDto>>;
+    /** Busca pelo nome do arquivo. */
+    searchNames(projectId: string, query: string): Promise<AppResult<NameSearchDto>>;
+    /** Busca pelo conteúdo dos arquivos de texto; `regex` trata a consulta como expressão regular. */
+    searchContent(
+      projectId: string,
+      query: string,
+      regex: boolean,
+    ): Promise<AppResult<ContentSearchDto>>;
+    /** Abre o arquivo no programa padrão do sistema. */
+    openDefault(projectId: string, path: string): Promise<AppResult<void>>;
+    /**
+     * Fechar a janela com arquivo não salvo e a pessoa escolher "Salvar": o processo principal pede ao renderer que
+     * grave tudo, e `handler` devolve `true` só se tudo foi gravado e nada ficou sujo (o preload leva a resposta de
+     * volta). Com qualquer outra resposta a janela fica aberta. Devolve a função que cancela a assinatura.
+     */
+    onSaveAllRequest(handler: () => Promise<boolean>): () => void;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

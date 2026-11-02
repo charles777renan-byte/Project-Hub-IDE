@@ -47,7 +47,8 @@
 }
 
 /* Marca: o símbolo em duas metades e o nome em caixa alta. */
-.topbar__sidebar-toggle {
+.topbar__sidebar-toggle,
+.topbar__right-toggle {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -63,9 +64,15 @@
   -webkit-app-region: no-drag;
 }
 
-.topbar__sidebar-toggle:hover:not(:disabled) {
+.topbar__sidebar-toggle:hover:not(:disabled),
+.topbar__right-toggle:hover:not(:disabled) {
   background: var(--topbar-hover);
   color: var(--text);
+}
+
+/* O botão do painel direito vai para o canto: empurrado à direita, logo antes dos 140px dos botões do Windows. */
+.topbar__right-toggle {
+  margin-left: auto;
 }
 
 .topbar__brand {
@@ -381,6 +388,11 @@
  */
 .app-body--side-collapsed {
   padding-left: 0;
+}
+
+/* O mesmo à direita: com o painel direito recolhido, a divisória faz o papel do respiro da borda direita. */
+.app-body--right-collapsed {
+  padding-right: 0;
 }
 
 .app-body > .pane-tree__separator[aria-orientation='vertical']:hover,

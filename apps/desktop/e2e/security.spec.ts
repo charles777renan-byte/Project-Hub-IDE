@@ -86,6 +86,7 @@ test.describe('renderer isolado', () => {
         missions: names(api['missions']),
         approvals: names(api['approvals']),
         limits: names(api['limits']),
+        files: names(api['files']),
         worktrees: names(api['worktrees']),
         terminals: names(api['terminals']),
         workspaces: names(api['workspaces']),
@@ -97,6 +98,7 @@ test.describe('renderer isolado', () => {
     expect(surface?.root).toEqual([
       'activity',
       'approvals',
+      'files',
       'limits',
       'missions',
       'ping',
@@ -109,6 +111,16 @@ test.describe('renderer isolado', () => {
       'worktrees',
     ]);
     expect(surface?.limits).toEqual(['get', 'refresh', 'subscribe']);
+    expect(surface?.files).toEqual([
+      'list',
+      'onSaveAllRequest',
+      'openDefault',
+      'read',
+      'searchContent',
+      'searchNames',
+      'stat',
+      'write',
+    ]);
     expect(surface?.terminals).toEqual([
       'list',
       'onEvent',
@@ -123,6 +135,7 @@ test.describe('renderer isolado', () => {
       ...(surface?.missions ?? []),
       ...(surface?.approvals ?? []),
       ...(surface?.limits ?? []),
+      ...(surface?.files ?? []),
       ...(surface?.worktrees ?? []),
       ...(surface?.terminals ?? []),
       ...(surface?.workspaces ?? []),

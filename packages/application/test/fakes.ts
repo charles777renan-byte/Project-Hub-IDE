@@ -76,6 +76,14 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       if (git.defaultBranch !== undefined) restored.defaultBranch = git.defaultBranch;
       byId.set(id, restored);
     },
+    setRepositoryKind(id, git, updatedAt) {
+      const record = byId.get(id);
+      if (record === undefined) return;
+      const changed: ProjectRecord = { ...record, repositoryKind: git.repositoryKind, updatedAt };
+      delete changed.defaultBranch;
+      if (git.defaultBranch !== undefined) changed.defaultBranch = git.defaultBranch;
+      byId.set(id, changed);
+    },
     records: () => [...byId.values()].map((r) => ({ ...r })),
   };
 }

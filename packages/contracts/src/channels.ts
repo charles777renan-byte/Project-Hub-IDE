@@ -11,6 +11,10 @@ export const CHANNELS = {
   /** Tira o projeto da lista. Não apaga a pasta, o Git nem as missões. */
   projectsRemove: 'projects:remove:v1',
   projectsOpenFolder: 'projects:open-folder:v1',
+  /** O que a confirmação de criar o repositório Git mostra (ADR 0009). Não escreve nada. */
+  projectsRepositoryPreview: 'projects:repository-preview:v1',
+  /** Cria o repositório Git com o primeiro commit, depois da confirmação (ADR 0009). */
+  projectsInitRepository: 'projects:init-repository:v1',
   projectsSetGroup: 'projects:set-group:v1',
   projectsSetNickname: 'projects:set-nickname:v1',
   missionsCreate: 'missions:create:v1',
@@ -82,4 +86,17 @@ export const CHANNELS = {
   limitsRefresh: 'limits:refresh:v1',
   /** Mudança nos limites (leitura nova ou em andamento), do processo principal para o renderer. Não tem resposta. */
   limitsEvent: 'limits:event:v1',
+  /** Arquivos do projeto (painel direito, fase 1). Só entram o id do projeto e um caminho relativo POSIX. */
+  filesList: 'files:list:v1',
+  filesStat: 'files:stat:v1',
+  filesRead: 'files:read:v1',
+  filesWrite: 'files:write:v1',
+  filesSearchNames: 'files:search-names:v1',
+  filesSearchContent: 'files:search-content:v1',
+  /** Abre o arquivo no programa padrão do sistema. */
+  filesOpenDefault: 'files:open-default:v1',
+  /** Fechar a janela com "Salvar": o processo principal pede ao renderer que grave os arquivos sujos. Não tem resposta. */
+  filesSaveAllRequest: 'files:save-all-request:v1',
+  /** O renderer diz como foi o pedido acima: `saved` só vale `true` se nada ficou sujo. */
+  filesSaveAllResult: 'files:save-all-result:v1',
 } as const;

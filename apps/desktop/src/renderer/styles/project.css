@@ -119,6 +119,27 @@
 }
 
 .project-tab__panel--terminais {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* O workspace de painéis enche o que a faixa de arquivos deixa. Escondido (um arquivo ativo), segue montado. */
+.project-tab__terminals {
+  flex: 1;
+  min-height: 0;
+}
+
+.project-tab__terminals[hidden] {
+  display: none;
+}
+
+/* O arquivo ativo ocupa o mesmo lugar do workspace; o editor (right-panel.css) enche o painel e rola por dentro. */
+.project-tab__file {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -261,6 +282,13 @@
   color: var(--muted);
 }
 
+/* O aviso sem Git e o botão de criar o repositório (ADR 0009): empilhados, o botão e a confirmação à esquerda. */
+.project-missions__git {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+}
+
 .project-missions__empty {
   display: flex;
   flex-wrap: wrap;
@@ -387,7 +415,6 @@
   color: var(--muted);
   font-size: var(--text-sm);
 }
-
 
 .composer__spacer {
   flex: 1;

@@ -1,10 +1,20 @@
 import type { NavigateFunction } from 'react-router';
 import type { ProjectSummary } from '@project-hub/contracts';
-import { CircleDot, Folder, FolderPlus, House, PanelLeft, Plus, UserPen } from './components/Icon';
+import {
+  CircleDot,
+  Folder,
+  FolderPlus,
+  House,
+  PanelLeft,
+  PanelRight,
+  Plus,
+  UserPen,
+} from './components/Icon';
 import type { ItemComando } from './components/PaletaComandos';
 import { boardStatusLabel, statusTone } from './mission-text';
 import type { SidebarData } from './overview-data';
 import { ADD_PROJECT_REQUEST_EVENT } from './projects-events';
+import { TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
 import { EDIT_NAME_PARAM, missionPath, projectPath, ROUTE_PATHS } from './routes';
 import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 
@@ -133,6 +143,15 @@ export function buildPaletteItems(sidebar: SidebarData, navigate: NavigateFuncti
       tipo: 'acao',
       atalho: 'Ctrl B',
       executar: () => window.dispatchEvent(new Event(TOGGLE_SIDEBAR_EVENT)),
+    },
+    {
+      id: 'acao:alternar-painel-direito',
+      rotulo: 'Mostrar/Esconder painel direito',
+      grupo: 'Ações',
+      icone: PanelRight,
+      tipo: 'acao',
+      atalho: 'Ctrl Alt B',
+      executar: () => window.dispatchEvent(new Event(TOGGLE_RIGHT_PANEL_EVENT)),
     },
     {
       id: 'acao:inicio',

@@ -101,3 +101,35 @@ export async function orchestrate(page: Page): Promise<void> {
     missionSummary(page).getByText('Aguarda aprovação do plano', { exact: true }),
   ).toBeVisible();
 }
+
+/** A árvore de arquivos da aba Arquivos do painel direito. */
+export function filesTree(page: Page): Locator {
+  return page.getByRole('tree', { name: 'Arquivos do projeto' });
+}
+
+/**
+ * Abre um arquivo pela árvore do painel direito, só com o teclado: cada pasta do caminho (relativo, em POSIX)
+ * recebe o foco e é expandida com Enter, se estiver recolhida, e o arquivo é aberto com Enter. Espera a aba do
+ * arquivo aparecer ao lado de "Terminais".
+ */
+export async function openFileFromPanel(page: Page, caminho: string): Promise<void> {
+  const partes = caminho.split('/');
+  const tree = filesTree(page);
+  for (const [indice, nome] of partes.entries()) {
+    // Pelo nome visível e pelo nível: o nome acessível de uma pasta aberta inclui o que ela contém (aria-owns).
+    const item = tree
+      .locator(`.files-tree__item[aria-level="${indice + 1}"]`)
+      .filter({ has: page.getByText(nome, { exact: true }) });
+    await item.focus();
+    const ultimo = indice === partes.length - 1;
+    if (ultimo || (await item.getAttribute('aria-expanded')) !== 'true') {
+      await page.keyboard.press('Enter');
+    }
+  }
+  // A aba do arquivo leva o caminho relativo no `title`.
+  await expect(
+    page
+      .getByRole('tablist', { name: 'Arquivos abertos' })
+      .locator(`[role="tab"][title="${caminho}"]`),
+  ).toHaveAttribute('aria-selected', 'true');
+}
