@@ -509,3 +509,38 @@ test('fechar a janela com arquivo não salvo: Salvar que não consegue gravar ma
   expect(readDisk(files.a)).toBe('export const externo = true;\n');
   await close().catch(() => undefined);
 });
+
+test('o botão do painel direito fica no canto da barra superior, antes dos botões do Windows', async ({
+  launchApp,
+  gitRepo,
+}, testInfo) => {
+  const projectName = basename(gitRepo.path);
+  const { app, page } = await launchApp({ dialogPath: gitRepo.path });
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+
+  const toggle = page.getByRole('button', { name: 'Ocultar painel direito' });
+  const add = page.getByRole('button', { name: 'Abrir workspace' });
+  // Caixa do botão em relação à janela: ele termina antes dos 140px reservados aos botões do Windows e depois do botão "+".
+  const check = async (label: string): Promise<void> => {
+    const box = await toggle.boundingBox();
+    const addBox = await add.boundingBox();
+    const width = await page.evaluate(() => window.innerWidth);
+    if (box === null || addBox === null) throw new Error('Sem caixa na tela.');
+    expect(box.x + box.width, `${label}: antes dos botões do Windows`).toBeLessThanOrEqual(
+      width - 140,
+    );
+    expect(box.x + box.width, `${label}: perto do canto`).toBeGreaterThanOrEqual(width - 140 - 16);
+    expect(box.x, `${label}: depois do botão de abrir workspace`).toBeGreaterThanOrEqual(
+      addBox.x + addBox.width,
+    );
+    await page.screenshot({ path: testInfo.outputPath(`barra-${label}.png`) });
+  };
+
+  await check('larga');
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setSize(900, 700);
+  });
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThanOrEqual(900);
+  await check('estreita');
+});

@@ -67,19 +67,19 @@ test('o documento não rola, as três barras aparecem e o anel de foco não é c
   expect(status.y + status.height).toBeGreaterThanOrEqual(scroll.innerHeight - 1);
   expect(side.y + side.height).toBeLessThanOrEqual(status.y + 1);
 
-  // A barra superior vem antes da lateral: o primeiro Tab cai no botão que oculta a lateral, depois no que oculta o
-  // painel direito, na aba fixa Início e no botão de abrir workspace; a busca da lateral vem em seguida, e depois o
-  // botão de adicionar projeto.
+  // A barra superior vem antes da lateral: o primeiro Tab cai no botão que oculta a lateral, depois na aba fixa
+  // Início, no botão de abrir workspace e no que oculta o painel direito (no canto); a busca da lateral vem em
+  // seguida, e depois o botão de adicionar projeto.
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Ocultar barra lateral' })).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('button', { name: 'Ocultar painel direito' })).toBeFocused();
   await page.keyboard.press('Tab');
   const home = page.getByRole('link', { name: 'Início', exact: true });
   await expect(home).toBeFocused();
   const homeRing = await focusRing(home, '.topbar');
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Abrir workspace' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Ocultar painel direito' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: /Buscar projeto ou agente/ })).toBeFocused();
   await page.keyboard.press('Tab');

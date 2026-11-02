@@ -995,6 +995,28 @@ describe('botão do painel direito', () => {
     },
   );
 
+  it('o botão fica no fim da barra: depois das abas e do botão de abrir workspace; o da lateral segue antes da marca', async () => {
+    installApi();
+    render(
+      <MemoryRouter>
+        <TopBar onToggleSidebar={() => undefined} onToggleRight={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    const right = await screen.findByRole('button', { name: 'Ocultar painel direito' });
+    const add = screen.getByRole('button', { name: 'Abrir workspace' });
+    const home = screen.getByRole('link', { name: 'Início' });
+    const side = screen.getByRole('button', { name: 'Ocultar barra lateral' });
+    const brand = screen.getByText('Project Hub');
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    expect(follows(side, brand)).toBe(true);
+    expect(follows(home, right)).toBe(true);
+    expect(follows(add, right)).toBe(true);
+    expect(right.closest('header')?.lastElementChild?.contains(right)).toBe(true);
+  });
+
   it('clicar chama onToggleRight', async () => {
     installApi();
     const onToggleRight = vi.fn();

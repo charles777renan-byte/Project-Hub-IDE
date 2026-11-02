@@ -47,9 +47,9 @@ function prefersReducedMotion(): boolean {
 
 /**
  * Barra superior de 36px, que é também a barra de título da janela (TITLE_BAR_OVERLAY em window.ts):
- * a marca, a aba fixa Início (link para `/`, sempre a primeira, sem botão de fechar e fora da
- * reordenação), as abas dos workspaces abertos e o botão que abre outro workspace. Antes da marca ficam os dois
- * botões de layout: o que esconde a barra lateral e, ao lado dele, o que esconde o painel direito. Arrastar pelo fundo
+ * o botão que esconde a barra lateral, a marca, a aba fixa Início (link para `/`, sempre a primeira, sem
+ * botão de fechar e fora da reordenação), as abas dos workspaces abertos e o botão que abre outro workspace. O botão
+ * que esconde o painel direito é o último: fica no canto, logo antes dos botões do Windows. Arrastar pelo fundo
  * move a janela; abas, botão e menu ficam fora da área de arrastar (workspace.css). Os nomes dos projetos entram sempre como
  * texto. A aba de um projeto que espera a pessoa (terminal em `waiting` ou missão que pede decisão) ganha
  * a marca de atenção, escondida dos leitores de tela, com a descrição "Precisa de você" no link.
@@ -331,29 +331,6 @@ export function TopBar({
           </button>
         </Hint>
       )}
-      {onToggleRight === undefined ? null : (
-        <Hint
-          label={
-            rightCollapsed
-              ? 'Mostrar painel direito (Ctrl+Alt+B)'
-              : 'Ocultar painel direito (Ctrl+Alt+B)'
-          }
-        >
-          <button
-            type="button"
-            className="topbar__right-toggle"
-            aria-label={rightCollapsed ? 'Mostrar painel direito' : 'Ocultar painel direito'}
-            aria-expanded={!rightCollapsed}
-            onClick={onToggleRight}
-          >
-            {rightCollapsed ? (
-              <PanelRightOpen {...ICON_PROPS} />
-            ) : (
-              <PanelRightClose {...ICON_PROPS} />
-            )}
-          </button>
-        </Hint>
-      )}
       <p className="topbar__brand">
         <img src={markUrl} alt="" aria-hidden="true" className="topbar__mark" />
         Project Hub
@@ -460,6 +437,29 @@ export function TopBar({
         <p role="alert" className="topbar__error" title={notice}>
           {notice}
         </p>
+      )}
+      {onToggleRight === undefined ? null : (
+        <Hint
+          label={
+            rightCollapsed
+              ? 'Mostrar painel direito (Ctrl+Alt+B)'
+              : 'Ocultar painel direito (Ctrl+Alt+B)'
+          }
+        >
+          <button
+            type="button"
+            className="topbar__right-toggle"
+            aria-label={rightCollapsed ? 'Mostrar painel direito' : 'Ocultar painel direito'}
+            aria-expanded={!rightCollapsed}
+            onClick={onToggleRight}
+          >
+            {rightCollapsed ? (
+              <PanelRightOpen {...ICON_PROPS} />
+            ) : (
+              <PanelRightClose {...ICON_PROPS} />
+            )}
+          </button>
+        </Hint>
       )}
     </header>
   );

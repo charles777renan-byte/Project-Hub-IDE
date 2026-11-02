@@ -67,16 +67,16 @@ describe('App', () => {
         </MemoryRouter>,
       );
 
-      // A barra superior vem antes da lateral: primeiro o botão da barra lateral e o do painel direito, depois a
-      // aba fixa Início e o botão de abrir workspace.
+      // A barra superior vem antes da lateral: primeiro o botão da barra lateral, depois a aba fixa Início, o
+      // botão de abrir workspace e o do painel direito, que fica no canto.
       await user.tab();
       expect(screen.getByRole('button', { name: 'Ocultar barra lateral' })).toHaveFocus();
-      await user.tab();
-      expect(screen.getByRole('button', { name: 'Ocultar painel direito' })).toHaveFocus();
       await user.tab();
       expect(homeTab()).toHaveFocus();
       await user.tab();
       expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Ocultar painel direito' })).toHaveFocus();
       await user.tab();
       expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
       await user.tab();
