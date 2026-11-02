@@ -34,7 +34,7 @@ export type GitPanelStatus = {
   /** Commits à frente e atrás do upstream; `null` sem upstream ou quando a ref remota sumiu. */
   ahead: number | null;
   behind: number | null;
-  /** Com o que a branch é comparada: o upstream, ou `origin/main`; `null` quando nenhum dos dois existe. */
+  /** Com o que a branch é comparada: sempre `origin/main`; `null` quando essa ref não existe. */
   baseRef: string | null;
   /** Linhas somadas e removidas em relação à base (arquivos binários não contam); `null` sem base. */
   linesAdded: number | null;
@@ -82,7 +82,7 @@ export type FileDiffAgainstBase = {
 
 /** Bytes de patch por arquivo. */
 const DEFAULT_MAX_PATCH_BYTES = 256 * 1024;
-/** A base, quando a branch não tem upstream (a "branch padrão" fica como `main` até haver leitura de `origin/HEAD`). */
+/** A base das listas e das linhas: a branch padrão, que fica como `main` até haver leitura de `origin/HEAD`. */
 const DEFAULT_BASE_REF = 'origin/main';
 /**
  * Opções de todo `git diff` do painel. `--no-renames` mantém a lista sem heurística (um renomeado é um apagado e
@@ -150,7 +150,7 @@ export type ParsedStatus = {
  * Lê o `status --porcelain=v2 --branch -z`: registros separados por NUL. Os `# ` são cabeçalhos da branch; os
  * demais são um arquivo cada (`1` alterado, `2` renomeado ou copiado, `u` em conflito, `?` novo, `!` ignorado). O
  * `2` traz o caminho antigo no campo seguinte, que não é um registro. O caminho vai até o fim do campo e pode ter
- * espaços, acento e até quebra de linha (o `-z` não cita nada). Conflito (`u`) entra como `M` fora do stage.
+ * espaços, acento e até quebra de linha (o `-z` não cita nada). Conflito (`u`) entra como `U` fora do stage.
  */
 export function parsePorcelainStatus(output: string): ParsedStatus {
   let oid: string | undefined;
@@ -189,7 +189,7 @@ export function parsePorcelainStatus(output: string): ParsedStatus {
       });
       index += 1; // o caminho de origem do renomeado
     } else if (field.startsWith('u ')) {
-      files.push({ path: afterSpaces(field, 10), staged: null, unstaged: 'M' });
+      files.push({ path: afterSpaces(field, 10), staged: null, unstaged: 'U' });
     } else if (field.startsWith('? ')) {
       files.push({ path: field.slice(2), staged: null, unstaged: 'U' });
     }
@@ -206,40 +206,34 @@ export function parsePorcelainStatus(output: string): ParsedStatus {
   };
 }
 
-/** O primeiro candidato que é uma ref de commit. `rev-parse --verify --quiet` sai com 1 quando não existe. */
-async function firstExistingRef(
-  options: ReadOptions,
-  candidates: ReadonlyArray<string | null>,
-): Promise<string | null> {
-  const seen = new Set<string>();
-  for (const candidate of candidates) {
-    if (candidate === null || !isOperand(candidate) || seen.has(candidate)) continue;
-    seen.add(candidate);
-    try {
-      await runGit(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], {
-        cwd: options.repo,
-        gitBinary: options.gitBinary,
-      });
-      return candidate;
-    } catch (error) {
-      if (!(error instanceof GitError && error.exitCode === 1)) throw error;
-    }
+/** A ref é um commit que existe? `rev-parse --verify --quiet` sai com 1 quando não existe. */
+async function refExists(options: ReadOptions, ref: string): Promise<boolean> {
+  if (!isOperand(ref)) return false;
+  try {
+    await runGit(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
+      cwd: options.repo,
+      gitBinary: options.gitBinary,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof GitError && error.exitCode === 1) return false;
+    throw error;
   }
-  return null;
 }
 
 /**
- * A base do painel e o ponto de partida da branch em relação a ela. A base é o upstream; sem upstream (ou com a
- * ref remota apagada), `origin/main`; sem nenhum dos dois, não há base. `merge-base` sai com 1 quando os
- * históricos não têm ancestral comum: `mergeBase` fica `null`, e isso não é erro.
+ * A base do painel e o ponto de partida da branch em relação a ela. A base é sempre `origin/main` (a branch
+ * padrão, até haver leitura de `origin/HEAD`), tenha a branch upstream ou não: o upstream serve só para
+ * `upstream`, `ahead` e `behind`. Sem `origin/main`, não há base. `merge-base` sai com 1 quando os históricos
+ * não têm ancestral comum: `mergeBase` fica `null`, e isso não é erro.
  */
 async function resolveBase(
   options: ReadOptions,
-  parsed: Pick<ParsedStatus, 'upstream' | 'hasCommits'>,
+  parsed: Pick<ParsedStatus, 'hasCommits'>,
 ): Promise<{ baseRef: string | null; mergeBase: string | null }> {
   if (!parsed.hasCommits) return { baseRef: null, mergeBase: null };
-  const baseRef = await firstExistingRef(options, [parsed.upstream, DEFAULT_BASE_REF]);
-  if (baseRef === null) return { baseRef: null, mergeBase: null };
+  if (!(await refExists(options, DEFAULT_BASE_REF))) return { baseRef: null, mergeBase: null };
+  const baseRef = DEFAULT_BASE_REF;
   try {
     const { stdout } = await runGit(['merge-base', 'HEAD', baseRef], {
       cwd: options.repo,
@@ -296,11 +290,17 @@ function parseNameStatus(output: string): Array<{ path: string; status: BranchCh
   return records;
 }
 
-/** Os arquivos que a pasta de trabalho mudou desde `mergeBase`, com o estado e as linhas de cada um. */
+/**
+ * Os arquivos que os commits da branch mudaram, de `mergeBase` até o `HEAD`, com o estado e as linhas de cada
+ * um. O `HEAD` como segundo operando deixa de fora o que está só na pasta de trabalho ou no stage.
+ */
 async function changesSince(options: ReadOptions, mergeBase: string): Promise<BranchChangeFile[]> {
   const git = { cwd: options.repo, gitBinary: options.gitBinary };
-  const nameStatus = await runGit(['diff', '--name-status', '-z', ...DIFF_FLAGS, mergeBase], git);
-  const numstat = await runGit(['diff', '--numstat', '-z', ...DIFF_FLAGS, mergeBase], git);
+  const nameStatus = await runGit(
+    ['diff', '--name-status', '-z', ...DIFF_FLAGS, mergeBase, 'HEAD'],
+    git,
+  );
+  const numstat = await runGit(['diff', '--numstat', '-z', ...DIFF_FLAGS, mergeBase, 'HEAD'], git);
   const lines = new Map(parseNumstat(numstat.stdout).map((record) => [record.path, record]));
   return parseNameStatus(nameStatus.stdout).map(({ path, status }) => ({
     path,
@@ -320,10 +320,14 @@ function sum(values: ReadonlyArray<number | null>): number {
  * `null`, sem erro. Só lê (o `status` roda sem regravar o índice).
  */
 export async function getGitPanelStatus(options: ReadOptions): Promise<GitPanelStatus> {
-  const { stdout } = await runGit(['status', '--porcelain=v2', '--branch', '-z'], {
-    cwd: options.repo,
-    gitBinary: options.gitBinary,
-  });
+  // `--untracked-files=all`: cada arquivo novo vem num registro, e não só a pasta (`pasta/`).
+  const { stdout } = await runGit(
+    ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'],
+    {
+      cwd: options.repo,
+      gitBinary: options.gitBinary,
+    },
+  );
   const parsed = parsePorcelainStatus(stdout);
   const { baseRef, mergeBase } = await resolveBase(options, parsed);
   const changes = mergeBase === null ? null : await changesSince(options, mergeBase);
@@ -434,7 +438,7 @@ export async function getFileDiffAgainstBase(
   if (baseRef === null || mergeBase === null) return null;
 
   const { stdout } = await runGit(
-    ['diff', mergeBase, '--patch', ...DIFF_FLAGS, '--', literal(options.path)],
+    ['diff', mergeBase, 'HEAD', '--patch', ...DIFF_FLAGS, '--', literal(options.path)],
     { cwd: options.repo, gitBinary: options.gitBinary },
   );
   const hunks = /^@@/mu.exec(stdout);
