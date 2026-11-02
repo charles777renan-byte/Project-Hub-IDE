@@ -5,8 +5,8 @@ import {
   missionUsageEventDtoSchema,
   terminalEventSchema,
   responseSchemas,
-  type ActivityDay,
   type AddProjectInput,
+  type AgentActivity,
   type AppResult,
   type CreateMissionInput,
   type DecideApprovalInput,
@@ -195,7 +195,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       remove: (missionId: string) => call<void>(CHANNELS.worktreesRemove, { missionId }),
     },
     activity: {
-      daily: () => call<ActivityDay[]>(CHANNELS.activityDaily),
+      agents: () => call<AgentActivity>(CHANNELS.activityAgents),
     },
     profile: {
       get: () => call<ProfileDto>(CHANNELS.profileGet),

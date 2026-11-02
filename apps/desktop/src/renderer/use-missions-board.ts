@@ -1,30 +1,53 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { MissionDto, MissionStepDto } from '@project-hub/contracts';
-import { isEnded } from './mission-text';
+import type { MissionDto, MissionStepDto, MissionViewDto } from '@project-hub/contracts';
+import { isEnded, type AgentId } from './mission-text';
 import { RELOAD_DELAY_MS } from './overview-data';
 import { useSidebarData } from './use-sidebar-data';
 
-/** Quantas missões abertas (as mais recentes) têm as etapas lidas para o progresso. As outras mostram só o estado. */
+/**
+ * Quantas missões têm a visão lida para o progresso, os tokens e o agente: as abertas mais recentes e, depois,
+ * as encerradas mais recentes. As outras mostram só o estado.
+ */
 export const MAX_PROGRESS_READS = 20;
 
-/** Uma missão do quadro: o projeto dela e as tarefas feitas e totais (0/0 quando as etapas não foram lidas). */
+/**
+ * Uma missão do quadro: o projeto dela, as tarefas feitas e totais (0/0 quando a visão não foi lida), os tokens
+ * gastos (entrada nova mais saída, somados das tentativas; ausente sem leitura ou sem número) e os agentes das
+ * tarefas (ausente sem leitura).
+ */
 export type MissionBoardItem = {
   mission: MissionDto;
   projectId: string;
   projectName: string;
   done: number;
   total: number;
+  tokens?: number;
+  agents?: AgentId[];
 };
 
-type Progress = { done: number; total: number };
+type Progress = { done: number; total: number; tokens?: number; agents: AgentId[] };
 
-/** Só as etapas com papel são tarefas (as outras são apresentação); feita é a que terminou. */
-function progressOf(steps: readonly MissionStepDto[]): Progress {
-  const tasks = steps.filter((step) => step.role !== undefined);
-  return { done: tasks.filter((step) => step.status === 'succeeded').length, total: tasks.length };
+/**
+ * O que o quadro lê da visão: só as etapas com papel são tarefas (as outras são apresentação), e feita é a que
+ * terminou; os tokens somam as tentativas que informaram uso; os agentes são os de todas as etapas (missão antiga
+ * não tem tarefa com papel, mas tem o agente), sem repetir.
+ */
+function progressOf(view: Pick<MissionViewDto, 'steps' | 'executions'>): Progress {
+  const tasks = view.steps.filter((step: MissionStepDto) => step.role !== undefined);
+  const used = view.executions.flatMap((execution) =>
+    execution.usage === undefined ? [] : [execution.usage],
+  );
+  const progress: Progress = {
+    done: tasks.filter((step) => step.status === 'succeeded').length,
+    total: tasks.length,
+    agents: [...new Set(view.steps.map((step) => step.agent))],
+  };
+  if (used.length > 0)
+    progress.tokens = used.reduce((sum, usage) => sum + usage.inputTokens + usage.outputTokens, 0);
+  return progress;
 }
 
-type Entry = Omit<MissionBoardItem, 'done' | 'total'>;
+type Entry = Omit<MissionBoardItem, 'done' | 'total' | 'tokens' | 'agents'>;
 
 /**
  * Quadro de missões com progresso: as de todos os projetos ativos (ou só as de `filter.projectId`), as
@@ -61,12 +84,9 @@ export function useMissionsBoard(filter?: { projectId?: string }): {
     ];
   }, [sidebar, projectId]);
 
-  // As missões cujas etapas se leem. A chave não muda quando só a identidade da lista muda (troca de
-  // rota, por exemplo), para não repetir até 20 leituras sem motivo.
-  const targets = useMemo(
-    () => entries.filter(({ mission }) => !isEnded(mission.status)).slice(0, MAX_PROGRESS_READS),
-    [entries],
-  );
+  // As missões cuja visão se lê: a lista já vem com as abertas antes das encerradas. A chave não muda quando
+  // só a identidade da lista muda (troca de rota, por exemplo), para não repetir até 20 leituras sem motivo.
+  const targets = useMemo(() => entries.slice(0, MAX_PROGRESS_READS), [entries]);
   const targetsKey = targets
     .map(({ mission }) => `${mission.id}:${mission.status}:${mission.updatedAt}`)
     .join('|');
@@ -95,7 +115,7 @@ export function useMissionsBoard(filter?: { projectId?: string }): {
         targets.map(async ({ mission }): Promise<[string, Progress] | undefined> => {
           try {
             const result = await window.projectHub.missions.get(mission.id);
-            return result.ok ? [mission.id, progressOf(result.data.steps)] : undefined;
+            return result.ok ? [mission.id, progressOf(result.data)] : undefined;
           } catch {
             return undefined;
           }

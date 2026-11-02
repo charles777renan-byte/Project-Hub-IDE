@@ -1,4 +1,4 @@
-export * from './activity';
+export * from './agent-activity';
 export * from './api';
 export * from './channels';
 export * from './errors';

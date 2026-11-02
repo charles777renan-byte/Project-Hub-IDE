@@ -474,9 +474,88 @@ export const HOME_TEXT = {
     done: 'Concluídas',
   } satisfies Record<MissionStatusFilter, string>,
   tasks: (done: number, total: number) => `${done}/${total} tarefas`,
+  /** Tokens de uma missão, já formatados ("12,4k tokens"). */
+  tokensShort: (amount: string) => `${amount} tokens`,
   progressLabel: (title: string, done: number, total: number) =>
     `Progresso de ${title}: ${done} de ${total} tarefas`,
-  activityEmpty: (days: number) => `Nenhuma atividade nos últimos ${days} dias.`,
+  /** Bloco "Visão geral" do Início: mensagens e tokens por dia e por agente, só do uso feito pelo app. */
+  overview: {
+    title: 'Visão geral',
+    error: 'Não foi possível carregar o uso dos agentes.',
+    tabsLabel: 'Visões do uso dos agentes',
+    tabs: { overview: 'Visão geral', messages: 'Mensagens', tokens: 'Tokens' },
+    periodGroup: 'Período',
+    periods: { all: 'Tudo', 7: '7 dias', 30: '30 dias', 90: '90 dias' },
+    agentGroup: 'Agente',
+    allAgents: 'Todos',
+    note: 'Conta só o que foi feito pelo app. Codex e Antigravity são ligados pela pasta e pelo horário.',
+    empty: {
+      messages: 'Nenhuma mensagem pelo app neste período.',
+      tokens: 'Nenhum token pelo app neste período.',
+    },
+    unavailable: (metric: 'messages' | 'tokens', agentLabel: string) =>
+      `${metric === 'messages' ? 'Mensagens indisponíveis' : 'Tokens indisponíveis'} para o ${agentLabel}.`,
+    statsLabel: 'Resumo do período',
+    /** Nome da legenda de um total: "Mensagens no período por agente". */
+    sharesLabel: (total: string) => `${total} por agente`,
+    stat: {
+      messages: 'Mensagens no período',
+      tokens: 'Tokens no período',
+      streak: 'Sequência atual',
+      busiest: 'Dia mais ativo',
+    },
+    unavailableValue: 'indisponível',
+    noValue: '—',
+    without: (labels: string[]) => `sem ${labels.join(', ')}`,
+    days: (count: number) => (count === 1 ? '1 dia' : `${count} dias`),
+    weekdays: [
+      'domingo',
+      'segunda-feira',
+      'terça-feira',
+      'quarta-feira',
+      'quinta-feira',
+      'sexta-feira',
+      'sábado',
+    ],
+    rowLabels: ['', 'seg', '', 'qua', '', 'sex', ''],
+    legendLess: 'menos',
+    legendMore: 'mais',
+    /** Nome do grupo do mapa: o total e o recorte, ex.: "12 mensagens do Codex nos últimos 7 dias." */
+    summary: (
+      metric: 'messages' | 'tokens',
+      total: string,
+      one: boolean,
+      agentLabel: string | null,
+      period: 'all' | number,
+    ) => {
+      const noun =
+        metric === 'messages' ? (one ? 'mensagem' : 'mensagens') : one ? 'token' : 'tokens';
+      const agent = agentLabel === null ? '' : ` do ${agentLabel}`;
+      const range = period === 'all' ? ' em todo o período' : ` nos últimos ${period} dias`;
+      return `${total} ${noun}${agent}${range}.`;
+    },
+    /** Nome de um dia do mapa: "12 de out.: 3 mensagens, Claude". `agentLabel` é o agente dominante do dia. */
+    dayName: (date: string, amount: string, agentLabel: string | null) =>
+      `${date}: ${amount}${agentLabel === null ? '' : `, ${agentLabel}`}`,
+    amount: {
+      messages: (count: number | null, formatted: string) =>
+        count === null
+          ? 'mensagens indisponíveis'
+          : count === 0
+            ? 'nenhuma mensagem'
+            : count === 1
+              ? '1 mensagem'
+              : `${formatted} mensagens`,
+      tokens: (count: number | null, formatted: string) =>
+        count === null
+          ? 'tokens indisponíveis'
+          : count === 0
+            ? 'nenhum token'
+            : count === 1
+              ? '1 token'
+              : `${formatted} tokens`,
+    },
+  },
 } as const;
 
 /** Textos da aba do projeto: a barra de visões, as ações do projeto e as configurações. */

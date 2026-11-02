@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { activityDailyResponseSchema } from './activity';
+import { agentActivityResponseSchema } from './agent-activity';
 import { CHANNELS } from './channels';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
@@ -84,7 +84,7 @@ export const responseSchemas = {
   [CHANNELS.approvalsDecide]: appResultSchema(z.undefined()),
   [CHANNELS.worktreesList]: appResultSchema(z.array(worktreeDtoSchema)),
   [CHANNELS.worktreesRemove]: appResultSchema(z.undefined()),
-  [CHANNELS.activityDaily]: appResultSchema(activityDailyResponseSchema),
+  [CHANNELS.activityAgents]: appResultSchema(agentActivityResponseSchema),
   [CHANNELS.profileGet]: appResultSchema(profileDtoSchema),
   [CHANNELS.profileSetDisplayName]: appResultSchema(z.undefined()),
   [CHANNELS.systemUsage]: appResultSchema(systemUsageDtoSchema),

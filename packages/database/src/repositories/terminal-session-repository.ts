@@ -16,6 +16,8 @@ export interface TerminalSessionRepository {
   get(id: string): TerminalSessionRecord | undefined;
   /** Sessões sem `closedAt`, da mais antiga para a mais nova. */
   listOpen(): TerminalSessionRecord[];
+  /** Todas as sessões, abertas e fechadas, da mais antiga para a mais nova. Só leitura. */
+  listAll(): TerminalSessionRecord[];
   close(id: string, closedAt: string): void;
 }
 
@@ -59,6 +61,15 @@ export function createTerminalSessionRepository(db: AppDatabase): TerminalSessio
         .select()
         .from(terminalSessions)
         .where(isNull(terminalSessions.closedAt))
+        .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
+        .all()
+        .map(toRecord);
+    },
+
+    listAll() {
+      return db
+        .select()
+        .from(terminalSessions)
         .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
         .all()
         .map(toRecord);
