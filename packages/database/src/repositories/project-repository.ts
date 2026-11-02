@@ -29,6 +29,12 @@ export interface ProjectRepository {
     updatedAt: string,
     git: { repositoryKind: 'git' | 'none'; defaultBranch?: string },
   ): void;
+  /** Grava o tipo e a branch padrão de um projeto ativo, depois de a pasta virar repositório (ADR 0009). */
+  setRepositoryKind(
+    id: string,
+    git: { repositoryKind: 'git' | 'none'; defaultBranch?: string },
+    updatedAt: string,
+  ): void;
 }
 
 type ProjectRow = typeof projects.$inferSelect;
@@ -139,6 +145,17 @@ export function createProjectRepository(db: AppDatabase): ProjectRepository {
           updatedAt,
           repositoryKind: git.repositoryKind,
           defaultBranch: git.defaultBranch ?? null,
+        })
+        .where(eq(projects.id, id))
+        .run();
+    },
+
+    setRepositoryKind(id, git, updatedAt) {
+      db.update(projects)
+        .set({
+          repositoryKind: git.repositoryKind,
+          defaultBranch: git.defaultBranch ?? null,
+          updatedAt,
         })
         .where(eq(projects.id, id))
         .run();

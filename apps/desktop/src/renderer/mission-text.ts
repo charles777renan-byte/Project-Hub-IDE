@@ -572,6 +572,21 @@ export const PROJECT_TEXT = {
   newMission: 'Nova missão',
   noGitNotice:
     'Este projeto não é um repositório Git. Missões precisam de Git: rode git init na pasta do projeto para criar missões aqui.',
+  /** Criar o repositório Git pelo app (ADR 0009). A pergunta é montada com a prévia do que a pasta tem. */
+  createGitRepo: 'Criar repositório Git',
+  createGitRepoConfirm: 'Criar e fazer o primeiro commit',
+  gitInitQuestion:
+    'Cria o repositório Git nesta pasta e faz o primeiro commit com os arquivos que o .gitignore não ignora.',
+  gitInitCreatesGitignore:
+    'A pasta não tem .gitignore, então um básico será criado (node_modules, .env, chaves e dist).',
+  gitInitSensitive: (files: readonly string[]) => {
+    const shown = files.slice(0, 5).join(', ');
+    const more = files.length > 5 ? ` e mais ${files.length - 5}` : '';
+    const verb = files.length === 1 ? 'tem nome de segredo' : 'têm nome de segredo';
+    return `Atenção: ${shown}${more} ${verb}. Entram no commit se o .gitignore não os ignorar.`;
+  },
+  gitIdentityMissing:
+    'Antes de criar o repositório, configure seu nome e seu e-mail no Git: git config --global user.name e git config --global user.email.',
   moreActions: 'Mais ações',
   archive: 'Arquivar projeto',
   archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
@@ -604,6 +619,103 @@ export const PROJECT_TEXT = {
     cancel: 'Cancelar',
     edit: 'Editar',
     none: 'Nenhum',
+  },
+} as const;
+
+/** Textos do painel direito. Por enquanto só a aba Arquivos (árvore e buscas). */
+export const RIGHT_PANEL_TEXT = {
+  files: {
+    tree: 'Arquivos do projeto',
+    refresh: 'Atualizar',
+    fallbackProject: 'Projeto',
+    searchModes: 'Tipo de busca',
+    byName: 'Nomes',
+    byContent: 'Conteúdo',
+    searchField: 'Encontrar arquivos',
+    regex: 'Regex',
+    loading: 'Carregando…',
+    emptyFolder: 'Pasta vazia',
+    noResults: 'Nenhum arquivo encontrado',
+    partial: 'Índice parcial: refine a busca',
+    ignored: 'Ignorada pelo Git',
+    listError: 'Não foi possível listar os arquivos.',
+    searchError: 'Não foi possível buscar nos arquivos.',
+    results: 'Resultados da busca',
+    line: (line: number) => `linha ${line}`,
+  },
+  /** Os arquivos abertos como abas ao lado dos terminais. */
+  openFiles: {
+    tabs: 'Arquivos abertos',
+    terminals: 'Terminais',
+    unsaved: 'alterações não salvas',
+    close: (name: string) => `Fechar ${name}`,
+    loading: 'Carregando…',
+    readError: 'Não foi possível abrir o arquivo.',
+    /** A pergunta ao fechar uma aba com alterações não salvas (na faixa de abas, sem diálogo do sistema). */
+    closeAsk: {
+      group: (name: string) => `Fechar ${name} com alterações não salvas`,
+      message: (name: string) => `${name} tem alterações não salvas.`,
+      save: 'Salvar',
+      discard: 'Descartar',
+      back: 'Voltar',
+    },
+  },
+  /** O editor de um arquivo aberto (FileEditorTab, CodeEditor). */
+  editor: {
+    label: (name: string) => `Editor de ${name}`,
+    save: 'Salvar',
+    saveError: 'Não foi possível salvar o arquivo.',
+    mixedEol: 'Este arquivo mistura fins de linha; edite no seu editor',
+    cannotEdit: 'Este arquivo não pode ser editado aqui',
+    openDefault: 'Abrir no programa padrão',
+    openDefaultError: 'Não foi possível abrir o arquivo no programa padrão.',
+    /** A barra de status abaixo do editor (EditorStatusBar). */
+    statusBar: {
+      label: 'Informações do arquivo',
+      position: (line: number, column: number) => `Ln ${line}, Col ${column}`,
+      selected: (count: number) => ` (${count} ${count === 1 ? 'selecionado' : 'selecionados'})`,
+      utf8: 'UTF-8',
+      utf8Bom: 'UTF-8 com BOM',
+      eol: { lf: 'LF', crlf: 'CRLF', mixed: 'Misto' },
+    },
+    /** A faixa do arquivo que mudou ou sumiu do disco (FileConflictBar). */
+    conflict: {
+      changed: 'O arquivo mudou no disco enquanto você editava',
+      keepAndCompare: 'Manter o meu e comparar',
+      reload: 'Recarregar do disco (perde as minhas alterações)',
+      viewDisk: 'Ver só a versão do disco',
+      backToMine: 'Voltar ao meu texto',
+      mine: 'A minha versão',
+      disk: 'Versão do disco',
+      overwrite: 'Salvar por cima',
+      overwriteConfirm: 'Confirmar: salvar por cima',
+      loadingDisk: 'Lendo a versão do disco…',
+      diskError: 'Não foi possível ler a versão do disco.',
+      missing: 'O arquivo não existe mais',
+      missingHint: 'O texto continua aqui. Salvar cria o arquivo de novo.',
+      /** Salvar de fora da aba (a pergunta ao fechar) não passa por cima de um aviso do disco. */
+      saveBlockedChanged:
+        'O arquivo mudou no disco. Abra a aba e decida na faixa de aviso antes de salvar.',
+      saveBlockedMissing:
+        'O arquivo não existe mais. Abra a aba e salve por lá para criá-lo de novo.',
+      recreateAsk: 'Criar o arquivo de novo com este texto?',
+      recreate: 'Criar arquivo',
+      back: 'Voltar',
+      reloaded: 'Atualizado: o arquivo mudou no disco',
+    },
+    find: {
+      Find: 'Buscar',
+      Replace: 'Substituir',
+      next: 'próximo',
+      previous: 'anterior',
+      all: 'todos',
+      'match case': 'diferenciar maiúsculas',
+      regexp: 'regex',
+      'by word': 'palavra inteira',
+      replace: 'substituir',
+      'replace all': 'substituir todos',
+      close: 'fechar',
+    },
   },
 } as const;
 

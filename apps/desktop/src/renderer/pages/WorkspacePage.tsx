@@ -8,16 +8,15 @@ import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { PathText } from '../components/PathText';
-import {
-  PROJECT_NO_GIT_NOTICE_ID,
-  PROJECT_UNAVAILABLE_NOTICE_ID,
-  ProjectHeader,
-} from '../components/project/ProjectHeader';
+import { PROJECT_UNAVAILABLE_NOTICE_ID, ProjectHeader } from '../components/project/ProjectHeader';
+import { FileEditorTab } from '../components/project/FileEditorTab';
+import { FileTabs, fileTabId } from '../components/project/FileTabs';
 import { ProjectMissions } from '../components/project/ProjectMissions';
 import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
+import { useOpenFiles } from '../open-files';
 import { MissionPage } from './MissionPage';
 import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
@@ -55,7 +54,9 @@ function requestedTerminal(state: unknown): string | null {
  * formulário Nova missão; Progresso mostra o resumo, as missões agrupadas com a linha do tempo das tarefas e a
  * atividade recente; Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais
  * ficam sempre montados (só escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz
- * os terminais. As outras visões só são montadas enquanto ativas. Projeto arquivado ou removido com a aba
+ * os terminais. As outras visões só são montadas enquanto ativas. Arquivos abertos (pelo painel direito) ganham
+ * uma faixa de abas acima do workspace, na visão Terminais; enquanto um arquivo está ativo ele ocupa o lugar do
+ * workspace, que segue montado e só fica escondido, como nas outras visões. Projeto arquivado ou removido com a aba
  * aberta mostra a mensagem e o link para o Início.
  *
  * Uma missão aberta (`/workspaces/:projectId/missoes/:missionId`) ocupa o painel das Missões, no lugar da
@@ -70,6 +71,9 @@ export function WorkspacePage() {
   const view = missionId === undefined ? projectViewFromParams(params) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
+  // Com um arquivo aberto e ativo, ele ocupa o lugar do workspace de painéis (que segue montado, escondido).
+  const openFiles = useOpenFiles(projectId);
+  const activeFile = openFiles.files.find((file) => file.path === openFiles.active);
   // Pasta que sumiu: o aviso sai acima de todas as visões e os terminais não abrem. Sem o campo, vale disponível.
   const unavailable = project?.available === false;
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -98,19 +102,20 @@ export function WorkspacePage() {
           {UNAVAILABLE_NOTICE} Caminho esperado: <PathText path={project.path} />
         </p>
       ) : null}
-      {project !== undefined && project.repositoryKind !== 'git' ? (
-        <p className="page-alert" id={PROJECT_NO_GIT_NOTICE_ID}>
-          {PROJECT_TEXT.noGitNotice}
-        </p>
-      ) : null}
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
-        <WorkspaceBody
-          key={projectId}
-          projectId={projectId}
-          projectName={project?.name ?? ''}
-          visible={view === 'terminais'}
-          {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
-        />
+        <FileTabs projectId={projectId} />
+        <div className="project-tab__terminals" hidden={activeFile !== undefined}>
+          <WorkspaceBody
+            key={projectId}
+            projectId={projectId}
+            projectName={project?.name ?? ''}
+            visible={view === 'terminais' && activeFile === undefined}
+            {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
+          />
+        </div>
+        {activeFile === undefined ? null : (
+          <OpenFilePanel projectId={projectId} path={activeFile.path} />
+        )}
       </ProjectPanel>
       <ProjectPanel
         view="missoes"
@@ -135,6 +140,18 @@ export function WorkspacePage() {
           <ProjectSettings project={project} />
         ) : null}
       </ProjectPanel>
+    </div>
+  );
+}
+
+/**
+ * O painel do arquivo ativo, no lugar do workspace: o `tabpanel` da aba dele na faixa, com o editor dentro. A chave
+ * é o caminho, então cada arquivo ganha um editor e um estado de gravação só seus.
+ */
+function OpenFilePanel({ projectId, path }: { projectId: string; path: string }) {
+  return (
+    <div role="tabpanel" aria-labelledby={fileTabId(path)} className="project-tab__file">
+      <FileEditorTab key={path} projectId={projectId} path={path} />
     </div>
   );
 }

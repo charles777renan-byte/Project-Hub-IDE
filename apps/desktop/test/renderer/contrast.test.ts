@@ -25,6 +25,25 @@ const ACCENTS = [
 /** Cor de referência de cada agente do bloco "Visão geral" do Início (a rampa de cada uma está em home.css). */
 const AGENT_COLORS = ['--agent-claude', '--agent-codex', '--agent-antigravity'] as const;
 
+/** Realce de sintaxe do editor (paleta Dark+ do VS Code): texto sobre o fundo do editor e sobre a linha atual. */
+const SYNTAX_COLORS = [
+  '--syntax-keyword',
+  '--syntax-control',
+  '--syntax-type',
+  '--syntax-function',
+  '--syntax-variable',
+  '--syntax-property',
+  '--syntax-string',
+  '--syntax-number',
+  '--syntax-comment',
+  '--syntax-regexp',
+  '--syntax-tag',
+  '--syntax-attribute',
+  '--syntax-heading',
+  '--syntax-link',
+  '--syntax-invalid',
+] as const;
+
 const COLOR_TOKENS = [
   '--bg',
   '--panel',
@@ -44,6 +63,7 @@ const COLOR_TOKENS = [
   '--brand',
   ...ACCENTS,
   ...AGENT_COLORS,
+  ...SYNTAX_COLORS,
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
@@ -71,6 +91,11 @@ const TEXT_ON_BACKGROUND: [text: ColorToken, background: ColorToken][] = [
   ['--accent-ink', '--accent'],
   // Início em painéis: o número de falhas em vermelho (--danger) fica sobre o cartão e sobre o fundo.
   ...SURFACES.map((surface): [ColorToken, ColorToken] => ['--danger', surface]),
+  // Editor de arquivos: o fundo é --surface e a linha atual é --surface-2.
+  ...SYNTAX_COLORS.flatMap((syntax): [ColorToken, ColorToken][] => [
+    [syntax, '--surface'],
+    [syntax, '--surface-2'],
+  ]),
 ];
 
 function channelToLinear(channel: number): number {
@@ -431,6 +456,67 @@ describe.each([
     expect(css).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
     expect(css).not.toContain('var(--accent)');
     expect(css).not.toMatch(/\b(?:animation|transition)\b/);
+  });
+});
+
+/**
+ * Painel direito (right-panel.css): só tokens de tokens.css, sem cor literal e sem animação. O lima (--accent) fica
+ * de fora (o anel de foco é o --focus, herdado de app.css). A aba ativa usa --fill, o preenchimento que sustenta
+ * texto, com um contorno de --field-line além da cor; a divisória é --line.
+ */
+describe('cores do painel direito (right-panel.css)', () => {
+  const css = readFileSync(
+    resolve(import.meta.dirname, '../../src/renderer/styles/right-panel.css'),
+    'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const ALLOWED = new Set([
+    '--surface',
+    '--surface-2',
+    '--line',
+    '--field-line',
+    '--fill',
+    '--muted',
+    '--text',
+  ]);
+  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)|^--shadow-card$/;
+
+  it('só usa var() de tokens permitidos', () => {
+    const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter((token) => !ALLOWED.has(token) && !NOT_COLOR.test(token))).toEqual([]);
+  });
+
+  it('não escreve cor literal, não usa o lima e não tem animação nem transição', () => {
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(css).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix)\(/i);
+    expect(css).not.toContain('var(--accent)');
+    expect(css).not.toMatch(/\b(?:animation|transition)\b/);
+  });
+
+  it('o ícone e o texto sobre a aba ativa (--fill) passam de 4,5:1', () => {
+    const fill = tokens.get('--fill') ?? '';
+    for (const color of ['--text', '--muted']) {
+      expect(contrastRatio(tokens.get(color) ?? '', fill), color).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    }
+  });
+
+  it('os ícones e o aviso passam de 4,5:1 sobre o cartão e sobre o realce do mouse (--surface-2)', () => {
+    for (const surface of ['--surface', '--surface-2']) {
+      for (const color of ['--text', '--muted']) {
+        expect(
+          contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    }
+  });
+
+  it('o contorno da aba ativa (--field-line) passa de 3:1 sobre o cartão', () => {
+    expect(
+      contrastRatio(tokens.get('--field-line') ?? '', tokens.get('--surface') ?? ''),
+    ).toBeGreaterThanOrEqual(3);
   });
 });
 

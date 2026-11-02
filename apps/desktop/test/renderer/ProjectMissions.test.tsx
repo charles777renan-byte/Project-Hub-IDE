@@ -11,6 +11,7 @@ import type {
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectMissions } from '../../src/renderer/components/project/ProjectMissions';
+import { PROJECT_NO_GIT_NOTICE_ID } from '../../src/renderer/components/project/ProjectHeader';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 
 /**
@@ -61,6 +62,18 @@ function installApi({ missions = [], projects = [project], steps = [] }: Options
         if (projects === 'error') return Promise.reject(new Error('falhou'));
         return Promise.resolve({ ok: true, data: projects });
       }),
+      repositoryPreview: vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          data: { identityConfigured: true, createsGitignore: true, sensitiveFiles: [] },
+        }),
+      ),
+      initRepository: vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          data: { ...project, repositoryKind: 'git', defaultBranch: 'main' },
+        }),
+      ),
     },
     missions: {
       list: vi.fn(() => Promise.resolve({ ok: true, data: missions })),
@@ -339,5 +352,92 @@ describe('ProjectMissions: criar missão', () => {
 
     expect(within(form).getByText(/Este projeto não é um repositório Git/)).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: 'Criar' })).toBeDisabled();
+  });
+
+  it('em projeto sem Git, a visão Missões mostra o aviso em texto neutro, não como erro', async () => {
+    installApi();
+    renderMissions({ shownProject: { ...project, repositoryKind: 'none' } as ProjectSummary });
+
+    const notice = await screen.findByText(/Missões precisam de Git/);
+    expect(notice).toHaveAttribute('id', PROJECT_NO_GIT_NOTICE_ID);
+    expect(notice).toHaveClass('project-missions__note');
+    expect(notice).not.toHaveClass('page-alert');
+  });
+
+  describe('criar o repositório Git (ADR 0009)', () => {
+    const noGit = { ...project, repositoryKind: 'none' } as ProjectSummary;
+
+    it('mostra o botão, e a prévia só aparece depois do clique: nada é escrito antes da confirmação', async () => {
+      const api = installApi();
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+
+      expect(api.projects.repositoryPreview).toHaveBeenCalledWith('p1');
+      expect(await screen.findByText(/Cria o repositório Git nesta pasta/)).toBeInTheDocument();
+      expect(api.projects.initRepository).not.toHaveBeenCalled();
+    });
+
+    it('confirmar chama a criação e avisa a barra lateral', async () => {
+      const api = installApi();
+      const changed = vi.fn();
+      window.addEventListener('project-hub:projects-changed', changed);
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Criar e fazer o primeiro commit' }),
+      );
+
+      await waitFor(() => expect(api.projects.initRepository).toHaveBeenCalledWith('p1'));
+      await waitFor(() => expect(changed).toHaveBeenCalled());
+      window.removeEventListener('project-hub:projects-changed', changed);
+    });
+
+    it('sem identidade no Git, a tela diz o que configurar e não abre a confirmação', async () => {
+      const api = installApi();
+      api.projects.repositoryPreview.mockResolvedValueOnce({
+        ok: true,
+        data: { identityConfigured: false, createsGitignore: true, sensitiveFiles: [] },
+      } as never);
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/configure seu nome/);
+      expect(
+        screen.queryByRole('button', { name: 'Criar e fazer o primeiro commit' }),
+      ).not.toBeInTheDocument();
+      expect(api.projects.initRepository).not.toHaveBeenCalled();
+    });
+
+    it('arquivos com nome de segredo aparecem na confirmação', async () => {
+      const api = installApi();
+      api.projects.repositoryPreview.mockResolvedValueOnce({
+        ok: true,
+        data: { identityConfigured: true, createsGitignore: false, sensitiveFiles: ['.env'] },
+      } as never);
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+
+      expect(await screen.findByText(/Atenção: \.env tem nome de segredo/)).toBeInTheDocument();
+    });
+
+    it('falha da criação aparece na tela, com a mensagem do processo principal', async () => {
+      const api = installApi();
+      api.projects.initRepository.mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'UNKNOWN', message: 'Já existe uma pasta .git aqui.', retryable: false },
+      } as never);
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Criar e fazer o primeiro commit' }),
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Já existe uma pasta .git aqui.');
+    });
   });
 });

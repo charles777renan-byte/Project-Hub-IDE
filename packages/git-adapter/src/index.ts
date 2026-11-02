@@ -1,4 +1,5 @@
 export { createGitDetector } from './detect';
+export { createRepositoryInitializer } from './init-repository';
 export {
   getWorktreeDiff,
   type WorktreeDiff,
@@ -6,6 +7,7 @@ export {
   type WorktreeDiffOptions,
   type WorktreeFileStatus,
 } from './diff';
+export { isStrictlyInside } from './path-scope';
 export { GitError, runGit, type RunGitOptions } from './run-git';
 export { getStatus, type GitStatus } from './status';
 export { createWorktree, removeWorktree, type CreatedWorktree } from './worktree';

@@ -39,6 +39,9 @@ import { createClaudePlanner } from './claude-planner';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
+import { registerFilesHandlers } from './ipc/files';
+import { registerSaveAllResultHandler } from './ipc/save-all';
+import { createProjectFiles } from './files/project-files';
 import {
   agentActivityAgents,
   createAgentActivityService,
@@ -63,6 +66,8 @@ import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
 import { registerWorktreeHandlers } from './ipc/worktrees';
 import { handleWindowLoadFailure } from './startup-failure';
+import { createSaveBeforeClose } from './save-before-close';
+import { registerUnsavedGuard, unsavedChoiceOf, type UnsavedChoice } from './unsaved-guard';
 import {
   applyContentSecurityPolicy,
   confirmUnlessClosing,
@@ -151,6 +156,48 @@ const startupFailure = {
   exit: (code: number) => app.exit(code),
 };
 
+/**
+ * Fechar a janela com arquivo não salvo (o `beforeunload` do renderer só está ativo nesse caso). A caixa é nativa e
+ * síncrona: o evento `will-prevent-unload` espera a resposta. As três respostas são as de fechar uma aba: Salvar
+ * (grava tudo e só então fecha), Descartar (fecha sem gravar) e Voltar. "Voltar" é o botão padrão e também a
+ * resposta do Esc e do X da caixa: só "Descartar" libera o fechamento sem gravar.
+ */
+function askAboutUnsavedFiles(owner: BrowserWindow): UnsavedChoice {
+  const response = dialog.showMessageBoxSync(owner, {
+    type: 'warning',
+    title: 'Project Hub',
+    message: 'Há arquivos com alterações não salvas.',
+    detail: 'Salvar grava todos e fecha a janela. Descartar fecha sem gravar.',
+    buttons: ['Salvar', 'Descartar', 'Voltar'],
+    defaultId: 2,
+    cancelId: 2,
+    noLink: true,
+  });
+  return unsavedChoiceOf(response);
+}
+
+/**
+ * "Salvar" ao fechar que não gravou tudo: a janela continua aberta e a caixa nativa avisa, porque o arquivo que
+ * falhou pode estar em outra aba ou outro projeto. Sem nome de arquivo nem caminho no texto. Não bloqueia nada.
+ */
+function notifySaveFailed(owner: BrowserWindow): Promise<unknown> {
+  return dialog
+    .showMessageBox(owner, {
+      type: 'warning',
+      title: 'Project Hub',
+      message: 'Não foi possível salvar todos os arquivos.',
+      detail: 'A janela continua aberta; veja a aba com o aviso.',
+      buttons: ['OK'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    .catch(() => undefined);
+}
+
+/** O "Salvar" ao fechar a janela, da janela principal que existe agora (o resultado chega por `files:save-all-result:v1`). */
+let saveBeforeClose: ReturnType<typeof createSaveBeforeClose> | undefined;
+
 /** Janela principal enquanto ela existe: é a única que recebe os eventos das missões. */
 let mainWindow: BrowserWindow | undefined;
 
@@ -201,11 +248,36 @@ function createMainWindow(): void {
   // A janela começa a fechar antes de ser destruída; o carregamento pendente rejeita nesse intervalo.
   let windowClosing = false;
   const closing = (): boolean => isClosing(win, windowClosing);
-  win.once('close', () => {
+  // `on`, e não `once`: se a pessoa voltar da pergunta de arquivo não salvo, o próximo fechamento marca de novo.
+  win.on('close', () => {
     windowClosing = true;
   });
   win.once('closed', () => {
     if (mainWindow === win) mainWindow = undefined;
+  });
+  // "Salvar": o renderer grava os arquivos sujos e responde; a janela só fecha se tudo foi gravado e nada ficou sujo.
+  const saving = createSaveBeforeClose({
+    requestSave: (requestId) => {
+      if (!win.isDestroyed()) win.webContents.send(CHANNELS.filesSaveAllRequest, { requestId });
+    },
+    closeWindow: () => {
+      if (!win.isDestroyed()) win.close();
+    },
+    // A falha pode ser de um arquivo que não está à vista: a janela fica aberta, e a caixa avisa sem bloquear nada.
+    notifyFailure: () => {
+      if (closing()) return;
+      void notifySaveFailed(win);
+    },
+  });
+  saveBeforeClose = saving;
+  registerUnsavedGuard(win.webContents, () => askAboutUnsavedFiles(win), {
+    // "Voltar" e "Salvar" cancelam o fechamento: sem desfazer a marca, os links externos seriam recusados em silêncio.
+    onStay: () => {
+      windowClosing = false;
+    },
+    onSave: () => saving.start(),
+    // Um Voltar ou Descartar depois de um Salvar lento vale mais que o resultado dele: a janela não fecha por ele.
+    onCancelSave: () => saving.cancel(),
   });
   restrictNavigation(win.webContents, appOrigin, {
     confirmExternal: (url) => confirmExternal(win, url, closing),
@@ -339,12 +411,25 @@ app
     registerProjectHandlers(ipcMain, isTrustedSender, {
       services,
       lifecycle: services.lifecycle,
+      repository: {
+        repo: services.repo,
+        initializer: services.initializer,
+        fs: services.fs,
+        now: services.now,
+      },
       chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
       openFolder: (path) => shell.openPath(path),
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
+    registerFilesHandlers(ipcMain, isTrustedSender, {
+      files: createProjectFiles(services.fileDeps),
+      openPath: (path) => shell.openPath(path),
+    });
+    registerSaveAllResultHandler(ipcMain, isTrustedSender, (requestId, saved) =>
+      saveBeforeClose?.finish(requestId, saved),
+    );
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);

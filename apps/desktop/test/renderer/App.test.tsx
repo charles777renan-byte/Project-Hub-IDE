@@ -67,14 +67,16 @@ describe('App', () => {
         </MemoryRouter>,
       );
 
-      // A barra superior vem antes da lateral: primeiro o botão da barra lateral, depois a aba fixa Início e o botão
-      // de abrir workspace.
+      // A barra superior vem antes da lateral: primeiro o botão da barra lateral, depois a aba fixa Início, o
+      // botão de abrir workspace e o do painel direito, que fica no canto.
       await user.tab();
       expect(screen.getByRole('button', { name: 'Ocultar barra lateral' })).toHaveFocus();
       await user.tab();
       expect(homeTab()).toHaveFocus();
       await user.tab();
       expect(screen.getByRole('button', { name: 'Abrir workspace' })).toHaveFocus();
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Ocultar painel direito' })).toHaveFocus();
       await user.tab();
       expect(screen.getByRole('button', { name: /Buscar projeto ou agente/ })).toHaveFocus();
       await user.tab();
@@ -136,6 +138,28 @@ describe('barra superior', () => {
     },
   );
 
+  it('atende o "Salvar" ao fechar a janela enquanto o app está montado, e deixa de atender ao sair', () => {
+    const unsubscribe = vi.fn();
+    const onSaveAllRequest = vi.fn(() => unsubscribe);
+    window.projectHub = {
+      ...window.projectHub,
+      files: { onSaveAllRequest },
+    } as unknown as ProjectHubApi;
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(onSaveAllRequest).toHaveBeenCalled();
+    const assinaturas = onSaveAllRequest.mock.calls.length;
+
+    unmount();
+
+    // Cada assinatura (o modo estrito do React monta duas vezes) é cancelada ao desmontar.
+    expect(unsubscribe).toHaveBeenCalledTimes(assinaturas);
+  });
+
   it('a barra lateral não leva navegação principal, só a busca e o explorador de projetos', () => {
     render(
       <MemoryRouter>
@@ -157,6 +181,40 @@ describe('barra superior', () => {
     expect(
       screen.getByRole('separator', { name: 'Redimensionar barra lateral' }),
     ).toBeInTheDocument();
+  });
+
+  it('a divisória do painel direito tem nome', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole('separator', { name: 'Redimensionar painel direito' }),
+    ).toBeInTheDocument();
+  });
+
+  it('o painel direito fica depois da página e mostra o aviso no Início', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    const panel = screen.getByRole('complementary', { name: 'Painel direito' });
+    expect(screen.getByRole('main').compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(within(panel).getByText('Abra um projeto para ver os arquivos')).toBeInTheDocument();
+  });
+
+  it('o painel direito pega o projeto da aba ativa: na rota do projeto, não pede para abrir um', () => {
+    render(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <App />
+      </MemoryRouter>,
+    );
+    const panel = screen.getByRole('complementary', { name: 'Painel direito' });
+    expect(within(panel).queryByText('Abra um projeto para ver os arquivos')).toBeNull();
   });
 
   it('a marca tem o símbolo escondido dos leitores de tela', () => {

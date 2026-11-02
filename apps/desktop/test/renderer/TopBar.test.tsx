@@ -966,3 +966,86 @@ describe('ordenar as abas', () => {
     await waitFor(() => expect(tabNames()).toEqual(['Alfa', 'Beta', 'Gama']));
   });
 });
+
+describe('botão do painel direito', () => {
+  it('sem o gancho de alternar, a barra não tem o botão', async () => {
+    installApi();
+    renderBar();
+
+    await screen.findByRole('button', { name: 'Abrir workspace' });
+    expect(screen.queryByRole('button', { name: /painel direito/ })).toBeNull();
+  });
+
+  it.each([
+    [false, 'Ocultar painel direito', 'true'],
+    [true, 'Mostrar painel direito', 'false'],
+  ])(
+    'com rightCollapsed=%s o botão se chama "%s" e aria-expanded=%s',
+    async (collapsed, name, expanded) => {
+      installApi();
+      render(
+        <MemoryRouter>
+          <TopBar rightCollapsed={collapsed} onToggleRight={() => undefined} />
+        </MemoryRouter>,
+      );
+
+      const button = await screen.findByRole('button', { name });
+      expect(button).toHaveAttribute('aria-expanded', expanded);
+      expect(button).toHaveClass('topbar__right-toggle');
+    },
+  );
+
+  it('o botão fica no fim da barra: depois das abas e do botão de abrir workspace; o da lateral segue antes da marca', async () => {
+    installApi();
+    render(
+      <MemoryRouter>
+        <TopBar onToggleSidebar={() => undefined} onToggleRight={() => undefined} />
+      </MemoryRouter>,
+    );
+
+    const right = await screen.findByRole('button', { name: 'Ocultar painel direito' });
+    const add = screen.getByRole('button', { name: 'Abrir workspace' });
+    const home = screen.getByRole('link', { name: 'Início' });
+    const side = screen.getByRole('button', { name: 'Ocultar barra lateral' });
+    const brand = screen.getByText('Project Hub');
+    const follows = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    expect(follows(side, brand)).toBe(true);
+    expect(follows(home, right)).toBe(true);
+    expect(follows(add, right)).toBe(true);
+    expect(right.closest('header')?.lastElementChild?.contains(right)).toBe(true);
+  });
+
+  it('clicar chama onToggleRight', async () => {
+    installApi();
+    const onToggleRight = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <TopBar onToggleRight={onToggleRight} />
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Ocultar painel direito' }));
+
+    expect(onToggleRight).toHaveBeenCalledTimes(1);
+  });
+
+  it('a dica do botão mostra o atalho', async () => {
+    installApi();
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <TopBar onToggleRight={() => undefined} />
+      </MemoryRouter>,
+    );
+    const button = await screen.findByRole('button', { name: 'Ocultar painel direito' });
+
+    await user.hover(button);
+
+    expect(await screen.findByRole('tooltip', {}, { timeout: 2000 })).toHaveTextContent(
+      'Ocultar painel direito (Ctrl+Alt+B)',
+    );
+  });
+});

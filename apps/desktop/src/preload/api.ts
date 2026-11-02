@@ -1,5 +1,6 @@
 import {
   CHANNELS,
+  filesSaveAllRequestSchema,
   limitsDtoSchema,
   missionEventDtoSchema,
   missionUsageEventDtoSchema,
@@ -8,10 +9,16 @@ import {
   type AddProjectInput,
   type AgentActivity,
   type AppResult,
+  type ContentSearchDto,
   type CreateMissionInput,
   type DecideApprovalInput,
   type EditPlanStepInput,
   type ExecutionDto,
+  type FileContentDto,
+  type FileEntryDto,
+  type FileStatDto,
+  type FileVersionDto,
+  type FilesWriteInput,
   type LayoutNode,
   type LimitsDto,
   type MissionDiffDto,
@@ -20,6 +27,7 @@ import {
   type MissionPlanDto,
   type MissionUsageEventDto,
   type MissionViewDto,
+  type NameSearchDto,
   type ProfileDto,
   type SystemUsageDto,
   type ProjectHubApi,
@@ -27,6 +35,7 @@ import {
   type ProviderId,
   type ProviderInfo,
   type ProvideInput,
+  type RepositoryInitPreview,
   type RequestChanges,
   type TerminalEvent,
   type TerminalSummary,
@@ -94,6 +103,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       unarchive: (projectId: string) => call<void>(CHANNELS.projectsUnarchive, { projectId }),
       remove: (projectId: string) => call<void>(CHANNELS.projectsRemove, { projectId }),
       openFolder: (projectId: string) => call<void>(CHANNELS.projectsOpenFolder, { projectId }),
+      repositoryPreview: (projectId: string) =>
+        call<RepositoryInitPreview>(CHANNELS.projectsRepositoryPreview, { projectId }),
+      initRepository: (projectId: string) =>
+        call<ProjectSummary>(CHANNELS.projectsInitRepository, { projectId }),
       setGroup: (projectId: string, group: string | null) =>
         call<void>(CHANNELS.projectsSetGroup, { projectId, group }),
       setNickname: (projectId: string, nickname: string | null) =>
@@ -221,6 +234,40 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           }
           listener(parsed.data);
         }),
+    },
+    files: {
+      list: (projectId: string, dir: string) =>
+        call<FileEntryDto[]>(CHANNELS.filesList, { projectId, dir }),
+      stat: (projectId: string, path: string) =>
+        call<FileStatDto>(CHANNELS.filesStat, { projectId, path }),
+      read: (projectId: string, path: string) =>
+        call<FileContentDto>(CHANNELS.filesRead, { projectId, path }),
+      write: (input: FilesWriteInput) => call<FileVersionDto>(CHANNELS.filesWrite, input),
+      searchNames: (projectId: string, query: string) =>
+        call<NameSearchDto>(CHANNELS.filesSearchNames, { projectId, query }),
+      searchContent: (projectId: string, query: string, regex: boolean) =>
+        call<ContentSearchDto>(CHANNELS.filesSearchContent, { projectId, query, regex }),
+      onSaveAllRequest: (handler: () => Promise<boolean>) =>
+        subscribe(CHANNELS.filesSaveAllRequest, (payload) => {
+          const parsed = filesSaveAllRequestSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.filesSaveAllRequest}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          const { requestId } = parsed.data;
+          // Qualquer falha do salvamento vale "não salvou": a janela só fecha com um `true` explícito.
+          void Promise.resolve()
+            .then(handler)
+            .catch(() => false)
+            .then((saved) =>
+              invoke(CHANNELS.filesSaveAllResult, { requestId, saved }).catch(() => undefined),
+            );
+        }),
+      openDefault: (projectId: string, path: string) =>
+        call<void>(CHANNELS.filesOpenDefault, { projectId, path }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

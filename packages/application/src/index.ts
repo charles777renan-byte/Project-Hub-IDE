@@ -9,6 +9,11 @@ export {
   setProjectNickname,
 } from './projects/project-lifecycle';
 export { listProjects, toProjectSummary, type ListProjectsDeps } from './projects/list-projects';
+export {
+  initProjectRepository,
+  previewRepositoryInit,
+  type InitRepositoryDeps,
+} from './projects/init-repository';
 export { normalizePath, type Platform } from './projects/normalize-path';
 export {
   createOrchestrator,
@@ -52,6 +57,7 @@ export type {
   MissionRepository,
   Planner,
   ProjectRepository,
+  RepositoryInitializer,
   SettingsRepository,
   TerminalErrorCode,
   TerminalExit,

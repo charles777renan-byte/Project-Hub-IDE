@@ -25,7 +25,10 @@ type Pending = 'archive' | 'remove';
 
 /** Id do aviso de pasta indisponível, que fica na WorkspacePage. Nova missão aponta para ele quando está desabilitado. */
 export const PROJECT_UNAVAILABLE_NOTICE_ID = 'aviso-pasta-indisponivel';
-/** Id do aviso de projeto sem Git, que também fica na WorkspacePage. Sem Git não há worktree, então não há missão. */
+/**
+ * Id do aviso de projeto sem Git, que fica na visão Missões (ProjectMissions), não na página. Sem Git não há
+ * worktree, então não há missão. Fora da visão Missões o botão desabilitado explica pelo título (tooltip).
+ */
 export const PROJECT_NO_GIT_NOTICE_ID = 'aviso-sem-git';
 
 /**
@@ -124,10 +127,11 @@ export function ProjectHeader({
               type="button"
               className="btn-primary"
               disabled={unavailable || noGit}
+              title={noGit ? PROJECT_TEXT.noGitNotice : undefined}
               aria-describedby={
                 unavailable
                   ? PROJECT_UNAVAILABLE_NOTICE_ID
-                  : noGit
+                  : noGit && view === 'missoes'
                     ? PROJECT_NO_GIT_NOTICE_ID
                     : undefined
               }

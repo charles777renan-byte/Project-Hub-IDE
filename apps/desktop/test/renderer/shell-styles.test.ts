@@ -558,3 +558,87 @@ describe('barra de status', () => {
     );
   });
 });
+
+/**
+ * Painel direito: a terceira coluna do corpo da janela. A coluna enche o painel redimensionável, o cartão tem a
+ * forma da barra lateral e a barra de abas é só de ícones de 15px. As regras ficam em right-panel.css; só o respiro
+ * da borda com o painel recolhido e o botão da barra superior ficam em workspace.css.
+ */
+describe('painel direito', () => {
+  const css = readCss('right-panel.css');
+  const workspaceCss = readCss('workspace.css');
+
+  it('a coluna enche o painel redimensionável e o cartão ocupa o que sobra dela', () => {
+    expect(ruleDeclarations(css, '.app-right').get('width')).toBe('100%');
+    expect(ruleDeclarations(css, '.app-right').get('height')).toBe('100%');
+    expect(ruleDeclarations(css, '.app-right > .right-panel').get('flex')).toBe('1');
+  });
+
+  it('o cartão é como o da barra lateral: superfície, raio de cartão e contorno por sombra interna', () => {
+    const card = ruleDeclarations(css, '.right-panel');
+    expect(card.get('background')).toBe('var(--surface)');
+    expect(card.get('border-radius')).toBe('var(--radius-card)');
+    expect(card.get('box-shadow')?.replaceAll(/\s+/g, ' ')).toBe(
+      'inset 0 0 0 1px var(--line), var(--shadow-card)',
+    );
+    expect(card.get('min-height')).toBe('0');
+  });
+
+  it('a barra de abas tem a divisória --line, e o conteúdo rola sozinho', () => {
+    expect(ruleDeclarations(css, '.right-panel__tabs').get('box-shadow')).toBe(
+      'inset 0 -1px 0 var(--line)',
+    );
+    const content = ruleDeclarations(css, '.right-panel__content');
+    expect(content.get('overflow-y')).toBe('auto');
+    expect(content.get('min-height')).toBe('0');
+  });
+
+  it('a aba é um botão de 28px sem o padding e a borda do botão padrão', () => {
+    const tab = ruleDeclarations(css, '.right-panel__tab');
+    expect(tab.get('width')).toBe('28px');
+    expect(tab.get('height')).toBe('28px');
+    expect(tab.get('padding')).toBe('0');
+    expect(tab.get('border')).toBe('0');
+  });
+
+  it('a aba ativa fica em --fill, com um contorno além da cor', () => {
+    const active = ruleDeclarations(css, ".right-panel__tab[aria-selected='true']");
+    expect(active.get('background')).toBe('var(--fill)');
+    expect(active.get('box-shadow')).toBe('inset 0 0 0 1px var(--field-line)');
+  });
+
+  it('a aba sem conteúdo fica apagada, com o cursor de bloqueio e sem realce do mouse', () => {
+    const off = ruleDeclarations(css, ".right-panel__tab[aria-disabled='true']");
+    expect(off.get('color')).toBe('var(--muted)');
+    expect(off.get('cursor')).toBe('not-allowed');
+    expect(
+      ruleDeclarations(
+        css,
+        ".right-panel__tab:hover:not([aria-disabled='true']):not([aria-selected='true'])",
+      ).get('background'),
+    ).toBe('var(--surface-2)');
+  });
+
+  it('o anel de foco da aba e do conteúdo fica por dentro, que o cartão cortaria por fora', () => {
+    expect(ruleDeclarations(css, '.right-panel__tab:focus-visible').get('outline-offset')).toBe(
+      '-2px',
+    );
+    expect(ruleDeclarations(css, '.right-panel__content:focus-visible').get('outline-offset')).toBe(
+      '-2px',
+    );
+  });
+
+  it('com o painel recolhido a divisória faz o papel do respiro da borda direita', () => {
+    expect(ruleDeclarations(workspaceCss, '.app-body--right-collapsed').get('padding-right')).toBe(
+      '0',
+    );
+  });
+
+  it('o botão da barra superior tem a mesma forma do da barra lateral e fica fora da área de arrastar', () => {
+    const toggle = ruleDeclarations(workspaceCss, '.topbar__right-toggle');
+    expect(toggle.get('width')).toBe('26px');
+    expect(toggle.get('height')).toBe('26px');
+    expect(toggle.get('padding')).toBe('0');
+    expect(toggle.get('-webkit-app-region')).toBe('no-drag');
+  });
+});
