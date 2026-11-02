@@ -530,8 +530,8 @@ describe('pushBranch', () => {
     expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
   });
 
-  // Conferido no Git 2.54: `push origin main` obedeceria a este "+" e sairia como forced update.
-  it.each([['+refs/heads/main:refs/heads/main'], ['+refs/heads/*:refs/heads/*'], ['+main']])(
+  // Conferido no Git 2.54: com qualquer um destes "+", `push origin main` sairia como forced update.
+  it.each([['+refs/heads/main:refs/heads/main'], ['+refs/heads/*:refs/heads/*']])(
     'remote.origin.push = %s no repositório: o envio continua sem forçar',
     async (configured) => {
       const remote = addBareRemote();
@@ -548,6 +548,24 @@ describe('pushBranch', () => {
       expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
     },
   );
+
+  it('pre-push que passa e o remoto recusando a branch em uso (receive.denyCurrentBranch): UNKNOWN, sem texto do servidor', async () => {
+    // Um remoto comum (com árvore de trabalho) que já tem a história do repositório e a main em uso.
+    const remote = join(newScratchDir('remoto-comum-'), 'repo');
+    git(scratch, ['clone', repoPath, remote]);
+    git(remote, ['config', 'receive.denyCurrentBranch', 'refuse']);
+    git(repoPath, ['remote', 'add', 'origin', remote]);
+    writeHook(repoPath, 'pre-push', 'exit 0');
+    commitFile(repoPath, 'b.txt', 'b\n', 'Segundo commit');
+    const remoteHead = git(remote, ['rev-parse', 'main']).trim();
+
+    const error = await failureOf(pushBranch({ repo: repoPath }));
+
+    expect(error.code).toBe('UNKNOWN');
+    expect(error.message).not.toMatch(/remote|refus|checked|rejected|push some refs/iu);
+    expect(error.message).toContain('O remoto recusou o envio');
+    expect(git(remote, ['rev-parse', 'main']).trim()).toBe(remoteHead);
+  });
 
   it.each([
     ['em stdout (echo sem >&2)', 'echo "testes falharam antes do push"'],
@@ -951,6 +969,117 @@ describe('translateGitWriteError', () => {
     expect(error.code).toBe('GIT_HOOK_FAILED');
     expect(error.message).toContain('saída do hook');
     expect(error.message).not.toContain('failed to push some refs');
+  });
+
+  it.each([
+    [
+      'remote: error: refusing to update checked out branch: refs/heads/main',
+      ' ! [remote rejected] HEAD -> main (branch is currently checked out)',
+    ],
+    ['remote: Permission to x denied', ' ! [remote rejected] HEAD -> main (permission denied)'],
+    ['', ' ! [rejected]        HEAD -> main (already exists)'],
+    ['', ' ! [rejected]        HEAD -> main (stale info)'],
+    ['', ' ! [remote rejected] HEAD -> main (shallow update not allowed)'],
+  ])(
+    'pre-push presente, saída 1 e recusa do servidor que não é de hook (%s / %s): UNKNOWN com mensagem fixa em português',
+    (remoteLine, rejectedLine) => {
+      const stderr = [
+        remoteLine,
+        'To /caminho/do/remoto',
+        rejectedLine,
+        "error: failed to push some refs to '/caminho/do/remoto'",
+      ]
+        .filter((line) => line !== '')
+        .join('\n');
+
+      const error = translateGitWriteError(failure(stderr), 'push', {
+        hookPresent: true,
+      }) as GitError;
+
+      expect(error.code).toBe('UNKNOWN');
+      expect(error.message).toBe('O remoto recusou o envio desta branch.');
+    },
+  );
+
+  it('pre-push presente, saída 1 e "hook declined" do servidor: continua GIT_HOOK_FAILED', () => {
+    const error = translateGitWriteError(
+      failure(
+        'remote: regra do servidor\nTo /x\n ! [remote rejected] HEAD -> main (pre-receive hook declined)',
+      ),
+      'push',
+      { hookPresent: true },
+    ) as GitError;
+
+    expect(error.code).toBe('GIT_HOOK_FAILED');
+    expect(error.message).toContain('remote: regra do servidor');
+  });
+
+  it('pre-push presente e "! [remote rejected] ... (fetch first)" também é GIT_NOT_FAST_FORWARD', () => {
+    const error = translateGitWriteError(
+      failure(' ! [remote rejected] HEAD -> main (non-fast-forward)'),
+      'push',
+      { hookPresent: true },
+    ) as GitError;
+
+    expect(error.code).toBe('GIT_NOT_FAST_FORWARD');
+  });
+
+  it('a linha "To <endereço>" do Git sai da mensagem de hook, mas a linha "To do: revisar" do hook fica', () => {
+    const error = translateGitWriteError(
+      failure('To do: revisar o lint\nTo https://servidor/projeto.git\nTo fix, run npm run lint'),
+      'commit',
+      { hookPresent: true },
+    ) as GitError;
+
+    expect(error.message).toContain('To do: revisar o lint');
+    expect(error.message).toContain('To fix, run npm run lint');
+    expect(error.message).not.toContain('servidor/projeto.git');
+  });
+
+  it('ESC com um caractere só (ESC c), CSI de 8 bits e OSC de 8 bits não deixam resíduo visível', () => {
+    const esc = String.fromCharCode(27);
+    const stderr = [`a${esc}cb`, `c\u009b31md\u009b?25le`, `f\u009d0;titulo\u009cg`, 'fim'].join(
+      '\n',
+    );
+
+    const error = translateGitWriteError(failure(stderr), 'commit', {
+      hookPresent: true,
+    }) as GitError;
+
+    expect(error.message).toContain('ab');
+    expect(error.message).toContain('cde');
+    expect(error.message).toContain('fg');
+    expect(error.message).not.toContain('31m');
+    expect(error.message).not.toContain('?25l');
+    expect(error.message).not.toContain('titulo');
+    expect(error.message).not.toContain(esc);
+  });
+
+  it('todas as marcas de direção de texto (U+202A a U+202E, U+2066 a U+2069) saem da mensagem', () => {
+    const marks = [0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069].map(
+      (code) => String.fromCodePoint(code),
+    );
+    const stderr = `a${marks.join('b')}c`;
+
+    const error = translateGitWriteError(failure(stderr), 'commit', {
+      hookPresent: true,
+    }) as GitError;
+
+    for (const mark of marks) expect(error.message).not.toContain(mark);
+    expect(error.message).toContain('abbbbbbbbc');
+  });
+
+  it('saída maior que a pré-poda (32 000 caracteres): a mensagem guarda o fim e fica no teto de 4000', () => {
+    const stderr = `COMECO-${'x'.repeat(100_000)}-FIM`;
+
+    const error = translateGitWriteError(failure(stderr), 'commit', {
+      hookPresent: true,
+    }) as GitError;
+
+    expect(error.message).toContain('-FIM');
+    expect(error.message).not.toContain('COMECO');
+    const output = error.message.split('\n\n')[1] ?? '';
+    expect(Array.from(output).length).toBeLessThanOrEqual(4_001);
   });
 
   it('o stderr bruto não vai para a mensagem de erros que não são de hook', () => {
