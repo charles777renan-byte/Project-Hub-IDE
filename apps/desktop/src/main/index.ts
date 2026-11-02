@@ -176,6 +176,25 @@ function askAboutUnsavedFiles(owner: BrowserWindow): UnsavedChoice {
   return unsavedChoiceOf(response);
 }
 
+/**
+ * "Salvar" ao fechar que não gravou tudo: a janela continua aberta e a caixa nativa avisa, porque o arquivo que
+ * falhou pode estar em outra aba ou outro projeto. Sem nome de arquivo nem caminho no texto. Não bloqueia nada.
+ */
+function notifySaveFailed(owner: BrowserWindow): Promise<unknown> {
+  return dialog
+    .showMessageBox(owner, {
+      type: 'warning',
+      title: 'Project Hub',
+      message: 'Não foi possível salvar todos os arquivos.',
+      detail: 'A janela continua aberta; veja a aba com o aviso.',
+      buttons: ['OK'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    })
+    .catch(() => undefined);
+}
+
 /** O "Salvar" ao fechar a janela, da janela principal que existe agora (o resultado chega por `files:save-all-result:v1`). */
 let saveBeforeClose: ReturnType<typeof createSaveBeforeClose> | undefined;
 
@@ -244,6 +263,11 @@ function createMainWindow(): void {
     closeWindow: () => {
       if (!win.isDestroyed()) win.close();
     },
+    // A falha pode ser de um arquivo que não está à vista: a janela fica aberta, e a caixa avisa sem bloquear nada.
+    notifyFailure: () => {
+      if (closing()) return;
+      void notifySaveFailed(win);
+    },
   });
   saveBeforeClose = saving;
   registerUnsavedGuard(win.webContents, () => askAboutUnsavedFiles(win), {
@@ -252,6 +276,8 @@ function createMainWindow(): void {
       windowClosing = false;
     },
     onSave: () => saving.start(),
+    // Um Voltar ou Descartar depois de um Salvar lento vale mais que o resultado dele: a janela não fecha por ele.
+    onCancelSave: () => saving.cancel(),
   });
   restrictNavigation(win.webContents, appOrigin, {
     confirmExternal: (url) => confirmExternal(win, url, closing),

@@ -6,6 +6,7 @@
  * - `save` (Salvar): a janela fica aberta enquanto o renderer grava os arquivos (`onSave` pede a gravação, e quem a
  *   pediu fecha a janela depois, se tudo foi gravado);
  * - `stay` (Voltar): a janela fica aberta, como estava.
+ * Voltar e Descartar valem mais que um Salvar anterior ainda em andamento: `onCancelSave` o cancela.
  * Sem `preventDefault()`, a janela fica aberta. Sem `beforeunload` ativo (nada sujo), o evento nem chega.
  *
  * Não importa o Electron: a janela e a pergunta (`decide`, um diálogo nativo síncrono) vêm de fora.
@@ -24,10 +25,11 @@ export function registerUnsavedGuard(
     on(event: 'will-prevent-unload', listener: (event: { preventDefault(): void }) => void): void;
   },
   decide: () => UnsavedChoice,
-  handlers: { onStay?: () => void; onSave?: () => void } = {},
+  handlers: { onStay?: () => void; onSave?: () => void; onCancelSave?: () => void } = {},
 ): void {
   contents.on('will-prevent-unload', (event) => {
     const choice = decide();
+    if (choice !== 'save') handlers.onCancelSave?.();
     if (choice === 'discard') {
       event.preventDefault();
       return;

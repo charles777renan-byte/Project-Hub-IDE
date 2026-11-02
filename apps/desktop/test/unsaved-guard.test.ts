@@ -78,6 +78,24 @@ describe('registerUnsavedGuard', () => {
     expect(onStay).toHaveBeenCalledTimes(1);
   });
 
+  it('Descartar e Voltar avisam quem cancela o Salvar pendente; Salvar não', () => {
+    const fake = fakeContents();
+    const answers: UnsavedChoice[] = ['save', 'stay', 'discard'];
+    const onSave = vi.fn();
+    const onCancelSave = vi.fn();
+    registerUnsavedGuard(fake.contents, () => answers.shift() ?? 'stay', { onSave, onCancelSave });
+
+    fake.unload();
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onCancelSave).not.toHaveBeenCalled();
+
+    fake.unload();
+    expect(onCancelSave).toHaveBeenCalledTimes(1);
+
+    fake.unload();
+    expect(onCancelSave).toHaveBeenCalledTimes(2);
+  });
+
   it('funciona sem os avisos opcionais', () => {
     const fake = fakeContents();
     registerUnsavedGuard(fake.contents, () => 'save');
