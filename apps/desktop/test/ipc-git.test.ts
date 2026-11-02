@@ -101,12 +101,14 @@ const VALID: Record<string, unknown> = {
   [CHANNELS.gitDiscard]: { projectId: 'p1', paths: ['src/a.ts'] },
   [CHANNELS.gitCommit]: { projectId: 'p1', message: 'feat: algo' },
   [CHANNELS.gitPush]: { projectId: 'p1' },
+  [CHANNELS.gitPublish]: { projectId: 'p1' },
   [CHANNELS.gitPull]: { projectId: 'p1' },
   [CHANNELS.gitFetch]: { projectId: 'p1' },
   [CHANNELS.gitLog]: { projectId: 'p1' },
   [CHANNELS.gitBranchChanges]: { projectId: 'p1' },
 };
 const CHANNEL_LIST = Object.keys(VALID);
+const NO_UPSTREAM: GitStatusDto = { ...STATUS, upstream: null, ahead: null, behind: null };
 
 let consoleError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
@@ -117,10 +119,10 @@ afterEach(() => {
 });
 
 describe('registerGitHandlers: contrato dos canais', () => {
-  it('registra os onze canais git:*:v1 e nenhum outro', () => {
+  it('registra os doze canais git:*:v1 e nenhum outro', () => {
     const { fake } = setup();
     const gitChannels = Object.values(CHANNELS).filter((channel) => channel.startsWith('git:'));
-    expect(gitChannels).toHaveLength(11);
+    expect(gitChannels).toHaveLength(12);
     expect(fake.channels()).toEqual([...gitChannels].sort());
     expect(fake.channels()).toEqual([...CHANNEL_LIST].sort());
   });
@@ -134,7 +136,9 @@ describe('registerGitHandlers: contrato dos canais', () => {
   it.each(CHANNEL_LIST)(
     '%s: um pedido válido devolve uma resposta que o contrato aceita',
     async (channel) => {
-      const { fake } = setup();
+      const { fake, git } = setup();
+      // Publicar só vale para a branch que ainda não tem upstream.
+      if (channel === CHANNELS.gitPublish) git.status.mockResolvedValue(NO_UPSTREAM);
       const result = await fake.call(channel, VALID[channel]);
       expect(result).toMatchObject({ ok: true });
       const schema = responseSchemas[channel as keyof typeof responseSchemas];
@@ -158,6 +162,7 @@ describe('registerGitHandlers: entrada conferida antes do caso de uso', () => {
   const INVALID: Array<[string, string, unknown]> = [
     ['projectId vazio', CHANNELS.gitStatus, { projectId: '' }],
     ['sem projectId', CHANNELS.gitPush, {}],
+    ['publicar sem projectId', CHANNELS.gitPublish, {}],
     ['sem payload', CHANNELS.gitFetch, undefined],
     ['caminho com ..', CHANNELS.gitStage, { projectId: 'p1', paths: ['../x'] }],
     ['caminho absoluto', CHANNELS.gitUnstage, { projectId: 'p1', paths: ['/etc/passwd'] }],
@@ -183,36 +188,71 @@ describe('registerGitHandlers: entrada conferida antes do caso de uso', () => {
 
   it('um campo branch no payload não chega ao caso de uso nem à porta', async () => {
     const { fake, git } = setup();
+    const branch = 'main; rm -rf /';
     for (const channel of [CHANNELS.gitPush, CHANNELS.gitPull, CHANNELS.gitFetch]) {
-      const result = await fake.call(channel, { projectId: 'p1', branch: 'main; rm -rf /' });
+      const result = await fake.call(channel, { projectId: 'p1', branch });
       expect(result).toMatchObject({ ok: true });
     }
+    git.status.mockResolvedValue(NO_UPSTREAM);
+    expect(await fake.call(CHANNELS.gitPublish, { projectId: 'p1', branch })).toMatchObject({
+      ok: true,
+    });
     // A porta recebe só a pasta do projeto: o nome da branch sai do processo principal.
+    expect(git.push).toHaveBeenCalledTimes(2);
+    for (const call of git.push.mock.calls) expect(call).toEqual([PROJECT.path]);
     expect(git.push).toHaveBeenCalledWith(PROJECT.path);
     expect(git.pull).toHaveBeenCalledWith(PROJECT.path);
     expect(git.fetch).toHaveBeenCalledWith(PROJECT.path);
   });
 
-  it('git:push:v1 envia quando a branch tem upstream e publica quando não tem', async () => {
+  it('git:push:v1 com upstream chama a porta de push', async () => {
     const { fake, git } = setup();
     expect(await fake.call(CHANNELS.gitPush, VALID[CHANNELS.gitPush])).toMatchObject({ ok: true });
     expect(git.push).toHaveBeenCalledTimes(1);
-
-    git.status.mockResolvedValue({ ...STATUS, upstream: null, ahead: null, behind: null });
-    expect(await fake.call(CHANNELS.gitPush, VALID[CHANNELS.gitPush])).toMatchObject({ ok: true });
-    expect(git.push).toHaveBeenCalledTimes(2);
-    expect(git.push).toHaveBeenLastCalledWith(PROJECT.path);
+    expect(git.push).toHaveBeenCalledWith(PROJECT.path);
   });
 
-  it('git:push:v1 com o HEAD destacado devolve GIT_DETACHED_HEAD sem chamar o push', async () => {
+  it('git:push:v1 sem upstream devolve VALIDATION_FAILED do caso de uso, sem publicar', async () => {
     const { fake, git } = setup();
-    git.status.mockResolvedValue({ ...STATUS, branch: null, upstream: null });
+    git.status.mockResolvedValue(NO_UPSTREAM);
     expect(await fake.call(CHANNELS.gitPush, VALID[CHANNELS.gitPush])).toMatchObject({
       ok: false,
-      error: { code: 'GIT_DETACHED_HEAD' },
+      error: { code: 'VALIDATION_FAILED', message: expect.stringContaining('Publicar branch') },
     });
     expect(git.push).not.toHaveBeenCalled();
   });
+
+  it('git:publish:v1 sem upstream chama a porta de push', async () => {
+    const { fake, git } = setup();
+    git.status.mockResolvedValue(NO_UPSTREAM);
+    expect(await fake.call(CHANNELS.gitPublish, VALID[CHANNELS.gitPublish])).toMatchObject({
+      ok: true,
+    });
+    expect(git.push).toHaveBeenCalledTimes(1);
+    expect(git.push).toHaveBeenCalledWith(PROJECT.path);
+  });
+
+  it('git:publish:v1 com upstream devolve VALIDATION_FAILED do caso de uso, sem enviar', async () => {
+    const { fake, git } = setup();
+    expect(await fake.call(CHANNELS.gitPublish, VALID[CHANNELS.gitPublish])).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: expect.stringContaining('Enviar') },
+    });
+    expect(git.push).not.toHaveBeenCalled();
+  });
+
+  it.each([CHANNELS.gitPush, CHANNELS.gitPublish])(
+    '%s com o HEAD destacado devolve GIT_DETACHED_HEAD sem chamar o push',
+    async (channel) => {
+      const { fake, git } = setup();
+      git.status.mockResolvedValue({ ...NO_UPSTREAM, branch: null });
+      expect(await fake.call(channel, VALID[channel])).toMatchObject({
+        ok: false,
+        error: { code: 'GIT_DETACHED_HEAD' },
+      });
+      expect(git.push).not.toHaveBeenCalled();
+    },
+  );
 
   it('o commit leva a mensagem sem as pontas, e o resto do payload fica de fora', async () => {
     const { fake, git } = setup();

@@ -229,6 +229,7 @@ describe('canais e respostas do Git', () => {
     ['gitDiscard', 'git:discard:v1', undefined, { discarded: true }],
     ['gitCommit', 'git:commit:v1', { commit: 'b'.repeat(40) }, undefined],
     ['gitPush', 'git:push:v1', { branch: 'main' }, undefined],
+    ['gitPublish', 'git:publish:v1', { branch: 'main' }, undefined],
     ['gitPull', 'git:pull:v1', { updated: true }, { updated: 'sim' }],
     ['gitFetch', 'git:fetch:v1', undefined, { fetched: true }],
     ['gitLog', 'git:log:v1', [logEntry], { sha: 'x' }],
@@ -240,7 +241,7 @@ describe('canais e respostas do Git', () => {
     ],
   ] as const;
 
-  it('o conjunto de canais git é exatamente os onze, sem extra e sem falta', () => {
+  it('o conjunto de canais git é exatamente os doze, sem extra e sem falta', () => {
     const gitChannels = Object.values(CHANNELS).filter((c) => c.startsWith('git:'));
     expect([...gitChannels].sort()).toEqual(table.map((row) => row[1]).sort());
     const gitKeys = Object.keys(CHANNELS).filter((k) => k.startsWith('git'));
@@ -253,7 +254,7 @@ describe('canais e respostas do Git', () => {
     }
   });
 
-  it('o conjunto de respostas git é exatamente o dos onze canais', () => {
+  it('o conjunto de respostas git é exatamente o dos doze canais', () => {
     const responseKeys = Object.keys(responseSchemas).filter((c) => c.startsWith('git:'));
     expect([...responseKeys].sort()).toEqual(table.map((row) => row[1]).sort());
   });

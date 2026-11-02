@@ -125,6 +125,7 @@ export const responseSchemas = {
   [CHANNELS.gitDiscard]: appResultSchema(z.undefined()),
   [CHANNELS.gitCommit]: appResultSchema(gitCommitResultSchema),
   [CHANNELS.gitPush]: appResultSchema(gitPushResultSchema),
+  [CHANNELS.gitPublish]: appResultSchema(gitPushResultSchema),
   [CHANNELS.gitPull]: appResultSchema(gitPullResultSchema),
   [CHANNELS.gitFetch]: appResultSchema(z.undefined()),
   [CHANNELS.gitLog]: appResultSchema(z.array(gitLogEntrySchema)),

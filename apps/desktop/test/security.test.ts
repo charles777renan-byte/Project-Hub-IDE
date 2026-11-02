@@ -549,6 +549,7 @@ describe('buildProjectHubApi', () => {
       'discard',
       'fetch',
       'log',
+      'publish',
       'pull',
       'push',
       'stage',
@@ -625,6 +626,7 @@ describe('buildProjectHubApi', () => {
     await api.git.discard(paths);
     await api.git.commit({ projectId: 'p1', message: 'feat: x' });
     await api.git.push(project);
+    await api.git.publish(project);
     await api.git.pull(project);
     await api.git.fetch(project);
     await api.git.log(project);
@@ -638,6 +640,7 @@ describe('buildProjectHubApi', () => {
       [CHANNELS.gitDiscard, paths],
       [CHANNELS.gitCommit, { projectId: 'p1', message: 'feat: x' }],
       [CHANNELS.gitPush, project],
+      [CHANNELS.gitPublish, project],
       [CHANNELS.gitPull, project],
       [CHANNELS.gitFetch, project],
       [CHANNELS.gitLog, project],
