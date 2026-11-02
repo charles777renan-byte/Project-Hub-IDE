@@ -99,12 +99,13 @@ export const CHANNELS = {
   filesSaveAllRequest: 'files:save-all-request:v1',
   /** O renderer diz como foi o pedido acima: `saved` só vale `true` se nada ficou sujo. */
   filesSaveAllResult: 'files:save-all-result:v1',
-  /** Painel de código-fonte (fase 2, ADR 0010). Só entram o id do projeto, caminhos relativos POSIX e a mensagem do commit. */
+  /** Painel de código-fonte (fase 2, ADR 0010): branch, upstream, à frente/atrás e arquivos alterados. Só entram o id do projeto, caminhos relativos POSIX e a mensagem do commit. */
   gitStatus: 'git:status:v1',
   /** Diff de um arquivo contra a base (`origin/main`). */
   gitDiff: 'git:diff:v1',
   /** Põe arquivos em stage. */
   gitStage: 'git:stage:v1',
+  /** Tira arquivos do stage. */
   gitUnstage: 'git:unstage:v1',
   /** Descarta as alterações de arquivos no disco. Não tem volta. */
   gitDiscard: 'git:discard:v1',
@@ -114,6 +115,7 @@ export const CHANNELS = {
   gitPush: 'git:push:v1',
   /** Traz os commits do remoto só se a branch puder avançar (sem commit de merge). */
   gitPull: 'git:pull:v1',
+  /** Atualiza as refs remotas, sem mexer na branch local. */
   gitFetch: 'git:fetch:v1',
   /** Histórico da branch atual. */
   gitLog: 'git:log:v1',
