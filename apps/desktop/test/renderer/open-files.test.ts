@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   closeFile,
   hasDirtyFiles,
+  markSaved,
   openFile,
   resetOpenFilesForTests,
   setActive,
@@ -125,6 +126,63 @@ describe('open-files', () => {
     expect(result.current.files).toEqual([
       { path: 'a.ts', load: 'loading', text: '', dirty: false },
     ]);
+  });
+
+  describe('markSaved', () => {
+    const NEW_VERSION = { size: 7, mtimeMs: 2, hash: 'b'.repeat(64) };
+
+    it('o que foi gravado vira o salvo e zera o dirty, sem mexer no texto do editor', async () => {
+      const { result } = mount();
+      act(() => openFile('p1', 'a.ts'));
+      await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+      act(() => updateText('p1', 'a.ts', 'gravado'));
+      expect(result.current.anyDirty).toBe(true);
+
+      act(() =>
+        markSaved('p1', 'a.ts', { text: 'gravado', eol: 'crlf', bom: true, version: NEW_VERSION }),
+      );
+
+      const file = result.current.files[0];
+      expect(file?.saved).toEqual({
+        text: 'gravado',
+        eol: 'crlf',
+        bom: true,
+        version: NEW_VERSION,
+      });
+      expect(file?.text).toBe('gravado');
+      expect(file?.dirty).toBe(false);
+      expect(result.current.anyDirty).toBe(false);
+      expect(hasDirtyFiles()).toBe(false);
+    });
+
+    it('o que se digitou durante a gravação continua não salvo', async () => {
+      const { result } = mount();
+      act(() => openFile('p1', 'a.ts'));
+      await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+      act(() => updateText('p1', 'a.ts', 'enviado e mais'));
+
+      act(() =>
+        markSaved('p1', 'a.ts', { text: 'enviado', eol: 'lf', bom: false, version: NEW_VERSION }),
+      );
+
+      expect(result.current.files[0]?.saved?.text).toBe('enviado');
+      expect(result.current.files[0]?.text).toBe('enviado e mais');
+      expect(result.current.files[0]?.dirty).toBe(true);
+      expect(result.current.anyDirty).toBe(true);
+    });
+
+    it('arquivo já fechado não volta à lista', async () => {
+      const { result } = mount();
+      act(() => openFile('p1', 'a.ts'));
+      await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+      act(() => closeFile('p1', 'a.ts'));
+
+      act(() =>
+        markSaved('p1', 'a.ts', { text: 'x', eol: 'lf', bom: false, version: NEW_VERSION }),
+      );
+
+      expect(result.current.files).toEqual([]);
+    });
   });
 
   it('closeFile ativa a aba vizinha: a que ocupa o lugar, ou a anterior se era a última', async () => {

@@ -637,6 +637,29 @@ export const RIGHT_PANEL_TEXT = {
     loading: 'Carregando…',
     readError: 'Não foi possível abrir o arquivo.',
   },
+  /** O editor de um arquivo aberto (FileEditorTab, CodeEditor). */
+  editor: {
+    label: (name: string) => `Editor de ${name}`,
+    save: 'Salvar',
+    saveError: 'Não foi possível salvar o arquivo.',
+    mixedEol: 'Este arquivo mistura fins de linha; edite no seu editor',
+    cannotEdit: 'Este arquivo não pode ser editado aqui',
+    openDefault: 'Abrir no programa padrão',
+    openDefaultError: 'Não foi possível abrir o arquivo no programa padrão.',
+    find: {
+      Find: 'Buscar',
+      Replace: 'Substituir',
+      next: 'próximo',
+      previous: 'anterior',
+      all: 'todos',
+      'match case': 'diferenciar maiúsculas',
+      regexp: 'regex',
+      'by word': 'palavra inteira',
+      replace: 'substituir',
+      'replace all': 'substituir todos',
+      close: 'fechar',
+    },
+  },
 } as const;
 
 /** Textos do formulário Nova missão: uma linha de dica por campo, sem blocos numerados. */

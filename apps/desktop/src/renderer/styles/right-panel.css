@@ -474,3 +474,111 @@
   background: var(--surface-2);
   color: var(--text);
 }
+
+/*
+ * Editor de arquivo (FileEditorTab, CodeEditor). O CodeMirror mora num Shadow Root dentro de .code-editor__host: o CSS
+ * daqui não entra nele (tema e realce estão em editor-theme.ts, com os mesmos tokens). Aqui só a casca: a barra do
+ * caminho, os avisos e a caixa que o editor ocupa. A borda do botão Salvar e do campo de busca é --field-line; as
+ * divisórias, --line.
+ */
+.file-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  color: var(--text);
+}
+
+.file-editor__bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.file-editor__path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.file-editor__bar > button {
+  flex: none;
+}
+
+.file-editor__notice,
+.file-editor__alert {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  box-shadow: inset 0 -1px 0 var(--line);
+  font-size: var(--text-sm);
+}
+
+/* Faixa de aviso (fins de linha misturados): barra à esquerda além do texto, para o aviso se destacar sem depender de cor. */
+.file-editor__notice {
+  background: var(--surface-2);
+  box-shadow:
+    inset 3px 0 0 var(--field-line),
+    inset 0 -1px 0 var(--line);
+  color: var(--text);
+}
+
+.file-editor__status {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.file-editor__cannot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.file-editor__cannot .file-editor__status {
+  padding: 0;
+}
+
+.file-editor__cannot-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.code-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.code-editor__host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.code-editor__host[hidden] {
+  display: none;
+}
+
+/* Enquanto o CodeMirror carrega: o texto em campo somente leitura, no mesmo tom e fonte do editor. */
+.code-editor__fallback {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  resize: none;
+}
