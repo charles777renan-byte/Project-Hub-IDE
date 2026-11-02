@@ -572,6 +572,21 @@ export const PROJECT_TEXT = {
   newMission: 'Nova missão',
   noGitNotice:
     'Este projeto não é um repositório Git. Missões precisam de Git: rode git init na pasta do projeto para criar missões aqui.',
+  /** Criar o repositório Git pelo app (ADR 0009). A pergunta é montada com a prévia do que a pasta tem. */
+  createGitRepo: 'Criar repositório Git',
+  createGitRepoConfirm: 'Criar e fazer o primeiro commit',
+  gitInitQuestion:
+    'Cria o repositório Git nesta pasta e faz o primeiro commit com os arquivos que o .gitignore não ignora.',
+  gitInitCreatesGitignore:
+    'A pasta não tem .gitignore, então um básico será criado (node_modules, .env, chaves e dist).',
+  gitInitSensitive: (files: readonly string[]) => {
+    const shown = files.slice(0, 5).join(', ');
+    const more = files.length > 5 ? ` e mais ${files.length - 5}` : '';
+    const verb = files.length === 1 ? 'tem nome de segredo' : 'têm nome de segredo';
+    return `Atenção: ${shown}${more} ${verb}. Entram no commit se o .gitignore não os ignorar.`;
+  },
+  gitIdentityMissing:
+    'Antes de criar o repositório, configure seu nome e seu e-mail no Git: git config --global user.name e git config --global user.email.',
   moreActions: 'Mais ações',
   archive: 'Arquivar projeto',
   archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
