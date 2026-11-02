@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { EditorHandle } from './editor-core';
+import type { CursorInfo, EditorHandle } from './editor-core';
 import { loadLanguage, type LanguageId } from './languages';
+
+export type { CursorInfo };
 
 type CodeEditorProps = {
   value: string;
@@ -8,6 +10,8 @@ type CodeEditorProps = {
   readOnly?: boolean;
   /** O texto novo, quando a pessoa edita. Trocar `value` por fora não chama. */
   onChange?: (text: string) => void;
+  /** A posição do cursor e o total selecionado: ao montar e a cada mudança de cursor, seleção ou texto. */
+  onCursor?: (info: CursorInfo) => void;
   autoFocus?: boolean;
   /** O nome do campo de edição para leitor de tela. */
   ariaLabel?: string;
@@ -25,6 +29,7 @@ export function CodeEditor({
   language,
   readOnly = false,
   onChange,
+  onCursor,
   autoFocus = false,
   ariaLabel = 'Editor de código',
 }: CodeEditorProps) {
@@ -32,9 +37,9 @@ export function CodeEditor({
   const handleRef = useRef<EditorHandle | null>(null);
   const [ready, setReady] = useState(false);
   // O que o editor lê ao montar e ao avisar: sempre os valores da última pintura, sem remontar a cada tecla.
-  const latest = useRef({ value, readOnly, onChange, autoFocus, ariaLabel });
+  const latest = useRef({ value, readOnly, onChange, onCursor, autoFocus, ariaLabel });
   useEffect(() => {
-    latest.current = { value, readOnly, onChange, autoFocus, ariaLabel };
+    latest.current = { value, readOnly, onChange, onCursor, autoFocus, ariaLabel };
   });
 
   useEffect(() => {
@@ -56,6 +61,7 @@ export function CodeEditor({
           readOnly: now.readOnly,
           ariaLabel: now.ariaLabel,
           onChange: (text) => latest.current.onChange?.(text),
+          onCursor: (info) => latest.current.onCursor?.(info),
         });
         setReady(true);
       } catch {

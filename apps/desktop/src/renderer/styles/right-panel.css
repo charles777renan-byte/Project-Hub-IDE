@@ -536,6 +536,24 @@
   font-size: var(--text-sm);
 }
 
+/* A barra de status abaixo do editor: posição, codificação, fim de linha e linguagem. --muted sobre --surface-2 passa de 4.5:1. */
+.editor-status {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 var(--line);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.editor-status__cursor {
+  margin-right: auto;
+}
+
 .file-editor__cannot {
   display: flex;
   flex-direction: column;

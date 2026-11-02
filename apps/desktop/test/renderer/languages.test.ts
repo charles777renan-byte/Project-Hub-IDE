@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { languageOf, loadLanguage } from '../../src/renderer/components/editor/languages';
+import {
+  languageLabel,
+  languageOf,
+  loadLanguage,
+} from '../../src/renderer/components/editor/languages';
 
 describe('languageOf', () => {
   it.each([
@@ -48,4 +52,19 @@ describe('loadLanguage', () => {
       expect(await loadLanguage(id)).not.toBeNull();
     },
   );
+});
+
+describe('languageLabel', () => {
+  it.each([
+    ['typescript', 'TypeScript'],
+    ['javascript', 'JavaScript'],
+    ['json', 'JSON'],
+    ['css', 'CSS'],
+    ['html', 'HTML'],
+    ['markdown', 'Markdown'],
+    ['yaml', 'YAML'],
+    ['text', 'Texto simples'],
+  ] as const)('%s tem o nome %s', (id, label) => {
+    expect(languageLabel(id)).toBe(label);
+  });
 });

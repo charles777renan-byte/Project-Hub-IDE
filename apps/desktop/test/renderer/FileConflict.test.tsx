@@ -82,6 +82,15 @@ function Harness({ path = 'src/a.ts' }: { path?: string }) {
   );
 }
 
+/** A faixa de "Atualizado": a barra de status do editor também tem role=status, então se filtra pela faixa. */
+function reloadedNotice(): HTMLElement | null {
+  return (
+    screen
+      .queryAllByRole('status')
+      .find((element) => element.classList.contains('file-conflict')) ?? null
+  );
+}
+
 function state(): { dirty: boolean; saved: string | undefined; notice: string | undefined } {
   return JSON.parse(screen.getByTestId('estado').textContent ?? '{}') as ReturnType<typeof state>;
 }
@@ -123,7 +132,7 @@ describe('arquivo alterado no disco, sem edições não salvas', () => {
 
     await check();
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
+    expect(await screen.findByText('Atualizado: o arquivo mudou no disco')).toHaveTextContent(
       'Atualizado: o arquivo mudou no disco',
     );
     await waitFor(() => expect(viewOf(container).state.doc.toString()).toBe('texto do agente'));
@@ -137,12 +146,12 @@ describe('arquivo alterado no disco, sem edições não salvas', () => {
     vi.useFakeTimers();
 
     await check();
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(reloadedNotice()).toBeInTheDocument();
     await act(() => vi.advanceTimersByTimeAsync(4_900));
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(reloadedNotice()).toBeInTheDocument();
     await act(() => vi.advanceTimersByTimeAsync(200));
 
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(reloadedNotice()).not.toBeInTheDocument();
     expect(state().notice).toBeUndefined();
   });
 
@@ -156,7 +165,7 @@ describe('arquivo alterado no disco, sem edições não salvas', () => {
     await check();
 
     expect(api.read).not.toHaveBeenCalled();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(reloadedNotice()).not.toBeInTheDocument();
     expect(state().notice).toBeUndefined();
   });
 

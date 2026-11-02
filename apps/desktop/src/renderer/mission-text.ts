@@ -654,6 +654,15 @@ export const RIGHT_PANEL_TEXT = {
     cannotEdit: 'Este arquivo não pode ser editado aqui',
     openDefault: 'Abrir no programa padrão',
     openDefaultError: 'Não foi possível abrir o arquivo no programa padrão.',
+    /** A barra de status abaixo do editor (EditorStatusBar). */
+    statusBar: {
+      label: 'Informações do arquivo',
+      position: (line: number, column: number) => `Ln ${line}, Col ${column}`,
+      selected: (count: number) => ` (${count} selecionados)`,
+      utf8: 'UTF-8',
+      utf8Bom: 'UTF-8 com BOM',
+      eol: { lf: 'LF', crlf: 'CRLF', mixed: 'Misto' },
+    },
     /** A faixa do arquivo que mudou ou sumiu do disco (FileConflictBar). */
     conflict: {
       changed: 'O arquivo mudou no disco enquanto você editava',
