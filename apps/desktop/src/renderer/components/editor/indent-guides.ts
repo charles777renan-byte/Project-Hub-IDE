@@ -34,12 +34,59 @@ function measureIndent(text: string, tabSize: number): { columns: number; blank:
   return { columns, blank: true };
 }
 
-/** Colunas de um nível: a unidade de indentação do estado (`indentUnit`), com a tabulação valendo `tabSize`. */
+/** Quantas linhas, do começo do arquivo, entram na detecção da unidade de indentação. */
+const DETECT_LINES = 1000;
+/** Tamanhos de recuo que contam como unidade; um salto de 1 coluna (o " *" de um comentário) não conta. */
+const UNIT_CANDIDATES = [2, 3, 4, 8];
+
+/** A unidade já detectada de cada documento; `Text` é imutável, então vale enquanto o texto for o mesmo. */
+const unitCache = new WeakMap<object, number>();
+
+/**
+ * Colunas de um nível, lidas do próprio arquivo (o app não configura `indentUnit`): se mais linhas começam
+ * com tabulação do que com espaço, é a tabulação (`tabSize` colunas); senão vale o salto de recuo mais
+ * comum entre linhas com texto seguidas (2, 3, 4 ou 8). Sem pista nenhuma, cai na `indentUnit` do estado.
+ */
 function unitWidth(state: EditorState): number {
-  const unit = state.facet(indentUnit);
+  const cached = unitCache.get(state.doc);
+  if (cached !== undefined) return cached;
   const tabSize = state.tabSize;
-  const width = measureIndent(unit, tabSize).columns;
-  return Math.min(MAX_UNIT, Math.max(1, width > 0 ? width : tabSize));
+  let tabLines = 0;
+  let spaceLines = 0;
+  const jumps = new Map<number, number>();
+  let previous = 0;
+  const last = Math.min(state.doc.lines, DETECT_LINES);
+  for (let n = 1; n <= last; n += 1) {
+    const text = state.doc.line(n).text;
+    const { columns, blank } = measureIndent(text, tabSize);
+    if (blank) continue;
+    if (columns > 0) {
+      if (text[0] === '	') tabLines += 1;
+      else spaceLines += 1;
+    }
+    const jump = columns - previous;
+    if (jump > 0 && UNIT_CANDIDATES.includes(jump)) jumps.set(jump, (jumps.get(jump) ?? 0) + 1);
+    previous = columns;
+  }
+  let width = 0;
+  if (tabLines > spaceLines) width = tabSize;
+  else {
+    let best = 0;
+    for (const candidate of UNIT_CANDIDATES) {
+      const votes = jumps.get(candidate) ?? 0;
+      if (votes > best) {
+        best = votes;
+        width = candidate;
+      }
+    }
+  }
+  if (width === 0) {
+    const fromFacet = measureIndent(state.facet(indentUnit), tabSize).columns;
+    width = fromFacet > 0 ? fromFacet : tabSize;
+  }
+  const result = Math.min(MAX_UNIT, Math.max(1, width));
+  unitCache.set(state.doc, result);
+  return result;
 }
 
 /** O nível de indentação da linha `number` quando ela tem texto; `null` quando está em branco. */

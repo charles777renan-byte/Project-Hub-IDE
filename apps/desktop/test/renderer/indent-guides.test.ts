@@ -48,6 +48,24 @@ describe('indentGuides', () => {
     view.destroy();
   });
 
+  it('detecta 4 espaços do arquivo, sem indentUnit configurado', () => {
+    const view = mount(['a', '    b', '        c', '    d'].join('\n'));
+    expect(guides(view)).toEqual([null, [1, 4], [2, 4], [1, 4]]);
+    view.destroy();
+  });
+
+  it('detecta tabulação do arquivo, sem indentUnit configurado: um nível por tabulação', () => {
+    const view = mount(['a', '\tb', '\t\tc', '\t\t\td'].join('\n'));
+    expect(guides(view)).toEqual([null, [1, 4], [2, 4], [3, 4]]);
+    view.destroy();
+  });
+
+  it('um " *" de comentário não vira unidade de 1 coluna', () => {
+    const view = mount(['/**', ' * x', ' */', 'function f() {', '    return 1;', '}'].join('\n'));
+    expect(guides(view)[4]).toEqual([1, 4]);
+    view.destroy();
+  });
+
   it('funciona com tabulação: cada tabulação é um nível de largura tabSize', () => {
     const view = mount(['a', '\tb', '\t\tc', '\t\t\td'].join('\n'), [indentUnit.of('\t')]);
     expect(guides(view)).toEqual([null, [1, 4], [2, 4], [3, 4]]);
@@ -61,19 +79,16 @@ describe('indentGuides', () => {
   });
 
   it('linha em branco entre níveis diferentes fica com o menor deles', () => {
-    // Unidade padrão (2 espaços): b = 2, c = 4, d = 2; a linha 4 fica entre c e d.
+    // Unidade detectada (4 espaços): b = 1, c = 2, d = 1; a linha 4 fica entre c e d.
     const state = EditorState.create({ doc: ['a', '    b', '        c', '', '    d'].join('\n') });
-    expect(indentLevel(state, 4)).toBe(2);
-    expect(indentLevel(state, 3)).toBe(4);
+    expect(indentLevel(state, 4)).toBe(1);
+    expect(indentLevel(state, 3)).toBe(2);
   });
 
   it('acompanha a edição do documento', () => {
     const view = mount('a\n  b');
-    view.dispatch({ changes: { from: 0, insert: '    ' } });
-    expect(guides(view)).toEqual([
-      [2, 2],
-      [1, 2],
-    ]);
+    view.dispatch({ changes: { from: 5, insert: '\n    c' } });
+    expect(guides(view)).toEqual([null, [1, 2], [2, 2]]);
     view.destroy();
   });
 
