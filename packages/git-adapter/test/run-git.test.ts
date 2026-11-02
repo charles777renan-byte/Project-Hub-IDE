@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GitError, runApproved, runGit } from '../src/run-git';
+import { GitError, LOG_FORMAT, runApproved, runGit } from '../src/run-git';
 
 // Unitário: o `execFile` é imitado, então nenhum processo é criado aqui. Os testes com o Git de
 // verdade ficam nos arquivos *.integration.test.ts.
@@ -15,6 +15,11 @@ const cwd = import.meta.dirname;
 // Vai antes do subcomando em toda chamada: o `core.fsmonitor` de um repositório não confiável executa
 // um comando no `git status`.
 const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
+// O nome inteiro de um commit (SHA-1 e SHA-256): o que o `merge-base` devolve.
+const SHA = '0123456789abcdef0123456789abcdef01234567';
+const SHA256 = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+// As opções que o `diff` com `--patch` leva contra a base: sem diff externo nem filtro de texto.
+const PATCH_OPTIONS = ['--patch', '--no-renames', '--no-ext-diff', '--no-textconv', '--no-color'];
 
 /** Faz o `execFile` imitado terminar logo, com o erro e as saídas dadas. */
 function respondWith(error: Error | null, stdout = '', stderr = ''): void {
@@ -90,6 +95,76 @@ describe('runGit: só comandos de leitura', () => {
     [['check-ignore', '--', '.env', '']],
     [['check-ignore', '-v', '--', '.env']],
     [['check-ignore']],
+    // `log` só com o formato fixo, `-n` de 1 a 50 e `--decorate=short`: `--output` escreve em arquivo.
+    [['log']],
+    [['log', '-n', '51', LOG_FORMAT, '--decorate=short']],
+    [['log', '-n', '0', LOG_FORMAT, '--decorate=short']],
+    [['log', '-n', '051', LOG_FORMAT, '--decorate=short']],
+    [['log', '-n', '+5', LOG_FORMAT, '--decorate=short']],
+    [['log', '-n', '5x', LOG_FORMAT, '--decorate=short']],
+    [['log', '--output=x']],
+    [['log', '-n', '5', LOG_FORMAT, '--decorate=short', '--output=x']],
+    [['log', '-n', '5', '--format=%H', '--decorate=short']],
+    [['log', '-n', '5', LOG_FORMAT]],
+    [['log', '-n', '5', LOG_FORMAT, '--decorate=short', 'main']],
+    // `rev-list --left-right --count <ref>...HEAD`: o operando nunca vira opção.
+    [['rev-list', '--left-right', '--count', '-x...HEAD']],
+    [['rev-list', '--left-right', '--count', '...HEAD']],
+    [['rev-list', '--left-right', '--count', 'origin/main...main']],
+    [['rev-list', '--count', 'origin/main...HEAD']],
+    [['rev-list', '--left-right', '--count', 'origin/main...HEAD', '--output=x']],
+    [['rev-list', 'HEAD']],
+    // `merge-base HEAD <ref>`, e nada além disso.
+    [['merge-base', '--is-ancestor', 'HEAD', 'main']],
+    [['merge-base', 'HEAD', '-x']],
+    [['merge-base', 'main', 'HEAD']],
+    [['merge-base', 'HEAD']],
+    [['merge-base', 'HEAD', 'a', 'b']],
+    [['merge-base']],
+    // `diff` contra a base só com o nome inteiro do commit (o `merge-base` calculado pelo adaptador).
+    [['diff', '--numstat', SHA]],
+    [['diff', SHA, '--numstat']],
+    [['diff', '--name-status', SHA]],
+    [['diff', '--numstat', '--name-status', '-z', SHA]],
+    [['diff', '--numstat', '-z', SHA, '--', 'a.txt']],
+    [['diff', '--numstat', '-z', SHA, 'HEAD']],
+    [['diff', '--numstat', '-z', 'main']],
+    [['diff', '--numstat', '-z', SHA.slice(0, 12)]],
+    [['diff', '--numstat', '-z', `${SHA}0`]],
+    [['diff', '--numstat', '-z', '--ext-diff', SHA]],
+    [['diff', '--numstat', '-z', '--output=x', SHA]],
+    [['diff', SHA]],
+    [['diff', SHA, '--', 'a.txt']],
+    [['diff', SHA, ...PATCH_OPTIONS]],
+    [['diff', SHA, ...PATCH_OPTIONS, '--']],
+    [['diff', SHA, ...PATCH_OPTIONS, '--', 'a.txt', 'b.txt']],
+    [['diff', SHA, ...PATCH_OPTIONS, '--', '']],
+    [['diff', SHA, '--patch', '--no-ext-diff', '--', 'a.txt']],
+    [['diff', SHA, '--patch', '--no-textconv', '--', 'a.txt']],
+    [['diff', SHA, ...PATCH_OPTIONS, '-z', '--', 'a.txt']],
+    [['diff', SHA, ...PATCH_OPTIONS, '--output=x', '--', 'a.txt']],
+    [['diff', 'main', ...PATCH_OPTIONS, '--', 'a.txt']],
+    // `ls-files -z -- <caminhos>`: sem as opções que listam outra coisa nem leem de fora.
+    [['ls-files']],
+    [['ls-files', '-z']],
+    [['ls-files', '-z', '--']],
+    [['ls-files', '--', 'a.txt']],
+    [['ls-files', '-z', 'a.txt']],
+    [['ls-files', '-z', '--', '']],
+    [['ls-files', '-z', '--', 'a.txt', '']],
+    [['ls-files', '-z', '-o', '--', 'a.txt']],
+    [['ls-files', '-z', '--others', '--', 'a.txt']],
+    [['ls-files', '-s', '-z', '--', 'a.txt']],
+    [['ls-files', '--exclude-from=x', '-z', '--', 'a.txt']],
+    // `config` só lê chaves conhecidas, uma de cada vez.
+    [['config', '--get', 'remote.origin.pushurl']],
+    [['config', '--get', 'remote.origin.url', 'extra']],
+    [['config', '--get', 'remote.upstream.url']],
+    [['config', 'remote.origin.url', 'https://alvo']],
+    [['config', '--add', 'remote.origin.url', 'https://alvo']],
+    [['config', '--unset', 'remote.origin.url']],
+    [['config', '--get-all', 'remote.origin.url']],
+    [['config', '--get', 'core.hooksPath']],
     // Opção antes do subcomando: `-c` mudaria a configuração do Git para esta chamada.
     [['-c', 'core.fsmonitor=comando', 'status']],
     [['--version']],
@@ -127,6 +202,26 @@ describe('runGit: só comandos de leitura', () => {
     [['diff', 'HEAD', '--name-status', '--', 'pasta', 'outro']],
     [['check-ignore', '--', '.env', '.vscode/']],
     [['check-ignore', '--', 'config/local.json']],
+    // As leituras do painel de código-fonte (ADR 0010).
+    [['status', '--porcelain=v2', '--branch', '-z']],
+    [['rev-parse', '--abbrev-ref', 'HEAD']],
+    [['log', '-n', '1', LOG_FORMAT, '--decorate=short']],
+    [['log', '-n', '9', LOG_FORMAT, '--decorate=short']],
+    [['log', '-n', '50', LOG_FORMAT, '--decorate=short']],
+    [['rev-list', '--left-right', '--count', 'origin/main...HEAD']],
+    [['rev-list', '--left-right', '--count', 'origin/feat/ação nova...HEAD']],
+    [['merge-base', 'HEAD', 'origin/main']],
+    [['merge-base', 'HEAD', SHA]],
+    [['diff', '--name-status', '-z', SHA]],
+    [['diff', '--name-status', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', SHA]],
+    [['diff', '--numstat', '-z', SHA]],
+    [['diff', '--numstat', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', SHA]],
+    [['diff', '--numstat', '-z', SHA256]],
+    [['diff', SHA, ...PATCH_OPTIONS, '--', ':(literal)a[1].txt']],
+    [['diff', SHA, '--patch', ...PATCH_OPTIONS, '--', 'pasta/a.txt']],
+    [['ls-files', '-z', '--', 'a.txt']],
+    [['ls-files', '-z', '--', ':(literal)a[1].txt', ':(literal)./-x']],
+    [['config', '--get', 'remote.origin.url']],
   ])('aceita %j', async (args) => {
     await runGit(args, { cwd });
 

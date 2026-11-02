@@ -290,6 +290,96 @@ describe('discardPaths', () => {
     expect(git(repoPath, ['status', '--porcelain']).trim()).toBe('M pasta[1]/a1.txt');
   });
 
+  it('arquivo não rastreado de nome parecido com o de um rastreado: recusa, e o outro fica como está', async () => {
+    // `a[1].txt` não é rastreado, mas `a1.txt` é: se o nome valesse como padrão, a conferência passaria.
+    commitFile(repoPath, 'a1.txt', 'original\n', 'Irmão');
+    writeFileSync(join(repoPath, 'a1.txt'), 'alterado\n');
+    writeFileSync(join(repoPath, 'a[1].txt'), 'nunca commitado\n');
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['a[1].txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('a[1].txt');
+    expect(git(repoPath, ['status', '--porcelain']).includes(' M a1.txt')).toBe(true);
+    expect(existsSync(join(repoPath, 'a[1].txt'))).toBe(true);
+  });
+
+  it('pasta com arquivos rastreados: recusa a lista toda, e nada é restaurado', async () => {
+    mkdirSync(join(repoPath, 'pasta'));
+    commitFile(repoPath, 'pasta/b.txt', 'original\n', 'Dentro da pasta');
+    writeFileSync(join(repoPath, 'pasta', 'b.txt'), 'alterado\n');
+    writeFileSync(join(repoPath, 'a.txt'), 'alterado\n');
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['a.txt', 'pasta'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('pasta');
+    expect(git(repoPath, ['status', '--porcelain']).split('\n').sort()).toEqual([
+      '',
+      ' M a.txt',
+      ' M pasta/b.txt',
+    ]);
+  });
+
+  it('pasta com barra no fim: recusa', async () => {
+    mkdirSync(join(repoPath, 'pasta'));
+    commitFile(repoPath, 'pasta/b.txt', 'original\n', 'Dentro da pasta');
+    writeFileSync(join(repoPath, 'pasta', 'b.txt'), 'alterado\n');
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['pasta/'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(git(repoPath, ['status', '--porcelain']).trim()).toBe('M pasta/b.txt');
+  });
+
+  it('arquivo em conflito (estágios 1 a 3 no índice): recusa a lista toda, e nada é restaurado', async () => {
+    git(repoPath, ['checkout', '-b', 'outra']);
+    commitFile(repoPath, 'a.txt', 'versão da outra\n', 'Muda na outra');
+    git(repoPath, ['checkout', 'main']);
+    commitFile(repoPath, 'a.txt', 'versão da main\n', 'Muda na main');
+    commitFile(repoPath, 'b.txt', 'original\n', 'Outro arquivo');
+    expect(() => git(repoPath, ['merge', 'outra'])).toThrow();
+    expect(git(repoPath, ['status', '--porcelain']).trim()).toBe('UU a.txt');
+    writeFileSync(join(repoPath, 'b.txt'), 'alterado\n');
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['b.txt', 'a.txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('a.txt');
+    expect(git(repoPath, ['status', '--porcelain']).split('\n').sort()).toEqual([
+      '',
+      ' M b.txt',
+      'UU a.txt',
+    ]);
+  });
+
+  it('arquivo em conflito sozinho: recusa com VALIDATION_FAILED, e não com o erro cru do Git', async () => {
+    git(repoPath, ['checkout', '-b', 'outra']);
+    commitFile(repoPath, 'a.txt', 'versão da outra\n', 'Muda na outra');
+    git(repoPath, ['checkout', 'main']);
+    commitFile(repoPath, 'a.txt', 'versão da main\n', 'Muda na main');
+    expect(() => git(repoPath, ['merge', 'outra'])).toThrow();
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['a.txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('conflito com um estágio só no índice (por exemplo "adicionado por nós"): também recusa', async () => {
+    // Uma entrada só, no estágio 2: o `ls-files` a lista uma vez, como a de um arquivo comum.
+    const blob = git(repoPath, ['rev-parse', 'HEAD:a.txt']).trim();
+    execFileSync('git', ['update-index', '--index-info'], {
+      cwd: repoPath,
+      input: `100644 ${blob} 2\tsozinho.txt\n`,
+    });
+    expect(git(repoPath, ['status', '--porcelain']).includes('AU sozinho.txt')).toBe(true);
+
+    const error = await failureOf(discardPaths({ repo: repoPath, paths: ['sozinho.txt'] }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('sozinho.txt');
+  });
+
   // O ":" não existe em nome de arquivo no Windows.
   it.skipIf(process.platform === 'win32')('pasta e nome com ":"', async () => {
     mkdirSync(join(repoPath, 'pasta:2'));
