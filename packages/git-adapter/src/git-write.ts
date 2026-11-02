@@ -41,6 +41,8 @@ const NOTHING_TO_COMMIT_MESSAGE =
   'Não há nada em stage para commitar. Adicione ao stage os arquivos que entram no commit.';
 const DETACHED_HEAD_MESSAGE =
   'O repositório não está em nenhuma branch (HEAD solto). Volte para uma branch pelo terminal e tente de novo.';
+const NO_COMMIT_MESSAGE =
+  'A branch ainda não tem nenhum commit, então não há o que enviar. Faça o primeiro commit e envie de novo.';
 const NOT_FAST_FORWARD_MESSAGES = {
   push: 'O remoto tem commits que a sua branch não tem, e o envio foi recusado. Resolva no terminal (git pull, com merge ou rebase) e envie de novo.',
   pull: 'A sua branch e a do remoto divergiram, então ela não pode avançar sozinha. Resolva no terminal (merge ou rebase).',
@@ -62,12 +64,17 @@ function isRelativePosixPath(path: string): boolean {
   );
 }
 
-function assertPaths(paths: readonly string[]): void {
+/**
+ * Valida os caminhos e devolve os que vão para o Git. Um nome que começa com `-` (`-x`) viraria opção, e
+ * `runGitWrite` o recusa; `./-x` é o mesmo arquivo e passa (também em `:0:./-x`).
+ */
+function checkedPaths(paths: readonly string[]): string[] {
   if (paths.length === 0) throw validationError('Nenhum arquivo foi informado.');
   const bad = paths.find((path) => !isRelativePosixPath(path));
   if (bad !== undefined) {
     throw validationError(`Caminho inválido: "${bad}". Use caminhos relativos à pasta do projeto.`);
   }
+  return paths.map((path) => (path.startsWith('-') ? `./${path}` : path));
 }
 
 function assertCommitMessage(message: string): void {
@@ -82,27 +89,64 @@ function assertCommitMessage(message: string): void {
   }
 }
 
-/** Sequência de cor ANSI (ESC [ ... letra), que a saída de um hook pode trazer. */
-const ANSI_SEQUENCE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'gu');
+const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+/** OSC (`ESC ] ... BEL` ou `ESC ] ... ESC \`): título de janela e hiperlink. Sai inteira, com o conteúdo. */
+const OSC_SEQUENCE = new RegExp(`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`, 'gu');
+/** CSI (`ESC [ ... letra`), na forma geral: cor, cursor (`ESC[?25l`), apagar linha. */
+const CSI_SEQUENCE = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'gu');
+/** Outro `ESC` com um caractere (`ESC c`, `ESC =`). */
+const SHORT_ESCAPE = new RegExp(`${ESC}[@-_]`, 'gu');
+/** Quanto da saída bruta é limpo: o resumo de um hook costuma estar no fim, e a saída pode ter megabytes. */
+const MAX_RAW_OUTPUT_CHARS = 32_000;
 
-/** Saída do hook como cabe numa mensagem: sem sequências de cor nem caracteres de controle, e com teto. */
-function hookOutputForMessage(stderr: string): string {
-  // A linha de resumo do próprio Git não é do hook, e leva o endereço do remoto.
-  const withoutPushSummary = stderr
-    .split('\n')
-    .filter((line) => !line.startsWith('error: failed to push some refs'))
-    .join('\n');
-  const clean = Array.from(withoutPushSummary.replace(ANSI_SEQUENCE, ''))
+/** Controles C1 (U+0080 a U+009F) e de direção de texto (U+202A a U+202E, U+2066 a U+2069). */
+function isHiddenControl(code: number): boolean {
+  return (
+    (code >= 0x80 && code <= 0x9f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
+
+/** Linhas que são do Git e não do hook: o resumo do push, o endereço do remoto (`To `) e a rejeição (` ! [`). */
+function isGitOwnLine(line: string): boolean {
+  return (
+    line.startsWith('To ') ||
+    line.startsWith(' ! [') ||
+    line.startsWith('error: failed to push some refs')
+  );
+}
+
+/**
+ * A saída do hook como cabe numa mensagem. É conteúdo não confiável (seção 17.1), então: pega só o fim da
+ * saída bruta, remove sequências de escape (CSI, OSC), controles, C1 e direção de texto, troca `\r` por
+ * quebra de linha, descarta as linhas do próprio Git e fica com os últimos `MAX_HOOK_OUTPUT_CHARS`
+ * caracteres.
+ */
+function hookOutputForMessage(output: string): string {
+  const tail = Array.from(output).slice(-MAX_RAW_OUTPUT_CHARS).join('');
+  const text = tail
+    .replace(OSC_SEQUENCE, '')
+    .replace(CSI_SEQUENCE, '')
+    .replace(SHORT_ESCAPE, '')
+    .replace(/\r\n?/gu, '\n');
+  const printable = Array.from(text)
     .filter((char) => {
       const code = char.codePointAt(0) ?? 0;
+      if (isHiddenControl(code)) return false;
       return char === '\n' || char === '\t' || (code >= 0x20 && code !== 0x7f);
     })
-    .join('')
+    .join('');
+  const clean = printable
+    .split('\n')
+    .filter((line) => !isGitOwnLine(line))
+    .join('\n')
     .trim();
   const chars = Array.from(clean);
   return chars.length <= MAX_HOOK_OUTPUT_CHARS
     ? clean
-    : `${chars.slice(0, MAX_HOOK_OUTPUT_CHARS).join('')}…`;
+    : `…${chars.slice(-MAX_HOOK_OUTPUT_CHARS).join('')}`;
 }
 
 function hasAny(text: string, patterns: readonly string[]): boolean {
@@ -127,39 +171,49 @@ const IDENTITY_PATTERNS = [
   'auto-detection is disabled',
   'empty ident name',
 ];
-const NOTHING_PATTERNS = ['nothing to commit', 'no changes added to commit'];
-const DETACHED_PATTERNS = ['You are not currently on a branch'];
-/** Recusa de um hook do servidor (`pre-receive`, `update`...): o Git a escreve na linha `[remote rejected]`. */
-const REMOTE_HOOK_PATTERN = /hook declined/iu;
-/**
- * Falhas do commit que podem coexistir com um hook `pre-commit` no repositório sem serem dele: assinatura
- * (gpg) e conflito não resolvido. O hook presente não basta para chamá-las de `GIT_HOOK_FAILED`.
- */
-const NOT_HOOK_COMMIT_PATTERNS = [
-  'gpg failed to sign',
-  'failed to write commit object',
-  'Committing is not possible',
-  'Aborting commit',
+const NOTHING_PATTERNS = [
+  'nothing to commit',
+  'nothing added to commit',
+  'no changes added to commit',
 ];
+const DETACHED_PATTERNS = ['You are not currently on a branch'];
+/**
+ * A linha com que o Git informa que o servidor recusou o envio por um hook dele (`pre-receive`,
+ * `update`...): ` ! [remote rejected] main -> main (pre-receive hook declined)`.
+ */
+const REMOTE_HOOK_LINE = /^\s*! \[remote rejected\].*hook declined/mu;
+/**
+ * A linha exata com que o Git recusa um envio que não avança: ` ! [rejected]  main -> main
+ * (non-fast-forward)` ou `(fetch first)`. O hook que imprime só `! [rejected] ...` não casa: sem o espaço
+ * na frente e sem o motivo entre parênteses, a linha não é do Git.
+ */
+const GIT_REJECTED_LINE =
+  /^ ! \[rejected\]\s+\S+\s+->\s+\S+\s+\((?:non-fast-forward|fetch first)\)\s*$/mu;
 
 /**
  * Traduz a falha do Git para o código e a mensagem do painel. Só mexe no erro genérico (`UNKNOWN`) que
- * o Git deu ao terminar com código diferente de zero; um erro que já tem código próprio (`GIT_LOCKED`,
- * `PERMISSION_DENIED`, `GIT_NOT_AVAILABLE`...) e o que não reconhece sobem como vieram. A decisão sai do
- * `stderr` (o `LC_ALL=C` do adaptador o mantém em inglês), na ordem: autenticação, avanço impossível,
- * HEAD solto, identidade, nada para commitar e, por fim, hook.
+ * o Git deu ao terminar com código diferente de zero (`exitCode`); um erro que já tem código próprio
+ * (`GIT_LOCKED`, `PERMISSION_DENIED`, `GIT_NOT_AVAILABLE`...) sobe como veio.
  *
- * `hookPresent` diz que existe um hook da operação (`pre-commit`, `pre-push`...). O Git não escreve a
- * palavra "hook" quando um hook local recusa: o `stderr` é só a saída do hook. Por isso um hook presente
- * pesa, mas só junto com o que o Git escreve quando o hook recusa, e não nas outras falhas:
- * - commit: vale se a falha não é de assinatura (gpg), de conflito nem de mensagem (`NOT_HOOK_COMMIT_PATTERNS`);
- * - push: vale se o Git fechou com `failed to push some refs` e sem linha `[rejected]` nem
- *   `[remote rejected]`. Rede fora do ar, remoto inexistente, chave recusada e branch sem upstream não
- *   escrevem essa frase, e o `pre-push` nem chega a rodar.
- * Um hook do servidor (`pre-receive hook declined`) é reconhecido pelo texto, sem depender de hook local.
+ * `hookPresent` diz que existe um hook local da operação (commit: `pre-commit`, `prepare-commit-msg`,
+ * `commit-msg`; push: `pre-push`). A saída de um hook é texto de terceiros e pode dizer qualquer coisa
+ * (`Authentication failed` num teste que falhou), então com hook presente a saída do hook não passa pelos
+ * padrões de texto. Quem decide é o código de saída: o Git sai com 1 quando um hook recusa, e com 128 nos
+ * `fatal:` dele (`HEAD.lock`, gpg, objeto não gravado, rede, autenticação).
  *
- * A saída bruta (`stdout` e `stderr`) só entra na mensagem de `GIT_HOOK_FAILED`: é a saída do hook, e é isso que a pessoa
- * precisa ler. Nos demais, a mensagem é fixa e o `stderr` fica só no campo `stderr` do erro.
+ * 1. Hook presente e saída 1:
+ *    a. alguma linha tem exatamente o formato de rejeição do Git, ` ! [rejected]` com `(non-fast-forward)`
+ *       ou `(fetch first)`: `GIT_NOT_FAST_FORWARD`;
+ *    b. o `stdout` ou o `stderr` diz que não há nada para commitar (o Git escreve isso no `stdout`):
+ *       `GIT_NOTHING_TO_COMMIT`;
+ *    c. todo o resto: `GIT_HOOK_FAILED`, com a saída limpa do hook na mensagem.
+ * 2. Qualquer outro caso (sem hook, ou saída diferente de 1): as classes de sempre, lidas só no `stderr`:
+ *    autenticação, avanço impossível, HEAD solto, identidade e nada para commitar, mais a recusa de um hook do
+ *    servidor (` ! [remote rejected] ... hook declined`, no push). Se nada casar, o erro sobe como veio, com a
+ *    mensagem fixa em português do adaptador: o texto do Git nunca entra nela.
+ *
+ * A saída bruta só entra na mensagem de `GIT_HOOK_FAILED`: é a do hook, e é isso que a pessoa precisa ler. Nos
+ * demais, a mensagem é fixa, e o `stderr` e o `stdout` ficam só nos campos do erro.
  */
 export function translateGitWriteError(
   error: unknown,
@@ -169,18 +223,28 @@ export function translateGitWriteError(
   if (!(error instanceof GitError) || error.code !== 'UNKNOWN' || error.exitCode === undefined) {
     return error;
   }
-  const details = { exitCode: error.exitCode, stderr: error.stderr, cause: error };
-  const { stderr } = error;
+  const details = {
+    exitCode: error.exitCode,
+    stderr: error.stderr,
+    stdout: error.stdout,
+    cause: error,
+  };
+  const { stderr, stdout } = error;
   // Um hook pode escrever em qualquer das duas saídas (o `pre-push` escreve no `stdout`).
-  const hookText = [error.stdout, stderr].filter((text) => text !== '').join('\n');
+  const output = [stdout, stderr].filter((text) => text !== '').join('\n');
 
-  if (hasAny(stderr, AUTH_PATTERNS))
-    return new GitError('GIT_AUTH_REQUIRED', AUTH_MESSAGE, details);
-  if (hasAny(stderr, NOT_FAST_FORWARD_PATTERNS)) {
-    const message =
-      context === 'pull' ? NOT_FAST_FORWARD_MESSAGES.pull : NOT_FAST_FORWARD_MESSAGES.push;
-    return new GitError('GIT_NOT_FAST_FORWARD', message, details);
+  if (options.hookPresent === true && error.exitCode === 1) {
+    if (GIT_REJECTED_LINE.test(stderr)) return notFastForward(context, details);
+    if (hasAny(output, NOTHING_PATTERNS)) {
+      return new GitError('GIT_NOTHING_TO_COMMIT', NOTHING_TO_COMMIT_MESSAGE, details);
+    }
+    return hookFailed(context, output, details);
   }
+
+  if (hasAny(stderr, AUTH_PATTERNS)) {
+    return new GitError('GIT_AUTH_REQUIRED', AUTH_MESSAGE, details);
+  }
+  if (hasAny(stderr, NOT_FAST_FORWARD_PATTERNS)) return notFastForward(context, details);
   if (hasAny(stderr, DETACHED_PATTERNS)) {
     return new GitError('GIT_DETACHED_HEAD', DETACHED_HEAD_MESSAGE, details);
   }
@@ -188,29 +252,25 @@ export function translateGitWriteError(
   if (hasAny(stderr, NOTHING_PATTERNS)) {
     return new GitError('GIT_NOTHING_TO_COMMIT', NOTHING_TO_COMMIT_MESSAGE, details);
   }
-  if (
-    REMOTE_HOOK_PATTERN.test(hookText) ||
-    (options.hookPresent === true && localHookRejected(hookText, context))
-  ) {
-    const operation = context === 'push' ? 'o envio' : 'o commit';
-    const output = hookOutputForMessage(hookText);
-    const message = `Um hook do Git recusou ${operation}.${output === '' ? '' : `\n\n${output}`}`;
-    return new GitError('GIT_HOOK_FAILED', message, details);
+  if (context === 'push' && error.exitCode === 1 && REMOTE_HOOK_LINE.test(stderr)) {
+    return hookFailed(context, output, details);
   }
   return error;
 }
 
-/** O `stderr` tem o formato de uma recusa de hook local (ver `translateGitWriteError`)? */
-function localHookRejected(stderr: string, context: WriteContext): boolean {
-  if (context === 'commit') return !hasAny(stderr, NOT_HOOK_COMMIT_PATTERNS);
-  if (context === 'push') {
-    return (
-      stderr.includes('failed to push some refs') &&
-      !stderr.includes('[rejected]') &&
-      !stderr.includes('[remote rejected]')
-    );
-  }
-  return false;
+type TranslatedDetails = { exitCode: number; stderr: string; stdout: string; cause: unknown };
+
+function notFastForward(context: WriteContext, details: TranslatedDetails): GitError {
+  const message =
+    context === 'pull' ? NOT_FAST_FORWARD_MESSAGES.pull : NOT_FAST_FORWARD_MESSAGES.push;
+  return new GitError('GIT_NOT_FAST_FORWARD', message, details);
+}
+
+function hookFailed(context: WriteContext, output: string, details: TranslatedDetails): GitError {
+  const operation = context === 'push' ? 'o envio' : 'o commit';
+  const text = hookOutputForMessage(output);
+  const message = `Um hook do Git recusou ${operation}.${text === '' ? '' : `\n\n${text}`}`;
+  return new GitError('GIT_HOOK_FAILED', message, details);
 }
 
 /** Diz se algum hook de `names` existe no repositório. Respeita `core.hooksPath` (é o Git quem resolve o caminho). */
@@ -242,7 +302,10 @@ async function write(
   } catch (error) {
     const hooks = HOOKS[context];
     const hookPresent =
-      error instanceof GitError && error.code === 'UNKNOWN' && hooks !== undefined
+      error instanceof GitError &&
+      error.code === 'UNKNOWN' &&
+      error.exitCode === 1 &&
+      hooks !== undefined
         ? await hookExists(options, hooks)
         : false;
     throw translateGitWriteError(error, context, { hookPresent });
@@ -258,6 +321,20 @@ async function currentBranch(options: WriteOptions): Promise<string> {
   const branch = stdout.trim();
   if (branch === '') throw new GitError('GIT_DETACHED_HEAD', DETACHED_HEAD_MESSAGE);
   return branch;
+}
+
+/** Há um merge em andamento (`MERGE_HEAD`)? `rev-parse --verify --quiet` sai com 1 quando não há. */
+async function mergeInProgress(options: WriteOptions): Promise<boolean> {
+  try {
+    await runGit(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], {
+      cwd: options.repo,
+      gitBinary: options.gitBinary,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof GitError && error.exitCode === 1) return false;
+    throw error;
+  }
 }
 
 /**
@@ -307,16 +384,16 @@ export async function stagePaths(
   options: WriteOptions & { paths?: readonly string[] },
 ): Promise<void> {
   if (options.paths === undefined) return write(options, ['add', '-A'], 'stage');
-  assertPaths(options.paths);
-  return write(options, ['add', '--', ...options.paths], 'stage');
+  const paths = checkedPaths(options.paths);
+  return write(options, ['add', '--', ...paths], 'stage');
 }
 
 /** Tira do stage os `paths` (`restore --staged -- <caminhos>`). O arquivo no disco não muda. */
 export async function unstagePaths(
   options: WriteOptions & { paths: readonly string[] },
 ): Promise<void> {
-  assertPaths(options.paths);
-  return write(options, ['restore', '--staged', '--', ...options.paths], 'stage');
+  const paths = checkedPaths(options.paths);
+  return write(options, ['restore', '--staged', '--', ...paths], 'stage');
 }
 
 /**
@@ -327,17 +404,17 @@ export async function unstagePaths(
 export async function discardPaths(
   options: WriteOptions & { paths: readonly string[] },
 ): Promise<void> {
-  assertPaths(options.paths);
+  const paths = checkedPaths(options.paths);
   const untracked: string[] = [];
-  for (const path of options.paths) {
-    if (!(await isTracked(options, path))) untracked.push(path);
+  for (const [index, path] of paths.entries()) {
+    if (!(await isTracked(options, path))) untracked.push(options.paths[index] ?? path);
   }
   if (untracked.length > 0) {
     throw validationError(
       `Só é possível desfazer arquivos que o Git já acompanha. Não acompanhados: ${untracked.join(', ')}.`,
     );
   }
-  return write(options, ['restore', '--', ...options.paths], 'stage');
+  return write(options, ['restore', '--', ...paths], 'stage');
 }
 
 /**
@@ -349,7 +426,8 @@ export async function commitStaged(
   options: WriteOptions & { message: string },
 ): Promise<{ commit: string }> {
   assertCommitMessage(options.message);
-  if (!(await hasStagedChanges(options))) {
+  // Com um merge em andamento o Git decide se há o que concluir, mesmo sem nada em stage contra o HEAD.
+  if (!(await mergeInProgress(options)) && !(await hasStagedChanges(options))) {
     throw new GitError('GIT_NOTHING_TO_COMMIT', NOTHING_TO_COMMIT_MESSAGE);
   }
   await write(options, ['commit', '-m', options.message], 'commit');
@@ -361,14 +439,21 @@ export async function commitStaged(
 }
 
 /**
- * Envia a branch atual: `push -u origin <branch>` com `setUpstream`, ou `push` sem. A branch é lida do
- * repositório. Nunca força: se o remoto avançou, o erro é `GIT_NOT_FAST_FORWARD`. O `pre-push` roda.
+ * Envia a branch atual com `push -u origin HEAD`. O destino é dado na linha de comando, então `push.default`
+ * e `branch.<nome>.pushRemote` não valem; e `HEAD` (e não o nome da branch) é o que o Git não casa com um
+ * `remote.origin.push` do repositório, que pode vir de fora (seção 17.1). Conferido com o Git 2.54: com
+ * `remote.origin.push = +refs/heads/main:refs/heads/main` (ou `+refs/heads/*:refs/heads/*`), `push origin main`
+ * e `push origin refs/heads/main` saem como `(forced update)`, e `push origin HEAD` é recusado se o remoto
+ * avançou. A branch é lida do repositório antes (HEAD solto vira `GIT_DETACHED_HEAD`), e sem nenhum commit
+ * nela o envio nem começa (`VALIDATION_FAILED`). Nunca força: se o remoto avançou, o erro é
+ * `GIT_NOT_FAST_FORWARD`. O `pre-push` roda.
  */
-export async function pushBranch(
-  options: WriteOptions & { setUpstream: boolean },
-): Promise<{ branch: string }> {
+export async function pushBranch(options: WriteOptions): Promise<{ branch: string }> {
   const branch = await currentBranch(options);
-  await write(options, options.setUpstream ? ['push', '-u', 'origin', branch] : ['push'], 'push');
+  if ((await headOrUndefined(options)) === undefined) {
+    throw validationError(NO_COMMIT_MESSAGE);
+  }
+  await write(options, ['push', '-u', 'origin', 'HEAD'], 'push');
   return { branch };
 }
 
