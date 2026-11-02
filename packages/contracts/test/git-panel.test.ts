@@ -3,9 +3,12 @@ import {
   CHANNELS,
   branchChangeSchema,
   commitMessageSchema,
+  gitCommitInputSchema,
+  gitDiffInputSchema,
   gitFileDiffSchema,
   gitLogEntrySchema,
   gitPathSchema,
+  gitPathsInputSchema,
   gitStatusSchema,
   responseSchemas,
 } from '../src/index';
@@ -139,45 +142,135 @@ describe('demais schemas de saída', () => {
   });
 });
 
-describe('canais e respostas do Git', () => {
-  const channels = [
-    'git:status:v1',
-    'git:diff:v1',
-    'git:stage:v1',
-    'git:unstage:v1',
-    'git:discard:v1',
-    'git:commit:v1',
-    'git:push:v1',
-    'git:pull:v1',
-    'git:fetch:v1',
-    'git:log:v1',
-    'git:branch-changes:v1',
-  ];
+describe('gitDiffInputSchema', () => {
+  it('aceita o projeto e um caminho válido', () => {
+    expect(gitDiffInputSchema.safeParse({ projectId: 'p1', path: 'src/a.ts' }).success).toBe(true);
+  });
 
-  it('tem os onze canais, cada um com resposta', () => {
-    expect(Object.values(CHANNELS)).toEqual(expect.arrayContaining(channels));
-    for (const channel of channels) {
-      expect(Object.keys(responseSchemas)).toContain(channel);
+  it('recusa caminho inválido e projeto vazio', () => {
+    expect(gitDiffInputSchema.safeParse({ projectId: 'p1', path: '../x' }).success).toBe(false);
+    expect(gitDiffInputSchema.safeParse({ projectId: '', path: 'a.ts' }).success).toBe(false);
+  });
+});
+
+describe('gitPathsInputSchema', () => {
+  const paths = (count: number) => Array.from({ length: count }, (_, i) => `src/arquivo-${i}.ts`);
+
+  it('aceita uma lista de caminhos válidos', () => {
+    expect(gitPathsInputSchema.safeParse({ projectId: 'p1', paths: ['a.ts'] }).success).toBe(true);
+  });
+
+  it('recusa a lista vazia', () => {
+    expect(gitPathsInputSchema.safeParse({ projectId: 'p1', paths: [] }).success).toBe(false);
+  });
+
+  it('aceita 5000 caminhos e recusa 5001', () => {
+    expect(gitPathsInputSchema.safeParse({ projectId: 'p1', paths: paths(5000) }).success).toBe(
+      true,
+    );
+    expect(gitPathsInputSchema.safeParse({ projectId: 'p1', paths: paths(5001) }).success).toBe(
+      false,
+    );
+  });
+
+  it('recusa a lista que traz um caminho inválido', () => {
+    expect(
+      gitPathsInputSchema.safeParse({ projectId: 'p1', paths: ['a.ts', '../x'] }).success,
+    ).toBe(false);
+  });
+});
+
+describe('gitCommitInputSchema', () => {
+  it('recorta os espaços em volta da mensagem', () => {
+    const parsed = gitCommitInputSchema.parse({ projectId: 'p1', message: '  feat: x \n' });
+    expect(parsed.message).toBe('feat: x');
+  });
+
+  it('recusa a mensagem vazia e a só de espaços', () => {
+    expect(gitCommitInputSchema.safeParse({ projectId: 'p1', message: '' }).success).toBe(false);
+    expect(gitCommitInputSchema.safeParse({ projectId: 'p1', message: '  \n ' }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('canais e respostas do Git', () => {
+  const error = { code: 'GIT_AUTH_REQUIRED', message: 'Falhou.', retryable: false };
+  const status = {
+    branch: 'main',
+    upstream: null,
+    ahead: null,
+    behind: null,
+    baseRef: null,
+    linesAdded: null,
+    linesRemoved: null,
+    files: [],
+  };
+  const logEntry = {
+    sha: 'a'.repeat(40),
+    shortSha: 'aaaaaaa',
+    author: 'Ana',
+    date: '2026-11-02T18:51:40-03:00',
+    refs: [],
+    subject: 'feat: x',
+  };
+
+  // Para cada canal: o nome exato, um dado válido e um dado que a resposta tem de recusar.
+  const table = [
+    ['gitStatus', 'git:status:v1', status, { branch: 'main' }],
+    [
+      'gitDiff',
+      'git:diff:v1',
+      { path: 'a.ts', baseRef: 'origin/main', patch: '', binary: false, truncated: false },
+      { path: 'a.ts' },
+    ],
+    ['gitStage', 'git:stage:v1', undefined, { staged: true }],
+    ['gitUnstage', 'git:unstage:v1', undefined, { staged: true }],
+    ['gitDiscard', 'git:discard:v1', undefined, { discarded: true }],
+    ['gitCommit', 'git:commit:v1', { commit: 'b'.repeat(40) }, undefined],
+    ['gitPush', 'git:push:v1', { branch: 'main' }, undefined],
+    ['gitPull', 'git:pull:v1', { updated: true }, { updated: 'sim' }],
+    ['gitFetch', 'git:fetch:v1', undefined, { fetched: true }],
+    ['gitLog', 'git:log:v1', [logEntry], { sha: 'x' }],
+    [
+      'gitBranchChanges',
+      'git:branch-changes:v1',
+      { baseRef: 'origin/main', mergeBase: null, files: [] },
+      { files: [] },
+    ],
+  ] as const;
+
+  it('o conjunto de canais git é exatamente os onze, sem extra e sem falta', () => {
+    const gitChannels = Object.values(CHANNELS).filter((c) => c.startsWith('git:'));
+    expect([...gitChannels].sort()).toEqual(table.map((row) => row[1]).sort());
+    const gitKeys = Object.keys(CHANNELS).filter((k) => k.startsWith('git'));
+    expect([...gitKeys].sort()).toEqual(table.map((row) => row[0]).sort());
+  });
+
+  it('cada chave de CHANNELS aponta para o nome esperado', () => {
+    for (const [key, channel] of table) {
+      expect(CHANNELS[key]).toBe(channel);
     }
   });
 
-  it('a resposta do status é um AppResult com o status', () => {
-    const schema = responseSchemas[CHANNELS.gitStatus];
-    expect(
-      schema.safeParse({
-        ok: true,
-        data: {
-          branch: 'main',
-          upstream: null,
-          ahead: null,
-          behind: null,
-          baseRef: null,
-          linesAdded: null,
-          linesRemoved: null,
-          files: [],
-        },
-      }).success,
-    ).toBe(true);
-    expect(schema.safeParse({ ok: true, data: { branch: 'main' } }).success).toBe(false);
+  it('o conjunto de respostas git é exatamente o dos onze canais', () => {
+    const responseKeys = Object.keys(responseSchemas).filter((c) => c.startsWith('git:'));
+    expect([...responseKeys].sort()).toEqual(table.map((row) => row[1]).sort());
+  });
+
+  describe.each(table)('%s', (key, channel, valid, invalid) => {
+    const schema = responseSchemas[CHANNELS[key]];
+
+    it(`${channel}: aceita o sucesso com o dado certo`, () => {
+      expect(schema.safeParse({ ok: true, data: valid }).success).toBe(true);
+    });
+
+    it(`${channel}: recusa o sucesso com o dado errado`, () => {
+      expect(schema.safeParse({ ok: true, data: invalid }).success).toBe(false);
+    });
+
+    it(`${channel}: aceita a falha com AppError`, () => {
+      expect(schema.safeParse({ ok: false, error }).success).toBe(true);
+    });
   });
 });
