@@ -8,10 +8,16 @@ import {
   type AddProjectInput,
   type AgentActivity,
   type AppResult,
+  type ContentSearchDto,
   type CreateMissionInput,
   type DecideApprovalInput,
   type EditPlanStepInput,
   type ExecutionDto,
+  type FileContentDto,
+  type FileEntryDto,
+  type FileStatDto,
+  type FileVersionDto,
+  type FilesWriteInput,
   type LayoutNode,
   type LimitsDto,
   type MissionDiffDto,
@@ -20,6 +26,7 @@ import {
   type MissionPlanDto,
   type MissionUsageEventDto,
   type MissionViewDto,
+  type NameSearchDto,
   type ProfileDto,
   type SystemUsageDto,
   type ProjectHubApi,
@@ -221,6 +228,21 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           }
           listener(parsed.data);
         }),
+    },
+    files: {
+      list: (projectId: string, dir: string) =>
+        call<FileEntryDto[]>(CHANNELS.filesList, { projectId, dir }),
+      stat: (projectId: string, path: string) =>
+        call<FileStatDto>(CHANNELS.filesStat, { projectId, path }),
+      read: (projectId: string, path: string) =>
+        call<FileContentDto>(CHANNELS.filesRead, { projectId, path }),
+      write: (input: FilesWriteInput) => call<FileVersionDto>(CHANNELS.filesWrite, input),
+      searchNames: (projectId: string, query: string) =>
+        call<NameSearchDto>(CHANNELS.filesSearchNames, { projectId, query }),
+      searchContent: (projectId: string, query: string, regex: boolean) =>
+        call<ContentSearchDto>(CHANNELS.filesSearchContent, { projectId, query, regex }),
+      openDefault: (projectId: string, path: string) =>
+        call<void>(CHANNELS.filesOpenDefault, { projectId, path }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

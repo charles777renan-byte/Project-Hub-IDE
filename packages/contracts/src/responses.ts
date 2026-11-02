@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { agentActivityResponseSchema } from './agent-activity';
 import { CHANNELS } from './channels';
+import {
+  contentSearchSchema,
+  fileContentSchema,
+  fileEntrySchema,
+  fileStatSchema,
+  fileVersionSchema,
+  nameSearchSchema,
+} from './files';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { systemUsageDtoSchema } from './system';
@@ -91,4 +99,11 @@ export const responseSchemas = {
   [CHANNELS.systemUsage]: appResultSchema(systemUsageDtoSchema),
   [CHANNELS.limitsGet]: appResultSchema(limitsDtoSchema),
   [CHANNELS.limitsRefresh]: appResultSchema(limitsDtoSchema),
+  [CHANNELS.filesList]: appResultSchema(z.array(fileEntrySchema)),
+  [CHANNELS.filesStat]: appResultSchema(fileStatSchema),
+  [CHANNELS.filesRead]: appResultSchema(fileContentSchema),
+  [CHANNELS.filesWrite]: appResultSchema(fileVersionSchema),
+  [CHANNELS.filesSearchNames]: appResultSchema(nameSearchSchema),
+  [CHANNELS.filesSearchContent]: appResultSchema(contentSearchSchema),
+  [CHANNELS.filesOpenDefault]: appResultSchema(z.undefined()),
 } as const;

@@ -1,4 +1,13 @@
 import type { AgentActivity } from './agent-activity';
+import type {
+  ContentSearchDto,
+  FileContentDto,
+  FileEntryDto,
+  FileStatDto,
+  FileVersionDto,
+  FilesWriteInput,
+  NameSearchDto,
+} from './files';
 import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
 import type { SystemUsageDto } from './system';
@@ -171,6 +180,29 @@ export type ProjectHubApi = {
     refresh(): Promise<AppResult<LimitsDto>>;
     /** Assina as mudanças dos limites. Cada evento chega validado. Devolve a função que cancela a assinatura. */
     subscribe(listener: (limits: LimitsDto) => void): () => void;
+  };
+  files: {
+    /** Entradas de uma pasta do projeto. `dir` vazio é a raiz. O caminho é relativo, em POSIX. */
+    list(projectId: string, dir: string): Promise<AppResult<FileEntryDto[]>>;
+    /** Existência e versão do arquivo. */
+    stat(projectId: string, path: string): Promise<AppResult<FileStatDto>>;
+    /** Lê o arquivo de texto (até 2 MiB). O texto sai com `\n`; `eol` e `bom` dizem como estava no disco. */
+    read(projectId: string, path: string): Promise<AppResult<FileContentDto>>;
+    /**
+     * Grava o arquivo. Com `expected`, recusa com FILE_CHANGED_ON_DISK se o disco mudou; com `null`, cria um
+     * arquivo novo. Devolve a versão gravada.
+     */
+    write(input: FilesWriteInput): Promise<AppResult<FileVersionDto>>;
+    /** Busca pelo nome do arquivo. */
+    searchNames(projectId: string, query: string): Promise<AppResult<NameSearchDto>>;
+    /** Busca pelo conteúdo dos arquivos de texto; `regex` trata a consulta como expressão regular. */
+    searchContent(
+      projectId: string,
+      query: string,
+      regex: boolean,
+    ): Promise<AppResult<ContentSearchDto>>;
+    /** Abre o arquivo no programa padrão do sistema. */
+    openDefault(projectId: string, path: string): Promise<AppResult<void>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

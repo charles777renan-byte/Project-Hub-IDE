@@ -235,6 +235,17 @@ describe('ERROR_CODES', () => {
     expect(ERROR_CODES).toEqual(expect.arrayContaining(['GIT_LOCKED']));
   });
 
+  it('acrescenta os códigos de arquivo do painel direito', () => {
+    expect(ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'FILE_NOT_FOUND',
+        'FILE_TOO_LARGE',
+        'FILE_NOT_TEXT',
+        'FILE_CHANGED_ON_DISK',
+      ]),
+    );
+  });
+
   it('não repete códigos', () => {
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
   });
