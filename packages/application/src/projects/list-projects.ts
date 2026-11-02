@@ -38,7 +38,10 @@ export async function listProjects(deps: ListProjectsDeps): Promise<AppResult<Pr
  * Diz se a pasta do projeto está disponível. Erro ao consultar (sem permissão, por exemplo) não
  * derruba a listagem: o projeto sai indisponível, e o erro é registrado.
  */
-export async function isAvailable(fs: FileSystemPort, project: ProjectRecord): Promise<boolean> {
+export async function isAvailable(
+  fs: Pick<FileSystemPort, 'isDirectory'>,
+  project: ProjectRecord,
+): Promise<boolean> {
   try {
     return await fs.isDirectory(project.path);
   } catch (error) {

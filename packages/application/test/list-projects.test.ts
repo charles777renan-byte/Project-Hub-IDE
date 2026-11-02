@@ -94,6 +94,7 @@ describe('listProjects', () => {
     const result = await listProjects({
       repo,
       fs: {
+        ...readable,
         isDirectory: (path) =>
           path === 'C:\\Projetos\\bloqueado' ? Promise.reject(eacces) : readable.isDirectory(path),
       },

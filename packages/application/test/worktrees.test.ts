@@ -35,7 +35,10 @@ function harness(options: { folders?: string[]; unsaved?: boolean } = {}) {
   const repo = fakeMissionRepository();
   const worktrees = fakeWorktrees();
   const folders = new Set(options.folders ?? ['C:\\worktrees\\app\\m1']);
-  const fs: FileSystemPort = { isDirectory: (path) => Promise.resolve(folders.has(path)) };
+  const fs: FileSystemPort = {
+    isDirectory: (path) => Promise.resolve(folders.has(path)),
+    isInsideProject: () => Promise.resolve(true),
+  };
   const projects = { get: (id: string) => (id === 'p1' ? PROJECT : undefined) } as Pick<
     ProjectRepository,
     'get'

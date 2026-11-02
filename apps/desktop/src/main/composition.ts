@@ -43,7 +43,7 @@ import {
 } from '@project-hub/git-adapter';
 import { createDemoAgent } from './demo-agent';
 import type { ProjectFilesDeps } from './files/project-files';
-import { createIsDirectory } from './filesystem';
+import { createIsDirectory, createIsInsideProject } from './filesystem';
 import {
   withMissionEvents,
   type MissionEventPublisher,
@@ -330,7 +330,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const newId = () => randomUUID();
 
   const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
-  const fs = { isDirectory: createIsDirectory() };
+  const fs = { isDirectory: createIsDirectory(), isInsideProject: createIsInsideProject() };
   const orchestrator = createOrchestrator({
     repo,
     projects,
