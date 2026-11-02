@@ -203,6 +203,12 @@ export type ProjectHubApi = {
     ): Promise<AppResult<ContentSearchDto>>;
     /** Abre o arquivo no programa padrão do sistema. */
     openDefault(projectId: string, path: string): Promise<AppResult<void>>;
+    /**
+     * Fechar a janela com arquivo não salvo e a pessoa escolher "Salvar": o processo principal pede ao renderer que
+     * grave tudo, e `handler` devolve `true` só se tudo foi gravado e nada ficou sujo (o preload leva a resposta de
+     * volta). Com qualquer outra resposta a janela fica aberta. Devolve a função que cancela a assinatura.
+     */
+    onSaveAllRequest(handler: () => Promise<boolean>): () => void;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

@@ -113,6 +113,7 @@ test.describe('renderer isolado', () => {
     expect(surface?.limits).toEqual(['get', 'refresh', 'subscribe']);
     expect(surface?.files).toEqual([
       'list',
+      'onSaveAllRequest',
       'openDefault',
       'read',
       'searchContent',

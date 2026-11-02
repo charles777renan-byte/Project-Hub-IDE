@@ -35,6 +35,8 @@ export type OpenFileBuffer = {
   notice?: 'changed-on-disk' | 'missing' | 'reloaded' | undefined;
   /** Com `changed-on-disk`: o que o disco tem agora (texto e versão), lido quando o conflito apareceu. */
   disk?: FileContentDto | undefined;
+  /** Por que o "Salvar" ao fechar a janela não gravou este arquivo; some quando ele é gravado ou o salvamento recomeça. */
+  saveProblem?: string | undefined;
 };
 
 export type OpenFilesView = {
@@ -287,6 +289,10 @@ export async function saveFile(
   if (file === undefined || saved === undefined) {
     return { ok: false, message: EDITOR_TEXT.saveError };
   }
+  // Uma nova tentativa de gravar deixa para trás o motivo da tentativa anterior do "Salvar" ao fechar a janela.
+  if (file.saveProblem !== undefined) {
+    patch(projectId, path, ({ saveProblem: _saveProblem, ...rest }) => rest);
+  }
   if (!file.dirty && options.recreate !== true) return { ok: true };
   // Um aviso do disco só se resolve na faixa de conflito da aba: daqui, nunca se grava por cima.
   if (file.notice === 'changed-on-disk' && options.disk === undefined) {
@@ -322,6 +328,59 @@ export async function saveFile(
   }
 }
 
+let saveAllRun: Promise<boolean> | undefined;
+
+/**
+ * "Salvar" ao fechar a janela: grava todo arquivo sujo de todo projeto, pelo mesmo caminho de `saveFile` (que nunca
+ * grava por cima de um arquivo mudado no disco, sumido ou de fins de linha misturados). Devolve `true` só se, depois
+ * das gravações, nada ficou sujo: uma gravação que falhou, um conflito e o que se digitou durante a gravação
+ * mantêm a janela aberta. O motivo de cada falha fica no arquivo (`saveProblem`) e a aba da primeira que falhou
+ * vai para a frente. Pedidos ao mesmo tempo dividem a mesma execução: gravar duas vezes o mesmo arquivo mandaria
+ * uma versão esperada já velha.
+ */
+export function saveAllDirty(): Promise<boolean> {
+  saveAllRun ??= runSaveAll().finally(() => {
+    saveAllRun = undefined;
+  });
+  return saveAllRun;
+}
+
+async function runSaveAll(): Promise<boolean> {
+  const dirty = [...states].flatMap(([projectId, state]) =>
+    state.files.filter((file) => file.dirty).map((file) => ({ projectId, path: file.path })),
+  );
+  const outcomes = await Promise.all(
+    dirty.map(async (target) => ({
+      ...target,
+      outcome: await saveFile(target.projectId, target.path),
+    })),
+  );
+  let shown = false;
+  for (const { projectId, path, outcome } of outcomes) {
+    // Uma gravação que deu certo mas ficou sujo (digitaram durante ela) não é falha: só mantém a janela aberta.
+    if (outcome.ok || !isFileDirty(projectId, path)) continue;
+    patch(projectId, path, (buffer) => ({ ...buffer, saveProblem: outcome.message }));
+    if (!shown) {
+      shown = true;
+      setActive(projectId, path);
+    }
+  }
+  return !hasDirtyFiles();
+}
+
+/**
+ * Atende o "Salvar" ao fechar a janela: assina o pedido do processo principal e responde com o resultado de
+ * `saveAllDirty`. Devolve a função que cancela a assinatura. Sem a API do preload (telas montadas sem ela, nos
+ * testes), não assina nada.
+ */
+export function listenForSaveAllRequests(): () => void {
+  try {
+    return window.projectHub.files.onSaveAllRequest(() => saveAllDirty());
+  } catch {
+    return () => undefined;
+  }
+}
+
 /** Duas versões têm o mesmo conteúdo. Quem decide é o conteúdo (tamanho e hash), como no processo principal. */
 function sameContent(a: FileVersionDto, b: FileVersionDto): boolean {
   return a.size === b.size && a.hash === b.hash;
@@ -353,7 +412,7 @@ function expireReloadedNotice(projectId: string, path: string) {
 
 /** O buffer sem aviso e sem a cópia do disco. */
 function settled(buffer: OpenFileBuffer): OpenFileBuffer {
-  const { notice: _notice, disk: _disk, ...rest } = buffer;
+  const { notice: _notice, disk: _disk, saveProblem: _saveProblem, ...rest } = buffer;
   return rest;
 }
 

@@ -46,6 +46,8 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
 
   if (file === undefined) return null;
 
+  // O alerta da própria aba, ou o motivo de o "Salvar" ao fechar a janela não ter gravado este arquivo.
+  const shownProblem = problem ?? file.saveProblem ?? null;
   const mixed = file.saved?.eol === 'mixed';
   const missing = file.notice === 'missing';
   // Com o arquivo alterado no disco, só a faixa de conflito grava; com ele sumido, Salvar vale mesmo sem alteração.
@@ -121,9 +123,9 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
         onRecreateClosed={() => setRecreateAsked(false)}
       />
       {mixed ? <p className="file-editor__notice">{TEXT.mixedEol}</p> : null}
-      {problem === null || file.notice === 'changed-on-disk' ? null : (
+      {shownProblem === null || file.notice === 'changed-on-disk' ? null : (
         <p role="alert" className="page-alert file-editor__alert">
-          {problem}
+          {shownProblem}
         </p>
       )}
       {file.load === 'loading' ? (

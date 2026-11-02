@@ -13,6 +13,7 @@ import { RightPanel } from './components/right-panel/RightPanel';
 import { Sidebar } from './components/Sidebar';
 import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
+import { listenForSaveAllRequests } from './open-files';
 import { buildPaletteItems } from './palette-items';
 import { TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
 import { AppRoutes, ROUTE_PATHS } from './routes';
@@ -138,6 +139,9 @@ export function App() {
     () => toggleColumn(rightPanel.current, '.app-right', '.topbar__right-toggle'),
     [rightPanel],
   );
+
+  // Fechar a janela e escolher "Salvar": o processo principal pede a gravação dos arquivos abertos, de qualquer visão.
+  useEffect(() => listenForSaveAllRequests(), []);
 
   useEffect(() => {
     window.addEventListener(TOGGLE_SIDEBAR_EVENT, toggleSidebar);

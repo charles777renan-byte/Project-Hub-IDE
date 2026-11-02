@@ -531,6 +531,7 @@ describe('buildProjectHubApi', () => {
     ]);
     expect(Object.keys(api.files).sort()).toEqual([
       'list',
+      'onSaveAllRequest',
       'openDefault',
       'read',
       'searchContent',
@@ -590,6 +591,83 @@ describe('buildProjectHubApi', () => {
       [CHANNELS.filesSearchContent, { projectId: 'p1', query: 'abc', regex: true }],
       [CHANNELS.filesOpenDefault, { projectId: 'p1', path: 'a.ts' }],
     ]);
+  });
+
+  describe('files.onSaveAllRequest', () => {
+    /** A API com um canal de eventos falso: devolve o que o preload registrou e as chamadas ao canal de resultado. */
+    function saveAllSetup() {
+      const invoked: Array<[string, unknown]> = [];
+      let registered: { channel: string; listener: (payload: unknown) => void } | undefined;
+      const removed: string[] = [];
+      const api = buildProjectHubApi(
+        (channel, payload) => {
+          invoked.push([channel, payload]);
+          return Promise.resolve({ ok: true, data: undefined });
+        },
+        (channel, listener) => {
+          registered = { channel, listener };
+          return () => removed.push(channel);
+        },
+      );
+      return { api, invoked, removed, registered: () => required(registered, 'o canal do pedido') };
+    }
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    it('assina o canal do pedido, roda o salvamento e devolve o resultado pelo canal próprio', async () => {
+      const { api, invoked, registered } = saveAllSetup();
+      const handler = vi.fn(() => Promise.resolve(true));
+
+      api.files.onSaveAllRequest(handler);
+      expect(registered().channel).toBe(CHANNELS.filesSaveAllRequest);
+      registered().listener({ requestId: 'req-1' });
+      await settle();
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(invoked).toEqual([[CHANNELS.filesSaveAllResult, { requestId: 'req-1', saved: true }]]);
+    });
+
+    it('devolve saved: false quando o salvamento deixou algo sujo ou falhou (inclusive se a promessa rejeita)', async () => {
+      const { api, invoked, registered } = saveAllSetup();
+      const results = [() => Promise.resolve(false), () => Promise.reject(new Error('x'))];
+
+      api.files.onSaveAllRequest(() => (results.shift() ?? (() => Promise.resolve(false)))());
+      registered().listener({ requestId: 'req-1' });
+      registered().listener({ requestId: 'req-2' });
+      await settle();
+
+      expect(invoked).toEqual([
+        [CHANNELS.filesSaveAllResult, { requestId: 'req-1', saved: false }],
+        [CHANNELS.filesSaveAllResult, { requestId: 'req-2', saved: false }],
+      ]);
+    });
+
+    it('ignora pedido fora do contrato (sem rodar o salvamento nem responder) e avisa no console', async () => {
+      const { api, invoked, registered } = saveAllSetup();
+      const handler = vi.fn(() => Promise.resolve(true));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      api.files.onSaveAllRequest(handler);
+      registered().listener({ requestId: '' });
+      registered().listener(undefined);
+      await settle();
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(invoked).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(CHANNELS.filesSaveAllRequest),
+        expect.anything(),
+      );
+      warn.mockRestore();
+    });
+
+    it('devolve a função que remove o ouvinte', () => {
+      const { api, removed } = saveAllSetup();
+
+      const unsubscribe = api.files.onSaveAllRequest(() => Promise.resolve(true));
+      unsubscribe();
+
+      expect(removed).toEqual([CHANNELS.filesSaveAllRequest]);
+    });
   });
 
   it('workspaces e providers chamam só os próprios canais, levando ids e o layout', async () => {

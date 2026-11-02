@@ -1,5 +1,6 @@
 import {
   CHANNELS,
+  filesSaveAllRequestSchema,
   limitsDtoSchema,
   missionEventDtoSchema,
   missionUsageEventDtoSchema,
@@ -241,6 +242,25 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<NameSearchDto>(CHANNELS.filesSearchNames, { projectId, query }),
       searchContent: (projectId: string, query: string, regex: boolean) =>
         call<ContentSearchDto>(CHANNELS.filesSearchContent, { projectId, query, regex }),
+      onSaveAllRequest: (handler: () => Promise<boolean>) =>
+        subscribe(CHANNELS.filesSaveAllRequest, (payload) => {
+          const parsed = filesSaveAllRequestSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.filesSaveAllRequest}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          const { requestId } = parsed.data;
+          // Qualquer falha do salvamento vale "não salvou": a janela só fecha com um `true` explícito.
+          void Promise.resolve()
+            .then(handler)
+            .catch(() => false)
+            .then((saved) =>
+              invoke(CHANNELS.filesSaveAllResult, { requestId, saved }).catch(() => undefined),
+            );
+        }),
       openDefault: (projectId: string, path: string) =>
         call<void>(CHANNELS.filesOpenDefault, { projectId, path }),
     },

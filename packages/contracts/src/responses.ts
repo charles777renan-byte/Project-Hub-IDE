@@ -106,4 +106,5 @@ export const responseSchemas = {
   [CHANNELS.filesSearchNames]: appResultSchema(nameSearchSchema),
   [CHANNELS.filesSearchContent]: appResultSchema(contentSearchSchema),
   [CHANNELS.filesOpenDefault]: appResultSchema(z.undefined()),
+  [CHANNELS.filesSaveAllResult]: appResultSchema(z.undefined()),
 } as const;

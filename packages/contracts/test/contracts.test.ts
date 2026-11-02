@@ -308,6 +308,7 @@ describe('responseSchemas', () => {
       CHANNELS.missionsUsage,
       CHANNELS.limitsEvent,
       CHANNELS.terminalsEvent,
+      CHANNELS.filesSaveAllRequest,
     ];
     const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());

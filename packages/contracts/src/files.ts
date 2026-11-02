@@ -37,6 +37,20 @@ export const filesPathInputSchema = z.object({
 });
 export type FilesPathInput = z.infer<typeof filesPathInputSchema>;
 
+/** Identifica um pedido de "Salvar" ao fechar a janela, para o resultado voltar ao pedido certo. */
+const saveAllRequestIdSchema = z.string().min(1).max(100);
+
+/** Evento de `files:save-all-request:v1` (do processo principal ao renderer). */
+export const filesSaveAllRequestSchema = z.object({ requestId: saveAllRequestIdSchema });
+export type FilesSaveAllRequest = z.infer<typeof filesSaveAllRequestSchema>;
+
+/** Entrada de `files:save-all-result:v1`: `saved` é `true` só quando tudo foi gravado e nada ficou sujo. */
+export const filesSaveAllResultInputSchema = z.object({
+  requestId: saveAllRequestIdSchema,
+  saved: z.boolean(),
+});
+export type FilesSaveAllResultInput = z.infer<typeof filesSaveAllResultInputSchema>;
+
 /** Versão de um arquivo no disco: confere se ele mudou depois da leitura. O hash é SHA-256 em hexadecimal. */
 export const fileVersionSchema = z.object({
   size: z.number().int().nonnegative(),
