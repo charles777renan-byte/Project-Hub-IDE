@@ -95,8 +95,11 @@ const BEL = String.fromCharCode(7);
 const OSC_SEQUENCE = new RegExp(`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`, 'gu');
 /** CSI (`ESC [ ... letra`), na forma geral: cor, cursor (`ESC[?25l`), apagar linha. */
 const CSI_SEQUENCE = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'gu');
-/** Outro `ESC` com um caractere (`ESC c`, `ESC =`). */
-const SHORT_ESCAPE = new RegExp(`${ESC}[@-_]`, 'gu');
+/** CSI e OSC de 8 bits (U+009B e U+009D): o filtro de C1 deixaria o corpo visível. */
+const CSI_8BIT = /\u009b[0-?]*[ -/]*[@-~]/gu;
+const OSC_8BIT = new RegExp(`\u009d[^${BEL}\u009c]*(?:${BEL}|\u009c)`, 'gu');
+/** Outro `ESC` com um caractere final, e bytes intermediários opcionais (`ESC c`, `ESC =`, `ESC ( B`). */
+const SHORT_ESCAPE = new RegExp(`${ESC}[ -/]*[0-~]`, 'gu');
 /** Quanto da saída bruta é limpo: o resumo de um hook costuma estar no fim, e a saída pode ter megabytes. */
 const MAX_RAW_OUTPUT_CHARS = 32_000;
 
@@ -109,10 +112,13 @@ function isHiddenControl(code: number): boolean {
   );
 }
 
-/** Linhas que são do Git e não do hook: o resumo do push, o endereço do remoto (`To `) e a rejeição (` ! [`). */
+/**
+ * Linhas que são do Git e não do hook: o resumo do push, o endereço do remoto (`To <endereço>`, um token só,
+ * como o Git escreve) e a rejeição (` ! [`). Uma linha de hook como `To do: revisar` fica.
+ */
 function isGitOwnLine(line: string): boolean {
   return (
-    line.startsWith('To ') ||
+    /^To \S+$/u.test(line) ||
     line.startsWith(' ! [') ||
     line.startsWith('error: failed to push some refs')
   );
@@ -128,6 +134,8 @@ function hookOutputForMessage(output: string): string {
   const tail = Array.from(output).slice(-MAX_RAW_OUTPUT_CHARS).join('');
   const text = tail
     .replace(OSC_SEQUENCE, '')
+    .replace(OSC_8BIT, '')
+    .replace(CSI_8BIT, '')
     .replace(CSI_SEQUENCE, '')
     .replace(SHORT_ESCAPE, '')
     .replace(/\r\n?/gu, '\n');
@@ -178,17 +186,22 @@ const NOTHING_PATTERNS = [
 ];
 const DETACHED_PATTERNS = ['You are not currently on a branch'];
 /**
- * A linha com que o Git informa que o servidor recusou o envio por um hook dele (`pre-receive`,
- * `update`...): ` ! [remote rejected] main -> main (pre-receive hook declined)`.
+ * A linha com que o Git informa que o envio de uma referência foi recusado: ' ! [rejected]  HEAD -> main
+ * (fetch first)' (recusa do cliente) ou ' ! [remote rejected] HEAD -> main (motivo)' (recusa do servidor).
+ * O espaço na frente, as duas referências e o motivo entre parênteses são do Git: o hook que imprime só
+ * `! [rejected] ...` não casa. Quando o `pre-push` local recusa, o Git não escreve linha nenhuma assim: ele
+ * nem chega ao servidor.
  */
-const REMOTE_HOOK_LINE = /^\s*! \[remote rejected\].*hook declined/mu;
-/**
- * A linha exata com que o Git recusa um envio que não avança: ` ! [rejected]  main -> main
- * (non-fast-forward)` ou `(fetch first)`. O hook que imprime só `! [rejected] ...` não casa: sem o espaço
- * na frente e sem o motivo entre parênteses, a linha não é do Git.
- */
-const GIT_REJECTED_LINE =
-  /^ ! \[rejected\]\s+\S+\s+->\s+\S+\s+\((?:non-fast-forward|fetch first)\)\s*$/mu;
+const GIT_REJECTION_LINE = /^ ! \[(?:remote )?rejected\]\s+\S+\s+->\s+\S+\s+\((.+)\)\s*$/u;
+const REMOTE_REFUSED_MESSAGE = 'O remoto recusou o envio desta branch.';
+
+/** Os motivos das linhas de recusa do Git no `stderr` de um push. */
+function rejectionReasons(stderr: string): string[] {
+  return stderr
+    .split(/\r?\n/u)
+    .map((line) => GIT_REJECTION_LINE.exec(line)?.[1])
+    .filter((reason): reason is string => reason !== undefined);
+}
 
 /**
  * Traduz a falha do Git para o código e a mensagem do painel. Só mexe no erro genérico (`UNKNOWN`) que
@@ -201,15 +214,16 @@ const GIT_REJECTED_LINE =
  * padrões de texto. Quem decide é o código de saída: o Git sai com 1 quando um hook recusa, e com 128 nos
  * `fatal:` dele (`HEAD.lock`, gpg, objeto não gravado, rede, autenticação).
  *
+ * 0. Push, saída 1 e linha de recusa no formato do Git (`GIT_REJECTION_LINE`), com ou sem hook: o motivo decide.
+ *    `non-fast-forward` ou `fetch first`: `GIT_NOT_FAST_FORWARD`; `hook declined` (hook do servidor):
+ *    `GIT_HOOK_FAILED`; qualquer outro (`branch is currently checked out`, `permission denied`,
+ *    `already exists`, `stale info`...): `UNKNOWN` com mensagem fixa, sem o texto do Git.
  * 1. Hook presente e saída 1:
- *    a. alguma linha tem exatamente o formato de rejeição do Git, ` ! [rejected]` com `(non-fast-forward)`
- *       ou `(fetch first)`: `GIT_NOT_FAST_FORWARD`;
- *    b. o `stdout` ou o `stderr` diz que não há nada para commitar (o Git escreve isso no `stdout`):
+ *    a. o `stdout` ou o `stderr` diz que não há nada para commitar (o Git escreve isso no `stdout`):
  *       `GIT_NOTHING_TO_COMMIT`;
- *    c. todo o resto: `GIT_HOOK_FAILED`, com a saída limpa do hook na mensagem.
+ *    b. todo o resto: `GIT_HOOK_FAILED`, com a saída limpa do hook na mensagem.
  * 2. Qualquer outro caso (sem hook, ou saída diferente de 1): as classes de sempre, lidas só no `stderr`:
- *    autenticação, avanço impossível, HEAD solto, identidade e nada para commitar, mais a recusa de um hook do
- *    servidor (` ! [remote rejected] ... hook declined`, no push). Se nada casar, o erro sobe como veio, com a
+ *    autenticação, avanço impossível, HEAD solto, identidade e nada para commitar. Se nada casar, o erro sobe como veio, com a
  *    mensagem fixa em português do adaptador: o texto do Git nunca entra nela.
  *
  * A saída bruta só entra na mensagem de `GIT_HOOK_FAILED`: é a do hook, e é isso que a pessoa precisa ler. Nos
@@ -233,8 +247,20 @@ export function translateGitWriteError(
   // Um hook pode escrever em qualquer das duas saídas (o `pre-push` escreve no `stdout`).
   const output = [stdout, stderr].filter((text) => text !== '').join('\n');
 
+  if (context === 'push' && error.exitCode === 1) {
+    const reasons = rejectionReasons(stderr);
+    if (reasons.length > 0) {
+      if (reasons.some((reason) => /non-fast-forward|fetch first/u.test(reason))) {
+        return notFastForward(context, details);
+      }
+      if (reasons.some((reason) => /hook declined/iu.test(reason))) {
+        return hookFailed(context, output, details);
+      }
+      return new GitError('UNKNOWN', REMOTE_REFUSED_MESSAGE, details);
+    }
+  }
+
   if (options.hookPresent === true && error.exitCode === 1) {
-    if (GIT_REJECTED_LINE.test(stderr)) return notFastForward(context, details);
     if (hasAny(output, NOTHING_PATTERNS)) {
       return new GitError('GIT_NOTHING_TO_COMMIT', NOTHING_TO_COMMIT_MESSAGE, details);
     }
@@ -251,9 +277,6 @@ export function translateGitWriteError(
   if (hasAny(stderr, IDENTITY_PATTERNS)) return new GitError('UNKNOWN', IDENTITY_MESSAGE, details);
   if (hasAny(stderr, NOTHING_PATTERNS)) {
     return new GitError('GIT_NOTHING_TO_COMMIT', NOTHING_TO_COMMIT_MESSAGE, details);
-  }
-  if (context === 'push' && error.exitCode === 1 && REMOTE_HOOK_LINE.test(stderr)) {
-    return hookFailed(context, output, details);
   }
   return error;
 }
