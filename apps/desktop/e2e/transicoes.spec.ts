@@ -149,6 +149,9 @@ test('a lista de missões anima quem entra e quem sai, só com opacidade e trans
   const missions = page.getByRole('region', { name: 'Missões' });
   await expect(missions.getByRole('link', { name: 'Missão em rascunho' })).toBeVisible();
   await anotarListas(page);
+  // O AutoAnimate só guarda a posição de um item 500 ms depois de ele aparecer (o plugin é uma função), e sem
+  // a posição não anima a saída. Sem esta espera o filtro pode chegar antes e o item sai sem se apagar.
+  await page.waitForTimeout(700);
 
   // O filtro tira o rascunho da lista (sai apagando) e a lista se reacomoda.
   await missions.getByRole('button', { name: 'Aguarda você' }).click();
