@@ -628,6 +628,15 @@ export const RIGHT_PANEL_TEXT = {
     results: 'Resultados da busca',
     line: (line: number) => `linha ${line}`,
   },
+  /** Os arquivos abertos como abas ao lado dos terminais. */
+  openFiles: {
+    tabs: 'Arquivos abertos',
+    terminals: 'Terminais',
+    unsaved: 'alterações não salvas',
+    close: (name: string) => `Fechar ${name}`,
+    loading: 'Carregando…',
+    readError: 'Não foi possível abrir o arquivo.',
+  },
 } as const;
 
 /** Textos do formulário Nova missão: uma linha de dica por campo, sem blocos numerados. */

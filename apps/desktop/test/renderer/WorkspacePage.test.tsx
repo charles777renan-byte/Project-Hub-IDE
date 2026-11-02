@@ -24,6 +24,7 @@ import {
 } from '../../src/renderer/components/project/ProjectHeader';
 import { useTerminals } from '../../src/renderer/terminals-data';
 import { notify } from '../../src/renderer/notify';
+import { openFile, resetOpenFilesForTests, updateText } from '../../src/renderer/open-files';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
@@ -97,6 +98,7 @@ const api = {
   terminals: { list: vi.fn() },
   projects: { list: vi.fn() },
   missions: { list: vi.fn() },
+  files: { read: vi.fn() },
 };
 
 let current: { pathname: string; search: string; state: unknown } = {
@@ -165,6 +167,19 @@ beforeEach(() => {
     data: [{ id: 'p1', name: 'app', path: 'x', repositoryKind: 'git', available: true }],
   });
   api.missions.list.mockResolvedValue({ ok: true, data: [] });
+  api.files.read.mockReset().mockImplementation((_projectId: string, path: string) =>
+    Promise.resolve({
+      ok: true,
+      data: {
+        text: `texto de ${path}`,
+        eol: 'lf',
+        bom: false,
+        version: { size: 1, mtimeMs: 1, hash: 'a'.repeat(64) },
+      },
+    }),
+  );
+  window.localStorage.clear();
+  resetOpenFilesForTests();
   window.projectHub = api as unknown as typeof window.projectHub;
 });
 
@@ -813,6 +828,113 @@ describe('aba do projeto: visões', () => {
     expect(screen.getByTestId('terminal-view')).toBe(terminal);
     expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
     expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+  });
+
+  describe('arquivos abertos', () => {
+    async function comTerminal() {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+      api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+      renderAt();
+      return screen.findByTestId('terminal-view');
+    }
+
+    it('sem arquivo aberto, não há faixa de abas e o workspace aparece', async () => {
+      const terminal = await comTerminal();
+
+      expect(screen.queryByRole('tablist', { name: 'Arquivos abertos' })).not.toBeInTheDocument();
+      expect(terminal.closest('[hidden]')).toBeNull();
+    });
+
+    it('abrir um arquivo mostra a faixa e esconde o workspace sem desmontá-lo', async () => {
+      const terminal = await comTerminal();
+
+      act(() => openFile('p1', 'src/a.ts'));
+
+      const faixa = await screen.findByRole('tablist', { name: 'Arquivos abertos' });
+      expect(within(faixa).getByRole('tab', { name: 'a.ts' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      // O mesmo nó (o xterm não é refeito), ainda no DOM, só escondido.
+      expect(screen.getByTestId('terminal-view', { exact: true })).toBe(terminal);
+      expect(terminal.closest('[hidden]')).not.toBeNull();
+      expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+      expect(api.workspaces.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('a faixa fica acima do workspace, dentro do painel Terminais', async () => {
+      await comTerminal();
+
+      act(() => openFile('p1', 'a.ts'));
+
+      const faixa = await screen.findByRole('tablist', { name: 'Arquivos abertos' });
+      const painel = document.getElementById('project-panel-terminais');
+      expect(painel).toContainElement(faixa);
+      expect(painel?.firstElementChild).toContainElement(faixa);
+    });
+
+    it('a aba Terminais volta a mostrar o workspace sem fechar o arquivo', async () => {
+      const terminal = await comTerminal();
+      act(() => openFile('p1', 'a.ts'));
+
+      const faixa = await screen.findByRole('tablist', { name: 'Arquivos abertos' });
+      await userEvent.click(within(faixa).getByRole('tab', { name: 'Terminais' }));
+
+      expect(terminal.closest('[hidden]')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'a.ts' })).toBeInTheDocument();
+    });
+
+    it('fechar o último arquivo remove a faixa e mostra o workspace', async () => {
+      const terminal = await comTerminal();
+      act(() => openFile('p1', 'a.ts'));
+      await screen.findByRole('tablist', { name: 'Arquivos abertos' });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Fechar a.ts' }));
+
+      expect(screen.queryByRole('tablist', { name: 'Arquivos abertos' })).not.toBeInTheDocument();
+      expect(terminal.closest('[hidden]')).toBeNull();
+      expect(screen.getByTestId('terminal-view')).toBe(terminal);
+    });
+
+    it('o painel do arquivo ativo é o tabpanel da aba dele e avisa quando o arquivo não abre', async () => {
+      api.files.read.mockResolvedValue({
+        ok: false,
+        error: { code: 'FILE_NOT_TEXT', message: 'O arquivo não é de texto e não abre no editor.' },
+      });
+      await comTerminal();
+
+      act(() => openFile('p1', 'logo.png'));
+
+      const painel = await screen.findByRole('tabpanel', { name: 'logo.png' });
+      expect(painel).toHaveTextContent('O arquivo não é de texto e não abre no editor.');
+    });
+
+    it('trocar de visão com um arquivo aberto não perde o buffer nem as edições', async () => {
+      Object.assign(api, {
+        worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+      });
+      Object.assign(api.missions, {
+        subscribe: vi.fn(() => () => undefined),
+        subscribeUsage: vi.fn(() => () => undefined),
+      });
+      const terminal = await comTerminal();
+      act(() => openFile('p1', 'a.ts'));
+      await screen.findByRole('tab', { name: 'a.ts' });
+      // A leitura responde: só então o arquivo pode ser editado.
+      await act(async () => {});
+      act(() => updateText('p1', 'a.ts', 'editado'));
+
+      selectView('Worktrees');
+      expect(await screen.findByRole('tab', { name: 'Worktrees', selected: true })).toBeVisible();
+      selectView('Terminais');
+
+      const aba = await screen.findByRole('tab', { name: /a\.ts/ });
+      expect(aba).toHaveAttribute('aria-selected', 'true');
+      expect(within(aba).getByText('alterações não salvas')).toBeInTheDocument();
+      expect(screen.getByTestId('terminal-view')).toBe(terminal);
+      expect(api.files.read).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('o modo "um painel por vez" sobrevive a uma ida às Configurações e volta', async () => {
