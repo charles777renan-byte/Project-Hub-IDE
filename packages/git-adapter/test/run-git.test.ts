@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GitError, runGit } from '../src/run-git';
+import { GitError, runApproved, runGit } from '../src/run-git';
 
 // Unitário: o `execFile` é imitado, então nenhum processo é criado aqui. Os testes com o Git de
 // verdade ficam nos arquivos *.integration.test.ts.
@@ -266,5 +266,24 @@ describe('runGit: falhas', () => {
       code: 'UNKNOWN',
       cause: original,
     });
+  });
+});
+
+describe('runApproved: variáveis extras do adaptador', () => {
+  it('o extra entra no ambiente, mas não reintroduz as variáveis de repositório', async () => {
+    vi.stubEnv('GIT_COMMON_DIR', '/herdado/.git');
+    await runApproved(['status'], { cwd }, [], {
+      GIT_DIR: 'x',
+      GIT_WORK_TREE: 'x',
+      GIT_INDEX_FILE: 'x',
+      GIT_COMMON_DIR: 'x',
+      GIT_LITERAL_PATHSPECS: '1',
+    });
+    const env = call().options.env as Record<string, string | undefined>;
+    expect(env.GIT_LITERAL_PATHSPECS).toBe('1');
+    expect(env).not.toHaveProperty('GIT_DIR');
+    expect(env).not.toHaveProperty('GIT_WORK_TREE');
+    expect(env).not.toHaveProperty('GIT_INDEX_FILE');
+    expect(env).not.toHaveProperty('GIT_COMMON_DIR');
   });
 });

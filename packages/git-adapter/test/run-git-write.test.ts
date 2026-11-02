@@ -96,6 +96,11 @@ describe('runGitWrite: formas proibidas rejeitam sem criar processo', () => {
     [['push', '-u', 'origin', 'main:outra']],
     [['push', '-u', 'origin', ':main']],
     [['push', '-u', 'origin', 'main', '--force']],
+    // NUL nunca chega ao execFile (que lançaria TypeError): vira PERMISSION_DENIED
+    [['commit', '-m', 'a\0b']],
+    [['add', '--', 'a\0b.ts']],
+    [['restore', '--', 'a\0b.ts']],
+    [['push', '-u', 'origin', 'a\0b']],
     [['push', '-u', 'origin', 'a b']],
     [['push', '-u', 'origin', 'a..b']],
     [['push', '-u', 'origin', 'HEAD@{1}']],
