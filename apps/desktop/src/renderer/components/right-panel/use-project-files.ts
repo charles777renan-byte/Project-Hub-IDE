@@ -12,7 +12,7 @@ export type ProjectFiles = {
   expand(dir: string): void;
   collapse(dir: string): void;
   expanded: ReadonlySet<string>;
-  /** Relê a raiz e as pastas abertas. As entradas antigas ficam à vista até a resposta chegar. */
+  /** Relê a raiz e as pastas abertas; as recolhidas são esquecidas e relidas ao expandir. As entradas antigas das abertas ficam à vista até a resposta chegar. */
   refresh(): void;
   /** A mensagem da leitura que falhou (a da raiz primeiro), ou `null`. */
   error: string | null;
@@ -51,7 +51,7 @@ async function listDirectory(
 
 /**
  * A árvore de arquivos do projeto, lida por pasta: a raiz ao montar, cada pasta só ao ser expandida. Uma pasta
- * já lida não é lida de novo ao recolher e reexpandir (o botão Atualizar a relê). Resposta de outro projeto, ou de
+ * já lida não é lida de novo ao recolher e reexpandir (o botão Atualizar a esquece, e ela é relida ao expandir). Resposta de outro projeto, ou de
  * uma pasta recolhida enquanto a leitura corria, é descartada; uma releitura mais nova vence a mais velha da mesma
  * pasta. Ao trocar de projeto, o estado do anterior some na hora.
  */
@@ -129,6 +129,19 @@ export function useProjectFiles(projectId: string): ProjectFiles {
   }, []);
 
   const refresh = useCallback(() => {
+    // Uma pasta recolhida guarda entradas que o disco pode ter mudado: esquece-as, para a próxima expansão reler.
+    const stale = [...loadedRef.current].filter(
+      (dir) => dir !== '' && !expandedRef.current.has(dir),
+    );
+    if (stale.length > 0) {
+      for (const dir of stale) loadedRef.current.delete(dir);
+      setSnapshot((prev) => ({
+        ...prev,
+        entries: Object.fromEntries(
+          Object.entries(prev.entries).filter(([dir]) => !stale.includes(dir)),
+        ),
+      }));
+    }
     load('');
     for (const dir of expandedRef.current) load(dir);
   }, [load]);

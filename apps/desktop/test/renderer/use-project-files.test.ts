@@ -148,6 +148,25 @@ describe('useProjectFiles', () => {
     expect(list.mock.calls.map(([, dir]) => dir).sort()).toEqual(['', 'src']);
   });
 
+  it('refresh esquece as pastas recolhidas: ao reexpandir, a pasta é lida de novo', async () => {
+    const list = installApi((_, dir) => Promise.resolve(ok(dir === '' ? ROOT : SRC)));
+    const { result } = renderHook(() => useProjectFiles('p1'));
+    await waitFor(() => expect(result.current.entries('')).toEqual(ROOT));
+    act(() => result.current.expand('src'));
+    await waitFor(() => expect(result.current.entries('src')).toEqual(SRC));
+    act(() => result.current.collapse('src'));
+
+    const changed = [entry('src/novo.ts')];
+    list.mockImplementation((_, dir) => Promise.resolve(ok(dir === '' ? ROOT : changed)));
+    act(() => result.current.refresh());
+    await waitFor(() => expect(result.current.status('')).toBe('idle'));
+    expect(result.current.entries('src')).toBeUndefined();
+
+    act(() => result.current.expand('src'));
+
+    await waitFor(() => expect(result.current.entries('src')).toEqual(changed));
+  });
+
   it('durante a recarga as entradas antigas continuam à vista', async () => {
     const again = deferred();
     const list = installApi(() => Promise.resolve(ok(ROOT)));
