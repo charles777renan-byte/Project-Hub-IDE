@@ -62,6 +62,7 @@ function installApi(initial: MissionViewDto) {
       get: vi.fn(() => Promise.resolve<AppResult<MissionViewDto>>({ ok: true, data: current })),
       diff: vi.fn(() => Promise.resolve({ ok: true, data: { files: [], truncatedFiles: false } })),
       approvePlan: vi.fn(() => Promise.resolve(OK)),
+      cancelPlanning: vi.fn(() => Promise.resolve(OK)),
       plan: vi.fn((_missionId: string, _instruction?: string) =>
         Promise.resolve<AppResult<{ missionId: string; steps: [] }>>({
           ok: true,
@@ -912,6 +913,69 @@ describe('MissionPage: ações e decisão', () => {
     await userEvent.dblClick(button);
 
     expect(hub.api.missions.plan).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Cancelar planejamento" interrompe o planejamento e a falha de cancelado não vira alerta', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    let finish: (value: AppResult<never>) => void = () => undefined;
+    hub.api.missions.plan.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve as typeof finish;
+        }),
+    );
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Orquestrar' }));
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancelar planejamento' }));
+    expect(hub.api.missions.cancelPlanning).toHaveBeenCalledWith('m1');
+    await act(async () => {
+      finish({
+        ok: false,
+        error: {
+          code: 'AGENT_UNAVAILABLE',
+          message: 'O planejamento foi cancelado.',
+          retryable: true,
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole('button', { name: 'Orquestrar' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cancelar planejamento' })).toBeNull();
+  });
+
+  it('se o cancelamento é recusado, a falha do planejamento continua aparecendo', async () => {
+    const hub = installApi(viewOf({ status: 'draft' }));
+    hub.api.missions.cancelPlanning.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'MISSION_INVALID_STATE', message: 'Sem planejamento.', retryable: false },
+    } as never);
+    let finish: (value: AppResult<never>) => void = () => undefined;
+    hub.api.missions.plan.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve as typeof finish;
+        }),
+    );
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Orquestrar' }));
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancelar planejamento' }));
+    await act(async () => {
+      finish({
+        ok: false,
+        error: {
+          code: 'PROCESS_START_FAILED',
+          message: 'O Claude não respondeu.',
+          retryable: true,
+        },
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('O Claude não respondeu.');
   });
 
   it('falha do planejamento aparece como alerta e o Orquestrar segue disponível', async () => {

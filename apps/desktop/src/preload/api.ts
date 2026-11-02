@@ -112,6 +112,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       editPlanStep: (input: EditPlanStepInput) =>
         call<MissionPlanDto>(CHANNELS.missionsEditPlan, input),
       approvePlan: (missionId: string) => call<void>(CHANNELS.missionsApprovePlan, { missionId }),
+      cancelPlanning: (missionId: string) =>
+        call<void>(CHANNELS.missionsCancelPlanning, { missionId }),
       start: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsStart, { missionId }),
       cancel: (missionId: string) => call<void>(CHANNELS.missionsCancel, { missionId }),
       pause: (missionId: string) => call<void>(CHANNELS.missionsPause, { missionId }),

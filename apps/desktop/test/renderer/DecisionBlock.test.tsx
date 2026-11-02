@@ -108,6 +108,7 @@ function handlersOf() {
     onGeneratePlan: vi.fn(),
     onApprovePlan: vi.fn(),
     onRequestNewPlan: vi.fn(),
+    onCancelPlanning: vi.fn(),
     onStart: vi.fn(),
     onResume: vi.fn(),
     onRetry: vi.fn(),
@@ -364,6 +365,29 @@ describe('DecisionBlock: plano gerado', () => {
     expect(screen.queryByRole('button', { name: 'Planejar de novo' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Aprovar plano' })).toBeDisabled();
   });
+
+  it.each(['draft', 'planned'] as const)(
+    'enquanto planeja (%s), "Cancelar planejamento" aparece, fica habilitado e chama o cancelamento',
+    async (status) => {
+      const user = userEvent.setup();
+      const { handlers } = setup(status, { busy: true, planning: true });
+
+      const button = screen.getByRole('button', { name: 'Cancelar planejamento' });
+      expect(button).toBeEnabled();
+      await user.click(button);
+
+      expect(handlers.onCancelPlanning).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['draft', 'planned'] as const)(
+    'sem planejamento em curso (%s), não há "Cancelar planejamento"',
+    (status) => {
+      setup(status);
+
+      expect(screen.queryByRole('button', { name: 'Cancelar planejamento' })).toBeNull();
+    },
+  );
 
   it('com uma chamada em curso, Planejar de novo fica desabilitado', async () => {
     const user = userEvent.setup();

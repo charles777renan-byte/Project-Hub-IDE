@@ -131,6 +131,8 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   const latestRequest = useRef(0);
   /** Planejamento ou edição do plano em curso: o React só mostra o bloqueio depois, a trava é imediata. */
   const planMutation = useRef(false);
+  /** A pessoa pediu para cancelar o planejamento em curso, e o orquestrador aceitou. */
+  const planCancelled = useRef(false);
 
   const reload = useCallback(async () => {
     const request = ++latestRequest.current;
@@ -290,6 +292,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
     // Um segundo clique com o planejamento (ou uma edição) em curso é ignorado: duas mudanças no mesmo plano.
     if (planMutation.current) return Promise.resolve(false);
     planMutation.current = true;
+    planCancelled.current = false;
     setPlanEditError(null);
     const call = () =>
       instruction === ''
@@ -300,7 +303,17 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
       setPlanning(pending);
     }).finally(() => {
       planMutation.current = false;
+      // Cancelar foi escolha da pessoa: a falha "planejamento cancelado" não é um erro a mostrar.
+      if (planCancelled.current) {
+        planCancelled.current = false;
+        setActionError(null);
+      }
     });
+  };
+  /** Interrompe o planejamento. O `plan` que está esperando termina com falha, que `runPlan` não mostra. */
+  const cancelPlanning = async () => {
+    const result = await window.projectHub.missions.cancelPlanning(missionId);
+    if (result.ok) planCancelled.current = true;
   };
   /**
    * "Criar e orquestrar": a missão nasce em rascunho e abre com `state.orchestrate`. Na primeira visão pronta, se
@@ -448,6 +461,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
           onGeneratePlan={() => void runPlan()}
           onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
           onRequestNewPlan={(instruction) => void runPlan(instruction)}
+          onCancelPlanning={() => void cancelPlanning()}
           onStart={() => void runStart()}
           onResume={() => void runResume()}
           onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}

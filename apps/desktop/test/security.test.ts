@@ -496,6 +496,7 @@ describe('buildProjectHubApi', () => {
       'approvePlan',
       'approveReview',
       'cancel',
+      'cancelPlanning',
       'create',
       'delete',
       'diff',
@@ -875,6 +876,10 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
 
     await expect(api.missions.approvePlan('m1')).resolves.toEqual({ ok: true, data: undefined });
     await expect(api.missions.cancel('m1')).resolves.toEqual({ ok: true, data: undefined });
+    await expect(api.missions.cancelPlanning('m1')).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
     await expect(api.approvals.decide({ approvalId: 'a1', decision: 'approved' })).resolves.toEqual(
       { ok: true, data: undefined },
     );

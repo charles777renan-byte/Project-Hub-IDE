@@ -256,6 +256,7 @@ export const PLAN_TEXT = {
   planning: 'Planejando…',
   planningHint: 'O Claude está montando o plano. Isso pode levar alguns minutos.',
   replan: 'Planejar de novo',
+  cancelPlanning: 'Cancelar planejamento',
   instructionLabel: 'Instrução para o novo plano',
   instructionHint: 'Opcional. Diga o que o plano novo deve mudar.',
   empty: 'Ainda não há plano. Clique em Orquestrar para gerar as tarefas.',

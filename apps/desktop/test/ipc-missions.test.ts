@@ -43,6 +43,7 @@ function spyOrchestrator(): Orchestrator {
       Promise.resolve({ ok: true as const, data: { missionId: 'm1', steps: [] } }),
     ),
     approvePlan: vi.fn(ok),
+    cancelPlanning: vi.fn(ok),
     startMission: vi.fn(() => Promise.resolve({ ok: true as const, data: { id: 'e1' } })),
     cancelMission: vi.fn(ok),
     decideApproval: vi.fn(ok),
@@ -130,6 +131,7 @@ describe('ações sobre a missão', () => {
   it.each([
     ['plan', 'planMission'],
     ['approvePlan', 'approvePlan'],
+    ['cancelPlanning', 'cancelPlanning'],
     ['start', 'startMission'],
     ['cancel', 'cancelMission'],
   ] as const)('%s chama %s com o id da missão', async (action, method) => {

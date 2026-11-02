@@ -122,6 +122,7 @@ export function DecisionBlock({
   onGeneratePlan,
   onApprovePlan,
   onRequestNewPlan,
+  onCancelPlanning,
   onStart,
   onResume,
   onRetry,
@@ -146,6 +147,8 @@ export function DecisionBlock({
   onApprovePlan: () => void;
   /** Pede outro plano; a instrução vem aparada e vazia quando a pessoa não escreveu nada. */
   onRequestNewPlan: (instruction: string) => void;
+  /** Interrompe o planejamento em andamento. Só aparece enquanto `planning`. */
+  onCancelPlanning: () => void;
   onStart: () => void;
   onResume: () => void;
   onRetry: () => void;
@@ -429,6 +432,11 @@ export function DecisionBlock({
                 onClick={() => onRequestNewPlan(instruction.trim())}
               >
                 {planning ? PLAN_TEXT.planning : PLAN_TEXT.replan}
+              </button>
+            ) : null}
+            {planning ? (
+              <button type="button" className="btn-outline" onClick={onCancelPlanning}>
+                {PLAN_TEXT.cancelPlanning}
               </button>
             ) : null}
             {primary === 'generate_plan' || planned ? (

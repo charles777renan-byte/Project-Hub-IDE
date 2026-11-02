@@ -23,6 +23,8 @@ export const CHANNELS = {
   /** Edita uma tarefa do plano antes de a missão iniciar. Devolve o plano inteiro. */
   missionsEditPlan: 'missions:edit-plan:v1',
   missionsApprovePlan: 'missions:approve-plan:v1',
+  /** Interrompe o planejamento em andamento da missão, sem cancelar a missão. */
+  missionsCancelPlanning: 'missions:cancel-planning:v1',
   missionsStart: 'missions:start:v1',
   missionsCancel: 'missions:cancel:v1',
   missionsPause: 'missions:pause:v1',
