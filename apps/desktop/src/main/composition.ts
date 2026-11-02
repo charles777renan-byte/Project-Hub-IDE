@@ -40,6 +40,7 @@ import {
   removeWorktree,
 } from '@project-hub/git-adapter';
 import { createDemoAgent } from './demo-agent';
+import type { ProjectFilesDeps } from './files/project-files';
 import { createIsDirectory } from './filesystem';
 import {
   withMissionEvents,
@@ -77,6 +78,8 @@ export type AppServices = AddProjectDeps & {
   agentActivityDeps: { terminals(): AppTerminal[]; missions(): MissionTokens[] };
   /** Perfil local: o nome da saudação, guardado nas configurações do banco. */
   profileDeps: ProfileDeps;
+  /** Arquivos do projeto (painel direito): a pasta de cada projeto pelo id e a checagem de que ela existe. */
+  fileDeps: ProjectFilesDeps;
   close(): void;
 };
 
@@ -367,6 +370,14 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       missions: () => listExecutionTokens(db),
     },
     profileDeps: { settings: createAppSettingsRepository(db), now },
+    fileDeps: {
+      // Projeto removido conta como desconhecido; o arquivado segue com os arquivos acessíveis.
+      rootOf: (projectId) => {
+        const project = projects.get(projectId);
+        return project === undefined || project.removedAt !== undefined ? undefined : project.path;
+      },
+      isDirectory: fs.isDirectory,
+    },
     missions: {
       orchestrator,
       createDeps: { repo, projects, now, newId },

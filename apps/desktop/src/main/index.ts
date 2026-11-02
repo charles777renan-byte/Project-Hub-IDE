@@ -39,6 +39,8 @@ import { createClaudePlanner } from './claude-planner';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
+import { registerFilesHandlers } from './ipc/files';
+import { createProjectFiles } from './files/project-files';
 import {
   agentActivityAgents,
   createAgentActivityService,
@@ -345,6 +347,10 @@ app
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
+    registerFilesHandlers(ipcMain, isTrustedSender, {
+      files: createProjectFiles(services.fileDeps),
+      openPath: (path) => shell.openPath(path),
+    });
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);
