@@ -72,6 +72,8 @@ function isCommitMessage(message: string | undefined): message is string {
  * de `reset`, `clean`, `checkout`, `merge` nem `rebase`. Exportada só para os testes.
  */
 export function isWriteAllowed(args: readonly string[]): boolean {
+  // NUL não existe em argumento de processo: o `execFile` o recusaria com um TypeError, em vez de um GitError.
+  if (args.some((arg) => arg.includes('\0'))) return false;
   const [command, ...rest] = args;
   switch (command) {
     case 'add': {
