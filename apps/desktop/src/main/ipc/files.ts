@@ -1,3 +1,5 @@
+import { stat } from 'node:fs/promises';
+import { extname, basename } from 'node:path';
 import { failure } from '@project-hub/application';
 import {
   CHANNELS,
@@ -21,6 +23,33 @@ export type FilesIpcDeps = {
 
 const INVALID_INPUT = 'Os dados do pedido não são válidos.';
 const OPEN_FAILED = 'Não foi possível abrir o arquivo no programa padrão.';
+const OPEN_REFUSED = 'Só arquivos comuns, que não executam programas, abrem no programa padrão.';
+
+/**
+ * Extensões que o sistema executa ou interpreta ao abrir (programas, scripts, atalhos, instaladores,
+ * bibliotecas). O `shell.openPath` rodaria o arquivo, e um agente pode ter escrito qualquer um deles no
+ * projeto; por isso "Abrir no programa padrão" os recusa.
+ */
+const BLOCKED_OPEN_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.exe', '.com', '.bat', '.cmd', '.lnk', '.js', '.jse', '.vbs', '.vbe', '.wsf', '.hta', '.msi',
+  '.scr', '.cpl', '.ps1', '.url', '.reg', '.dll', '.jar', '.sh',
+]);
+
+/** Extensão em minúsculas; o Windows ignora pontos e espaços no fim do nome, então `x.exe .` também é `.exe`. */
+function openExtension(path: string): string {
+  return extname(basename(path).replace(/[. ]+$/, '')).toLowerCase();
+}
+
+/** Só um arquivo comum, de extensão fora da lista, vai ao sistema; pasta e link abririam outra coisa. */
+async function mayOpenByDefault(requested: string, absolute: string): Promise<boolean> {
+  if (BLOCKED_OPEN_EXTENSIONS.has(openExtension(requested))) return false;
+  if (BLOCKED_OPEN_EXTENSIONS.has(openExtension(absolute))) return false;
+  try {
+    return (await stat(absolute)).isFile();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Roda o serviço e devolve o resultado. `FilesError` vira `failure(code, message)`: o
@@ -91,6 +120,9 @@ export function registerFilesHandlers(
     if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
     return respond(async () => {
       const absolute = await files.absolutePath(input.data.projectId, input.data.path);
+      if (!(await mayOpenByDefault(input.data.path, absolute))) {
+        throw new FilesError('PERMISSION_DENIED', OPEN_REFUSED);
+      }
       if ((await deps.openPath(absolute)) !== '') throw new FilesError('UNKNOWN', OPEN_FAILED);
     });
   });

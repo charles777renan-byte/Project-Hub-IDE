@@ -293,6 +293,36 @@ describe('FileTabs: fechar com alterações não salvas', () => {
     });
   });
 
+  it('Salvar com texto digitado durante a gravação mantém a aba e a pergunta, sem perder o que foi digitado', async () => {
+    const user = userEvent.setup();
+    await openDirty();
+    let finish: (result: Awaited<ReturnType<ProjectHubApi['files']['write']>>) => void = () => {};
+    write.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    await user.click(closeButton('a.ts'));
+
+    await user.click(within(ask()).getByRole('button', { name: 'Salvar' }));
+    // A pessoa digita enquanto a gravação ainda não voltou.
+    act(() => updateText('p1', 'src/a.ts', 'texto de src/a.ts!!'));
+    await act(async () => {
+      finish({ ok: true, data: { size: 5, mtimeMs: 2, hash: 'b'.repeat(64) } });
+    });
+
+    // O gravado já não é o texto de agora: fechar perderia a digitação.
+    expect(tab(/a\.ts/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(ask()).getByRole('button', { name: 'Salvar' })).toBeEnabled(),
+    );
+
+    // Salvar de novo grava o texto novo e, agora limpo, fecha.
+    await user.click(within(ask()).getByRole('button', { name: 'Salvar' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('tab', { name: /a\.ts/ })).not.toBeInTheDocument(),
+    );
+    expect(write).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: 'texto de src/a.ts!!' }),
+    );
+  });
+
   it('Salvar que falha mantém a aba e a pergunta, com a mensagem do processo principal', async () => {
     const user = userEvent.setup();
     await openDirty();

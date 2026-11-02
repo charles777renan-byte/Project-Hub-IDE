@@ -222,13 +222,21 @@ function createMainWindow(): void {
   // A janela começa a fechar antes de ser destruída; o carregamento pendente rejeita nesse intervalo.
   let windowClosing = false;
   const closing = (): boolean => isClosing(win, windowClosing);
-  win.once('close', () => {
+  // `on`, e não `once`: se a pessoa voltar da pergunta de arquivo não salvo, o próximo fechamento marca de novo.
+  win.on('close', () => {
     windowClosing = true;
   });
   win.once('closed', () => {
     if (mainWindow === win) mainWindow = undefined;
   });
-  registerUnsavedGuard(win.webContents, () => confirmQuitWithUnsavedFiles(win));
+  registerUnsavedGuard(
+    win.webContents,
+    () => confirmQuitWithUnsavedFiles(win),
+    // "Voltar" cancela o fechamento: sem desfazer a marca, os links externos seriam recusados em silêncio.
+    () => {
+      windowClosing = false;
+    },
+  );
   restrictNavigation(win.webContents, appOrigin, {
     confirmExternal: (url) => confirmExternal(win, url, closing),
     openExternal: (url) => shell.openExternal(url),

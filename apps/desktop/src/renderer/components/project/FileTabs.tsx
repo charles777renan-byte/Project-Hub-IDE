@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
-import { closeFile, saveFile, setActive, TERMINALS_TAB, useOpenFiles } from '../../open-files';
+import {
+  closeFile,
+  isFileDirty,
+  saveFile,
+  setActive,
+  TERMINALS_TAB,
+  useOpenFiles,
+} from '../../open-files';
 import { Hint } from '../Hint';
 import { ICON_PROPS, X } from '../Icon';
 
@@ -157,7 +164,7 @@ export function FileTabs({ projectId }: { projectId: string }) {
 
 /**
  * A pergunta ao fechar uma aba com alterações não salvas, logo abaixo da faixa de abas. "Salvar" grava e fecha (se a
- * gravação falha, a mensagem do processo principal aparece aqui e a aba fica), "Descartar" fecha sem gravar e
+ * gravação falha, ou se a pessoa digitou durante ela, a aba e a pergunta ficam, e a falha mostra a mensagem do processo principal aqui), "Descartar" fecha sem gravar e
  * "Voltar" (ou Esc) deixa tudo como estava. O foco começa em Salvar, a saída que não perde nada.
  */
 function CloseAsk({
@@ -186,8 +193,9 @@ function CloseAsk({
     setProblem(null);
     try {
       const outcome = await saveFile(projectId, path);
-      if (outcome.ok) onClosed();
-      else setProblem(outcome.message);
+      if (!outcome.ok) setProblem(outcome.message);
+      // Quem digitou durante a gravação ainda tem texto não salvo: fechar o perderia. A aba e a pergunta ficam.
+      else if (!isFileDirty(projectId, path)) onClosed();
     } finally {
       setSaving(false);
     }

@@ -45,6 +45,14 @@ describe('detectEol e applyEol', () => {
     expect(detectEol('a\nb\r\n')).toBe('mixed');
   });
 
+  it('detectEol: um CR solto (sem LF depois) é misto, porque o editor o reescreveria', () => {
+    expect(detectEol('a\rb\n')).toBe('mixed');
+    expect(detectEol('x\r\ny\rz\r\n')).toBe('mixed');
+    expect(detectEol('a\rb')).toBe('mixed');
+    expect(detectEol('a\r\n\r')).toBe('mixed');
+    expect(detectEol('a\r\r\nb')).toBe('mixed');
+  });
+
   it('applyEol: converte \\n para o fim de linha pedido sem duplicar o \\r', () => {
     expect(applyEol('a\nb\n', 'lf')).toBe('a\nb\n');
     expect(applyEol('a\nb\n', 'crlf')).toBe('a\r\nb\r\n');
@@ -78,6 +86,14 @@ describe('readProjectFile', () => {
     const content = await readProjectFile(file);
     expect(content.eol).toBe('mixed');
     expect(content.text).toBe('a\nb\n');
+  });
+
+  it('um CR solto no arquivo vira eol mixed, e o texto mantém o CR para o editor abrir só leitura', async () => {
+    const file = join(dir, 'a.txt');
+    await writeFile(file, 'x\r\ny\rz\r\n');
+    const content = await readProjectFile(file);
+    expect(content.eol).toBe('mixed');
+    expect(content.text).toBe('x\ny\rz\n');
   });
 
   it('recusa FILE_NOT_TEXT para bytes ff fe 00 (UTF-16)', async () => {

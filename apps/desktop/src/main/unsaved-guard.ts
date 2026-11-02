@@ -11,8 +11,11 @@ export function registerUnsavedGuard(
     on(event: 'will-prevent-unload', listener: (event: { preventDefault(): void }) => void): void;
   },
   confirmQuit: () => boolean,
+  onStay?: () => void,
 ): void {
   contents.on('will-prevent-unload', (event) => {
     if (confirmQuit()) event.preventDefault();
+    // A pessoa voltou: a janela segue aberta, e quem marcou "fechando" precisa desfazer a marca.
+    else onStay?.();
   });
 }
