@@ -1,6 +1,13 @@
 import type {
   AppResult,
+  BranchChangesDto,
   ErrorCode,
+  GitCommitResultDto,
+  GitFileDiffDto,
+  GitLogEntryDto,
+  GitPullResultDto,
+  GitPushResultDto,
+  GitStatusDto,
   MissionDiffDto,
   RepositoryInitPreview,
 } from '@project-hub/contracts';
@@ -96,6 +103,35 @@ export interface Planner {
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
 export interface FileSystemPort {
   isDirectory(path: string): Promise<boolean>;
+  /**
+   * Diz se `relativePath` (relativo e em POSIX) cai dentro da pasta do projeto depois de resolver os links
+   * simbólicos. Um caminho que ainda não existe, como o de um arquivo apagado, vale pelo ancestral existente
+   * mais próximo. A implementação real fica no app desktop, porque usa `realpath`.
+   */
+  isInsideProject(projectPath: string, relativePath: string): Promise<boolean>;
+}
+
+/**
+ * Porta do painel de código-fonte (ADR 0010): as leituras e as escritas do Git sobre a pasta do projeto. A
+ * implementação real liga as funções de `@project-hub/git-adapter` e fica na composição. Quando o Git falha,
+ * a implementação rejeita com um erro que traz `code` (o `GitError`); os casos de uso não o capturam, e quem
+ * o converte em resposta é o manipulador de IPC. A porta nunca recebe o nome da branch: o adaptador o lê do
+ * repositório.
+ */
+export interface GitPanelPort {
+  status(repoPath: string): Promise<GitStatusDto>;
+  /** O diff do arquivo contra a base, ou `null` quando a base não existe. */
+  fileDiff(repoPath: string, path: string): Promise<GitFileDiffDto | null>;
+  stage(repoPath: string, paths: readonly string[]): Promise<void>;
+  unstage(repoPath: string, paths: readonly string[]): Promise<void>;
+  discard(repoPath: string, paths: readonly string[]): Promise<void>;
+  commit(repoPath: string, message: string): Promise<GitCommitResultDto>;
+  /** `push -u origin HEAD`: serve para enviar e para publicar a branch. */
+  push(repoPath: string): Promise<GitPushResultDto>;
+  pull(repoPath: string): Promise<GitPullResultDto>;
+  fetch(repoPath: string): Promise<void>;
+  log(repoPath: string, limit: number): Promise<GitLogEntryDto[]>;
+  branchChanges(repoPath: string): Promise<BranchChangesDto>;
 }
 
 /**
