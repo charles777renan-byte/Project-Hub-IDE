@@ -34,6 +34,19 @@ describe('EditorStatusBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Texto simples');
   });
 
+  it('com um único caractere selecionado, usa o singular', () => {
+    render(
+      <EditorStatusBar
+        cursor={{ line: 1, column: 2, selected: 1 }}
+        eol="lf"
+        bom={false}
+        language="text"
+      />,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Ln 1, Col 2 (1 selecionado)');
+  });
+
   it('arquivo com BOM e CRLF mostra "UTF-8 com BOM" e "CRLF"', () => {
     render(<EditorStatusBar cursor={CURSOR} eol="crlf" bom language="json" />);
 
