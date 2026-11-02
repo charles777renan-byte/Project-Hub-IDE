@@ -9,6 +9,15 @@ import {
   fileVersionSchema,
   nameSearchSchema,
 } from './files';
+import {
+  branchChangesSchema,
+  gitCommitResultSchema,
+  gitFileDiffSchema,
+  gitLogEntrySchema,
+  gitPullResultSchema,
+  gitPushResultSchema,
+  gitStatusSchema,
+} from './git-panel';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { systemUsageDtoSchema } from './system';
@@ -109,4 +118,15 @@ export const responseSchemas = {
   [CHANNELS.filesSearchContent]: appResultSchema(contentSearchSchema),
   [CHANNELS.filesOpenDefault]: appResultSchema(z.undefined()),
   [CHANNELS.filesSaveAllResult]: appResultSchema(z.undefined()),
+  [CHANNELS.gitStatus]: appResultSchema(gitStatusSchema),
+  [CHANNELS.gitDiff]: appResultSchema(gitFileDiffSchema),
+  [CHANNELS.gitStage]: appResultSchema(z.undefined()),
+  [CHANNELS.gitUnstage]: appResultSchema(z.undefined()),
+  [CHANNELS.gitDiscard]: appResultSchema(z.undefined()),
+  [CHANNELS.gitCommit]: appResultSchema(gitCommitResultSchema),
+  [CHANNELS.gitPush]: appResultSchema(gitPushResultSchema),
+  [CHANNELS.gitPull]: appResultSchema(gitPullResultSchema),
+  [CHANNELS.gitFetch]: appResultSchema(z.undefined()),
+  [CHANNELS.gitLog]: appResultSchema(z.array(gitLogEntrySchema)),
+  [CHANNELS.gitBranchChanges]: appResultSchema(branchChangesSchema),
 } as const;
