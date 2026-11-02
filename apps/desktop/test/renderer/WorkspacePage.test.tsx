@@ -1572,7 +1572,7 @@ describe('pasta do projeto indisponível', () => {
 });
 
 describe('projeto sem Git', () => {
-  it('mostra o aviso com git init e deixa Nova missão desabilitado', async () => {
+  it('sem Git, a aba Terminais não mostra aviso e Nova missão explica pelo título', async () => {
     api.projects.list.mockResolvedValue({
       ok: true,
       data: [
@@ -1587,9 +1587,10 @@ describe('projeto sem Git', () => {
     });
     renderAt();
 
-    const notice = await screen.findByText(/git init/);
-    expect(notice).toHaveAttribute('id', PROJECT_NO_GIT_NOTICE_ID);
-    expect(screen.getByRole('button', { name: 'Nova missão' })).toBeDisabled();
+    const button = await screen.findByRole('button', { name: 'Nova missão' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', expect.stringContaining('git init'));
+    expect(screen.queryByText(/git init/)).toBeNull();
   });
 
   it('com Git, não há aviso e Nova missão segue habilitado', async () => {

@@ -381,9 +381,23 @@ describe('ProjectHeader: pasta indisponível', () => {
 });
 
 describe('ProjectHeader: projeto sem Git', () => {
-  it('Nova missão fica desabilitado e aponta para o aviso de Git da página', () => {
+  it('fora da visão Missões, Nova missão fica desabilitado e explica pelo título', () => {
     installApi();
-    renderAt('/workspaces/p1', { project: { ...project, repositoryKind: 'none' } });
+    renderAt('/workspaces/p1?visao=terminais', {
+      project: { ...project, repositoryKind: 'none' },
+    });
+
+    const button = screen.getByRole('button', { name: 'Nova missão' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', expect.stringContaining('git init'));
+    expect(button).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('na visão Missões, Nova missão aponta para o aviso da própria visão', () => {
+    installApi();
+    renderAt('/workspaces/p1?visao=missoes', {
+      project: { ...project, repositoryKind: 'none' },
+    });
 
     const button = screen.getByRole('button', { name: 'Nova missão' });
     expect(button).toBeDisabled();

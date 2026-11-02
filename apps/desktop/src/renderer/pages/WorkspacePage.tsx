@@ -8,11 +8,7 @@ import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { PathText } from '../components/PathText';
-import {
-  PROJECT_NO_GIT_NOTICE_ID,
-  PROJECT_UNAVAILABLE_NOTICE_ID,
-  ProjectHeader,
-} from '../components/project/ProjectHeader';
+import { PROJECT_UNAVAILABLE_NOTICE_ID, ProjectHeader } from '../components/project/ProjectHeader';
 import { FileEditorTab } from '../components/project/FileEditorTab';
 import { FileTabs, fileTabId } from '../components/project/FileTabs';
 import { ProjectMissions } from '../components/project/ProjectMissions';
@@ -104,11 +100,6 @@ export function WorkspacePage() {
       {project !== undefined && unavailable ? (
         <p role="alert" className="page-alert" id={PROJECT_UNAVAILABLE_NOTICE_ID}>
           {UNAVAILABLE_NOTICE} Caminho esperado: <PathText path={project.path} />
-        </p>
-      ) : null}
-      {project !== undefined && project.repositoryKind !== 'git' ? (
-        <p className="page-alert" id={PROJECT_NO_GIT_NOTICE_ID}>
-          {PROJECT_TEXT.noGitNotice}
         </p>
       ) : null}
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>

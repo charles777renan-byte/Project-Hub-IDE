@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import type { ProjectSummary } from '@project-hub/contracts';
+import type { ProjectSummary, RepositoryInitPreview } from '@project-hub/contracts';
 import { HOME_TEXT, PROJECT_TEXT } from '../../mission-text';
+import { PROJECTS_CHANGED_EVENT } from '../../projects-events';
 import { NEW_MISSION_PARAM, VIEW_PARAM } from '../../project-views';
 import { missionPath } from '../../routes';
 import { useMissionsBoard } from '../../use-missions-board';
+import { ConfirmInline } from '../ConfirmButton';
 import { MissionForm, type MissionFormValues } from '../MissionForm';
 import { MissionProgressList } from '../MissionProgressList';
 import { PROJECT_NO_GIT_NOTICE_ID } from './ProjectHeader';
+
+/** A pergunta da confirmação, com o que a prévia achou na pasta. */
+function repositoryQuestion(preview: RepositoryInitPreview): string {
+  const parts: string[] = [PROJECT_TEXT.gitInitQuestion];
+  if (preview.createsGitignore) parts.push(PROJECT_TEXT.gitInitCreatesGitignore);
+  if (preview.sensitiveFiles.length > 0) {
+    parts.push(PROJECT_TEXT.gitInitSensitive(preview.sensitiveFiles));
+  }
+  return parts.join(' ');
+}
 
 /** O pedido de abrir o formulário: `state.newMission` (cabeçalho e paleta) ou `?nova-missao=1` na rota. */
 function newMissionRequested(state: unknown, search: string): boolean {
@@ -40,6 +52,11 @@ export function ProjectMissions({
   const board = useMissionsBoard({ projectId });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Criar o repositório Git (ADR 0009): a prévia vem antes da confirmação, e nada é escrito sem ela.
+  const [gitPreview, setGitPreview] = useState<RepositoryInitPreview | null>(null);
+  const [gitBusy, setGitBusy] = useState(false);
+  // Texto da área do Git: erro (vermelho) ou instrução (neutro, como o aviso de projeto sem Git).
+  const [gitFeedback, setGitFeedback] = useState<{ text: string; error: boolean } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const consumed = useRef<string | null>(null);
   const submitting = useRef(false);
@@ -72,6 +89,45 @@ export function ProjectMissions({
   function openForm() {
     setError(null);
     setCreating(true);
+  }
+
+  /**
+   * Pede a prévia da pasta e abre a confirmação. Sem a identidade do Git não há confirmação: a tela mostra a
+   * instrução para configurar, e o botão não cria nada. Nada é escrito aqui.
+   */
+  async function openGitConfirm(projectId: string) {
+    setGitFeedback(null);
+    try {
+      const result = await window.projectHub.projects.repositoryPreview(projectId);
+      if (!result.ok) {
+        setGitFeedback({ text: result.error.message, error: true });
+      } else if (!result.data.identityConfigured) {
+        setGitFeedback({ text: PROJECT_TEXT.gitIdentityMissing, error: false });
+      } else {
+        setGitPreview(result.data);
+      }
+    } catch {
+      setGitFeedback({ text: PROJECT_TEXT.genericError, error: true });
+    }
+  }
+
+  /** Cria o repositório depois da confirmação. Sucesso avisa a barra lateral, que traz o projeto já como Git. */
+  async function createGitRepository(projectId: string) {
+    setGitBusy(true);
+    setGitFeedback(null);
+    try {
+      const result = await window.projectHub.projects.initRepository(projectId);
+      if (result.ok) {
+        setGitPreview(null);
+        window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+      } else {
+        setGitFeedback({ text: result.error.message, error: true });
+      }
+    } catch {
+      setGitFeedback({ text: PROJECT_TEXT.genericError, error: true });
+    } finally {
+      setGitBusy(false);
+    }
   }
 
   function closeForm() {
@@ -156,6 +212,38 @@ export function ProjectMissions({
         <p role="alert" className="page-alert">
           {error}
         </p>
+      )}
+      {project === undefined || project.repositoryKind === 'git' ? null : (
+        <div className="project-missions__git">
+          <p className="project-missions__note" id={PROJECT_NO_GIT_NOTICE_ID}>
+            {PROJECT_TEXT.noGitNotice}
+          </p>
+          {gitPreview === null ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={gitBusy}
+              onClick={() => void openGitConfirm(project.id)}
+            >
+              {PROJECT_TEXT.createGitRepo}
+            </button>
+          ) : (
+            <ConfirmInline
+              focusBack
+              confirmTone="primary"
+              question={repositoryQuestion(gitPreview)}
+              confirmLabel={PROJECT_TEXT.createGitRepoConfirm}
+              disabled={gitBusy}
+              onConfirm={() => void createGitRepository(project.id)}
+              onCancel={() => setGitPreview(null)}
+            />
+          )}
+          {gitFeedback === null ? null : (
+            <p role="alert" className={gitFeedback.error ? 'page-alert' : 'project-missions__note'}>
+              {gitFeedback.text}
+            </p>
+          )}
+        </div>
       )}
       {body}
     </div>

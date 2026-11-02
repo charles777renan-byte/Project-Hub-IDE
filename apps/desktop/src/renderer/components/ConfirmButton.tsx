@@ -11,6 +11,7 @@ export function ConfirmInline({
   confirmLabel,
   disabled = false,
   focusBack = false,
+  confirmTone = 'danger',
   onConfirm,
   onCancel,
 }: {
@@ -23,6 +24,8 @@ export function ConfirmInline({
    * sumir (o item de um menu), para o foco não se perder no corpo da página.
    */
   focusBack?: boolean;
+  /** Cor do botão que confirma: `danger` para o que apaga ou tira algo; `primary` para o que só cria. */
+  confirmTone?: 'danger' | 'primary';
   onConfirm: () => void;
   /** "Voltar": desfaz o pedido sem chamar `onConfirm`. */
   onCancel: () => void;
@@ -30,7 +33,12 @@ export function ConfirmInline({
   return (
     <span className="confirm-inline" role="group" aria-label={question}>
       <span>{question}</span>
-      <button type="button" className="btn-danger" disabled={disabled} onClick={onConfirm}>
+      <button
+        type="button"
+        className={confirmTone === 'primary' ? 'btn-primary' : 'btn-danger'}
+        disabled={disabled}
+        onClick={onConfirm}
+      >
         {confirmLabel}
       </button>
       <button type="button" disabled={disabled} autoFocus={focusBack} onClick={onCancel}>
