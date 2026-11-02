@@ -1,5 +1,6 @@
 export { createGitDetector } from './detect';
 export { createRepositoryInitializer } from './init-repository';
+export { createGitPanelPort } from './git-panel-port';
 export {
   getWorktreeDiff,
   type WorktreeDiff,
