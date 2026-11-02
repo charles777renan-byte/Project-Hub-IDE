@@ -283,18 +283,46 @@ describe('searchContent', () => {
 
   it('não deixa o laço de eventos parado durante uma busca em 5 000 arquivos', async () => {
     await seedMany('', 5_000, 'conteúdo sem o termo procurado\noutra linha\n');
+    // O que se prova aqui é que a busca cede a vez ao laço de eventos, não que 5 000 arquivos cabem nos 5 s de
+    // produção (ler tantos arquivos leva segundos num disco lento). O orçamento maior só impede que o limite de
+    // tempo corte a busca antes do fim; o laço de eventos é medido pelo maior intervalo entre dois pulsos.
     let ticks = 0;
+    let maxGap = 0;
+    const started = performance.now();
+    let last = started;
     const timer = setInterval(() => {
       ticks += 1;
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
     }, 10);
+    let result;
     try {
-      const result = await searchContent(root, 'inexistente', false);
-      expect(result).toEqual({ matches: [], truncated: false });
+      result = await searchContent(root, 'inexistente', false, { timeoutMs: 50_000 });
     } finally {
       clearInterval(timer);
     }
+    const elapsed = performance.now() - started;
+    maxGap = Math.max(maxGap, performance.now() - last);
+    // Com o orçamento folgado a busca percorre tudo: nada foi cortado.
+    expect(result).toEqual({ matches: [], truncated: false });
     expect(ticks).toBeGreaterThanOrEqual(3);
+    // Uma busca que prende o laço teria um intervalo do tamanho dela toda; cedendo a vez, os pulsos seguem.
+    expect(maxGap).toBeLessThan(Math.max(500, elapsed / 2));
   }, 60_000);
+
+  it('o orçamento de tempo esgotado corta a busca e avisa com truncated, sem mudar o padrão de 5 s', async () => {
+    await seed({ 'a.txt': 'alvo', 'b.txt': 'alvo' });
+    // Orçamento já esgotado: nenhum arquivo chega a ser aberto.
+    expect(await searchContent(root, 'alvo', false, { timeoutMs: -1 })).toEqual({
+      matches: [],
+      truncated: true,
+    });
+    // Sem a opção, o orçamento padrão (5 s) sobra para dois arquivos.
+    const padrao = await searchContent(root, 'alvo', false);
+    expect(padrao.truncated).toBe(false);
+    expect(padrao.matches.map((match) => match.path).sort()).toEqual(['a.txt', 'b.txt']);
+  });
 
   it('abortar no meio devolve o parcial sem lançar', async () => {
     // O arquivo da raiz é lido antes das pastas (percurso em largura); as 5 000 seguintes não têm o termo.
