@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { syntaxHighlighting } from '@codemirror/language';
-import { search, searchKeymap } from '@codemirror/search';
+import { bracketMatching, syntaxHighlighting } from '@codemirror/language';
+import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import {
   Annotation,
   Compartment,
@@ -17,6 +17,7 @@ import {
   lineNumbers,
 } from '@codemirror/view';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
+import { indentGuides } from './indent-guides';
 import { editorHighlight, editorTheme } from './editor-theme';
 
 /*
@@ -64,6 +65,9 @@ export function mountEditor(options: MountOptions): EditorHandle {
     search({ top: true }),
     keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap]),
     syntaxHighlighting(editorHighlight),
+    bracketMatching(),
+    highlightSelectionMatches(),
+    indentGuides(),
     editorTheme,
     EditorState.phrases.of({ ...RIGHT_PANEL_TEXT.editor.find }),
     EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
