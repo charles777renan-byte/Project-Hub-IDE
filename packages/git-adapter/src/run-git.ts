@@ -141,7 +141,7 @@ function isDiffRead(rest: readonly string[]): boolean {
 }
 
 /** Um argumento que o Git lê como valor: não vazio e sem `-` na frente, que o faria virar opção. */
-function isOperand(arg: string | undefined): arg is string {
+export function isOperand(arg: string | undefined): arg is string {
   return arg !== undefined && arg !== '' && !arg.startsWith('-');
 }
 
@@ -177,9 +177,16 @@ function isWorktreeWrite(args: readonly string[]): boolean {
 /**
  * Ambiente do processo: mensagens do Git em inglês (a detecção reconhece "not a git repository" no
  * texto), sem travas opcionais (o `status` não regrava o índice) e sem variáveis de repositório.
+ * `extra` são variáveis que o adaptador acrescenta (nunca do chamador) e que vencem as herdadas, mas
+ * não as de repositório, que são sempre removidas.
  */
-function gitEnvironment(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
+function gitEnvironment(extra: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...extra,
+    LC_ALL: 'C',
+    GIT_OPTIONAL_LOCKS: '0',
+  };
   for (const name of REPOSITORY_VARIABLES) delete env[name];
   return env;
 }
@@ -195,6 +202,7 @@ function execGit(
   args: readonly string[],
   config: readonly string[],
   options: RunGitOptions,
+  env: Readonly<Record<string, string>>,
 ): Promise<Outcome> {
   return new Promise((resolve) => {
     execFile(
@@ -202,7 +210,7 @@ function execGit(
       [...FSMONITOR_OFF, ...config, ...args],
       {
         cwd: options.cwd,
-        env: gitEnvironment(),
+        env: gitEnvironment(env),
         timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: MAX_OUTPUT_BYTES,
         encoding: 'utf8',
@@ -266,16 +274,19 @@ async function toGitError(
 }
 
 /**
- * Roda o comando que a lista de permissão do chamador já aprovou. Não é exportada: só `runGit` e
- * `runGitWorktree` chegam aqui, cada uma depois da sua checagem. `config` são `-c chave=valor` que
- * o adaptador acrescenta depois do `-c core.fsmonitor=false`, nunca vindos do chamador.
+ * Roda o comando que a lista de permissão do chamador já aprovou. É exportada só para o pacote (não
+ * entra em `index.ts`): `runGit`, `runGitWorktree`, `runGitInitRepository` e `runGitWrite` chegam
+ * aqui, cada uma depois da sua checagem. `config` são `-c chave=valor` que o adaptador acrescenta
+ * depois do `-c core.fsmonitor=false`, e `env` são variáveis de ambiente que ele acrescenta; nenhum
+ * dos dois vem do chamador.
  */
-async function runApproved(
+export async function runApproved(
   args: readonly string[],
   options: RunGitOptions,
   config: readonly string[] = [],
+  env: Readonly<Record<string, string>> = {},
 ): Promise<{ stdout: string }> {
-  const outcome = await execGit(options.gitBinary ?? 'git', args, config, options);
+  const outcome = await execGit(options.gitBinary ?? 'git', args, config, options, env);
   if (outcome.error === null) return { stdout: outcome.stdout };
   throw await toGitError(outcome.error, outcome.stderr, args, options);
 }
