@@ -6,6 +6,7 @@ import { FileEditorTab } from '../../src/renderer/components/project/FileEditorT
 import {
   openFile,
   resetOpenFilesForTests,
+  saveAllDirty,
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
@@ -305,6 +306,23 @@ describe('FileEditorTab', () => {
     await userEvent.click(saveButton());
 
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('o "Salvar" ao fechar a janela que falhou mostra o motivo na aba e mantém o texto', async () => {
+    api.write.mockResolvedValue({
+      ok: false,
+      error: { code: 'UNKNOWN', message: 'Disco cheio.', retryable: false },
+    });
+    const { container } = await mountEditor();
+    type(container, '!');
+
+    await act(async () => {
+      expect(await saveAllDirty()).toBe(false);
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Disco cheio.');
+    expect(viewOf(container).state.doc.toString()).toBe('texto!');
+    expect(state()).toEqual({ dirty: true, saved: 'texto' });
   });
 
   it('arquivo com fins de linha misturados abre somente leitura, com a faixa, e não deixa salvar', async () => {

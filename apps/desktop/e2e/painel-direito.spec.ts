@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, type LaunchedApp, type LaunchOptions } from './fixtures';
 import { addGitProject, filesTree, openFileFromPanel, openProject } from './missions';
 import { expectOpenSessions, expectTerminalToContain } from './terminals';
 
@@ -366,48 +366,135 @@ test('o conferidor de CSP do teste enxerga as violações de verdade', async ({ 
   await expect(expectNoViolations(page, consoleCsp)).rejects.toThrow();
 });
 
-test('fechar a janela com arquivo não salvo pergunta antes e só sai se a pessoa escolher sair', async ({
-  launchApp,
-  gitRepo,
-}) => {
-  const files = seedFiles(gitRepo.path);
-  const projectName = basename(gitRepo.path);
-  const { app, page, close } = await launchApp({ dialogPath: gitRepo.path });
+/**
+ * Prepara a janela com `src/a.ts` aberto e alterado (sem salvar) e troca a caixa nativa e síncrona de "arquivo não
+ * salvo", que ninguém responde numa rodada sem pessoa. `answer` é o botão que ela devolve: 0 Salvar, 1 Descartar,
+ * 2 Voltar. Os testes de fechar a janela começam todos assim.
+ */
+async function dirtyWindow(
+  launchApp: (options?: LaunchOptions) => Promise<LaunchedApp>,
+  repoPath: string,
+): Promise<{
+  page: Page;
+  close: () => Promise<void>;
+  consoleCsp: string[];
+  files: ReturnType<typeof seedFiles>;
+  answer: (button: 0 | 1 | 2) => Promise<void>;
+  asked: () => Promise<number>;
+  closeWindow: () => Promise<void>;
+}> {
+  const files = seedFiles(repoPath);
+  const projectName = basename(repoPath);
+  const { app, page, close } = await launchApp({ dialogPath: repoPath });
+  // O conferidor de CSP recarrega a página: vem antes de abrir e digitar qualquer coisa.
+  const consoleCsp = await watchCsp(page);
   await addGitProject(page, projectName);
   await openProject(page, projectName, 'Terminais');
   await openFileFromPanel(page, 'src/a.ts');
   await typeAtEnd(page, 'a.ts', 'sem salvar');
 
-  // O diálogo nativo é síncrono e ninguém o responde numa rodada sem pessoa: o teste troca a resposta dele.
   type Guard = { asked: number; answer: number };
   await app.evaluate(({ dialog }) => {
-    const guard: Guard = { asked: 0, answer: 0 };
+    const guard: Guard = { asked: 0, answer: 2 };
     Object.assign(globalThis, { unsavedGuard: guard });
     (dialog as unknown as { showMessageBoxSync: () => number }).showMessageBoxSync = () => {
       guard.asked += 1;
       return guard.answer;
     };
   });
-  const asked = () =>
-    app.evaluate(() => (globalThis as unknown as { unsavedGuard: Guard }).unsavedGuard.asked);
-  const closeWindow = () =>
-    app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.close();
-    });
+  return {
+    page,
+    close,
+    consoleCsp,
+    files,
+    answer: (button) =>
+      app.evaluate((_electron, value) => {
+        (globalThis as unknown as { unsavedGuard: Guard }).unsavedGuard.answer = value;
+      }, button),
+    asked: () =>
+      app.evaluate(() => (globalThis as unknown as { unsavedGuard: Guard }).unsavedGuard.asked),
+    closeWindow: () =>
+      app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.close();
+      }),
+  };
+}
+
+test('fechar a janela com arquivo não salvo: Voltar mantém a janela e Descartar fecha sem gravar', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const { page, close, consoleCsp, files, answer, asked, closeWindow } = await dirtyWindow(
+    launchApp,
+    gitRepo.path,
+  );
 
   // "Voltar": a pergunta aparece uma vez e a janela continua aberta, com o texto.
   await closeWindow();
   await expect.poll(asked).toBe(1);
   expect(page.isClosed()).toBe(false);
   await expect(editorOf(page, 'a.ts')).toContainText('sem salvar');
+  await expectNoViolations(page, consoleCsp);
 
-  // "Sair sem salvar": a janela fecha, e o disco segue como estava.
-  await app.evaluate(() => {
-    (globalThis as unknown as { unsavedGuard: Guard }).unsavedGuard.answer = 1;
-  });
+  // "Descartar": a janela fecha, e o disco segue como estava.
+  await answer(1);
   const closed = page.waitForEvent('close');
   await closeWindow();
   await closed;
   expect(readDisk(files.a)).toBe(A_TS);
+  await close().catch(() => undefined);
+});
+
+test('fechar a janela com arquivo não salvo: Salvar grava no disco e fecha a janela', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const { page, close, consoleCsp, files, answer, closeWindow } = await dirtyWindow(
+    launchApp,
+    gitRepo.path,
+  );
+  await expectNoViolations(page, consoleCsp);
+
+  // "Salvar": a janela grava o arquivo e só então fecha.
+  await answer(0);
+  const closed = page.waitForEvent('close');
+  await closeWindow();
+  await closed;
+
+  expect(readDisk(files.a)).toBe('export const a = 1;\nsem salvar');
+  await close().catch(() => undefined);
+});
+
+test('fechar a janela com arquivo não salvo: Salvar que não consegue gravar mantém a janela e o texto', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const { page, close, consoleCsp, files, answer, asked, closeWindow } = await dirtyWindow(
+    launchApp,
+    gitRepo.path,
+  );
+  // Um agente muda o arquivo por fora enquanto a pessoa edita: gravar por cima perderia o trabalho dele.
+  writeFileSync(files.a, 'export const externo = true;\n');
+
+  await answer(0);
+  await closeWindow();
+  await expect.poll(asked).toBe(1);
+
+  // A gravação é recusada: a janela segue aberta, o texto está no editor, a faixa de conflito explica e o disco
+  // tem só o que o agente escreveu.
+  await expect(page.getByText('O arquivo mudou no disco enquanto você editava')).toBeVisible();
+  await expect(editorOf(page, 'a.ts')).toContainText('sem salvar');
+  // Negativo: dá tempo a um fechamento ou a uma gravação indevidos antes de conferir.
+  await page.waitForTimeout(500);
+  expect(page.isClosed()).toBe(false);
+  expect(readDisk(files.a)).toBe('export const externo = true;\n');
+  await expectNoViolations(page, consoleCsp);
+
+  // "Descartar" é a saída: fecha sem gravar.
+  await answer(1);
+  const closed = page.waitForEvent('close');
+  await closeWindow();
+  await closed;
+  expect(readDisk(files.a)).toBe('export const externo = true;\n');
   await close().catch(() => undefined);
 });

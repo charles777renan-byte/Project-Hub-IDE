@@ -138,6 +138,28 @@ describe('barra superior', () => {
     },
   );
 
+  it('atende o "Salvar" ao fechar a janela enquanto o app está montado, e deixa de atender ao sair', () => {
+    const unsubscribe = vi.fn();
+    const onSaveAllRequest = vi.fn(() => unsubscribe);
+    window.projectHub = {
+      ...window.projectHub,
+      files: { onSaveAllRequest },
+    } as unknown as ProjectHubApi;
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(onSaveAllRequest).toHaveBeenCalled();
+    const assinaturas = onSaveAllRequest.mock.calls.length;
+
+    unmount();
+
+    // Cada assinatura (o modo estrito do React monta duas vezes) é cancelada ao desmontar.
+    expect(unsubscribe).toHaveBeenCalledTimes(assinaturas);
+  });
+
   it('a barra lateral não leva navegação principal, só a busca e o explorador de projetos', () => {
     render(
       <MemoryRouter>

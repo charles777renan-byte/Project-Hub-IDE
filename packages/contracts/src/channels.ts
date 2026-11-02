@@ -91,4 +91,8 @@ export const CHANNELS = {
   filesSearchContent: 'files:search-content:v1',
   /** Abre o arquivo no programa padrão do sistema. */
   filesOpenDefault: 'files:open-default:v1',
+  /** Fechar a janela com "Salvar": o processo principal pede ao renderer que grave os arquivos sujos. Não tem resposta. */
+  filesSaveAllRequest: 'files:save-all-request:v1',
+  /** O renderer diz como foi o pedido acima: `saved` só vale `true` se nada ficou sujo. */
+  filesSaveAllResult: 'files:save-all-result:v1',
 } as const;

@@ -40,6 +40,7 @@ import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
 import { registerFilesHandlers } from './ipc/files';
+import { registerSaveAllResultHandler } from './ipc/save-all';
 import { createProjectFiles } from './files/project-files';
 import {
   agentActivityAgents,
@@ -65,7 +66,8 @@ import { registerProjectHandlers } from './ipc/projects';
 import { registerTrustedHandler } from './ipc/trusted-handler';
 import { registerWorktreeHandlers } from './ipc/worktrees';
 import { handleWindowLoadFailure } from './startup-failure';
-import { registerUnsavedGuard } from './unsaved-guard';
+import { createSaveBeforeClose } from './save-before-close';
+import { registerUnsavedGuard, unsavedChoiceOf, type UnsavedChoice } from './unsaved-guard';
 import {
   applyContentSecurityPolicy,
   confirmUnlessClosing,
@@ -156,21 +158,26 @@ const startupFailure = {
 
 /**
  * Fechar a janela com arquivo não salvo (o `beforeunload` do renderer só está ativo nesse caso). A caixa é nativa e
- * síncrona: o evento `will-prevent-unload` espera a resposta. "Voltar" é o botão padrão e também a resposta do Esc;
- * só "Sair sem salvar" libera o fechamento.
+ * síncrona: o evento `will-prevent-unload` espera a resposta. As três respostas são as de fechar uma aba: Salvar
+ * (grava tudo e só então fecha), Descartar (fecha sem gravar) e Voltar. "Voltar" é o botão padrão e também a
+ * resposta do Esc e do X da caixa: só "Descartar" libera o fechamento sem gravar.
  */
-function confirmQuitWithUnsavedFiles(owner: BrowserWindow): boolean {
+function askAboutUnsavedFiles(owner: BrowserWindow): UnsavedChoice {
   const response = dialog.showMessageBoxSync(owner, {
     type: 'warning',
     title: 'Project Hub',
-    message: 'Há arquivos com alterações não salvas. Sair mesmo assim?',
-    buttons: ['Voltar', 'Sair sem salvar'],
-    defaultId: 0,
-    cancelId: 0,
+    message: 'Há arquivos com alterações não salvas.',
+    detail: 'Salvar grava todos e fecha a janela. Descartar fecha sem gravar.',
+    buttons: ['Salvar', 'Descartar', 'Voltar'],
+    defaultId: 2,
+    cancelId: 2,
     noLink: true,
   });
-  return response === 1;
+  return unsavedChoiceOf(response);
 }
+
+/** O "Salvar" ao fechar a janela, da janela principal que existe agora (o resultado chega por `files:save-all-result:v1`). */
+let saveBeforeClose: ReturnType<typeof createSaveBeforeClose> | undefined;
 
 /** Janela principal enquanto ela existe: é a única que recebe os eventos das missões. */
 let mainWindow: BrowserWindow | undefined;
@@ -229,14 +236,23 @@ function createMainWindow(): void {
   win.once('closed', () => {
     if (mainWindow === win) mainWindow = undefined;
   });
-  registerUnsavedGuard(
-    win.webContents,
-    () => confirmQuitWithUnsavedFiles(win),
-    // "Voltar" cancela o fechamento: sem desfazer a marca, os links externos seriam recusados em silêncio.
-    () => {
+  // "Salvar": o renderer grava os arquivos sujos e responde; a janela só fecha se tudo foi gravado e nada ficou sujo.
+  const saving = createSaveBeforeClose({
+    requestSave: (requestId) => {
+      if (!win.isDestroyed()) win.webContents.send(CHANNELS.filesSaveAllRequest, { requestId });
+    },
+    closeWindow: () => {
+      if (!win.isDestroyed()) win.close();
+    },
+  });
+  saveBeforeClose = saving;
+  registerUnsavedGuard(win.webContents, () => askAboutUnsavedFiles(win), {
+    // "Voltar" e "Salvar" cancelam o fechamento: sem desfazer a marca, os links externos seriam recusados em silêncio.
+    onStay: () => {
       windowClosing = false;
     },
-  );
+    onSave: () => saving.start(),
+  });
   restrictNavigation(win.webContents, appOrigin, {
     confirmExternal: (url) => confirmExternal(win, url, closing),
     openExternal: (url) => shell.openExternal(url),
@@ -379,6 +395,9 @@ app
       files: createProjectFiles(services.fileDeps),
       openPath: (path) => shell.openPath(path),
     });
+    registerSaveAllResultHandler(ipcMain, isTrustedSender, (requestId, saved) =>
+      saveBeforeClose?.finish(requestId, saved),
+    );
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);
