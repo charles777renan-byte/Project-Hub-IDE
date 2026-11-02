@@ -13,13 +13,14 @@ import {
   PROJECT_UNAVAILABLE_NOTICE_ID,
   ProjectHeader,
 } from '../components/project/ProjectHeader';
-import { FileTabs, fileName, fileTabId } from '../components/project/FileTabs';
+import { FileEditorTab } from '../components/project/FileEditorTab';
+import { FileTabs, fileTabId } from '../components/project/FileTabs';
 import { ProjectMissions } from '../components/project/ProjectMissions';
 import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
-import { PROJECT_TEXT, RIGHT_PANEL_TEXT } from '../mission-text';
+import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
-import { useOpenFiles, type OpenFileBuffer } from '../open-files';
+import { useOpenFiles } from '../open-files';
 import { MissionPage } from './MissionPage';
 import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
@@ -121,7 +122,9 @@ export function WorkspacePage() {
             {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
           />
         </div>
-        {activeFile === undefined ? null : <OpenFilePanel file={activeFile} />}
+        {activeFile === undefined ? null : (
+          <OpenFilePanel projectId={projectId} path={activeFile.path} />
+        )}
       </ProjectPanel>
       <ProjectPanel
         view="missoes"
@@ -151,20 +154,13 @@ export function WorkspacePage() {
 }
 
 /**
- * O painel do arquivo ativo, no lugar do workspace: por enquanto só o estado da leitura (o editor entra depois).
- * É o `tabpanel` da aba do arquivo na faixa.
+ * O painel do arquivo ativo, no lugar do workspace: o `tabpanel` da aba dele na faixa, com o editor dentro. A chave
+ * é o caminho, então cada arquivo ganha um editor e um estado de gravação só seus.
  */
-function OpenFilePanel({ file }: { file: OpenFileBuffer }) {
-  const texts = RIGHT_PANEL_TEXT.openFiles;
+function OpenFilePanel({ projectId, path }: { projectId: string; path: string }) {
   return (
-    <div role="tabpanel" aria-labelledby={fileTabId(file.path)} className="project-tab__file">
-      <p>
-        {file.load === 'loading'
-          ? texts.loading
-          : file.load === 'ready'
-            ? fileName(file.path)
-            : (file.message ?? texts.readError)}
-      </p>
+    <div role="tabpanel" aria-labelledby={fileTabId(path)} className="project-tab__file">
+      <FileEditorTab key={path} projectId={projectId} path={path} />
     </div>
   );
 }

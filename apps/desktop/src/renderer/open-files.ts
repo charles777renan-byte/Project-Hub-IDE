@@ -213,6 +213,15 @@ export function updateText(projectId: string, path: string, text: string): void 
   patch(projectId, path, (buffer) => ({ ...buffer, text, dirty: text !== saved.text }));
 }
 
+/**
+ * O que acabou de ser gravado vira o salvo (o texto enviado, os fins de linha e o BOM com que foi gravado, e a
+ * versão nova que o disco devolveu). O texto do editor não muda: se a pessoa digitou durante a gravação, o
+ * arquivo segue com alterações não salvas, porque `dirty` é refeito contra o texto de agora.
+ */
+export function markSaved(projectId: string, path: string, saved: FileContentDto): void {
+  patch(projectId, path, (buffer) => ({ ...buffer, saved, dirty: buffer.text !== saved.text }));
+}
+
 /** Algum projeto tem arquivo com alterações não salvas. */
 export function hasDirtyFiles(): boolean {
   return [...states.values()].some((state) => state.anyDirty);

@@ -134,14 +134,13 @@
   display: none;
 }
 
-/* O arquivo ativo ocupa o mesmo lugar do workspace. */
+/* O arquivo ativo ocupa o mesmo lugar do workspace; o editor (right-panel.css) enche o painel e rola por dentro. */
 .project-tab__file {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
-  padding: var(--space-3);
-  overflow: auto;
-  color: var(--muted);
-  font-size: var(--text-sm);
+  overflow: hidden;
 }
 
 .project-tab__panel--missoes,
