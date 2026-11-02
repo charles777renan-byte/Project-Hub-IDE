@@ -69,6 +69,11 @@ export type ProjectHubApi = {
     editPlanStep(input: EditPlanStepInput): Promise<AppResult<MissionPlanDto>>;
     /** Aprova o plano gerado: a missão vai para a fila. */
     approvePlan(missionId: string): Promise<AppResult<void>>;
+    /**
+     * Interrompe o planejamento em andamento e encerra o `claude` que o gera. A missão e o plano anterior
+     * ficam como estavam; a chamada de `plan` que estava esperando termina com falha.
+     */
+    cancelPlanning(missionId: string): Promise<AppResult<void>>;
     /** Inicia a execução de uma missão aprovada. Devolve a tentativa no estado em que parou. */
     start(missionId: string): Promise<AppResult<ExecutionDto>>;
     /** Cancela a missão, encerrando o agente se ele estiver rodando (também a pausada). */

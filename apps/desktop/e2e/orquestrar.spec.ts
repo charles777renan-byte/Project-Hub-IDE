@@ -40,6 +40,35 @@ const SECOND_PLAN = {
 
 const APPROVAL_TITLE = 'Confirmar a gravação do arquivo de demonstração';
 
+test('Cancelar planejamento: interrompe o planejador, a missão segue em rascunho e dá para planejar de novo', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path, plannerScript: FAKE_PLANNER });
+
+  await addGitProject(page, projectName);
+  await openProject(page, projectName);
+  // O CLI falso não responde quando o pedido traz `demorar-plano`: o planejamento só termina se o app o abortar.
+  await createMission(page, {
+    ...MISSION,
+    title: 'Planejamento que demora',
+    objective: 'Planejar o login (demorar-plano).',
+  });
+
+  const block = decisionBlock(page);
+  await block.getByRole('button', { name: 'Orquestrar' }).click();
+  await expect(block.getByRole('button', { name: 'Planejando…' })).toBeDisabled();
+  await block.getByRole('button', { name: 'Cancelar planejamento' }).click();
+
+  // Cancelar foi escolha da pessoa: sem alerta de falha, a missão segue em rascunho e o Orquestrar volta.
+  await expect(block.getByRole('button', { name: 'Orquestrar' })).toBeEnabled();
+  await expect(block.getByRole('button', { name: 'Cancelar planejamento' })).toHaveCount(0);
+  await expect(block.getByRole('alert')).toHaveCount(0);
+  await expect(missionSummary(page).getByText('Rascunho', { exact: true })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Etapas do plano' })).toHaveCount(0);
+});
+
 test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e execução', async ({
   launchApp,
   gitRepo,
@@ -60,8 +89,7 @@ test('Orquestrar: 3 tarefas, edição, novo plano com instrução, aprovação e
   // uma aba: está sempre no corpo da missão). O quadro do orquestrador só aparece durante o planejamento, e o
   // agente é dito uma vez, no cabeçalho da lista.
   const table = page.getByRole('list', { name: 'Etapas do plano' });
-  const row = (title: string) =>
-    table.getByRole('listitem').filter({ hasText: new RegExp(title) });
+  const row = (title: string) => table.getByRole('listitem').filter({ hasText: new RegExp(title) });
   for (const title of Object.values(FIRST_PLAN)) await expect(row(title)).toBeVisible();
   await expect(table.getByRole('listitem')).toHaveCount(3);
   await expect(row(FIRST_PLAN.backend)).toContainText('depois de 1');
