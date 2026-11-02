@@ -22,6 +22,9 @@ const ACCENTS = [
   '--yellow',
 ] as const;
 
+/** Cor de referência de cada agente do bloco "Visão geral" do Início (a rampa de cada uma está em home.css). */
+const AGENT_COLORS = ['--agent-claude', '--agent-codex', '--agent-antigravity'] as const;
+
 const COLOR_TOKENS = [
   '--bg',
   '--panel',
@@ -40,6 +43,7 @@ const COLOR_TOKENS = [
   '--warn',
   '--brand',
   ...ACCENTS,
+  ...AGENT_COLORS,
 ] as const;
 
 type ColorToken = (typeof COLOR_TOKENS)[number];
@@ -469,10 +473,13 @@ describe('cores dos programas no quadro do orquestrador', () => {
 
 /**
  * Início em painéis (home.css): só tokens de tokens.css, sem cor literal, sem animação. Cada cor de
- * destaque tem um lugar: o lima (--accent) só no dia de hoje do mapa de atividade e no preenchimento da
+ * destaque tem um lugar: o lima (--accent) só no dia de hoje do mapa da Visão geral e no preenchimento da
  * barra de missão em andamento ou concluída, o âmbar (--warn) só no preenchimento da barra de missão que
- * espera a pessoa, o vermelho (--danger) só no da barra de missão que falhou, e o mapa usa a rampa de --muted
- * (#b7adcf) por opacidade. O texto do cartão (--text e --muted sobre --surface e --surface-2) já está nos pares do começo.
+ * espera a pessoa, o vermelho (--danger) só no da barra de missão que falhou. O mapa tem uma rampa por agente
+ * (cor de referência --agent-claude, --agent-codex e --agent-antigravity) e a rampa neutra "outro" (--muted,
+ * #b7adcf), todas por opacidade sobre --surface; o nível 4 é a cor cheia. O nível 0, sem uso, é comum a todas:
+ * 50% de --muted sobre --surface, que passa de 3:1 sobre o cartão. O texto do cartão (--text e --muted sobre
+ * --surface e --surface-2) já está nos pares do começo.
  */
 describe('cores do Início (home.css)', () => {
   const homeCss = readFileSync(
@@ -499,6 +506,7 @@ describe('cores do Início (home.css)', () => {
     '--accent',
     '--warn',
     '--danger',
+    ...AGENT_COLORS,
   ]);
   const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
   /** O preenchimento da barra de progresso, nos dois motores (WebKit e Gecko), por tom do estado. */
@@ -513,7 +521,49 @@ describe('cores do Início (home.css)', () => {
     expect(used.filter((name) => !ALLOWED.has(name) && !NOT_COLOR.test(name))).toEqual([]);
   });
 
-  it('não escreve cor literal nem usa outro acento', () => {
+  /**
+   * As rampas do mapa: uma por agente e a neutra "outro", que cobre o agente sem cor própria. `token` é a cor
+   * cheia (nível 4) e `hex` é o valor que o tokens.css precisa ter.
+   */
+  const RAMPS = [
+    { id: 'claude', token: '--agent-claude', hex: '#d97757' },
+    { id: 'codex', token: '--agent-codex', hex: '#e6e4ee' },
+    { id: 'antigravity', token: '--agent-antigravity', hex: '#3186ff' },
+    { id: 'outro', token: '--muted', hex: '#b7adcf' },
+  ] as const;
+
+  /** O seletor de um nível: o 0 é comum a todos; de 1 a 4, a classe do nível junto com a do agente. */
+  function levelSelector(id: string, level: number): string {
+    return level === 0 ? '.overview-level--0' : `.overview-agent--${id}.overview-level--${level}`;
+  }
+
+  /** Corpo CSS da regra de um nível de uma rampa (sem comentários). */
+  function levelBody(id: string, level: number): string {
+    const selector = levelSelector(id, level);
+    const rule = rules.find(({ selectors }) => selectors.includes(selector));
+    if (rule === undefined) throw new Error(`home.css sem a regra ${selector}`);
+    return rule.body;
+  }
+
+  /** Percentual da cor no nível: 100 quando é a cor cheia. Qualquer outra forma de cor faz o teste falhar. */
+  function levelPercent(id: string, level: number, token: string): number {
+    const body = levelBody(id, level);
+    const mix = new RegExp(
+      String.raw`color-mix\(in srgb, var\(${token}\) (\d+)%, transparent\)`,
+    ).exec(body);
+    if (mix !== null) return Number(mix[1]);
+    if (new RegExp(String.raw`background:\s*var\(${token}\)\s*;`).test(body)) return 100;
+    throw new Error(`${levelSelector(id, level)} sem cor reconhecida em home.css`);
+  }
+
+  /** Cor efetiva do nível sobre --surface: a mistura por color-mix, ou a cor cheia no nível 4. */
+  function levelColor(ramp: (typeof RAMPS)[number], level: number): string {
+    const token = level === 0 ? '--muted' : ramp.token;
+    const percent = levelPercent(ramp.id, level, token);
+    return mixOver(tokens.get(token) ?? '', tokens.get('--surface') ?? '', percent / 100);
+  }
+
+  it('não escreve cor literal e não usa outro acento', () => {
     expect(homeCss).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(homeCss).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
     for (const accent of ACCENTS) {
@@ -522,7 +572,7 @@ describe('cores do Início (home.css)', () => {
   });
 
   it.each([
-    ['--accent', ['.activity-cell--today', ...FILL('lime')]],
+    ['--accent', ['.overview-cell--today', ...FILL('lime')]],
     [
       '--warn',
       [
@@ -560,18 +610,83 @@ describe('cores do Início (home.css)', () => {
     expect(track?.body).toMatch(/background:\s*var\(--line\)/);
   });
 
-  it('a rampa do mapa vai de 0 a 4 só com --muted, em opacidade crescente', () => {
-    const percent: number[] = [];
-    for (let level = 0; level <= 4; level += 1) {
-      const rule = rules.find(({ selectors }) => selectors.includes(`.activity-level--${level}`));
-      expect(rule, `nível ${level}`).toBeDefined();
-      const body = rule?.body ?? '';
-      expect(body).toContain('var(--muted)');
-      const mix = /color-mix\(in srgb, var\(--muted\) (\d+)%, transparent\)/.exec(body);
-      percent.push(mix === null ? 100 : Number(mix[1]));
+  it('as cores de referência dos agentes são as combinadas, em #rrggbb', () => {
+    for (const { token, hex } of RAMPS) {
+      expect(tokens.get(token), token).toBe(hex);
     }
-    expect(percent).toEqual([...percent].sort((a, b) => a - b));
-    expect(new Set(percent).size).toBe(5);
+  });
+
+  it('cada rampa vai do nível 1 ao 4 em opacidade crescente, com a cor cheia no 4', () => {
+    for (const ramp of RAMPS) {
+      const percent = [1, 2, 3, 4].map((level) => levelPercent(ramp.id, level, ramp.token));
+      expect(percent, ramp.id).toEqual([...percent].sort((a, b) => a - b));
+      expect(new Set(percent).size, ramp.id).toBe(4);
+      expect(percent[3], ramp.id).toBe(100);
+    }
+  });
+
+  it.each(RAMPS)(
+    '$id: o nível mais baixo com cor passa de 3:1 contra o cartão e os níveis crescem em luminância',
+    (ramp) => {
+      const surface = tokens.get('--surface') ?? '';
+      const colors = [1, 2, 3, 4].map((level) => levelColor(ramp, level));
+      expect(
+        contrastRatio(colors[0] ?? '', surface),
+        `nível 1 de ${ramp.id} (${colors[0]}) sobre ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
+      for (let index = 1; index < colors.length; index += 1) {
+        expect(
+          luminance(colors[index] ?? ''),
+          `nível ${index + 1} mais claro que ${index} em ${ramp.id}`,
+        ).toBeGreaterThan(luminance(colors[index - 1] ?? ''));
+      }
+    },
+  );
+
+  it.each(AGENT_COLORS)('%s cheio passa de 3:1 contra o cartão', (token) => {
+    expect(
+      contrastRatio(tokens.get(token) ?? '', tokens.get('--surface') ?? ''),
+      token,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it('o nível 0 é a mistura de 50% de --muted sobre --surface e passa de 3:1 contra #0e0b24', () => {
+    expect(tokens.get('--surface')).toBe('#0e0b24');
+    expect(levelPercent('outro', 0, '--muted')).toBe(50);
+    const level0 = mixOver(tokens.get('--muted') ?? '', '#0e0b24', 0.5);
+    expect(
+      contrastRatio(level0, '#0e0b24'),
+      `nível 0 (${level0}) sobre #0e0b24`,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it('na rampa neutra, os níveis 0 a 4 crescem e cada passo vizinho tem pelo menos 1,2:1 de contraste', () => {
+    const outro = RAMPS[3];
+    const colors = [0, 1, 2, 3, 4].map((level) => levelColor(outro, level));
+    for (let level = 1; level <= 4; level += 1) {
+      const previous = colors[level - 1] ?? '';
+      const current = colors[level] ?? '';
+      expect(luminance(current), `nível ${level} mais claro que ${level - 1}`).toBeGreaterThan(
+        luminance(previous),
+      );
+      expect(
+        contrastRatio(current, previous),
+        `passo ${level - 1} -> ${level}`,
+      ).toBeGreaterThanOrEqual(1.2);
+    }
+  });
+
+  it('a cor de cada agente só aparece nas regras da classe dele', () => {
+    for (const { id, token } of RAMPS.filter((ramp) => ramp.id !== 'outro')) {
+      const using = rules.filter(({ body }) => body.includes(`var(${token})`));
+      expect(using.length, token).toBeGreaterThan(0);
+      for (const { selectors } of using) {
+        expect(
+          selectors.every((item) => item.includes(`.overview-agent--${id}`)),
+          selectors.join(', '),
+        ).toBe(true);
+      }
+    }
   });
 
   it('não tem animação nem transição', () => {

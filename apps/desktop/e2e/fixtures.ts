@@ -106,6 +106,10 @@ type Fixtures = {
   gitEnv: Record<string, string>;
   /** Pasta de dados do Claude Code (`CLAUDE_CONFIG_DIR`) que o CLI falso usa, dentro da pasta de dados do teste. */
   claudeConfigDir: string;
+  /** Pasta do Codex (`PROJECT_HUB_CODEX_HOME`) que o bloco "Visão geral" lê, dentro da pasta de dados do teste. */
+  codexHome: string;
+  /** Histórico do Antigravity CLI (`PROJECT_HUB_AGY_HISTORY`) que o bloco "Visão geral" lê, dentro da pasta de dados. */
+  antigravityHistory: string;
   /** Repositório Git com um commit na branch `main` (fixada pelo helper), fora da pasta de dados. */
   gitRepo: TempRepo;
   /** Abre o aplicativo com a pasta de dados do teste. Pode ser chamada de novo para reiniciar. */
@@ -194,6 +198,16 @@ export const test = base.extend<Fixtures>({
     await use(join(dataDir, 'claude-config'));
   },
 
+  codexHome: async ({ dataDir }, use) => {
+    // Nunca o `~/.codex` da pessoa: o app só lê as sessões do Codex que o teste escrever aqui.
+    await use(join(dataDir, 'codex-home'));
+  },
+
+  antigravityHistory: async ({ dataDir }, use) => {
+    // Nunca o `~/.gemini` da pessoa: o app só lê o histórico do Antigravity que o teste escrever aqui.
+    await use(join(dataDir, 'antigravity', 'history.jsonl'));
+  },
+
   gitEnv: async ({ dataDir }, use) => {
     const emptyConfig = join(dataDir, 'git-config-vazio');
     writeFileSync(emptyConfig, '');
@@ -247,7 +261,10 @@ export const test = base.extend<Fixtures>({
     await use(launchApp);
   },
 
-  launchProcess: async ({ dataDir, gitEnv, claudeConfigDir, closeFailures }, use) => {
+  launchProcess: async (
+    { dataDir, gitEnv, claudeConfigDir, codexHome, antigravityHistory, closeFailures },
+    use,
+  ) => {
     /** Um aplicativo aberto. `observed`: o teste chamou `close()` e viu o resultado. */
     type Handle = { closeOnce(): Promise<void>; observed: boolean };
     const opened: Handle[] = [];
@@ -283,6 +300,11 @@ export const test = base.extend<Fixtures>({
       delete env['APP_LIMITS_SCRIPT'];
       if (options.limitsScript !== undefined) env['APP_LIMITS_SCRIPT'] = options.limitsScript;
       if (options.rendererUrl !== undefined) env['ELECTRON_RENDERER_URL'] = options.rendererUrl;
+      // O bloco "Visão geral" do Início lê as sessões dos CLIs. As três pastas vêm sempre da pasta de dados do
+      // teste (o app só as aceita com `PROJECT_HUB_ENV=test`), e nenhuma delas é a da pessoa.
+      env['PROJECT_HUB_CLAUDE_DIR'] = claudeConfigDir;
+      env['PROJECT_HUB_CODEX_HOME'] = codexHome;
+      env['PROJECT_HUB_AGY_HISTORY'] = antigravityHistory;
 
       const app = await electron.launch({
         executablePath: electronExecutable(),

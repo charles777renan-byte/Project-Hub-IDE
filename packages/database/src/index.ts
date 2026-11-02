@@ -4,7 +4,11 @@ export {
   createAppSettingsRepository,
   type AppSettingsRepository,
 } from './repositories/app-settings-repository';
-export { createMissionRepository, type MissionRepository } from './repositories/mission-repository';
+export {
+  createMissionRepository,
+  listExecutionTokens,
+  type MissionRepository,
+} from './repositories/mission-repository';
 export { createProjectRepository, type ProjectRepository } from './repositories/project-repository';
 export {
   createTerminalSessionRepository,
@@ -16,4 +20,3 @@ export {
   type WorkspaceRecord,
   type WorkspaceRepository,
 } from './repositories/workspace-repository';
-export { countAuditEventsByLocalDay, type AuditDayCount } from './repositories/audit-repository';

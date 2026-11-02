@@ -38,7 +38,13 @@ import { createClaudeLimitsProbe } from './claude-limits';
 import { createClaudePlanner } from './claude-planner';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
-import { registerActivityHandlers } from './ipc/activity';
+import { registerAgentActivityHandlers } from './ipc/agent-activity';
+import {
+  agentActivityAgents,
+  createAgentActivityService,
+  createSessionReader,
+  sessionSourcesOf,
+} from './agent-activity';
 import { registerProfileHandlers } from './ipc/profile';
 import { createLimitsService } from './limits';
 import { createLimitsStore } from './limits-store';
@@ -339,10 +345,6 @@ app
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
     registerWorktreeHandlers(ipcMain, isTrustedSender, services.missions.worktreeDeps);
-    registerActivityHandlers(ipcMain, isTrustedSender, {
-      ...services.activityDeps,
-      now: () => new Date(),
-    });
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);
@@ -351,6 +353,23 @@ app
       platform: process.platform,
       exists: existsSync,
     });
+    // Início "Visão geral": uso por agente, só do que o app abriu. Lê as sessões dos CLIs com o mesmo ambiente
+    // filtrado que os terminais recebem, fora do evento do IPC, e guarda o resultado por 60 s.
+    registerAgentActivityHandlers(
+      ipcMain,
+      isTrustedSender,
+      createAgentActivityService({
+        terminals: services.agentActivityDeps.terminals,
+        missions: services.agentActivityDeps.missions,
+        readSessions: createSessionReader({
+          terminals: services.agentActivityDeps.terminals,
+          ...sessionSourcesOf(process.env),
+        }),
+        agents: agentActivityAgents(providers.list()),
+        now: () => new Date().toISOString(),
+        caseInsensitive: process.platform === 'win32',
+      }),
+    );
     const terminalService = createTerminalService({
       port: terminalBackend.port,
       repo: services.terminalDeps.repo,

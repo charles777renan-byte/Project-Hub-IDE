@@ -2,15 +2,19 @@
  * Início, o painel de abertura (pages/HomePage.tsx e components/home/), e a lista de missões com progresso
  * (components/MissionProgressList.tsx, que a visão Missões do projeto também usa; por isso as classes
  * mission-progress* não ficam sob .home). Denso: saudação numa linha, faixas de leitura rápida, nada de
- * bloco vazio. Duas colunas em janela larga (missões à esquerda, atividade e uso à direita) e uma só em
- * janela estreita. Filhos de grid e de flex levam min-width: 0 para nunca transbordar. Ligado por <link> no
+ * bloco vazio. A "Visão geral" ocupa uma linha de largura toda logo abaixo da saudação; embaixo, duas colunas
+ * em janela larga (missões à esquerda, uso dos agentes à direita) e uma só em janela estreita. Filhos de grid
+ * e de flex levam min-width: 0 para nunca transbordar. Ligado por <link> no
  * index.html, depois de app.css e antes de workspace.css; só usa tokens de tokens.css. Cores com papel:
- * - lima (--accent): só o dia de hoje no mapa de atividade e a barra de uma missão em andamento ou concluída;
+ * - lima (--accent): só o dia de hoje no mapa da Visão geral e a barra de uma missão em andamento ou concluída;
  * - âmbar (--warn): a barra de uma missão que espera a pessoa e o aviso da barra de uso do Claude (75% a 90%);
  * - vermelho (--danger): a barra de uma missão que falhou e o nível crítico da barra de uso (acima de 90%);
  * - o resto das barras (pausada, rascunho, cancelada, uso do Claude abaixo de 75%…) é neutro (--muted);
- * - o mapa de atividade usa a rampa de --muted (#b7adcf) por opacidade, dos níveis 0 a 4.
- * Sem animação nem transição. Os níveis entram por classe (activity-level--0 a --4), nunca por estilo escrito.
+ * - o mapa da Visão geral tem uma rampa por agente (--agent-claude, --agent-codex e --agent-antigravity, de
+ *   tokens.css) e a rampa neutra "outro" de --muted (#b7adcf), todas por opacidade nos níveis 1 a 3 e cheias
+ *   no 4; o nível 0, comum a todas, é a mistura de 50% de --muted sobre --surface, para passar de 3:1 (ver a rampa).
+ * Sem animação nem transição. Os níveis entram por classe (overview-level--0 a --4) e a cor, pela classe do
+ * agente (overview-agent--<id>), nunca por estilo escrito.
  */
 
 .visually-hidden {
@@ -249,7 +253,8 @@
   border-style: dashed;
 }
 
-/* Lista de missões com progresso: título e total na primeira linha, estado e tarefas na segunda, barra. */
+/* Lista de missões com progresso: um cartão por missão, com título e selo, a linha de detalhes, a barra das
+   tarefas e a contagem com os tokens. */
 .mission-progress {
   display: grid;
   gap: var(--space-2);
@@ -260,9 +265,9 @@
 
 .mission-progress__item {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-2);
@@ -270,7 +275,7 @@
 
 .mission-progress__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
   min-width: 0;
@@ -285,17 +290,20 @@
   white-space: nowrap;
 }
 
-.mission-progress__count {
+.mission-progress__head .chip {
   flex: none;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
 }
 
-.mission-progress__state {
+.mission-progress__meta,
+.mission-progress__foot {
   margin: 0;
   color: var(--muted);
   font-size: var(--text-sm);
+}
+
+.mission-progress__foot {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 /* Barra: o trilho é neutro; o preenchimento leva a cor do tom do estado (padrão: --muted). */
@@ -346,62 +354,88 @@
   background: var(--danger);
 }
 
-/* Atividade: resumo numa linha e o mapa de 7 linhas por semanas, baixo, com a legenda ao lado. */
-.activity__summary {
+/*
+ * Visão geral: bloco de largura toda no alto do Início. O cabeçalho leva o título, as abas e o período; abaixo
+ * vêm os chips de agente, o mapa (um quadrado por dia, em colunas de semana de domingo a sábado, com os rótulos
+ * seg, qua e sex à esquerda) e, na aba Visão geral, os totais ao lado do mapa. A cor e o nível de cada dia
+ * entram por classe (overview-agent--<id> e overview-level--0 a --4), nunca por estilo escrito.
+ */
+.overview {
+  gap: var(--space-3);
+}
+
+.overview__head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--space-2);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+/* A barra de abas traz a margem de baixo das abas de página; aqui ela fica na linha do título. */
+.overview__head .tabs {
   margin: 0;
 }
 
-.activity__number {
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--text-md);
-  font-weight: 600;
+.overview__periods {
+  margin-left: auto;
 }
 
-.activity__unit,
-.activity__period,
-.activity__streak,
-.activity__note {
+/* O chip do agente leva um ponto na cor dele antes do nome. */
+.overview .filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.overview-dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+}
+
+.overview-note {
+  margin: 0;
   color: var(--muted);
   font-size: var(--text-sm);
 }
 
-.activity__streak {
-  margin-left: auto;
+.overview__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  min-width: 0;
 }
 
-.activity__note {
-  margin: 0;
+@media (min-width: 900px) {
+  .overview__body--stats {
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
+  }
 }
 
-.activity__map {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
+.overview-map {
+  display: grid;
   gap: var(--space-2);
   min-width: 0;
 }
 
 /* Uma grade só: a primeira coluna leva os rótulos de dia, as demais são as semanas. As células são
-   quadradas (aspect-ratio) e pequenas, e a largura delas nunca passa do cartão (minmax(0, ...)). */
-.activity-grid {
+   quadradas (aspect-ratio) e a largura delas nunca passa do cartão (minmax(0, ...)). */
+.overview-grid {
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(7, auto);
   grid-template-columns: auto;
-  grid-auto-columns: minmax(0, 0.75rem);
+  grid-auto-columns: minmax(0, 1.25rem);
   gap: 3px;
   justify-content: start;
   align-items: start;
   min-width: 0;
 }
 
-.activity-grid__label {
+.overview-grid__label {
   align-self: center;
   padding-right: var(--space-2);
   color: var(--muted);
@@ -409,45 +443,118 @@
   line-height: 1;
 }
 
-.activity-cell {
+.overview-cell {
   display: block;
   min-width: 0;
   aspect-ratio: 1;
   border-radius: var(--radius-sm);
 }
 
-.activity-cell--blank {
+.overview-cell--blank {
   background: transparent;
 }
 
-/* Rampa de --muted (#b7adcf) por opacidade: 0 é dia sem evento. */
-.activity-level--0 {
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
+/*
+ * Rampas do mapa. O nível 0, dia sem uso, é comum a todos: 50% de --muted (#b7adcf) sobre --surface (#0e0b24, o
+ * cartão do Início), em color-mix. A conta da mistura: 0,5 × (183, 173, 207) + 0,5 × (14, 11, 36) =
+ * (98,5; 92; 121,5), arredondado para (99, 92, 122) = #635c7a, com razão de contraste de 3,06:1 contra
+ * #0e0b24, acima do mínimo de 3:1 (WCAG 1.4.11). Os níveis de 1 a 4 são a cor do agente por opacidade, em
+ * color-mix, e a cor cheia no 4. O piso de cada rampa (nível 1) é o menor valor que ainda passa de 3:1 contra o
+ * cartão, e o teste test/renderer/contrast.test.ts confere a conta, a razão e a ordem crescente de cada rampa.
+ * O agente sem cor própria usa a rampa neutra "outro", de --muted.
+ */
+.overview-level--0 {
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
 }
 
-.activity-level--1 {
-  background: color-mix(in srgb, var(--muted) 30%, transparent);
+.overview-agent--claude.overview-level--1 {
+  background: color-mix(in srgb, var(--agent-claude) 63%, transparent);
 }
 
-.activity-level--2 {
-  background: color-mix(in srgb, var(--muted) 52%, transparent);
+.overview-agent--claude.overview-level--2 {
+  background: color-mix(in srgb, var(--agent-claude) 75%, transparent);
 }
 
-.activity-level--3 {
-  background: color-mix(in srgb, var(--muted) 76%, transparent);
+.overview-agent--claude.overview-level--3 {
+  background: color-mix(in srgb, var(--agent-claude) 88%, transparent);
 }
 
-.activity-level--4 {
+.overview-agent--claude.overview-level--4 {
+  background: var(--agent-claude);
+}
+
+.overview-agent--codex.overview-level--1 {
+  background: color-mix(in srgb, var(--agent-codex) 55%, transparent);
+}
+
+.overview-agent--codex.overview-level--2 {
+  background: color-mix(in srgb, var(--agent-codex) 70%, transparent);
+}
+
+.overview-agent--codex.overview-level--3 {
+  background: color-mix(in srgb, var(--agent-codex) 85%, transparent);
+}
+
+.overview-agent--codex.overview-level--4 {
+  background: var(--agent-codex);
+}
+
+.overview-agent--antigravity.overview-level--1 {
+  background: color-mix(in srgb, var(--agent-antigravity) 70%, transparent);
+}
+
+.overview-agent--antigravity.overview-level--2 {
+  background: color-mix(in srgb, var(--agent-antigravity) 80%, transparent);
+}
+
+.overview-agent--antigravity.overview-level--3 {
+  background: color-mix(in srgb, var(--agent-antigravity) 90%, transparent);
+}
+
+.overview-agent--antigravity.overview-level--4 {
+  background: var(--agent-antigravity);
+}
+
+.overview-agent--outro.overview-level--1 {
+  background: color-mix(in srgb, var(--muted) 63%, transparent);
+}
+
+.overview-agent--outro.overview-level--2 {
+  background: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+
+.overview-agent--outro.overview-level--3 {
+  background: color-mix(in srgb, var(--muted) 88%, transparent);
+}
+
+.overview-agent--outro.overview-level--4 {
+  background: var(--muted);
+}
+
+/* Os pontos dos chips levam a cor cheia do agente. */
+.overview-dot.overview-agent--claude {
+  background: var(--agent-claude);
+}
+
+.overview-dot.overview-agent--codex {
+  background: var(--agent-codex);
+}
+
+.overview-dot.overview-agent--antigravity {
+  background: var(--agent-antigravity);
+}
+
+.overview-dot.overview-agent--outro {
   background: var(--muted);
 }
 
 /* Hoje: o estado ativo do mapa. */
-.activity-cell--today {
+.overview-cell--today {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }
 
-.activity-legend {
+.overview-legend {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -455,10 +562,110 @@
   font-size: var(--text-xs);
 }
 
-.activity-legend .activity-cell {
+.overview-legend .overview-cell {
   width: 0.625rem;
   height: 0.625rem;
   aspect-ratio: auto;
+}
+
+/* Totais ao lado do mapa: mensagens e tokens com a barra por agente, e duas linhas pequenas embaixo. */
+.overview-stats {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.overview-total__value {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  text-align: right;
+}
+
+/* A barra fina com a parte de cada agente (SVG; a cor de cada pedaço vem da classe do agente). */
+.overview-share {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+}
+
+.overview-share__part.overview-agent--claude {
+  fill: var(--agent-claude);
+}
+
+.overview-share__part.overview-agent--codex {
+  fill: var(--agent-codex);
+}
+
+.overview-share__part.overview-agent--antigravity {
+  fill: var(--agent-antigravity);
+}
+
+.overview-share__part.overview-agent--outro {
+  fill: var(--muted);
+}
+
+.overview-legend-list {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.overview-legend-list__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Sequência e dia mais ativo: rótulo à esquerda e valor à direita, numa linha. */
+.overview-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.overview-stat__label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.overview-stat__value {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.overview-stat__hint {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 400;
 }
 
 /* Uso dos agentes: o cartão do Claude e uma linha para os programas sem fonte de dados. */
