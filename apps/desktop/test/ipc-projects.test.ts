@@ -5,13 +5,16 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   archiveProject,
   type AddProjectDeps,
+  type InitRepositoryDeps,
   type ProjectLifecycleDeps,
 } from '@project-hub/application';
 import {
   handleAddProject,
   handleChooseDirectory,
+  handleInitRepository,
   handleOpenFolder,
   handleProjectLifecycle,
+  handleRepositoryPreview,
   handleSetGroup,
   handleSetNickname,
   registerProjectHandlers,
@@ -48,6 +51,7 @@ const isTrusted = (event: IpcMainInvokeEvent) => event === trusted;
 // Serviços vazios: qualquer uso deles quebra o teste, porque a entrada devia ser recusada antes.
 const neverCalled = {} as AddProjectDeps;
 const neverCalledLifecycle = {} as ProjectLifecycleDeps;
+const neverCalledRepository = {} as InitRepositoryDeps;
 
 const NOW = '2026-10-21T09:00:00.000Z';
 type ProjectRecord = NonNullable<ReturnType<ProjectLifecycleDeps['repo']['get']>>;
@@ -214,6 +218,7 @@ describe('handleOpenFolder', () => {
           fs: { isDirectory: () => Promise.resolve(overrides.directory !== false) },
         } as unknown as AddProjectDeps,
         lifecycle: neverCalledLifecycle,
+        repository: neverCalledRepository,
         chooseDirectory: () => Promise.resolve(null),
         openFolder,
       },
@@ -301,6 +306,7 @@ describe('registerProjectHandlers', () => {
     registerProjectHandlers(registry, isTrusted, {
       services: neverCalled,
       lifecycle: neverCalledLifecycle,
+      repository: neverCalledRepository,
       chooseDirectory: () => Promise.resolve(null),
       openFolder: () => Promise.resolve(''),
     });
@@ -314,6 +320,8 @@ describe('registerProjectHandlers', () => {
         CHANNELS.projectsListArchived,
         CHANNELS.projectsRemove,
         CHANNELS.projectsOpenFolder,
+        CHANNELS.projectsRepositoryPreview,
+        CHANNELS.projectsInitRepository,
         CHANNELS.projectsSetGroup,
         CHANNELS.projectsSetNickname,
         CHANNELS.projectsUnarchive,
@@ -327,6 +335,7 @@ describe('registerProjectHandlers', () => {
     registerProjectHandlers(registry, isTrusted, {
       services: neverCalled,
       lifecycle: lifecycleWith({ archive }),
+      repository: neverCalledRepository,
       chooseDirectory: () => Promise.resolve(null),
       openFolder: () => Promise.resolve(''),
     });
@@ -344,6 +353,7 @@ describe('registerProjectHandlers', () => {
     registerProjectHandlers(registry, isTrusted, {
       services: neverCalled,
       lifecycle: lifecycleWith({ listArchived: () => [archived] }),
+      repository: neverCalledRepository,
       chooseDirectory: () => Promise.resolve(null),
       openFolder: () => Promise.resolve(''),
     });
@@ -382,6 +392,7 @@ describe('registerProjectHandlers', () => {
     registerProjectHandlers(registry, isTrusted, {
       services,
       lifecycle: neverCalledLifecycle,
+      repository: neverCalledRepository,
       chooseDirectory: () => Promise.resolve(null),
       openFolder: () => Promise.resolve(''),
     });
@@ -401,6 +412,7 @@ describe('registerProjectHandlers', () => {
     registerProjectHandlers(registry, isTrusted, {
       services: neverCalled,
       lifecycle: neverCalledLifecycle,
+      repository: neverCalledRepository,
       chooseDirectory,
       openFolder: () => Promise.resolve(''),
     });
@@ -412,5 +424,17 @@ describe('registerProjectHandlers', () => {
       });
     }
     expect(chooseDirectory).not.toHaveBeenCalled();
+  });
+});
+
+describe('criar o repositório Git: entrada conferida antes da aplicação (ADR 0009)', () => {
+  it('a prévia e a criação recusam a entrada sem o id, sem chegar à aplicação', async () => {
+    await expect(handleRepositoryPreview(neverCalledRepository, {})).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    await expect(handleInitRepository(neverCalledRepository, { path: 'C:\\x' })).resolves.toMatchObject(
+      { ok: false, error: { code: 'VALIDATION_FAILED' } },
+    );
   });
 });

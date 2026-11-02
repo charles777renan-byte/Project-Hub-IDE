@@ -1,4 +1,9 @@
-import type { AppResult, ErrorCode, MissionDiffDto } from '@project-hub/contracts';
+import type {
+  AppResult,
+  ErrorCode,
+  MissionDiffDto,
+  RepositoryInitPreview,
+} from '@project-hub/contracts';
 import type {
   ApprovalRequest,
   AuditEvent,
@@ -40,6 +45,12 @@ export interface ProjectRepository {
     updatedAt: string,
     git: { repositoryKind: 'git' | 'none'; defaultBranch?: string },
   ): void;
+  /** Grava o tipo e a branch padrão de um projeto ativo, depois de a pasta virar repositório (ADR 0009). */
+  setRepositoryKind(
+    id: string,
+    git: { repositoryKind: 'git' | 'none'; defaultBranch?: string },
+    updatedAt: string,
+  ): void;
 }
 
 /**
@@ -55,6 +66,16 @@ export interface SettingsRepository {
 /** Diz se a pasta é um repositório Git. A implementação real é `createGitDetector`, em `@project-hub/git-adapter`. */
 export interface GitDetector {
   detect(path: string): Promise<{ kind: 'git' | 'none'; defaultBranch?: string }>;
+}
+
+/**
+ * Cria o repositório Git de uma pasta que não tem Git (ADR 0009). `preview` diz o que a confirmação mostra e não
+ * escreve nada; `init` roda os passos fixos (criar o repositório, adicionar os arquivos e fazer o primeiro commit)
+ * e devolve a branch criada. A implementação real é `createRepositoryInitializer`, em `@project-hub/git-adapter`.
+ */
+export interface RepositoryInitializer {
+  preview(path: string): Promise<AppResult<RepositoryInitPreview>>;
+  init(path: string): Promise<AppResult<{ defaultBranch: string }>>;
 }
 
 /**

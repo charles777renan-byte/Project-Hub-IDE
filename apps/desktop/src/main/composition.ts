@@ -18,6 +18,7 @@ import {
   type ProfileDeps,
   type ProjectLifecycleDeps,
   type RemoveWorktreeDeps,
+  type RepositoryInitializer,
 } from '@project-hub/application';
 import {
   createAppSettingsRepository,
@@ -35,6 +36,7 @@ import type { AppTerminal, MissionTokens } from '@project-hub/domain';
 import {
   buildWorktreeNames,
   createGitDetector,
+  createRepositoryInitializer,
   createWorktree,
   getWorktreeDiff,
   removeWorktree,
@@ -66,6 +68,8 @@ export type MissionServices = {
 export type AppServices = AddProjectDeps & {
   missions: MissionServices;
   lifecycle: ProjectLifecycleDeps;
+  /** Cria o repositório Git de uma pasta sem Git: prévia e primeiro commit, com a confirmação da pessoa (ADR 0009). */
+  initializer: RepositoryInitializer;
   /** Repositórios que o serviço de terminais lê: as execuções em andamento, os projetos e as sessões de terminal. */
   terminalDeps: {
     repo: MissionRepository;
@@ -346,6 +350,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   return {
     repo: projects,
     git: createGitDetector(),
+    initializer: createRepositoryInitializer(),
     fs,
     platform: options.platform,
     now,

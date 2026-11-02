@@ -411,6 +411,12 @@ app
     registerProjectHandlers(ipcMain, isTrustedSender, {
       services,
       lifecycle: services.lifecycle,
+      repository: {
+        repo: services.repo,
+        initializer: services.initializer,
+        fs: services.fs,
+        now: services.now,
+      },
       chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
       openFolder: (path) => shell.openPath(path),
     });

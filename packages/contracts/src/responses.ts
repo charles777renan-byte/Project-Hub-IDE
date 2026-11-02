@@ -12,7 +12,7 @@ import {
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { systemUsageDtoSchema } from './system';
-import { projectSummarySchema } from './project';
+import { projectSummarySchema, repositoryInitPreviewSchema } from './project';
 import {
   MISSION_STATUS_VALUES,
   executionDtoSchema,
@@ -71,6 +71,8 @@ export const responseSchemas = {
   [CHANNELS.projectsUnarchive]: appResultSchema(z.undefined()),
   [CHANNELS.projectsRemove]: appResultSchema(z.undefined()),
   [CHANNELS.projectsOpenFolder]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsRepositoryPreview]: appResultSchema(repositoryInitPreviewSchema),
+  [CHANNELS.projectsInitRepository]: appResultSchema(projectSummarySchema),
   [CHANNELS.projectsSetGroup]: appResultSchema(z.undefined()),
   [CHANNELS.projectsSetNickname]: appResultSchema(z.undefined()),
   [CHANNELS.missionsCreate]: appResultSchema(missionDtoSchema),

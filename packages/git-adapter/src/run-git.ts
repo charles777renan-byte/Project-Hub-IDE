@@ -29,6 +29,9 @@ const REPOSITORY_VARIABLES = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT
  */
 const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
 
+/** Chaves de identidade que `config --get` lê. O primeiro commit do repositório criado usa só elas (ADR 0009). */
+const IDENTITY_KEYS: ReadonlySet<string> = new Set(['user.name', 'user.email']);
+
 /** Opções que `symbolic-ref` aceita só para ler. Qualquer outra, como `-d` e `-m`, escreve ou apaga. */
 const SYMBOLIC_REF_READ_OPTIONS = new Set(['--short', '-q', '--quiet']);
 
@@ -110,6 +113,11 @@ function isReadOnly(args: readonly string[]): boolean {
       // Depois do `--` só há caminhos, que o Git lê como arquivos e nunca como opção.
       const [separator, ...paths] = rest;
       return separator === '--' && paths.length > 0 && paths.every((path) => path !== '');
+    }
+    case 'config': {
+      // Só a leitura da identidade do commit (ADR 0009), uma chave por vez.
+      const [flag, key, ...extra] = rest;
+      return flag === '--get' && key !== undefined && IDENTITY_KEYS.has(key) && extra.length === 0;
     }
     default:
       return false;
@@ -289,6 +297,52 @@ export async function runGit(
     );
   }
   return runApproved(args, options);
+}
+
+/**
+ * Lista de permissão de `runGitInitRepository`: os três passos de criar o repositório do primeiro estado
+ * (ADR 0009), nas formas fixas e nenhuma outra. `init` só com a branch `main`; `add` só com `--all`; `commit`
+ * sem hooks, sem exigir mudança (`--allow-empty`) e com uma mensagem que não começa com `-`. Nada de `push`,
+ * `reset`, `checkout` nem `commit` com `--amend`.
+ */
+function isInitWrite(args: readonly string[]): boolean {
+  const [command, ...rest] = args;
+  switch (command) {
+    case 'init':
+      return rest.length === 1 && rest[0] === '--initial-branch=main';
+    case 'add':
+      return rest.length === 1 && rest[0] === '--all';
+    case 'commit': {
+      const [noVerify, allowEmpty, flag, message, ...extra] = rest;
+      return (
+        noVerify === '--no-verify' &&
+        allowEmpty === '--allow-empty' &&
+        flag === '-m' &&
+        isOperand(message) &&
+        extra.length === 0
+      );
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Roda um passo de criação do repositório do primeiro estado (ADR 0009), com as mesmas proteções de
+ * `runGit`: sem shell, argumentos em array, tempo limite e `-c core.fsmonitor=false`. Só as três formas de
+ * `isInitWrite` passam; qualquer outra rejeita com PERMISSION_DENIED, sem criar processo.
+ */
+export async function runGitInitRepository(
+  args: readonly string[],
+  options: RunGitOptions,
+): Promise<{ stdout: string }> {
+  if (!isInitWrite(args)) {
+    throw new GitError(
+      'PERMISSION_DENIED',
+      'Comando do Git recusado: só são permitidos os passos de criar o repositório.',
+    );
+  }
+  return runApproved(args, { ...options, timeoutMs: options.timeoutMs ?? WORKTREE_TIMEOUT_MS });
 }
 
 /**

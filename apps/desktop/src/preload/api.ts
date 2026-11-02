@@ -35,6 +35,7 @@ import {
   type ProviderId,
   type ProviderInfo,
   type ProvideInput,
+  type RepositoryInitPreview,
   type RequestChanges,
   type TerminalEvent,
   type TerminalSummary,
@@ -102,6 +103,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       unarchive: (projectId: string) => call<void>(CHANNELS.projectsUnarchive, { projectId }),
       remove: (projectId: string) => call<void>(CHANNELS.projectsRemove, { projectId }),
       openFolder: (projectId: string) => call<void>(CHANNELS.projectsOpenFolder, { projectId }),
+      repositoryPreview: (projectId: string) =>
+        call<RepositoryInitPreview>(CHANNELS.projectsRepositoryPreview, { projectId }),
+      initRepository: (projectId: string) =>
+        call<ProjectSummary>(CHANNELS.projectsInitRepository, { projectId }),
       setGroup: (projectId: string, group: string | null) =>
         call<void>(CHANNELS.projectsSetGroup, { projectId, group }),
       setNickname: (projectId: string, nickname: string | null) =>

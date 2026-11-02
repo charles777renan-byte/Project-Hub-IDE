@@ -3,13 +3,16 @@ import {
   archiveProject,
   failure,
   listArchivedProjects,
+  initProjectRepository,
   listProjects,
+  previewRepositoryInit,
   removeProject,
   setProjectGroup,
   setProjectNickname,
   toProjectSummary,
   unarchiveProject,
   type AddProjectDeps,
+  type InitRepositoryDeps,
   type ProjectLifecycleDeps,
 } from '@project-hub/application';
 import {
@@ -20,6 +23,7 @@ import {
   setProjectNicknameInputSchema,
   type AppResult,
   type ProjectSummary,
+  type RepositoryInitPreview,
 } from '@project-hub/contracts';
 import type { WebContents } from 'electron';
 import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
@@ -28,6 +32,8 @@ export type ProjectsIpcDeps = {
   services: AddProjectDeps;
   /** Arquivar, desarquivar, remover e listar os arquivados. */
   lifecycle: ProjectLifecycleDeps;
+  /** Criar o repositório Git de uma pasta sem Git: a prévia da confirmação e o passo de criação (ADR 0009). */
+  repository: InitRepositoryDeps;
   /** Seletor de pasta, aberto sobre a janela de quem chamou. Devolve null se a pessoa cancelar. */
   chooseDirectory: (sender: WebContents) => Promise<string | null>;
   /** Abre a pasta no gerenciador de arquivos. Devolve o texto do erro, ou vazio quando abriu (como `shell.openPath`). */
@@ -116,6 +122,29 @@ export function handleSetNickname(
   return setProjectNickname(deps, input.data);
 }
 
+/** A prévia da confirmação de criar o repositório. Não escreve nada; o id é conferido aqui (R28). */
+export async function handleRepositoryPreview(
+  deps: InitRepositoryDeps,
+  payload: unknown,
+): Promise<AppResult<RepositoryInitPreview>> {
+  const input = projectIdInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
+  return previewRepositoryInit(deps, input.data);
+}
+
+/** Cria o repositório Git do projeto (ADR 0009). A entrada é conferida aqui (R28); as regras, na aplicação. */
+export async function handleInitRepository(
+  deps: InitRepositoryDeps,
+  payload: unknown,
+): Promise<AppResult<ProjectSummary>> {
+  const input = projectIdInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
+  const result = await initProjectRepository(deps, input.data);
+  if (!result.ok) return result;
+  // A aplicação confere a pasta antes de criar o repositório, então ela segue disponível.
+  return { ok: true, data: toProjectSummary(result.data, true) };
+}
+
 export async function handleChooseDirectory(
   chooseDirectory: () => Promise<string | null>,
 ): Promise<AppResult<{ path: string } | null>> {
@@ -158,5 +187,11 @@ export function registerProjectHandlers(
   );
   registerTrustedHandler(registry, CHANNELS.projectsOpenFolder, isTrusted, (_event, payload) =>
     handleOpenFolder(deps, payload),
+  );
+  registerTrustedHandler(registry, CHANNELS.projectsRepositoryPreview, isTrusted, (_event, payload) =>
+    handleRepositoryPreview(deps.repository, payload),
+  );
+  registerTrustedHandler(registry, CHANNELS.projectsInitRepository, isTrusted, (_event, payload) =>
+    handleInitRepository(deps.repository, payload),
   );
 }
