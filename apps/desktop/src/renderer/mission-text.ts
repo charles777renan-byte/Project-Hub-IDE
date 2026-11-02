@@ -607,6 +607,29 @@ export const PROJECT_TEXT = {
   },
 } as const;
 
+/** Textos do painel direito. Por enquanto só a aba Arquivos (árvore e buscas). */
+export const RIGHT_PANEL_TEXT = {
+  files: {
+    tree: 'Arquivos do projeto',
+    refresh: 'Atualizar',
+    fallbackProject: 'Projeto',
+    searchModes: 'Tipo de busca',
+    byName: 'Nomes',
+    byContent: 'Conteúdo',
+    searchField: 'Encontrar arquivos',
+    regex: 'Regex',
+    loading: 'Carregando…',
+    emptyFolder: 'Pasta vazia',
+    noResults: 'Nenhum arquivo encontrado',
+    partial: 'Índice parcial: refine a busca',
+    ignored: 'Ignorada pelo Git',
+    listError: 'Não foi possível listar os arquivos.',
+    searchError: 'Não foi possível buscar nos arquivos.',
+    results: 'Resultados da busca',
+    line: (line: number) => `linha ${line}`,
+  },
+} as const;
+
 /** Textos do formulário Nova missão: uma linha de dica por campo, sem blocos numerados. */
 export const MISSION_FORM_TEXT = {
   heading: 'Nova missão',
