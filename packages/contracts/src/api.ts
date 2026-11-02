@@ -11,7 +11,7 @@ import type {
 import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
 import type { SystemUsageDto } from './system';
-import type { AddProjectInput, ProjectSummary } from './project';
+import type { AddProjectInput, ProjectSummary, RepositoryInitPreview } from './project';
 import type { AppResult } from './result';
 import type { WorktreeDto } from './responses';
 import type { TerminalEvent, TerminalSummary } from './terminal';
@@ -47,6 +47,10 @@ export type ProjectHubApi = {
     add(input: AddProjectInput): Promise<AppResult<ProjectSummary>>;
     /** Abre a pasta do projeto no gerenciador de arquivos. O processo principal acha o caminho pelo id. */
     openFolder(projectId: string): Promise<AppResult<void>>;
+    /** O que a confirmação de criar o repositório Git mostra: o que está configurado e os nomes sensíveis. Não escreve. */
+    repositoryPreview(projectId: string): Promise<AppResult<RepositoryInitPreview>>;
+    /** Cria o repositório Git da pasta com o primeiro commit (ADR 0009). Só chamado depois da confirmação. */
+    initRepository(projectId: string): Promise<AppResult<ProjectSummary>>;
     /** Põe o projeto num grupo da barra lateral, ou o tira (`null`). */
     setGroup(projectId: string, group: string | null): Promise<AppResult<void>>;
     /** Dá um apelido ao projeto (até 24 caracteres), ou o tira (`null`). */

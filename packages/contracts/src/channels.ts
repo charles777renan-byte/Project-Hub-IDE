@@ -11,6 +11,10 @@ export const CHANNELS = {
   /** Tira o projeto da lista. Não apaga a pasta, o Git nem as missões. */
   projectsRemove: 'projects:remove:v1',
   projectsOpenFolder: 'projects:open-folder:v1',
+  /** O que a confirmação de criar o repositório Git mostra (ADR 0009). Não escreve nada. */
+  projectsRepositoryPreview: 'projects:repository-preview:v1',
+  /** Cria o repositório Git com o primeiro commit, depois da confirmação (ADR 0009). */
+  projectsInitRepository: 'projects:init-repository:v1',
   projectsSetGroup: 'projects:set-group:v1',
   projectsSetNickname: 'projects:set-nickname:v1',
   missionsCreate: 'missions:create:v1',

@@ -31,6 +31,23 @@ export const addProjectInputSchema = z.object({ path: z.string().min(1) });
 
 export type AddProjectInput = z.infer<typeof addProjectInputSchema>;
 
+/** O que a confirmação de criar o repositório Git mostra antes de qualquer escrita (ADR 0009). */
+export type RepositoryInitPreview = {
+  /** `user.name` e `user.email` estão configurados; sem eles o primeiro commit não sai. */
+  identityConfigured: boolean;
+  /** A pasta não tem `.gitignore`, e o aplicativo cria um básico antes do primeiro commit. */
+  createsGitignore: boolean;
+  /** Arquivos com nome sensível (`.env`, `*.pem`, `*.key`) encontrados na pasta, relativos e com `/`. */
+  sensitiveFiles: string[];
+};
+
+/** Schema de `RepositoryInitPreview`, para conferir a resposta de `projects:repository-preview:v1`. */
+export const repositoryInitPreviewSchema: z.ZodType<RepositoryInitPreview> = z.object({
+  identityConfigured: z.boolean(),
+  createsGitignore: z.boolean(),
+  sensitiveFiles: z.array(z.string()),
+});
+
 /** Entrada de arquivar, desarquivar e remover: o projeto que a pessoa escolheu. */
 export const projectIdInputSchema = z.object({ projectId: z.string().min(1) });
 

@@ -1,4 +1,5 @@
 export { createGitDetector } from './detect';
+export { createRepositoryInitializer } from './init-repository';
 export {
   getWorktreeDiff,
   type WorktreeDiff,
