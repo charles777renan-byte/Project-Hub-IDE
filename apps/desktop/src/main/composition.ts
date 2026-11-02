@@ -8,6 +8,7 @@ import {
   type ProjectRepository,
   type AddProjectDeps,
   type CreateMissionDeps,
+  type GitPanelDeps,
   type DeleteMissionDeps,
   type ListWorktreesDeps,
   type MissionDiffDeps,
@@ -36,6 +37,7 @@ import type { AppTerminal, MissionTokens } from '@project-hub/domain';
 import {
   buildWorktreeNames,
   createGitDetector,
+  createGitPanelPort,
   createRepositoryInitializer,
   createWorktree,
   getWorktreeDiff,
@@ -84,6 +86,8 @@ export type AppServices = AddProjectDeps & {
   profileDeps: ProfileDeps;
   /** Arquivos do projeto (painel direito): a pasta de cada projeto pelo id e a checagem de que ela existe. */
   fileDeps: ProjectFilesDeps;
+  /** Painel de código-fonte (ADR 0010): o repositório de projetos, a porta de Git e a checagem de caminhos. */
+  gitPanelDeps: GitPanelDeps;
   close(): void;
 };
 
@@ -352,6 +356,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     git: createGitDetector(),
     initializer: createRepositoryInitializer(),
     fs,
+    gitPanelDeps: { repo: projects, git: createGitPanelPort(), fs },
     platform: options.platform,
     now,
     newId,
