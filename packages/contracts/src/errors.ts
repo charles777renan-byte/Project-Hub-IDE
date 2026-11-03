@@ -47,6 +47,12 @@ export const ERROR_CODES = [
   'FILE_TOO_LARGE',
   'FILE_NOT_TEXT',
   'FILE_CHANGED_ON_DISK',
+  // Acrescentados pela fase 2 do painel direito (ADR 0010): commit, push, pull e fetch pelo aplicativo.
+  'GIT_HOOK_FAILED',
+  'GIT_AUTH_REQUIRED',
+  'GIT_NOT_FAST_FORWARD',
+  'GIT_NOTHING_TO_COMMIT',
+  'GIT_DETACHED_HEAD',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

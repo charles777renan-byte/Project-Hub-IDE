@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, type LaunchedApp, type LaunchOptions } from './fixtures';
+import { expectNoViolations, watchCsp } from './git-fixtures';
 import { addGitProject, filesTree, openFileFromPanel, openProject } from './missions';
 import { expectOpenSessions, expectTerminalToContain } from './terminals';
 
@@ -29,65 +30,6 @@ function seedFiles(repoPath: string): { a: string; leia: string; notas: string }
 }
 
 const readDisk = (path: string): string => readFileSync(path, 'utf8');
-
-/**
- * Registra violações de CSP e mensagens do console sobre a CSP, antes de o teste agir (addInitScript + reload),
- * como em identidade.spec.ts. Devolve a lista das mensagens do console.
- */
-async function watchCsp(page: Page): Promise<string[]> {
-  const consoleCsp: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() !== 'error' && message.type() !== 'warning') return;
-    if (/Content Security Policy|Refused to/i.test(message.text())) {
-      consoleCsp.push(message.text());
-    }
-  });
-  await page.addInitScript(() => {
-    const violations: string[] = [];
-    Object.assign(window, { cspViolations: violations });
-    document.addEventListener('securitypolicyviolation', (event) => {
-      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
-    });
-  });
-  await page.reload();
-  await expect(page.getByRole('link', { name: 'Início', exact: true })).toBeVisible();
-  return consoleCsp;
-}
-
-/**
- * Sem violação nenhuma. Com `allowXterm`, o único descarte é o <style> inline do xterm: a violação
- * `style-src-elem inline` e a mensagem do console sobre ela só passam quando todo <style> do documento traz
- * regras `.xterm` (o mesmo critério de identidade.spec.ts). O editor mora num Shadow Root que a página não
- * enxerga, então a conferência abaixo também exige que ele não tenha nenhum <style>.
- */
-async function expectNoViolations(
-  page: Page,
-  consoleCsp: string[],
-  options: { allowXterm?: boolean } = {},
-): Promise<void> {
-  const found = await page.evaluate(() => {
-    const w = window as unknown as { cspViolations: string[] };
-    const foreignStyles = [...document.querySelectorAll('style')]
-      .map((style) => style.textContent ?? '')
-      .filter((text) => !text.includes('.xterm'));
-    const editorStyles = [...document.querySelectorAll('.code-editor__host')].reduce(
-      (total, host) => total + (host.shadowRoot?.querySelectorAll('style').length ?? 0),
-      0,
-    );
-    return { violations: w.cspViolations, foreignStyles, editorStyles };
-  });
-  const allowed = (text: string) => options.allowXterm === true && /inline/i.test(text);
-  expect(found.foreignStyles, '<style> alheio no documento').toEqual([]);
-  expect(found.editorStyles, '<style> dentro do Shadow Root do editor').toBe(0);
-  expect(
-    found.violations.filter((item) => !(allowed(item) && item.startsWith('style-src-elem'))),
-    'violações de CSP',
-  ).toEqual([]);
-  expect(
-    consoleCsp.filter((text) => !allowed(text)),
-    'mensagens de CSP no console',
-  ).toEqual([]);
-}
 
 /** O painel direito e a faixa de abas dos arquivos abertos. */
 const rightPanel = (page: Page): Locator =>
@@ -146,7 +88,7 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
   await addGitProject(page, projectName);
   await openProject(page, projectName, 'Terminais');
 
-  // O painel direito tem as quatro abas, e só Arquivos está habilitada.
+  // O painel direito tem as quatro abas; Arquivos e Código-fonte estão habilitadas, e Arquivos é a escolhida.
   const panel = rightPanel(page);
   await expect(panel).toBeVisible();
   const panelTabs = panel.getByRole('tablist', { name: 'Painéis laterais' });
@@ -155,7 +97,11 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
     'aria-selected',
     'true',
   );
-  for (const name of ['Sessões', 'Código-fonte', 'Checks']) {
+  // Arquivos e Código-fonte não trazem `aria-disabled="true"`: só Sessões e Checks seguem desligadas.
+  for (const name of ['Arquivos', 'Código-fonte']) {
+    await expect(panelTabs.getByRole('tab', { name })).not.toHaveAttribute('aria-disabled', 'true');
+  }
+  for (const name of ['Sessões', 'Checks']) {
     const disabled = panelTabs.getByRole('tab', { name });
     await expect(disabled).toHaveAttribute('aria-disabled', 'true');
     await disabled.click({ force: true });
@@ -475,7 +421,9 @@ test('as guias de indentação aparecem alinhadas e a digitação segue fluida n
   await page.keyboard.type('a'.repeat(60));
   await expect(editorOf(page, 'grande.ts')).toContainText('a'.repeat(60));
   const porTecla = (Date.now() - inicio) / 60;
-  console.log(`digitação em arquivo de ${linhas.length} linhas: ${porTecla.toFixed(1)} ms por tecla`);
+  console.log(
+    `digitação em arquivo de ${linhas.length} linhas: ${porTecla.toFixed(1)} ms por tecla`,
+  );
   expect(porTecla).toBeLessThan(50);
 
   // Salva antes de fechar: arquivo alterado faria a janela abrir a caixa nativa de "não salvo".

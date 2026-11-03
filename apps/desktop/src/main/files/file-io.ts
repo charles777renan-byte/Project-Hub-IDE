@@ -171,6 +171,29 @@ async function assertUnchanged(absolute: string, expected: FileVersionDto | null
   }
 }
 
+/** Erros com que o Windows recusa o `rename` quando outro processo segura o arquivo por um instante. */
+const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const RENAME_ATTEMPTS = 10;
+const RENAME_RETRY_DELAY_MS = 20;
+
+/**
+ * Troca `from` por `to`, repetindo nos erros transitórios. Um processo que lê o arquivo no instante da troca
+ * (antivírus, indexador) faz o `rename` falhar com EPERM, e a tentativa seguinte costuma passar. Depois de
+ * `RENAME_ATTEMPTS` tentativas o erro segue para quem chamou, em no máximo uns 200 ms de espera.
+ */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (attempt >= RENAME_ATTEMPTS || !TRANSIENT_RENAME_CODES.has(code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, RENAME_RETRY_DELAY_MS));
+    }
+  }
+}
+
 /**
  * Grava o arquivo se o disco ainda estiver na versão `expected`; senão lança `FILE_CHANGED_ON_DISK` e não
  * mexe em nada. Reconverte o `\n` para `eol`, repõe o BOM e troca o arquivo de uma vez: grava num
@@ -203,7 +226,7 @@ export async function writeProjectFile(
   try {
     // `wx` não sobrescreve; o modo do arquivo original (como o bit de execução) passa para o novo.
     await writeFile(temporary, bytes, { flag: 'wx', mode });
-    await rename(temporary, absolute);
+    await renameWithRetry(temporary, absolute);
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw toFilesError(error);

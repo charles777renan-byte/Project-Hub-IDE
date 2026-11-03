@@ -99,4 +99,28 @@ export const CHANNELS = {
   filesSaveAllRequest: 'files:save-all-request:v1',
   /** O renderer diz como foi o pedido acima: `saved` só vale `true` se nada ficou sujo. */
   filesSaveAllResult: 'files:save-all-result:v1',
+  /** Painel de código-fonte (fase 2, ADR 0010): branch, upstream, à frente/atrás e arquivos alterados. Só entram o id do projeto, caminhos relativos POSIX e a mensagem do commit. */
+  gitStatus: 'git:status:v1',
+  /** Diff de um arquivo contra o último commit (`HEAD`). */
+  gitDiff: 'git:diff:v1',
+  /** Põe arquivos em stage. */
+  gitStage: 'git:stage:v1',
+  /** Tira arquivos do stage. */
+  gitUnstage: 'git:unstage:v1',
+  /** Descarta as alterações de arquivos no disco. Não tem volta. */
+  gitDiscard: 'git:discard:v1',
+  /** Cria o commit com o que está em stage. */
+  gitCommit: 'git:commit:v1',
+  /** Envia a branch atual, que já tem upstream, para `origin`; o nome da branch sai do processo principal. */
+  gitPush: 'git:push:v1',
+  /** Publica a branch atual, que ainda não tem upstream (`push -u`); o nome da branch sai do processo principal. */
+  gitPublish: 'git:publish:v1',
+  /** Traz os commits do remoto só se a branch puder avançar (sem commit de merge). */
+  gitPull: 'git:pull:v1',
+  /** Atualiza as refs remotas, sem mexer na branch local. */
+  gitFetch: 'git:fetch:v1',
+  /** Histórico da branch atual. */
+  gitLog: 'git:log:v1',
+  /** Arquivos que a branch mudou em relação à base. */
+  gitBranchChanges: 'git:branch-changes:v1',
 } as const;
