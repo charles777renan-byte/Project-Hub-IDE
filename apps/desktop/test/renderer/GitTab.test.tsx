@@ -276,3 +276,132 @@ describe('GitTab', () => {
     expect(statusMock).not.toHaveBeenCalled();
   });
 });
+
+type Pending = {
+  promise: Promise<AppResult<GitStatusDto>>;
+  resolve: (data: GitStatusDto) => void;
+};
+
+function pending(): Pending {
+  let resolve!: (data: GitStatusDto) => void;
+  const promise = new Promise<AppResult<GitStatusDto>>((done) => {
+    resolve = (data) => done({ ok: true, data });
+  });
+  return { promise, resolve };
+}
+
+describe('useGitPanel: gatilhos e descarte', () => {
+  beforeEach(() => install(ok()));
+
+  it('só o foco da janela, sem outro evento, relê', async () => {
+    const { result } = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('descarta a resposta antiga que chega depois da mais nova', async () => {
+    const first = pending();
+    const second = pending();
+    const queue = [first, second];
+    install(() => queue.shift()?.promise ?? Promise.resolve(failure('GIT_FAILED')));
+    const { result } = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(1));
+
+    act(() => result.current.reload());
+    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      second.resolve(status({ branch: 'nova' }));
+      await second.promise;
+    });
+    await waitFor(() => expect(result.current.data?.branch).toBe('nova'));
+    await act(async () => {
+      first.resolve(status({ branch: 'antiga' }));
+      await first.promise;
+    });
+
+    expect(result.current.data?.branch).toBe('nova');
+  });
+
+  it('a resposta de uma entrada que saiu não vale para a que voltou', async () => {
+    const stale = pending();
+    const fresh = pending();
+    const queue = [stale, fresh];
+    install(() => queue.shift()?.promise ?? Promise.resolve(failure('GIT_FAILED')));
+    const old = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(1));
+    old.unmount();
+
+    const back = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      fresh.resolve(status({ branch: 'nova' }));
+      await fresh.promise;
+    });
+    await waitFor(() => expect(back.result.current.data?.branch).toBe('nova'));
+    await act(async () => {
+      stale.resolve(status({ branch: 'antiga' }));
+      await stale.promise;
+    });
+
+    expect(back.result.current.data?.branch).toBe('nova');
+  });
+
+  it('o fim de um track de entrada que saiu não relê a que voltou', async () => {
+    const old = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(old.result.current.status).toBe('ready'));
+    let finish!: () => void;
+    const write = new Promise<void>((done) => {
+      finish = done;
+    });
+    act(() => {
+      void old.result.current.track(write);
+    });
+    old.unmount();
+    const back = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(back.result.current.status).toBe('ready'));
+    const reads = statusMock.mock.calls.length;
+
+    await act(async () => {
+      finish();
+      await write;
+    });
+    await new Promise((done) => setTimeout(done, 50));
+
+    expect(statusMock).toHaveBeenCalledTimes(reads);
+  });
+
+  it('liberar o último consumidor remove os ouvintes da janela e nenhum evento lê depois', async () => {
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const { result, unmount } = renderHook(() => useGitPanel('p1', true));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    unmount();
+
+    const removed = remove.mock.calls.map(([name]) => name);
+    expect(removed).toContain(PROJECTS_CHANGED_EVENT);
+    expect(removed).toContain('focus');
+    window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise((done) => setTimeout(done, 400));
+    expect(statusMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GitTab: dica do botão Atualizar', () => {
+  it('a dica diz "Atualizar" e o botão tem aria-label "Atualizar"', async () => {
+    const user = userEvent.setup();
+    install(ok());
+    render(<GitTab projectId="p1" active />);
+    const button = await screen.findByRole('button', { name: 'Atualizar' });
+
+    await user.tab();
+
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-label', 'Atualizar');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Atualizar');
+  });
+});

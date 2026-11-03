@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { GitStatusDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from './mission-text';
 import { PROJECTS_CHANGED_EVENT } from './projects-events';
@@ -173,9 +173,13 @@ function track<T>(projectId: string, promise: Promise<T>): Promise<T> {
  * `PROJECTS_CHANGED_EVENT`, no foco da janela e em `reload()`.
  */
 export function useGitPanel(projectId: string | null, active: boolean): GitPanel {
-  const state = useSyncExternalStore(
-    (listener) => (projectId === null ? () => undefined : subscribeState(projectId, listener)),
-    () => (projectId === null ? LOADING : (entries.get(projectId)?.state ?? LOADING)),
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      projectId === null ? () => undefined : subscribeState(projectId, listener),
+    [projectId],
+  );
+  const state = useSyncExternalStore(subscribe, () =>
+    projectId === null ? LOADING : (entries.get(projectId)?.state ?? LOADING),
   );
   useEffect(() => {
     if (projectId === null || !active) return undefined;
