@@ -464,12 +464,13 @@ describe('buildProjectHubApi', () => {
     expect(calls).toEqual([CHANNELS.appPing]);
   });
 
-  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade, perfil, limites, arquivos e aprovações, sem envio genérico', () => {
+  it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, worktrees, atividade, perfil, limites, arquivos, Git e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
       'activity',
       'approvals',
       'files',
+      'git',
       'limits',
       'missions',
       'ping',
@@ -541,6 +542,20 @@ describe('buildProjectHubApi', () => {
       'stat',
       'write',
     ]);
+    expect(Object.keys(api.git).sort()).toEqual([
+      'branchChanges',
+      'commit',
+      'diff',
+      'discard',
+      'fetch',
+      'log',
+      'publish',
+      'pull',
+      'push',
+      'stage',
+      'status',
+      'unstage',
+    ]);
     expect(Object.keys(api.providers)).toEqual(['list']);
     expect(Object.keys(api.terminals).sort()).toEqual([
       'list',
@@ -592,6 +607,44 @@ describe('buildProjectHubApi', () => {
       [CHANNELS.filesSearchNames, { projectId: 'p1', query: 'abc' }],
       [CHANNELS.filesSearchContent, { projectId: 'p1', query: 'abc', regex: true }],
       [CHANNELS.filesOpenDefault, { projectId: 'p1', path: 'a.ts' }],
+    ]);
+  });
+
+  it('git chama só os canais git:*:v1, levando o id do projeto e sem nome de branch', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const api = hubApi((channel, payload) => {
+      calls.push([channel, payload]);
+      return Promise.resolve({ ok: true, data: undefined });
+    });
+    const project = { projectId: 'p1' };
+    const paths = { projectId: 'p1', paths: ['src/a.ts'] };
+
+    await api.git.status(project);
+    await api.git.diff({ projectId: 'p1', path: 'src/a.ts' });
+    await api.git.stage(paths);
+    await api.git.unstage(paths);
+    await api.git.discard(paths);
+    await api.git.commit({ projectId: 'p1', message: 'feat: x' });
+    await api.git.push(project);
+    await api.git.publish(project);
+    await api.git.pull(project);
+    await api.git.fetch(project);
+    await api.git.log(project);
+    await api.git.branchChanges(project);
+
+    expect(calls).toEqual([
+      [CHANNELS.gitStatus, project],
+      [CHANNELS.gitDiff, { projectId: 'p1', path: 'src/a.ts' }],
+      [CHANNELS.gitStage, paths],
+      [CHANNELS.gitUnstage, paths],
+      [CHANNELS.gitDiscard, paths],
+      [CHANNELS.gitCommit, { projectId: 'p1', message: 'feat: x' }],
+      [CHANNELS.gitPush, project],
+      [CHANNELS.gitPublish, project],
+      [CHANNELS.gitPull, project],
+      [CHANNELS.gitFetch, project],
+      [CHANNELS.gitLog, project],
+      [CHANNELS.gitBranchChanges, project],
     ]);
   });
 

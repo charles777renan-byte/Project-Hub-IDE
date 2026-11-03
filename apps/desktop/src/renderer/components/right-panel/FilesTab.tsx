@@ -2,6 +2,7 @@ import { useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'reac
 import { CircleAlert, ICON_PROPS, Search } from '../Icon';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { getOverviewState, subscribeOverview } from '../../overview-data';
+import { useGitPanel } from '../../use-git-panel';
 import { FileSearch, type SearchMode } from './FileSearch';
 import { FileTree } from './FileTree';
 import { useProjectFiles } from './use-project-files';
@@ -28,6 +29,8 @@ function FilesTabBody({
   onOpenFile: (path: string) => void;
 }) {
   const files = useProjectFiles(projectId);
+  // A mesma carga da aba Código-fonte; a aba Arquivos só está montada enquanto visível, então está sempre ativa.
+  const git = useGitPanel(projectId, true);
   const projectName = useProjectName(projectId);
   const [mode, setMode] = useState<SearchMode>('names');
   const [query, setQuery] = useState('');
@@ -69,7 +72,14 @@ function FilesTabBody({
         <h2 className="files-tab__project" title={projectName}>
           {projectName}
         </h2>
-        <button type="button" className="files-tab__refresh" onClick={files.refresh}>
+        <button
+          type="button"
+          className="files-tab__refresh"
+          onClick={() => {
+            files.refresh();
+            git.reload();
+          }}
+        >
           {TEXT.refresh}
         </button>
       </div>
@@ -137,7 +147,11 @@ function FilesTabBody({
                 <span>{files.error}</span>
               </p>
             )}
-            <FileTree files={files} onOpenFile={onOpenFile} />
+            <FileTree
+              files={files}
+              onOpenFile={onOpenFile}
+              gitFiles={git.status === 'ready' ? git.data?.files : undefined}
+            />
           </>
         )}
       </div>

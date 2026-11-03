@@ -385,4 +385,58 @@ describe('FilesTab', () => {
 
     expect(container.textContent).not.toMatch(/[A-Za-z]:[\\/]|Users|\\/);
   });
+
+  describe('Git na árvore', () => {
+    function installGit(status: () => Promise<unknown>) {
+      installApi();
+      const api = window.projectHub as unknown as Record<string, unknown>;
+      api['git'] = { status: vi.fn(status) };
+    }
+
+    it('com o status do Git pronto, a árvore mostra a letra do arquivo aninhado e o ponto da pasta', async () => {
+      installGit(() =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            branch: 'main',
+            upstream: null,
+            ahead: null,
+            behind: null,
+            baseRef: 'origin/main',
+            linesAdded: null,
+            linesRemoved: null,
+            files: [{ path: 'src/main.ts', staged: null, unstaged: 'M' }],
+          },
+        }),
+      );
+      const user = userEvent.setup();
+      render(<FilesTab projectId="p1" onOpenFile={vi.fn()} />);
+      const folder = await screen.findByRole('treeitem', { name: /^src/ });
+      await waitFor(() => expect(folder).toHaveAccessibleName(/contém alterações/));
+
+      await user.click(folder);
+
+      expect(
+        await screen.findByRole('treeitem', { name: /^main.ts modificado/ }),
+      ).toHaveTextContent('M');
+    });
+
+    it('sem repositório Git, não há letra, ponto nem aviso', async () => {
+      installGit(() =>
+        Promise.resolve({
+          ok: false,
+          error: { code: 'VALIDATION_FAILED', message: 'Não é um repositório.', retryable: false },
+        }),
+      );
+      render(<FilesTab projectId="p1" onOpenFile={vi.fn()} />);
+      const folder = await screen.findByRole('treeitem', { name: /^src/ });
+      await waitFor(() =>
+        expect((window.projectHub.git.status as Mock).mock.calls.length).toBeGreaterThan(0),
+      );
+
+      expect(folder).not.toHaveAccessibleName(/contém alterações/);
+      expect(document.querySelector('.files-tree__git, .files-tree__dot')).toBeNull();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
 });

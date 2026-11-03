@@ -6,7 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import type { FileEntryDto } from '@project-hub/contracts';
+import type { FileEntryDto, GitPanelFileDto } from '@project-hub/contracts';
 import { ChevronDown, ChevronRight, File, Folder, FolderOpen, ICON_PROPS } from '../Icon';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import type { ProjectFiles } from './use-project-files';
@@ -16,6 +16,22 @@ const TEXT = RIGHT_PANEL_TEXT.files;
 /** O recuo de um nível: pelo CSSOM (a CSP não deixa atributo `style` escrito no HTML), sempre em tokens de espaço. */
 function indent(level: number): CSSProperties {
   return { paddingLeft: `calc(var(--space-1) + ${level - 1} * var(--space-3))` };
+}
+
+/** A letra de um arquivo: a da pasta de trabalho, ou, sem ela, a do stage. `undefined` quando o Git não o cita. */
+function gitLetter(file: GitPanelFileDto | undefined): keyof typeof TEXT.gitState | undefined {
+  return file === undefined ? undefined : (file.unstaged ?? file.staged ?? undefined);
+}
+
+/** Todas as pastas que têm algum caminho alterado dentro, a qualquer profundidade (`src`, `src/ui`). */
+function foldersWithChanges(files: GitPanelFileDto[]): ReadonlySet<string> {
+  const folders = new Set<string>();
+  for (const { path } of files) {
+    for (let at = path.indexOf('/'); at !== -1; at = path.indexOf('/', at + 1)) {
+      folders.add(path.slice(0, at));
+    }
+  }
+  return folders;
 }
 
 /** Uma linha visível da árvore, na ordem da tela: com ela o teclado anda sem olhar o DOM. */
@@ -45,13 +61,18 @@ function visibleRows(
 export function FileTree({
   files,
   onOpenFile,
+  gitFiles,
 }: {
   files: ProjectFiles;
   onOpenFile: (path: string) => void;
+  /** Os arquivos alterados do `git.status`; `undefined` sem Git (carregando, não é repositório, falha): sem letra nem ponto. */
+  gitFiles?: GitPanelFileDto[] | undefined;
 }) {
   const [current, setCurrent] = useState<string | null>(null);
   const items = useRef(new Map<string, HTMLElement>());
   const groupId = useId();
+  const gitByPath = new Map((gitFiles ?? []).map((file) => [file.path, file]));
+  const changedFolders = foldersWithChanges(gitFiles ?? []);
 
   const rows = visibleRows(files);
   const indexOf = new Map(rows.map((row, index) => [row.entry.path, index]));
@@ -132,6 +153,8 @@ export function FileTree({
     const open = isDirectory && files.expanded.has(entry.path);
     const group = `${groupId}-${indexOf.get(entry.path) ?? 0}`;
     const FolderIcon = open ? FolderOpen : Folder;
+    const letter = isDirectory ? undefined : gitLetter(gitByPath.get(entry.path));
+    const hasChanges = isDirectory && changedFolders.has(entry.path);
     return (
       <li role="none" key={entry.path}>
         <div
@@ -165,6 +188,20 @@ export function FileTree({
           )}
           {isDirectory ? <FolderIcon {...ICON_PROPS} /> : <File {...ICON_PROPS} />}
           <span className="files-tree__name">{entry.name}</span>
+          {letter === undefined ? null : (
+            <>
+              <span aria-hidden="true" className="files-tree__git">
+                {letter}
+              </span>{' '}
+              <span className="visually-hidden">{TEXT.gitState[letter]}</span>
+            </>
+          )}
+          {hasChanges ? (
+            <>
+              <span aria-hidden="true" className="files-tree__dot" />{' '}
+              <span className="visually-hidden">{TEXT.folderChanged}</span>
+            </>
+          ) : null}
         </div>
         {open ? (
           <ul role="group" id={group} className="files-tree__group">

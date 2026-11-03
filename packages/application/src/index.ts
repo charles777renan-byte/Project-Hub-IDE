@@ -15,6 +15,19 @@ export {
   type InitRepositoryDeps,
 } from './projects/init-repository';
 export { normalizePath, type Platform } from './projects/normalize-path';
+export { getGitStatus } from './git-panel/status';
+export { getFileDiff } from './git-panel/diff';
+export { discardPaths, stagePaths, unstagePaths } from './git-panel/files';
+export {
+  commitChanges,
+  fetchProject,
+  publishProjectBranch,
+  pullProject,
+  pushProjectBranch,
+} from './git-panel/write';
+export { getProjectBranchLog } from './git-panel/log';
+export { getProjectBranchChanges } from './git-panel/branch-changes';
+export type { GitPanelDeps } from './git-panel/project';
 export {
   createOrchestrator,
   type MissionPlan,
@@ -53,6 +66,7 @@ export type {
   ExecutionChanges,
   FileSystemPort,
   GitDetector,
+  GitPanelPort,
   MissionChanges,
   MissionRepository,
   Planner,

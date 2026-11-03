@@ -40,6 +40,7 @@ import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
 import { registerFilesHandlers } from './ipc/files';
+import { registerGitHandlers } from './ipc/git';
 import { registerSaveAllResultHandler } from './ipc/save-all';
 import { createProjectFiles } from './files/project-files';
 import {
@@ -427,6 +428,7 @@ app
       files: createProjectFiles(services.fileDeps),
       openPath: (path) => shell.openPath(path),
     });
+    registerGitHandlers(ipcMain, isTrustedSender, services.gitPanelDeps);
     registerSaveAllResultHandler(ipcMain, isTrustedSender, (requestId, saved) =>
       saveBeforeClose?.finish(requestId, saved),
     );

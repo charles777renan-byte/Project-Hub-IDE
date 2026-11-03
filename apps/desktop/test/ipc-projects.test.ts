@@ -77,7 +77,7 @@ function lifecycleWith(repo: Partial<ProjectLifecycleDeps['repo']> = {}): Projec
       ...repo,
     } as ProjectLifecycleDeps['repo'],
     missions: { listMissions: () => [] },
-    fs: { isDirectory: () => Promise.resolve(true) },
+    fs: { isDirectory: () => Promise.resolve(true), isInsideProject: () => Promise.resolve(true) },
     now: () => NOW,
   };
 }

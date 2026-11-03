@@ -1,5 +1,11 @@
+import type {
+  BranchChangesDto,
+  GitFileDiffDto,
+  GitLogEntryDto,
+  GitStatusDto,
+} from '@project-hub/contracts';
 import type { ProjectRecord } from '@project-hub/domain';
-import type { FileSystemPort, GitDetector, ProjectRepository } from '../src/ports';
+import type { FileSystemPort, GitDetector, GitPanelPort, ProjectRepository } from '../src/ports';
 
 /**
  * Repositório em memória que segue o contrato do ProjectRepository do banco: `list` esconde os
@@ -94,15 +100,81 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
  */
 export function fakeFileSystem(
   directories: readonly string[],
-  options: { caseInsensitive?: boolean } = {},
+  options: { caseInsensitive?: boolean; outside?: readonly string[] } = {},
 ): FileSystemPort & { remove(path: string): void } {
   const key = (path: string) => (options.caseInsensitive === true ? path.toLowerCase() : path);
   const existing = new Set(directories.map(key));
+  const outside = new Set(options.outside ?? []);
   return {
     isDirectory: (path) => Promise.resolve(existing.has(key(path))),
+    // Só os caminhos listados em `outside` escapam da pasta do projeto.
+    isInsideProject: (_projectPath, relativePath) => Promise.resolve(!outside.has(relativePath)),
     remove: (path) => {
       existing.delete(key(path));
     },
+  };
+}
+
+export type GitPanelMethod = keyof GitPanelPort;
+
+export type FakeGitPanelOptions = {
+  status?: Partial<GitStatusDto>;
+  fileDiff?: GitFileDiffDto | null;
+  log?: GitLogEntryDto[];
+  branchChanges?: BranchChangesDto;
+  /** Erro que o método lança, como o `GitError` da porta real. */
+  errors?: Partial<Record<GitPanelMethod, Error>>;
+};
+
+export const CLEAN_STATUS: GitStatusDto = {
+  branch: 'feat/x',
+  upstream: 'origin/feat/x',
+  ahead: 0,
+  behind: 0,
+  baseRef: 'origin/main',
+  linesAdded: 0,
+  linesRemoved: 0,
+  files: [],
+};
+
+/**
+ * Porta do painel que registra cada chamada (`calls`) e devolve dados prontos ou lança o erro configurado. A
+ * chamada é registrada antes do erro, então um teste confere também o que chegou à porta que falhou.
+ */
+export function fakeGitPanel(
+  options: FakeGitPanelOptions = {},
+): GitPanelPort & { calls: { method: GitPanelMethod; args: unknown[] }[] } {
+  const calls: { method: GitPanelMethod; args: unknown[] }[] = [];
+  const run = <T>(method: GitPanelMethod, args: unknown[], value: T): Promise<T> => {
+    calls.push({ method, args });
+    const error = options.errors?.[method];
+    return error === undefined ? Promise.resolve(value) : Promise.reject(error);
+  };
+  return {
+    calls,
+    status: (repo) => run('status', [repo], { ...CLEAN_STATUS, ...options.status }),
+    fileDiff: (repo, path) =>
+      run(
+        'fileDiff',
+        [repo, path],
+        options.fileDiff === undefined
+          ? { path, baseRef: 'origin/main', patch: '@@ -1 +1 @@\n-a\n+b\n', binary: false, truncated: false }
+          : options.fileDiff,
+      ),
+    stage: (repo, paths) => run('stage', [repo, paths], undefined),
+    unstage: (repo, paths) => run('unstage', [repo, paths], undefined),
+    discard: (repo, paths) => run('discard', [repo, paths], undefined),
+    commit: (repo, message) => run('commit', [repo, message], { commit: 'a'.repeat(40) }),
+    push: (repo) => run('push', [repo], { branch: options.status?.branch ?? 'feat/x' }),
+    pull: (repo) => run('pull', [repo], { updated: true }),
+    fetch: (repo) => run('fetch', [repo], undefined),
+    log: (repo, limit) => run('log', [repo, limit], options.log ?? []),
+    branchChanges: (repo) =>
+      run(
+        'branchChanges',
+        [repo],
+        options.branchChanges ?? { baseRef: 'origin/main', mergeBase: 'b'.repeat(40), files: [] },
+      ),
   };
 }
 

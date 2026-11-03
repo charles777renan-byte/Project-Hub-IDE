@@ -15,7 +15,7 @@ import {
   setActive,
   useOpenFiles,
 } from '../../src/renderer/open-files';
-import { stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
+import { shadowOf, stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
 
 /** Arquivo alterado no disco enquanto está aberto: recarga sem edição, faixa de conflito com edição, arquivo sumido. */
 
@@ -125,6 +125,22 @@ function type(container: HTMLElement, extra: string) {
 
 const check = () => act(() => checkFileOnDisk('p1', 'src/a.ts'));
 
+/** Ctrl+S dentro do editor; devolve se o navegador foi impedido de agir (`preventDefault`). */
+function ctrlS(target: Element): boolean {
+  const event = new KeyboardEvent('keydown', {
+    key: 's',
+    code: 'KeyS',
+    ctrlKey: true,
+    bubbles: true,
+    composed: true,
+    cancelable: true,
+  });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event.defaultPrevented;
+}
+
 describe('arquivo alterado no disco, sem edições não salvas', () => {
   it('relê o arquivo, troca o texto e avisa que foi atualizado', async () => {
     const { container } = await mountEditor();
@@ -220,6 +236,21 @@ describe('arquivo alterado no disco, com edições não salvas', () => {
     expect(screen.getByRole('button', { name: 'Ver só a versão do disco' })).toBeInTheDocument();
     // O Salvar do editor não passa por cima: a decisão é da faixa.
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+  });
+
+  it('Ctrl+S com a faixa aberta não grava por cima: a decisão é da faixa', async () => {
+    const { container } = await mountEditor();
+    type(container, '!');
+    diskChanged();
+    await check();
+    await screen.findByRole('alert');
+
+    const prevented = ctrlS(shadowOf(container).querySelector('.cm-content')!);
+
+    expect(prevented).toBe(true);
+    expect(api.write).not.toHaveBeenCalled();
+    expect(state()).toEqual({ dirty: true, saved: 'texto', notice: 'changed-on-disk' });
+    expect(viewOf(container).state.doc.toString()).toBe('texto!');
   });
 
   it('Manter o meu e comparar mostra as duas versões lado a lado, em texto puro', async () => {

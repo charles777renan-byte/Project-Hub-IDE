@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
+import { withIdentity } from './git-fixtures';
 import { addGitProject, projectLink, statusBarOf, viewTab } from './missions';
 
 // Criar o repositório Git de uma pasta sem Git pelo aviso da visão Missões (ADR 0009): a prévia, a confirmação
@@ -18,16 +19,6 @@ function plainFolder(dataDir: string): string {
   writeFileSync(join(folder, '.env'), 'TOKEN=segredo\n');
   return folder;
 }
-
-// O padrão do teste não tem identidade no Git (o arquivo de configuração é vazio). Este bloco dá uma, para o
-// commit do primeiro passo poder acontecer de verdade.
-const withIdentity = test.extend<{ gitEnv: Record<string, string> }>({
-  gitEnv: async ({ dataDir }, use) => {
-    const config = join(dataDir, 'git-identidade');
-    writeFileSync(config, '[user]\n\tname = Pessoa de Teste\n\temail = pessoa@example.com\n');
-    await use({ GIT_CONFIG_GLOBAL: config, GIT_CONFIG_SYSTEM: config, GIT_CONFIG_NOSYSTEM: '1' });
-  },
-});
 
 withIdentity(
   'criar o repositório pelo aviso confirma, faz o primeiro commit sem o .env e tira o aviso',
@@ -55,7 +46,11 @@ withIdentity(
     // No disco: o repositório existe, o .gitignore básico foi criado, e o commit leva o código mas não o .env.
     expect(existsSync(join(folder, '.git'))).toBe(true);
     const env = { ...process.env, ...gitEnv };
-    const subject = execFileSync('git', ['log', '-1', '--format=%s'], { cwd: folder, env, encoding: 'utf8' });
+    const subject = execFileSync('git', ['log', '-1', '--format=%s'], {
+      cwd: folder,
+      env,
+      encoding: 'utf8',
+    });
     expect(subject.trim()).toBe('Estado inicial do projeto');
     const tracked = execFileSync('git', ['ls-files'], { cwd: folder, env, encoding: 'utf8' });
     expect(tracked.split('\n')).toContain('index.ts');
@@ -63,7 +58,10 @@ withIdentity(
   },
 );
 
-test('sem identidade no Git, o aviso diz o que configurar e não cria nada', async ({ launchApp, dataDir }) => {
+test('sem identidade no Git, o aviso diz o que configurar e não cria nada', async ({
+  launchApp,
+  dataDir,
+}) => {
   const folder = plainFolder(dataDir);
   const { page } = await launchApp({ dialogPath: folder });
   await addGitProject(page, PROJECT_NAME);
@@ -76,7 +74,9 @@ test('sem identidade no Git, o aviso diz o que configurar e não cria nada', asy
   await expect(
     page.getByRole('alert').filter({ hasText: 'git config --global user.name' }),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Criar e fazer o primeiro commit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Criar e fazer o primeiro commit' })).toHaveCount(
+    0,
+  );
   await expect(page.getByText(NO_GIT_NOTICE)).toBeVisible();
   expect(existsSync(join(folder, '.git'))).toBe(false);
 });
