@@ -4,6 +4,7 @@
  * leva mantém o nome acessível dele (aria-label ou texto).
  */
 export {
+  Bold,
   ChevronDown,
   ChevronRight,
   CircleAlert,
@@ -13,6 +14,7 @@ export {
   CircleQuestionMark,
   CircleSlash,
   Clock,
+  Code,
   Copy,
   CornerDownLeft,
   Ellipsis,
@@ -27,7 +29,9 @@ export {
   History,
   House,
   Inbox,
+  Italic,
   LayoutGrid,
+  List,
   ListChecks,
   LoaderCircle,
   Maximize2,
@@ -40,6 +44,7 @@ export {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Quote,
   RefreshCw,
   Search,
   ShieldQuestionMark,

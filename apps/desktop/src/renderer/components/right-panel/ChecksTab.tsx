@@ -3,7 +3,9 @@ import { useGitPanel } from '../../use-git-panel';
 import type { GithubPanel } from '../../use-github-panel';
 import { EmptyState } from '../EmptyState';
 import { CircleAlert, Folder, FolderGit2, GitBranch } from '../Icon';
+import { ChecksComments } from './ChecksComments';
 import { ChecksList } from './ChecksList';
+import { ChecksMergeBar } from './ChecksMergeBar';
 import { ChecksPrHeader } from './ChecksPrHeader';
 
 const TEXT = RIGHT_PANEL_TEXT.checks;
@@ -17,12 +19,13 @@ function RetryButton({ onClick }: { onClick: () => void }) {
 }
 
 /**
- * A aba Checks, só leitura: o PR da branch atual e os checks dele. Os dados vêm do hook do painel (`github`,
+ * A aba Checks: o PR da branch atual e os checks dele. Os dados vêm do hook do painel (`github`,
  * chamado uma vez no `RightPanel`); a aba só mostra e chama `github.refresh()` no botão. Pasta sem Git usa a mesma
  * leitura da aba Código-fonte (`useGitPanel`) e não chega a mostrar o PR. Cada estado vazio diz o que houve em
  * texto: sem PR, sem remoto no github.com, sem `gh` (o endereço de instalação é texto puro), sem login, e as
  * falhas com a mensagem do erro. Com a leitura antiga na tela e uma releitura que falhou, a lista fica e aparece
- * "Desatualizado" com o motivo.
+ * "Desatualizado" com o motivo. Mesclar (`ChecksMergeBar`) e comentar (`ChecksComments`) escrevem no PR pelo mesmo
+ * hook, com confirmação antes.
  */
 export function ChecksTab({
   projectId,
@@ -32,7 +35,7 @@ export function ChecksTab({
   github: GithubPanel;
 }) {
   const git = useGitPanel(projectId, true);
-  const { state, refresh } = github;
+  const { state, refresh, comment, merge } = github;
 
   if (projectId === null) {
     return <EmptyState icon={Folder} title={RIGHT_PANEL_TEXT.git.noProject} />;
@@ -104,7 +107,14 @@ export function ChecksTab({
                 {state.error === null ? null : `: ${state.error.message}`}
               </p>
             ) : null}
+            <ChecksMergeBar reading={state.reading} writing={state.writing} onMerge={merge} />
             <ChecksList checks={state.reading.checks} />
+            <ChecksComments
+              prNumber={state.reading.pr.number}
+              comments={state.reading.comments}
+              writing={state.writing}
+              onComment={comment}
+            />
           </div>
         </div>
       );

@@ -232,7 +232,11 @@ function write(
     publish(entry, { ...entry.state, ...flags(entry) });
     load(projectId);
   };
-  const run = start(projectId, view.reading.pr.number).catch((): AppResult<void> => ({
+  // O executor do `Promise` roda na hora, e uma exceção síncrona do preload vira rejeição: sem isso, `writing`
+  // ficaria ligado para sempre.
+  const run = new Promise<AppResult<void>>((resolve) =>
+    resolve(start(projectId, view.reading.pr.number)),
+  ).catch((): AppResult<void> => ({
     ok: false,
     error: appError('UNKNOWN', RIGHT_PANEL_TEXT.github.writeError),
   }));

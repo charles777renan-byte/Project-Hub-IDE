@@ -786,6 +786,53 @@ export const RIGHT_PANEL_TEXT = {
     conclusion: 'Conclusão',
     state: 'Estado',
     noDate: '—',
+    /** Os comentários do PR e o campo de novo comentário (ChecksComments, ChecksComposer). */
+    comments: {
+      group: 'Comentários do PR',
+      empty: 'Nenhum comentário ainda',
+      justNow: 'agora',
+      minutesAgo: (minutes: number) => `há ${minutes} min`,
+      hoursAgo: (hours: number) => `há ${hours} h`,
+      daysAgo: (days: number) => (days === 1 ? 'há 1 dia' : `há ${days} dias`),
+      field: 'Novo comentário',
+      placeholder: 'Iniciar conversa…',
+      toolbar: 'Formatação do comentário',
+      bold: 'Negrito',
+      italic: 'Itálico',
+      code: 'Código',
+      quote: 'Citação',
+      list: 'Lista',
+      cancel: 'Cancelar',
+      send: 'Enviar',
+      sending: 'Publicando o comentário…',
+      sent: 'Comentário publicado.',
+      confirmTitle: (number: number) =>
+        `Publicar este comentário no PR #${number} do GitHub? Ele fica público para quem vê o repositório.`,
+      confirmPreview: 'Comentário',
+      confirmSend: 'Publicar',
+      close: 'Fechar',
+    },
+    /** O botão de mesclar, a escolha da forma e a confirmação (ChecksMergeBar). */
+    merge: {
+      method: {
+        merge: 'commit de merge',
+        squash: 'squash',
+        rebase: 'rebase',
+      },
+      button: (method: string) => `Mesclar com ${method}`,
+      choose: 'Escolher a forma de mesclar',
+      group: 'Forma de mesclar',
+      confirmTitle: (number: number, base: string, method: string) =>
+        `Mesclar o PR #${number} em ${base} com ${method}?`,
+      confirmButton: 'Mesclar',
+      prTitle: 'Título',
+      from: 'Origem',
+      into: 'Destino',
+      checks: 'Checks',
+      merging: 'Mesclando o PR…',
+      merged: 'PR mesclado.',
+      close: 'Fechar',
+    },
     /** O texto do estado de cada check: o estado nunca depende só do ícone e da cor. */
     checkLabel: {
       success: 'Sucesso',

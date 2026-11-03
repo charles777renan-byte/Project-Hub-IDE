@@ -432,7 +432,7 @@ describe('ChecksTab: estados vazios e falhas', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Atualizar' }));
 
-    const notice = await screen.findByRole('status');
+    const notice = (await screen.findByText('Desatualizado')).closest('[role="status"]');
     expect(notice).toHaveTextContent('Desatualizado: Sem rede para falar com o GitHub.');
     expect(screen.getByRole('button', { name: /build/ })).toBeInTheDocument();
     expect(screen.getByText('Painel de checks')).toBeInTheDocument();
