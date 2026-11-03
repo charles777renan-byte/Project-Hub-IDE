@@ -2,6 +2,10 @@
 # Linux entram quando o port for feito, e então este arquivo ganha uma matriz.
 #
 # O E2E (`pnpm test:e2e`) NÃO roda aqui: ele fica para a branch de release (especificação, 20.5).
+#
+# Os jobs rodam em paralelo: qualidade (lint, tipos e build), três partes dos testes unitários e os testes de
+# integração. Cada job instala as dependências por conta própria (o cache do pnpm deixa isso rápido). Os unitários
+# são divididos com `--shard`, porque é o passo mais longo no runner do Windows.
 name: CI
 
 on:
@@ -23,8 +27,8 @@ defaults:
     shell: bash
 
 jobs:
-  verify:
-    name: Windows (lint, tipos, testes, build)
+  qualidade:
+    name: Windows (lint, tipos, build)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -55,11 +59,61 @@ jobs:
       - name: Tipos
         run: pnpm typecheck
 
-      - name: Testes unitários
-        run: pnpm test
-
-      - name: Testes de integração
-        run: pnpm test:integration
-
       - name: Build
         run: pnpm build
+
+  testes-unitarios:
+    name: Windows (testes unitários, parte ${{ matrix.parte }} de 3)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        parte: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar o pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Instalar o Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar as dependências
+        run: pnpm install --frozen-lockfile
+
+      # `--shard` reparte os arquivos de teste entre as três partes; juntas, rodam todos.
+      - name: Testes unitários (parte ${{ matrix.parte }} de 3)
+        run: pnpm test --shard=${{ matrix.parte }}/3
+
+  testes-integracao:
+    name: Windows (testes de integração)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar o pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Instalar o Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar as dependências
+        run: pnpm install --frozen-lockfile
+
+      # Não é dividido: os testes de integração rodam em série (`--no-file-parallelism`) de propósito.
+      - name: Testes de integração
+        run: pnpm test:integration
