@@ -643,6 +643,23 @@ export const RIGHT_PANEL_TEXT = {
     results: 'Resultados da busca',
     line: (line: number) => `linha ${line}`,
   },
+  /** A aba Código-fonte (GitTab). */
+  git: {
+    refresh: 'Atualizar',
+    loading: 'Carregando…',
+    notGit: 'Esta pasta não é um repositório Git',
+    unavailable: 'Pasta indisponível',
+    retry: 'Tentar de novo',
+    loadError: 'Não foi possível ler o estado do Git.',
+    noProject: 'Abra um projeto para ver os arquivos',
+    detachedHead: 'HEAD destacado',
+    changedFiles: (count: number) =>
+      count === 0
+        ? 'Nenhum arquivo alterado'
+        : count === 1
+          ? '1 arquivo alterado'
+          : `${count} arquivos alterados`,
+  },
   /** Os arquivos abertos como abas ao lado dos terminais. */
   openFiles: {
     tabs: 'Arquivos abertos',

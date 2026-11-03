@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from '../Icon';
 import { FilesTab } from './FilesTab';
+import { GitTab } from './GitTab';
 import { RIGHT_TABS, readRightTab, saveRightTab, type RightTab } from './right-panel-state';
 
 /** Nome acessível, dica e ícone de cada aba: a barra é só de ícones, então o nome vai no `aria-label`. */
@@ -27,11 +28,11 @@ const TAB_INFO: Record<RightTab, { label: string; icon: LucideIcon }> = {
 };
 
 /** As abas que já têm conteúdo. As outras aparecem na barra, desligadas, com a dica "Em breve". */
-const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(['arquivos']);
+const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(['arquivos', 'codigo']);
 
 /**
  * O painel direito do corpo da janela: uma barra de abas só de ícones (Arquivos, Sessões, Código-fonte e Checks, num
- * `tablist` do Radix) e o conteúdo da aba escolhida. Por enquanto só Arquivos é uma aba de verdade; as outras três
+ * `tablist` do Radix) e o conteúdo da aba escolhida. Arquivos e Código-fonte são abas de verdade; Sessões e Checks
  * ficam `aria-disabled` e não se selecionam, nem por clique nem pelas setas (o Radix ativa a aba que recebe o foco),
  * mas continuam focáveis, para a dica "Em breve" aparecer também no teclado. A aba escolhida é lembrada. Sem
  * projeto (o Início, por exemplo), o conteúdo é o aviso para abrir um. Um arquivo que a aba Arquivos pede para abrir
@@ -86,7 +87,9 @@ export function RightPanel({
           })}
         </RadixTabs.List>
         <RadixTabs.Content value={tab} className="right-panel__content">
-          {projectId === null ? (
+          {tab === 'codigo' ? (
+            <GitTab projectId={projectId} active={tab === 'codigo'} />
+          ) : projectId === null ? (
             <EmptyState icon={Folder} title="Abra um projeto para ver os arquivos" />
           ) : tab === 'arquivos' ? (
             <FilesTab
