@@ -1358,16 +1358,59 @@ button:disabled {
  * de ações e do menu de projetos. Fica aqui, e não em workspace.css, porque a sombra externa de um menu
  * flutuante é o que a seção de painéis proíbe (ver pane-styles.test.ts).
  */
-.workspace__menu {
+.workspace__popup {
   position: absolute;
   top: calc(100% + 6px);
   left: var(--space-2);
   z-index: 50;
-  min-width: 15rem;
+  width: 19rem;
+  max-width: calc(100vw - 2 * var(--space-2));
   padding: var(--space-1);
   border-radius: var(--radius-card);
   background: var(--surface-2);
   box-shadow: var(--shadow-pop);
+  /* O painel cresce a partir do botão que o abriu (motion.css). */
+  transform-origin: top left;
+}
+
+/* Campo de busca no topo, separado da lista por uma linha. O anel de foco fica por dentro do campo. */
+.workspace__menu-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
+/* O anel de foco do app acende a linha inteira, por dentro: o do campo seria um retângulo solto dentro dela. */
+.workspace__menu-search:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.workspace__menu-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5625rem 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.workspace__menu-search input::placeholder {
+  color: var(--muted);
+}
+
+.workspace__menu-sep {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--line);
 }
 
 .workspace__menu-item {
@@ -1376,12 +1419,21 @@ button:disabled {
   gap: var(--space-2);
   width: 100%;
   padding: 0.375rem 0.625rem;
+  border-color: transparent;
   border-radius: var(--radius);
   color: var(--text);
   font-size: var(--text-sm);
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
   user-select: none;
+}
+
+/* O item marcado (mouse em cima ou foco) acende o fundo e uma marca lateral lima: a marca sozinha já o distingue,
+   sem depender só da cor do fundo. */
+.workspace__menu-item[data-marked='true'] {
+  background: var(--line);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* O anel de foco do app fica por dentro do item, como no menu de ações (um fundo só não basta: WCAG 2.4.7). */
@@ -1395,6 +1447,56 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* O atalho só aparece com o mouse em cima da linha ou com o foco do teclado; escondido, não ocupa a vista. */
+.workspace__menu-kbd {
+  flex: none;
+  margin-left: auto;
+  padding: 0.0625rem 0.4375rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  opacity: 0;
+}
+
+.workspace__menu-item:hover .workspace__menu-kbd,
+.workspace__menu-item:focus-visible .workspace__menu-kbd {
+  opacity: 1;
+}
+
+.workspace__menu-state {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.workspace__menu-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.workspace__menu-foot {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.workspace__menu-foot kbd {
+  font-family: var(--font-mono);
+}
+
 .workspace__menu-icon {
   display: grid;
   flex: none;
@@ -1405,15 +1507,30 @@ button:disabled {
   background: var(--surface);
 }
 
+.workspace__menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .workspace__menu-text {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
+}
+
+/* O nome, o estado e o atalho dividem a primeira linha; a descrição do item marcado ocupa a largura toda embaixo. */
+.workspace__menu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .workspace__menu-text small {
   color: var(--muted);
   font-size: var(--text-xs);
+  font-weight: 400;
 }
 
 /*
