@@ -122,6 +122,7 @@ export type FakeGitPanelOptions = {
   fileDiff?: GitFileDiffDto | null;
   log?: GitLogEntryDto[];
   branchChanges?: BranchChangesDto;
+  originUrl?: string | null;
   /** Erro que o método lança, como o `GitError` da porta real. */
   errors?: Partial<Record<GitPanelMethod, Error>>;
 };
@@ -158,7 +159,13 @@ export function fakeGitPanel(
         'fileDiff',
         [repo, path],
         options.fileDiff === undefined
-          ? { path, baseRef: 'origin/main', patch: '@@ -1 +1 @@\n-a\n+b\n', binary: false, truncated: false }
+          ? {
+              path,
+              baseRef: 'origin/main',
+              patch: '@@ -1 +1 @@\n-a\n+b\n',
+              binary: false,
+              truncated: false,
+            }
           : options.fileDiff,
       ),
     stage: (repo, paths) => run('stage', [repo, paths], undefined),
@@ -174,6 +181,12 @@ export function fakeGitPanel(
         'branchChanges',
         [repo],
         options.branchChanges ?? { baseRef: 'origin/main', mergeBase: 'b'.repeat(40), files: [] },
+      ),
+    originUrl: (repo) =>
+      run(
+        'originUrl',
+        [repo],
+        options.originUrl === undefined ? 'https://github.com/dono/repo.git' : options.originUrl,
       ),
   };
 }

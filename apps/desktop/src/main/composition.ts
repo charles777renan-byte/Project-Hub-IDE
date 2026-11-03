@@ -9,6 +9,7 @@ import {
   type AddProjectDeps,
   type CreateMissionDeps,
   type GitPanelDeps,
+  type GithubPanelDeps,
   type DeleteMissionDeps,
   type ListWorktreesDeps,
   type MissionDiffDeps,
@@ -46,6 +47,7 @@ import {
 import { createDemoAgent } from './demo-agent';
 import type { ProjectFilesDeps } from './files/project-files';
 import { createIsDirectory, createIsInsideProject } from './filesystem';
+import { createGithubPanelPort } from './github-panel-port';
 import {
   withMissionEvents,
   type MissionEventPublisher,
@@ -88,6 +90,8 @@ export type AppServices = AddProjectDeps & {
   fileDeps: ProjectFilesDeps;
   /** Painel de código-fonte (ADR 0010): o repositório de projetos, a porta de Git e a checagem de caminhos. */
   gitPanelDeps: GitPanelDeps;
+  /** Aba Checks (ADR 0011): as dependências do painel de código-fonte mais a porta do `gh`. */
+  githubPanelDeps: GithubPanelDeps;
   close(): void;
 };
 
@@ -335,6 +339,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
 
   const diff = { diff: (worktreePath: string) => getWorktreeDiff(worktreePath) };
   const fs = { isDirectory: createIsDirectory(), isInsideProject: createIsInsideProject() };
+  const gitPanelPort = createGitPanelPort();
+  const gitPanelDeps: GitPanelDeps = { repo: projects, git: gitPanelPort, fs };
   const orchestrator = createOrchestrator({
     repo,
     projects,
@@ -356,7 +362,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     git: createGitDetector(),
     initializer: createRepositoryInitializer(),
     fs,
-    gitPanelDeps: { repo: projects, git: createGitPanelPort(), fs },
+    gitPanelDeps,
+    githubPanelDeps: { ...gitPanelDeps, github: createGithubPanelPort(gitPanelPort.originUrl) },
     platform: options.platform,
     now,
     newId,

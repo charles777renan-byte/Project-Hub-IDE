@@ -7,6 +7,7 @@ import {
   commentSchema,
   githubCommentInputSchema,
   githubMergeInputSchema,
+  githubOpenUrlInputSchema,
   githubPanelSchema,
   githubProjectInputSchema,
   prResultSchema,
@@ -269,11 +270,24 @@ describe('entradas dos canais github', () => {
   );
 });
 
+describe('githubOpenUrlInputSchema', () => {
+  it('aceita um texto de URL e recusa o que não é texto ou passa do limite', () => {
+    expect(githubOpenUrlInputSchema.safeParse({ url: 'https://github.com/a/b' }).success).toBe(
+      true,
+    );
+    expect(githubOpenUrlInputSchema.safeParse({ url: '' }).success).toBe(true);
+    expect(githubOpenUrlInputSchema.safeParse({ url: 3 }).success).toBe(false);
+    expect(githubOpenUrlInputSchema.safeParse({}).success).toBe(false);
+    expect(githubOpenUrlInputSchema.safeParse({ url: 'x'.repeat(4097) }).success).toBe(false);
+  });
+});
+
 describe('canais e erros do GitHub', () => {
   it('os três canais têm nome versionado', () => {
     expect(CHANNELS.githubPr).toBe('github:pr:v1');
     expect(CHANNELS.githubComment).toBe('github:comment:v1');
     expect(CHANNELS.githubMerge).toBe('github:merge:v1');
+    expect(CHANNELS.githubOpenUrl).toBe('github:open-url:v1');
   });
 
   it('cada canal tem resposta no formato AppResult', () => {
@@ -288,6 +302,9 @@ describe('canais e erros do GitHub', () => {
     ).toBe(true);
     expect(
       responseSchemas[CHANNELS.githubMerge].safeParse({ ok: true, data: undefined }).success,
+    ).toBe(true);
+    expect(
+      responseSchemas[CHANNELS.githubOpenUrl].safeParse({ ok: true, data: undefined }).success,
     ).toBe(true);
   });
 

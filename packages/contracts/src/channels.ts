@@ -129,4 +129,6 @@ export const CHANNELS = {
   githubComment: 'github:comment:v1',
   /** Mescla o PR depois de reler o estado: só com PR aberto e mesclável. Sem `--admin`, `--auto` nem `--delete-branch`. */
   githubMerge: 'github:merge:v1',
+  /** Abre no navegador um endereço do `github.com` (link de check ou de comentário). Só o processo principal decide: https, host exato, sem usuário, senha nem porta. */
+  githubOpenUrl: 'github:open-url:v1',
 } as const;
