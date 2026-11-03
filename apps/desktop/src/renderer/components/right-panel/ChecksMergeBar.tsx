@@ -23,7 +23,7 @@ export function canMerge(reading: PrReadingDto): boolean {
 
 /**
  * O botão "Mesclar com …" (a forma padrão é o commit de merge) e a seta que troca a forma (commit de merge,
- * squash, rebase). O botão só aparece com o PR pronto (`canMerge`); o componente, porém, fica montado sempre,
+ * squash, rebase). O botão só aparece com o PR pronto (`canMerge`) e a leitura em dia (`stale` falso); o componente, porém, fica montado sempre,
  * para a confirmação e a região viva de avisos não sumirem se o PR deixar de ser mesclável no meio do caminho.
  * O clique abre a confirmação com título, origem, destino e o resumo dos checks. Uma falha aparece na própria
  * confirmação com a mensagem do processo principal, sem texto nosso. Mesclar com sucesso avisa a janela
@@ -31,10 +31,13 @@ export function canMerge(reading: PrReadingDto): boolean {
  */
 export function ChecksMergeBar({
   reading,
+  stale,
   writing,
   onMerge,
 }: {
   reading: PrReadingDto;
+  /** A leitura de agora falhou e `reading` é a última boa: a aba a marca "Desatualizado", e mesclar sobre ela não se oferece. */
+  stale: boolean;
   /** Há um comentário ou uma mesclagem em andamento (do hook). */
   writing: boolean;
   onMerge: (method: GithubMergeMethod) => Promise<AppResult<void>>;
@@ -49,6 +52,9 @@ export function ChecksMergeBar({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const liveRef = useRef<HTMLParagraphElement>(null);
+  /** Para onde o foco vai depois da próxima renderização: o botão que o tinha pode sumir (o PR mesclado, ou deixou de ser mesclável). */
+  const [pendingFocus, setPendingFocus] = useState<'live' | 'lost' | null>(null);
 
   const busy = writing || sending;
   const methodText = TEXT.method[method];
@@ -58,6 +64,14 @@ export function ChecksMergeBar({
     // Ao abrir, o foco vai para a forma escolhida (escolher outra fecha o menu, então `method` só muda fechado).
     if (menuOpen) itemRefs.current[Math.max(0, METHODS.indexOf(method))]?.focus();
   }, [menuOpen, method]);
+
+  // Roda depois do efeito do diálogo (filho), que devolve o foco a quem o tinha antes de abrir.
+  useEffect(() => {
+    if (pendingFocus === null) return;
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (pendingFocus === 'live' || lost) liveRef.current?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -118,6 +132,7 @@ export function ChecksMergeBar({
     if (sending) return;
     setConfirming(false);
     setError(null);
+    setPendingFocus('lost');
   }
 
   async function confirm() {
@@ -133,6 +148,8 @@ export function ChecksMergeBar({
     if (result.ok) {
       setConfirming(false);
       setNotice(TEXT.merged);
+      // A releitura tira o botão de mesclar: o foco vai para o aviso, em vez de cair no corpo da página.
+      setPendingFocus('live');
       // A lateral e a barra de status leem o repositório de novo (a branch padrão pode ter mudado).
       window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
     } else {
@@ -143,7 +160,7 @@ export function ChecksMergeBar({
 
   return (
     <div className="checks-merge" ref={rootRef}>
-      {canMerge(reading) ? (
+      {canMerge(reading) && !stale ? (
         <div className="checks-merge__split">
           <button
             type="button"
@@ -201,7 +218,7 @@ export function ChecksMergeBar({
           ) : null}
         </div>
       ) : null}
-      <p className="checks-merge__live" role="status">
+      <p className="checks-merge__live" role="status" tabIndex={-1} ref={liveRef}>
         {notice}
       </p>
       <GitConfirmDialog

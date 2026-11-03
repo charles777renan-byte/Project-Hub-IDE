@@ -4,7 +4,7 @@ import type { AppResult, CheckDto, PrSummaryDto } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { canMerge } from '../../src/renderer/components/right-panel/ChecksMergeBar';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
-import { readCss } from './css-rules';
+import { readCss, ruleDeclarations } from './css-rules';
 import {
   fail,
   FAILED,
@@ -272,7 +272,8 @@ describe('ChecksMerge: escrita em andamento', () => {
     );
     expect(screen.getByRole('button', { name: MERGE_BUTTON })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Escolher a forma de mesclar' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Novo comentário' })).toBeEnabled();
+    // O campo de comentário vira somente leitura (como a barra e os botões); o texto não some.
+    expect(screen.getByRole('textbox', { name: 'Novo comentário' })).toHaveAttribute('readonly');
     expect(screen.getByRole('button', { name: 'Negrito' })).toBeDisabled();
     expect(document.querySelector('.checks-merge__live')).toBe(live);
     expect(live).toHaveTextContent('Mesclando o PR…');
@@ -283,7 +284,87 @@ describe('ChecksMerge: escrita em andamento', () => {
   });
 });
 
+describe('ChecksMerge: leitura desatualizada', () => {
+  it('com a aba marcada "Desatualizado", o botão de mesclar some, mesmo com a última leitura mesclável', async () => {
+    const { api, user } = await openWith();
+    expect(screen.getByRole('button', { name: MERGE_BUTTON })).toBeInTheDocument();
+    api.pr.mockResolvedValueOnce(fail('GH_NETWORK_FAILED', 'Sem rede para falar com o GitHub.'));
+
+    await user.click(screen.getByRole('button', { name: 'Atualizar' }));
+
+    expect(await screen.findByText('Desatualizado')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Mesclar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Escolher a forma de mesclar' })).toBeNull();
+    // A leitura boa continua na tela.
+    expect(screen.getByText('Painel de checks')).toBeInTheDocument();
+
+    api.pr.mockResolvedValueOnce(okPr([PASSED]));
+    await user.click(screen.getByRole('button', { name: 'Atualizar' }));
+    expect(await screen.findByRole('button', { name: MERGE_BUTTON })).toBeInTheDocument();
+  });
+});
+
+describe('ChecksMerge: foco', () => {
+  it('depois de mesclar com sucesso, o foco vai para o aviso (o botão some na releitura)', async () => {
+    const { api, user } = await openWith();
+    api.pr.mockResolvedValue(okPr([PASSED], { state: 'MERGED' }));
+    const dialog = await openConfirmation(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Mesclar' }));
+
+    await waitFor(() => expect(document.querySelector('.checks-merge__live')).toHaveFocus());
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^Mesclar/ })).not.toBeInTheDocument(),
+    );
+    expect(document.querySelector('.checks-merge__live')).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+  });
+
+  it('numa falha, o foco vai para o botão Fechar do diálogo', async () => {
+    const { api, user } = await openWith();
+    api.merge.mockResolvedValueOnce(fail('GH_PR_NOT_MERGEABLE', 'não dá'));
+    const dialog = await openConfirmation(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Mesclar' }));
+
+    await within(dialog).findByRole('alert');
+    expect(within(dialog).getByRole('button', { name: 'Fechar' })).toHaveFocus();
+  });
+
+  it('ao fechar a falha com o botão de mesclar já sem existir, o foco não cai no corpo', async () => {
+    const { api, user } = await openWith();
+    api.merge.mockResolvedValueOnce(fail('GH_PR_NOT_MERGEABLE', 'não dá'));
+    api.pr.mockResolvedValue(okPr([PASSED], { mergeable: 'CONFLICTING' }));
+    const dialog = await openConfirmation(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Mesclar' }));
+    await within(dialog).findByRole('alert');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: MERGE_BUTTON })).not.toBeInTheDocument(),
+    );
+
+    await user.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(document.querySelector('.checks-merge__live')).toHaveFocus();
+  });
+});
+
 describe('estilo de comentar e mesclar', () => {
+  it('o foco dos botões de mesclar não usa deslocamento negativo (o anel lima sumiria sobre o lima)', () => {
+    const css = readCss('right-panel.css');
+    for (const selector of [
+      '.checks-merge__main:focus-visible',
+      '.checks-merge__arrow:focus-visible',
+    ]) {
+      const rule = ruleDeclarations(css, selector);
+      expect(rule.size, selector).toBeGreaterThan(0);
+      const offset = rule.get('outline-offset');
+      if (offset !== undefined) expect(offset, selector).not.toMatch(/^-/);
+      // O anel sobe sobre a outra metade do botão.
+      expect(rule.get('position'), selector).toBe('relative');
+      expect(rule.get('z-index'), selector).toBe('1');
+    }
+  });
   it('só usa tokens: nenhuma cor escrita nas regras novas, e o lima fica só no botão de mesclar', () => {
     const css = readCss('right-panel.css');
     const start = css.indexOf('.checks-merge {');

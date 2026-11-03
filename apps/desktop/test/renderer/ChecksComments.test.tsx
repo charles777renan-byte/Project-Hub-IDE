@@ -184,7 +184,8 @@ describe('ChecksComments: enviar', () => {
     const dialog = await screen.findByRole('dialog', {
       name: 'Publicar este comentário no PR #12 do GitHub? Ele fica público para quem vê o repositório.',
     });
-    expect(within(dialog).getByText(/^<b>oi<\/b>/).textContent).toBe('<b>oi</b>\ntudo bem?');
+    // Só o fim é aparado: o espaço do começo fica.
+    expect(within(dialog).getByText(/<b>oi<\/b>/).textContent).toBe('  <b>oi</b>\ntudo bem?');
     expect(dialog.querySelector('b')).toBeNull();
     expect(api.comment).not.toHaveBeenCalled();
 
@@ -194,7 +195,7 @@ describe('ChecksComments: enviar', () => {
       expect(api.comment).toHaveBeenCalledWith({
         projectId: 'p1',
         prNumber: 12,
-        body: '<b>oi</b>\ntudo bem?',
+        body: '  <b>oi</b>\ntudo bem?',
       }),
     );
   });
@@ -249,6 +250,9 @@ describe('ChecksComments: enviar', () => {
     );
     expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Negrito' })).toBeDisabled();
+    // O campo vira somente leitura e o texto fica.
+    expect(field).toHaveAttribute('readonly');
+    expect(field.value).toBe('Boa!');
     // Escape não fecha o diálogo enquanto a escrita roda.
     fireEvent(dialog, new Event('cancel', { cancelable: true }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -256,6 +260,57 @@ describe('ChecksComments: enviar', () => {
 
     await act(async () => finish({ ok: true, data: undefined }));
     await waitFor(() => expect(field.value).toBe(''));
+  });
+});
+
+describe('ChecksComments: foco', () => {
+  it('depois de enviar, o foco vai para o campo (Enviar fica desligado com o campo vazio)', async () => {
+    const { user, field } = await openWith();
+    await user.type(field, 'Boa!');
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Publicar' }));
+
+    await waitFor(() => expect(field.value).toBe(''));
+    expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
+    expect(field).toHaveFocus();
+  });
+
+  it('numa falha, o foco vai para o botão Fechar; ao fechar, volta para Enviar', async () => {
+    const { api, user, field } = await openWith();
+    api.comment.mockResolvedValueOnce(fail('GH_NETWORK_FAILED', 'sem rede'));
+    await user.type(field, 'oi');
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Publicar' }));
+
+    await within(dialog).findByRole('alert');
+    expect(within(dialog).getByRole('button', { name: 'Fechar' })).toHaveFocus();
+    await user.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Enviar' })).toHaveFocus();
+  });
+});
+
+describe('ChecksComments: espaço inicial', () => {
+  it('só o fim é aparado: a indentação de um bloco de código (quatro espaços) vai ao canal e à prévia', async () => {
+    const { api, user, field } = await openWith();
+    fireEvent.change(field, { target: { value: '    const a = 1;\n\n  ' } });
+
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.querySelector('.git-dialog__message')?.textContent).toBe('    const a = 1;');
+    await user.click(within(dialog).getByRole('button', { name: 'Publicar' }));
+    await waitFor(() =>
+      expect(api.comment).toHaveBeenCalledWith({
+        projectId: 'p1',
+        prNumber: 12,
+        body: '    const a = 1;',
+      }),
+    );
   });
 });
 

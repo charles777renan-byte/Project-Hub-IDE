@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { Hint } from '../Hint';
 import { Bold, Code, ICON_PROPS, Italic, List, type LucideIcon, Quote } from '../Icon';
@@ -18,21 +18,24 @@ const TOOLS: { format: CommentFormat; label: string; icon: LucideIcon }[] = [
  * O campo do novo comentário: a barra B, I, código, citação e lista, o texto e os botões Cancelar e Enviar. A barra
  * só insere a sintaxe Markdown no texto (em volta da seleção, ou no começo das linhas), sem renderizar nada. O
  * texto mora em quem monta, para não se perder se a escrita falhar. Enviar fica desligado com o texto vazio ou só
- * com espaços e enquanto uma escrita roda; Cancelar limpa o texto.
+ * com espaços e enquanto uma escrita roda (nela o campo vira somente leitura, como a barra e os botões); Cancelar
+ * limpa o texto.
  */
 export function ChecksComposer({
   value,
   onChange,
   disabled,
   onSend,
+  fieldRef,
 }: {
   value: string;
   onChange: (value: string) => void;
   /** Há uma escrita em andamento: Enviar e a barra ficam desligados. */
   disabled: boolean;
   onSend: () => void;
+  /** O campo, para quem monta devolver o foco a ele depois de enviar. */
+  fieldRef: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
   const pendingSelection = useRef<{ start: number; end: number } | null>(null);
 
   // Depois que o React grava o texto novo, a seleção e o foco voltam ao campo.
@@ -78,6 +81,7 @@ export function ChecksComposer({
         placeholder={TEXT.placeholder}
         rows={4}
         value={value}
+        readOnly={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
       <div className="checks-composer__actions">
