@@ -244,7 +244,9 @@ describe('canais e respostas do Git', () => {
   it('o conjunto de canais git é exatamente os doze, sem extra e sem falta', () => {
     const gitChannels = Object.values(CHANNELS).filter((c) => c.startsWith('git:'));
     expect([...gitChannels].sort()).toEqual(table.map((row) => row[1]).sort());
-    const gitKeys = Object.keys(CHANNELS).filter((k) => k.startsWith('git'));
+    const gitKeys = Object.keys(CHANNELS).filter(
+      (k) => k.startsWith('git') && !k.startsWith('github'),
+    );
     expect([...gitKeys].sort()).toEqual(table.map((row) => row[0]).sort());
   });
 
