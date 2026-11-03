@@ -1,10 +1,13 @@
 import type { AgentActivity } from '@project-hub/contracts';
 import { describe, expect, it } from 'vitest';
 import {
-  agentShares,
+  agentRows,
   compactNumber,
   dayCells,
+  gridSize,
+  monthMarks,
   overviewStats,
+  weekLayout,
   windowOf,
 } from '../../src/renderer/agent-overview';
 
@@ -275,7 +278,7 @@ describe('compactNumber', () => {
   });
 });
 
-describe('agentShares', () => {
+describe('agentRows', () => {
   const days = windowOf(7, TODAY, null);
   const data = activity([
     { date: '2026-10-23', agent: 'codex', messages: 3, tokens: 500 },
@@ -284,18 +287,108 @@ describe('agentShares', () => {
     { date: '2026-09-01', agent: 'claude', messages: 9, tokens: 9000 },
   ]);
 
-  it('soma a parte de cada agente no período, na ordem do registro', () => {
-    expect(agentShares(data, days, 'messages')).toEqual([
-      { agent: 'claude', value: 5 },
-      { agent: 'codex', value: 3 },
-      { agent: 'antigravity', value: 2 },
+  it('uma linha por agente do registro, na ordem dele, com a soma só da janela', () => {
+    expect(agentRows(data, days)).toEqual([
+      { id: 'claude', label: 'Claude Code', messages: 5, tokens: 2000 },
+      { id: 'codex', label: 'Codex', messages: 3, tokens: 500 },
+      { id: 'antigravity', label: 'Antigravity', messages: 2, tokens: null },
     ]);
   });
 
-  it('nos tokens, só entra quem tem dado', () => {
-    expect(agentShares(data, days, 'tokens')).toEqual([
-      { agent: 'claude', value: 2000 },
-      { agent: 'codex', value: 500 },
-    ]);
+  it('agente com leitor e sem uso na janela vale 0; sem leitor da métrica vale null, nunca 0', () => {
+    const rows = agentRows(
+      {
+        agents: [
+          ...AGENTS,
+          { id: 'novo', label: 'Novo', messagesAvailable: false, tokensAvailable: false },
+        ],
+        since: '2026-10-01',
+        days: [{ date: '2026-10-24', agent: 'claude', messages: 1, tokens: 10 }],
+      },
+      days,
+    );
+
+    expect(rows.find((row) => row.id === 'codex')).toMatchObject({ messages: 0, tokens: 0 });
+    expect(rows.find((row) => row.id === 'antigravity')).toMatchObject({
+      messages: 0,
+      tokens: null,
+    });
+    expect(rows.find((row) => row.id === 'novo')).toMatchObject({ messages: null, tokens: null });
+  });
+
+  it('o tokens nulo de um dia de agente com leitor não vira o agente "indisponível"', () => {
+    const rows = agentRows(
+      activity([{ date: '2026-10-24', agent: 'codex', messages: 4, tokens: null }]),
+      days,
+    );
+
+    expect(rows.find((row) => row.id === 'codex')).toMatchObject({ messages: 4, tokens: 0 });
+  });
+});
+
+describe('weekLayout', () => {
+  it('7 dias que vão de domingo a sábado são uma semana, sem espaço antes', () => {
+    expect(weekLayout(windowOf(7, TODAY, null))).toEqual({ blanks: 0, weeks: 1 });
+  });
+
+  it('90 dias que começam numa segunda levam um espaço antes e 13 semanas', () => {
+    expect(weekLayout(windowOf(90, TODAY, null))).toEqual({ blanks: 1, weeks: 13 });
+  });
+
+  it('um dia só, num sábado, tem 6 espaços antes e uma semana', () => {
+    expect(weekLayout(['2026-10-24'])).toEqual({ blanks: 6, weeks: 1 });
+  });
+
+  it('sem dias não há semana', () => {
+    expect(weekLayout([])).toEqual({ blanks: 0, weeks: 0 });
+  });
+});
+
+describe('monthMarks', () => {
+  it('põe o mês na semana (coluna) em que ele começa, sem o ponto da abreviatura', () => {
+    // 27/07 a 24/10: 1º de agosto cai na primeira coluna, 1º de setembro na sexta, 1º de outubro na décima.
+    const marks = monthMarks(windowOf(90, TODAY, null));
+
+    expect(marks).toHaveLength(13);
+    expect(marks[0]).toBe('ago');
+    expect(marks[5]).toBe('set');
+    expect(marks[9]).toBe('out');
+    expect(marks.filter((mark) => mark !== null)).toHaveLength(3);
+  });
+
+  it('sem começo de mês na janela, a primeira coluna leva o mês dela', () => {
+    expect(monthMarks(windowOf(7, TODAY, null))).toEqual(['out']);
+  });
+
+  it('a primeira coluna leva o próprio mês quando o próximo começa a duas colunas ou mais dela', () => {
+    // 20/10 (terça) a 03/11: 1º de novembro cai na terceira coluna.
+    const days = windowOf('all', new Date(2026, 10, 3, 9, 0), '2026-10-20');
+
+    expect(monthMarks(days)).toEqual(['out', null, 'nov']);
+  });
+
+  it('a primeira coluna não leva o mês dela quando o próximo começa logo na segunda coluna', () => {
+    // 30/10 (sexta) a 03/11: o texto de "out" não caberia antes de "nov".
+    const days = windowOf('all', new Date(2026, 10, 3, 9, 0), '2026-10-30');
+
+    expect(monthMarks(days)).toEqual([null, 'nov']);
+  });
+
+  it('sem dias não há marcas', () => {
+    expect(monthMarks([])).toEqual([]);
+  });
+});
+
+describe('gridSize', () => {
+  it('até 6 semanas as células são maiores (7 e 30 dias), de 7 a 26 normais e acima disso apertadas', () => {
+    expect(gridSize(1)).toBe('roomy');
+    // 30 dias ocupam 5 semanas, ou 6 quando o primeiro cai no fim da semana.
+    expect(gridSize(5)).toBe('roomy');
+    expect(gridSize(6)).toBe('roomy');
+    expect(gridSize(7)).toBe('normal');
+    expect(gridSize(13)).toBe('normal');
+    expect(gridSize(26)).toBe('normal');
+    expect(gridSize(27)).toBe('tight');
+    expect(gridSize(53)).toBe('tight');
   });
 });
