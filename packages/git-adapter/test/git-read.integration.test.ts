@@ -556,7 +556,8 @@ describe('getBranchLog', () => {
     expect(first?.shortSha).toBe(first?.sha.slice(0, first.shortSha.length));
     expect(first?.shortSha.length).toBeGreaterThanOrEqual(7);
     expect(first?.author).toBe('Maria | "Quote" Silva');
-    expect(first?.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/u);
+    // O Git escreve `Z` no fuso UTC (o CI roda assim) e `±HH:MM` nos demais: as duas são ISO 8601.
+    expect(first?.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/u);
     expect(first?.refs).toEqual(expect.arrayContaining(['HEAD -> main', 'tag: v1.0', 'outra']));
     expect(second?.author).toBe('Project Hub Test');
     expect(second?.refs).toEqual([]);
