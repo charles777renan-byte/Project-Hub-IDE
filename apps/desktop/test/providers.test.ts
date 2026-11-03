@@ -112,7 +112,7 @@ describe('registro de provedores', () => {
     });
   });
 
-  it('lista os quatro provedores com rótulo e disponibilidade', () => {
+  it('lista os seis provedores com rótulo e disponibilidade', () => {
     const registry = windowsRegistry(['C:\\bin\\claude.exe']);
 
     expect(registry.list()).toEqual([
@@ -124,8 +124,23 @@ describe('registro de provedores', () => {
         available: false,
         reason: MISSING('Antigravity CLI'),
       },
+      { id: 'opencode', label: 'OpenCode', available: false, reason: MISSING('OpenCode') },
+      { id: 'freebuff', label: 'Freebuff', available: false, reason: MISSING('Freebuff') },
       { id: 'shell', label: 'PowerShell', available: true },
     ]);
+  });
+
+  it('acha o OpenCode e o Freebuff pelo .cmd que o npm instala', () => {
+    const registry = windowsRegistry(['C:\\bin\\opencode.cmd', 'C:\\bin\\freebuff.cmd']);
+
+    expect(registry.resolve('opencode')).toEqual({
+      ok: true,
+      launch: { command: 'cmd.exe', args: ['/d', '/c', 'C:\\bin\\opencode.cmd'] },
+    });
+    expect(registry.resolve('freebuff')).toEqual({
+      ok: true,
+      launch: { command: 'cmd.exe', args: ['/d', '/c', 'C:\\bin\\freebuff.cmd'] },
+    });
   });
 
   it('o shell do Windows é o PowerShell e está sempre disponível', () => {
