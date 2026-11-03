@@ -51,6 +51,13 @@ function fail(code: string, message: string) {
 
 const NOT_FOUND = fail('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
 const WRONG_BRANCH = fail('GH_PR_NOT_FOUND', 'O PR informado não é o da branch atual do projeto.');
+const UNSUPPORTED = fail(
+  'GH_NOT_AVAILABLE',
+  'Este repositório não é do github.com, e o Project Hub só lê PRs de lá.',
+);
+/** Ordem em que o `vi.fn` foi chamado pela primeira vez, para conferir a sequência entre portas. */
+const order = (fn: { mock: { invocationCallOrder: number[] } }) =>
+  fn.mock.invocationCallOrder[0] ?? 0;
 const NOT_MERGEABLE = fail(
   'GH_PR_NOT_MERGEABLE',
   'O PR não pode ser mesclado agora: atualize a aba e confira o estado do PR.',
@@ -105,7 +112,7 @@ describe('getPullRequestPanel', () => {
     expect(github.pullRequestForBranch).not.toHaveBeenCalled();
   });
 
-  it('R20: PR de fork com o mesmo nome de branch (headRefName diferente) vira no-pr', async () => {
+  it('R20: PR achado cuja headRefName não é a branch atual vira no-pr', async () => {
     const { deps } = setup({
       github: { pullRequest: () => Promise.resolve(prReading({ headRefName: 'feat/y' })) },
     });
@@ -147,6 +154,45 @@ describe('getPullRequestPanel', () => {
     const result = await getPullRequestPanel(deps, { projectId: 'p1' });
 
     expect(result).toMatchObject({ ok: true, data: { kind: 'pr' } });
+  });
+
+  it('forma curta com usuário que tem a letra s: someuser@github.com:dono/repo.git é github.com', async () => {
+    const { deps } = setup({
+      github: { originUrl: () => Promise.resolve('someuser@github.com:dono/repo.git') },
+    });
+
+    const result = await getPullRequestPanel(deps, { projectId: 'p1' });
+
+    expect(result).toMatchObject({ ok: true, data: { kind: 'pr' } });
+  });
+
+  it('forma curta com host que tem a letra s e não é github.com: not-applicable', async () => {
+    const { deps, github } = setup({
+      github: { originUrl: () => Promise.resolve('someuser@gitsserver.example:dono/repo.git') },
+    });
+
+    await expect(getPullRequestPanel(deps, { projectId: 'p1' })).resolves.toEqual({
+      ok: true,
+      data: { kind: 'not-applicable' },
+    });
+    expect(github.pullRequestForBranch).not.toHaveBeenCalled();
+  });
+
+  it('git.status com erro do contrato vira AppResult; sem código continua subindo', async () => {
+    const coded = setup({
+      git: { errors: { status: new FakeGhError('GIT_NOT_AVAILABLE', 'Falha do Git.') } },
+    });
+    await expect(getPullRequestPanel(coded.deps, { projectId: 'p1' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'GIT_NOT_AVAILABLE', message: 'Falha do Git.' },
+    });
+    expect(coded.github.pullRequestForBranch).not.toHaveBeenCalled();
+
+    const plain = setup({ git: { errors: { status: new Error('inesperado') } } });
+    await expect(getPullRequestPanel(plain.deps, { projectId: 'p1' })).rejects.toThrow(
+      'inesperado',
+    );
+    expect(plain.github.pullRequestForBranch).not.toHaveBeenCalled();
   });
 
   it('pasta sem Git: not-applicable, sem tocar o git nem o gh', async () => {
@@ -229,6 +275,7 @@ describe('addPullRequestComment', () => {
     ['NaN', Number.NaN],
     ['11 dígitos', 12_345_678_901],
     ['notação científica', 1e21],
+    ['texto', '37' as unknown as number],
   ])('número %s: VALIDATION_FAILED antes de qualquer chamada', async (_name, prNumber) => {
     const { deps, github, git } = setup();
 
@@ -241,7 +288,9 @@ describe('addPullRequestComment', () => {
   });
 
   it('aceita o maior número de 10 dígitos', async () => {
-    const { deps, github } = setup();
+    const { deps, github } = setup({
+      github: { pullRequestForBranch: () => Promise.resolve(9_999_999_999) },
+    });
 
     await addPullRequestComment(deps, { ...input, prNumber: 9_999_999_999 });
 
@@ -278,6 +327,56 @@ describe('addPullRequestComment', () => {
 
     await expect(addPullRequestComment(deps, input)).resolves.toEqual(WRONG_BRANCH);
     expect(github.addComment).not.toHaveBeenCalled();
+  });
+
+  it('R30: origin do GitHub Enterprise: recusa antes de qualquer chamada ao gh', async () => {
+    const { deps, github } = setup({
+      github: { originUrl: () => Promise.resolve('https://github.mycompany.com/dono/repo.git') },
+    });
+
+    await expect(addPullRequestComment(deps, input)).resolves.toEqual(UNSUPPORTED);
+    expect(github.pullRequest).not.toHaveBeenCalled();
+    expect(github.pullRequestForBranch).not.toHaveBeenCalled();
+    expect(github.addComment).not.toHaveBeenCalled();
+  });
+
+  it('R30: sem origin: recusa antes de qualquer chamada ao gh', async () => {
+    const { deps, github } = setup({ github: { originUrl: () => Promise.resolve(null) } });
+
+    await expect(addPullRequestComment(deps, input)).resolves.toEqual(UNSUPPORTED);
+    expect(github.pullRequest).not.toHaveBeenCalled();
+    expect(github.addComment).not.toHaveBeenCalled();
+  });
+
+  it('R31: número diferente do PR da branch: GH_PR_NOT_FOUND, sem comentar', async () => {
+    const { deps, github } = setup({
+      github: { pullRequestForBranch: () => Promise.resolve(38) },
+    });
+
+    await expect(addPullRequestComment(deps, input)).resolves.toEqual(WRONG_BRANCH);
+    expect(github.addComment).not.toHaveBeenCalled();
+  });
+
+  it('R31: branch sem PR: GH_PR_NOT_FOUND, sem comentar', async () => {
+    const { deps, github } = setup({
+      github: { pullRequestForBranch: () => Promise.resolve(null) },
+    });
+
+    await expect(addPullRequestComment(deps, input)).resolves.toEqual(WRONG_BRANCH);
+    expect(github.addComment).not.toHaveBeenCalled();
+  });
+
+  it('R31: número igual ao PR da branch: comenta, depois de ler o PR e de achar o da branch', async () => {
+    const { deps, github } = setup();
+
+    await expect(addPullRequestComment(deps, input)).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(github.pullRequestForBranch).toHaveBeenCalledWith(PATH, 'feat/x');
+    expect(order(github.originUrl)).toBeLessThan(order(github.pullRequest));
+    expect(order(github.pullRequest)).toBeLessThan(order(github.pullRequestForBranch));
+    expect(order(github.pullRequestForBranch)).toBeLessThan(order(github.addComment));
   });
 
   it('projeto inexistente: PROJECT_NOT_FOUND, sem chamar o gh', async () => {
@@ -350,6 +449,9 @@ describe('mergeProjectPullRequest', () => {
     ['negativo', -1],
     ['fracionário', 2.5],
     ['11 dígitos', 12_345_678_901],
+    ['NaN', Number.NaN],
+    ['notação científica', 1e21],
+    ['texto', '37' as unknown as number],
   ])('número %s: VALIDATION_FAILED antes de qualquer chamada', async (_name, prNumber) => {
     const { deps, github, git } = setup();
 
@@ -407,6 +509,46 @@ describe('mergeProjectPullRequest', () => {
     await expect(mergeProjectPullRequest(deps, input)).resolves.toEqual(
       fail('GH_PR_NOT_MERGEABLE', message),
     );
+  });
+
+  it('R30: origin do GitHub Enterprise: recusa antes de qualquer chamada ao gh', async () => {
+    const { deps, github } = setup({
+      github: { originUrl: () => Promise.resolve('https://github.mycompany.com/dono/repo.git') },
+    });
+
+    await expect(mergeProjectPullRequest(deps, input)).resolves.toEqual(UNSUPPORTED);
+    expect(github.pullRequest).not.toHaveBeenCalled();
+    expect(github.pullRequestForBranch).not.toHaveBeenCalled();
+    expect(github.mergePullRequest).not.toHaveBeenCalled();
+  });
+
+  it('R31: número diferente do PR da branch: GH_PR_NOT_FOUND, sem mesclar', async () => {
+    const { deps, github } = setup({
+      github: { pullRequestForBranch: () => Promise.resolve(38) },
+    });
+
+    await expect(mergeProjectPullRequest(deps, input)).resolves.toEqual(WRONG_BRANCH);
+    expect(github.mergePullRequest).not.toHaveBeenCalled();
+  });
+
+  it('R31: HEAD destacado: GH_PR_NOT_FOUND, sem mesclar e sem procurar PR', async () => {
+    const { deps, github } = setup({ git: { status: { branch: null } } });
+
+    await expect(mergeProjectPullRequest(deps, input)).resolves.toEqual(WRONG_BRANCH);
+    expect(github.pullRequestForBranch).not.toHaveBeenCalled();
+    expect(github.mergePullRequest).not.toHaveBeenCalled();
+  });
+
+  it('R31: número igual ao PR da branch: mescla, depois de ler o PR e de achar o da branch', async () => {
+    const { deps, github } = setup();
+
+    await expect(mergeProjectPullRequest(deps, input)).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(order(github.originUrl)).toBeLessThan(order(github.pullRequest));
+    expect(order(github.pullRequest)).toBeLessThan(order(github.pullRequestForBranch));
+    expect(order(github.pullRequestForBranch)).toBeLessThan(order(github.mergePullRequest));
   });
 
   it('projeto removido: PROJECT_NOT_FOUND, sem chamar o gh', async () => {

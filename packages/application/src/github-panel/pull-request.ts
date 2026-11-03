@@ -1,11 +1,6 @@
 import type { AppResult, GithubPanelDto } from '@project-hub/contracts';
 import { eligibleGitProject } from '../git-panel/project';
-import {
-  ghFailure,
-  isGithubRemote,
-  isPullRequestOfBranch,
-  type GithubPanelDeps,
-} from './project';
+import { ghFailure, isGithubRemote, isPullRequestOfBranch, type GithubPanelDeps } from './project';
 
 const NOT_APPLICABLE: AppResult<GithubPanelDto> = { ok: true, data: { kind: 'not-applicable' } };
 const NO_PR: AppResult<GithubPanelDto> = { ok: true, data: { kind: 'no-pr' } };
