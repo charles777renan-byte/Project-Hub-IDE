@@ -158,6 +158,29 @@ describe('WorkspaceToolbar', () => {
     expect(document.querySelectorAll('[data-marked="true"]')).toHaveLength(1);
   });
 
+  it('o mouse sobre outro item leva o foco do teclado para ele: um item só fica selecionado', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveFocus();
+    await userEvent.hover(screen.getByRole('menuitem', { name: /PowerShell/ }));
+    expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveFocus();
+    expect(document.querySelectorAll('[data-marked="true"]')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveAttribute(
+      'data-marked',
+      'false',
+    );
+  });
+
+  it('o mouse não rouba o foco da busca: dá para digitar com o ponteiro sobre a lista', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.hover(screen.getByRole('menuitem', { name: /PowerShell/ }));
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveFocus();
+    await userEvent.keyboard('cl');
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveValue('cl');
+  });
+
   it('a marca acompanha o foco do teclado', async () => {
     setup();
     await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));

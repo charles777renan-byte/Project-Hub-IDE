@@ -232,9 +232,17 @@ describe('menu de programas (Abrir terminal)', () => {
     expect(animation).toContain('menu-item-in');
     expect(animation).toContain('backwards');
     // O atraso sai dos tokens (nada de tempo literal) e do índice da linha.
-    expect(animation).toContain('calc(');
-    expect(animation).toContain('var(--i');
-    expect(animation).toContain('var(--dur-fast)');
+    // Sem espera de partida: a primeira linha começa junto com o painel, e cada seguinte espera um passo a mais.
+    expect(animation).toContain('calc(var(--i, 0) * var(--dur-fast) / 3)');
+  });
+
+  it('a busca e o rodapé entram na mesma sequência das linhas, de cima para baixo', () => {
+    for (const selector of ['.workspace__menu-search', '.workspace__menu-foot']) {
+      const animation = flat(ruleDeclarations(motionCss, selector).get('animation'));
+      expect(animation, selector).toContain('menu-item-in');
+      expect(animation, selector).toContain('calc(var(--i, 0) * var(--dur-fast) / 3)');
+      expect(animation, selector).toContain('backwards');
+    }
   });
 
   it('o atalho da linha acende com a transição curta de opacidade', () => {
@@ -246,6 +254,8 @@ describe('menu de programas (Abrir terminal)', () => {
   it('"reduzir movimento" desliga a entrada e a transição do atalho', () => {
     expect(ruleDeclarations(reduced, POPUP).get('animation')).toBe('none');
     expect(ruleDeclarations(reduced, LINHA).get('animation')).toBe('none');
+    expect(ruleDeclarations(reduced, '.workspace__menu-search').get('animation')).toBe('none');
+    expect(ruleDeclarations(reduced, '.workspace__menu-foot').get('animation')).toBe('none');
     expect(ruleDeclarations(reduced, '.workspace__menu-kbd').get('transition')).toBe('none');
   });
 });

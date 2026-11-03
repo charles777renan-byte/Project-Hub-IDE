@@ -84,6 +84,8 @@ export function WorkspaceToolbar({
   const visible = providers
     .map((provider, index) => ({ provider, index }))
     .filter(({ provider }) => needle === '' || plain(provider.label).includes(needle));
+  // O separador só existe antes do terminal do sistema, e só com agentes acima dele.
+  const hasDivider = visible.some(({ provider }, at) => provider.id === 'shell' && at > 0);
   const markedProvider =
     visible.find(({ provider }) => provider.id === marked) ??
     visible.find(({ provider }) => provider.available !== false);
@@ -223,7 +225,7 @@ export function WorkspaceToolbar({
       )}
       {open ? (
         <div className="workspace__popup">
-          <div className="workspace__menu-search">
+          <div className="workspace__menu-search" style={rowStyle(0)}>
             <Search {...ICON_PROPS} />
             <input
               ref={search}
@@ -249,9 +251,10 @@ export function WorkspaceToolbar({
               {visible.map(({ provider, index }, position) => {
                 const unavailable = provider.available === false;
                 const isMarked = markedProvider?.provider.id === provider.id;
-                // O separador (só antes do terminal do sistema, e só com agentes acima) leva uma entrada junto.
-                const divided = provider.id === 'shell' && position > 0;
-                const order = position + (divided ? 1 : 0);
+                // O separador leva uma entrada da sequência, logo antes da linha do terminal do sistema.
+                const divided = hasDivider && provider.id === 'shell';
+                // A busca é a primeira da sequência (0): as linhas começam em 1.
+                const order = position + (divided ? 1 : 0) + 1;
                 const shortcut = providerShortcutLabel(index);
                 return (
                   <Fragment key={provider.id}>
@@ -271,7 +274,18 @@ export function WorkspaceToolbar({
                         aria-disabled={unavailable}
                         aria-keyshortcuts={providerShortcutKeys(index)}
                         title={unavailable ? provider.reason : undefined}
-                        onMouseEnter={() => setMarked(provider.id)}
+                        onMouseEnter={(event) => {
+                          setMarked(provider.id);
+                          // Com outro item em foco (pelo teclado), o foco vai para o do mouse: um item só fica
+                          // selecionado. A busca não perde o foco, para dar para digitar com o ponteiro na lista.
+                          const focused = document.activeElement;
+                          if (
+                            focused !== event.currentTarget &&
+                            focused?.getAttribute('role') === 'menuitem'
+                          ) {
+                            event.currentTarget.focus({ preventScroll: true });
+                          }
+                        }}
                         onFocus={() => setMarked(provider.id)}
                         onClick={() => choose(provider)}
                       >
@@ -305,7 +319,11 @@ export function WorkspaceToolbar({
               })}
             </ul>
           )}
-          <p className="workspace__menu-foot" aria-hidden="true">
+          <p
+            className="workspace__menu-foot"
+            aria-hidden="true"
+            style={rowStyle(visible.length + (hasDivider ? 1 : 0) + 1)}
+          >
             <kbd>↑↓</kbd> navegar · <kbd>↵</kbd> abrir · <kbd>Esc</kbd> fechar
           </p>
         </div>
