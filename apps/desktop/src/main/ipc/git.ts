@@ -1,7 +1,6 @@
 import {
   commitChanges,
   discardPaths,
-  failure,
   fetchProject,
   getFileDiff,
   getGitStatus,
@@ -20,28 +19,13 @@ import {
   gitDiffInputSchema,
   gitPathsInputSchema,
   gitProjectInputSchema,
-  type AppResult,
 } from '@project-hub/contracts';
-import type { ZodType } from 'zod';
-import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
-
-const INVALID_INPUT = 'Os dados do pedido não são válidos.';
-
-/**
- * Confere a entrada com o schema do contrato (R28) e só então roda o caso de uso. Entrada inválida volta como
- * `VALIDATION_FAILED`, sem tocar no projeto nem no Git. O que o schema não declara (como um nome de branch)
- * é descartado pelo `parse`: o caso de uso só recebe o que o contrato permite.
- */
-function validated<T>(
-  schema: ZodType<T>,
-  run: (input: T) => Promise<AppResult<unknown>>,
-): (_event: unknown, payload: unknown) => Promise<AppResult<unknown>> {
-  return (_event, payload) => {
-    const input = schema.safeParse(payload);
-    if (!input.success) return Promise.resolve(failure('VALIDATION_FAILED', INVALID_INPUT));
-    return run(input.data);
-  };
-}
+import {
+  registerTrustedHandler,
+  validated,
+  type IpcRegistry,
+  type SenderCheck,
+} from './trusted-handler';
 
 /**
  * Liga os doze canais `git:*:v1` do painel de código-fonte (ADR 0010). Todos recusam remetente de outra
@@ -57,9 +41,18 @@ export function registerGitHandlers(
   const register = (channel: string, run: ReturnType<typeof validated>) =>
     registerTrustedHandler(registry, channel, isTrusted, run);
 
-  register(CHANNELS.gitStatus, validated(gitProjectInputSchema, (input) => getGitStatus(deps, input)));
-  register(CHANNELS.gitDiff, validated(gitDiffInputSchema, (input) => getFileDiff(deps, input)));
-  register(CHANNELS.gitStage, validated(gitPathsInputSchema, (input) => stagePaths(deps, input)));
+  register(
+    CHANNELS.gitStatus,
+    validated(gitProjectInputSchema, (input) => getGitStatus(deps, input)),
+  );
+  register(
+    CHANNELS.gitDiff,
+    validated(gitDiffInputSchema, (input) => getFileDiff(deps, input)),
+  );
+  register(
+    CHANNELS.gitStage,
+    validated(gitPathsInputSchema, (input) => stagePaths(deps, input)),
+  );
   register(
     CHANNELS.gitUnstage,
     validated(gitPathsInputSchema, (input) => unstagePaths(deps, input)),
@@ -80,7 +73,10 @@ export function registerGitHandlers(
     CHANNELS.gitPublish,
     validated(gitProjectInputSchema, (input) => publishProjectBranch(deps, input)),
   );
-  register(CHANNELS.gitPull, validated(gitProjectInputSchema, (input) => pullProject(deps, input)));
+  register(
+    CHANNELS.gitPull,
+    validated(gitProjectInputSchema, (input) => pullProject(deps, input)),
+  );
   register(
     CHANNELS.gitFetch,
     validated(gitProjectInputSchema, (input) => fetchProject(deps, input)),

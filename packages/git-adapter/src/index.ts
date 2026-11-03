@@ -23,6 +23,7 @@ export {
   getBranchLog,
   getFileDiffAgainstHead,
   getGitPanelStatus,
+  getOriginUrl,
   type BranchChangeFile,
   type BranchChanges,
   type BranchChangeStatus,

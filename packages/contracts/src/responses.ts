@@ -134,4 +134,5 @@ export const responseSchemas = {
   [CHANNELS.githubPr]: appResultSchema(githubPanelSchema),
   [CHANNELS.githubComment]: appResultSchema(z.undefined()),
   [CHANNELS.githubMerge]: appResultSchema(z.undefined()),
+  [CHANNELS.githubOpenUrl]: appResultSchema(z.undefined()),
 } as const;

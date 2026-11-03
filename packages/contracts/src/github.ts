@@ -12,6 +12,9 @@ const PROJECT_ID_MAX = 200;
 /** O GitHub recusa comentário com mais de 65 536 caracteres. */
 const COMMENT_BODY_MAX = 65_536;
 
+/** Limite do endereço que a tela pede para abrir. */
+const OPEN_URL_MAX = 4096;
+
 const projectIdSchema = z.string().min(1, 'Informe o projeto.').max(PROJECT_ID_MAX);
 
 /** Número de PR: inteiro positivo. Nunca vira argumento do `gh` sem passar por aqui. */
@@ -52,6 +55,14 @@ export const githubMergeInputSchema = z.object({
   method: githubMergeMethodSchema,
 });
 export type GithubMergeInput = z.infer<typeof githubMergeInputSchema>;
+
+/**
+ * Entrada de `github:open-url:v1`. O schema só confere que é um texto: quem decide se o endereço pode abrir é o
+ * processo principal (https, host `github.com` exato, sem usuário, senha nem porta). O `gh` devolve as URLs de
+ * checks e de comentários como texto livre, então a conferência não pode ficar na leitura.
+ */
+export const githubOpenUrlInputSchema = z.object({ url: z.string().max(OPEN_URL_MAX) });
+export type GithubOpenUrlInput = z.infer<typeof githubOpenUrlInputSchema>;
 
 /** Estado do PR (`state` do `gh pr view`). */
 export const PR_STATES = ['OPEN', 'MERGED', 'CLOSED'] as const;

@@ -458,3 +458,23 @@ export async function getFileDiffAgainstHead(
     truncated: limited.truncated,
   };
 }
+
+/**
+ * O endereço do remoto `origin` (`git config --get remote.origin.url`), ou `null` quando a pasta não tem
+ * `origin`. A chave ausente sai do Git com código 1, e isso é "sem origin", não um erro. Outra falha (Git
+ * ausente, comando recusado) continua subindo como `GitError`. A aba Checks usa o endereço só para saber se
+ * o repositório é do `github.com`.
+ */
+export async function getOriginUrl(options: ReadOptions): Promise<string | null> {
+  try {
+    const { stdout } = await runGit(['config', '--get', 'remote.origin.url'], {
+      cwd: options.repo,
+      gitBinary: options.gitBinary,
+    });
+    const url = stdout.trim();
+    return url === '' ? null : url;
+  } catch (error) {
+    if (error instanceof GitError && error.exitCode === 1) return null;
+    throw error;
+  }
+}
