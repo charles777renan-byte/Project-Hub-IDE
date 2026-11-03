@@ -93,9 +93,13 @@ jobs:
         run: pnpm test --shard=${{ matrix.parte }}/3
 
   testes-integracao:
-    name: Windows (testes de integração)
+    name: Windows (testes de integração, parte ${{ matrix.parte }} de 3)
     runs-on: windows-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        parte: [1, 2, 3]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -114,6 +118,7 @@ jobs:
       - name: Instalar as dependências
         run: pnpm install --frozen-lockfile
 
-      # Não é dividido: os testes de integração rodam em série (`--no-file-parallelism`) de propósito.
-      - name: Testes de integração
-        run: pnpm test:integration
+      # Cada parte roda numa máquina virtual própria, então as partes não dividem pasta, banco nem pipe. Dentro
+      # de uma parte os arquivos seguem em série (`--no-file-parallelism`), como antes.
+      - name: Testes de integração (parte ${{ matrix.parte }} de 3)
+        run: pnpm test:integration --shard=${{ matrix.parte }}/3
