@@ -30,7 +30,14 @@ let statusMock: Mock<(input: { projectId: string }) => Promise<AppResult<GitStat
 
 function install(result: () => Promise<AppResult<GitStatusDto>>) {
   statusMock = vi.fn(result);
-  window.projectHub = { git: { status: statusMock } } as unknown as ProjectHubApi;
+  window.projectHub = {
+    git: {
+      status: statusMock,
+      branchChanges: () =>
+        Promise.resolve({ ok: true, data: { baseRef: null, mergeBase: null, files: [] } }),
+      log: () => Promise.resolve({ ok: true, data: [] }),
+    },
+  } as unknown as ProjectHubApi;
 }
 
 const ok =
@@ -403,5 +410,23 @@ describe('GitTab: dica do botão Atualizar', () => {
     expect(button).toHaveFocus();
     expect(button).toHaveAttribute('aria-label', 'Atualizar');
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Atualizar');
+  });
+});
+
+describe('GitTab: escritas', () => {
+  it('uma escrita relê o estado ao terminar; a falha aparece em alerta', async () => {
+    const user = userEvent.setup();
+    install(ok(status({ files: [{ path: 'a.ts', staged: null, unstaged: 'M' }] })));
+    const stage = vi.fn(() =>
+      Promise.resolve({ ok: false, error: { code: 'GIT_FAILED', message: 'sem permissão' } }),
+    );
+    (window.projectHub.git as unknown as { stage: unknown }).stage = stage;
+    render(<GitTab projectId="p1" active />);
+
+    await user.click(await screen.findByRole('button', { name: 'Colocar em stage a.ts' }));
+
+    expect(stage).toHaveBeenCalledWith({ projectId: 'p1', paths: ['a.ts'] });
+    expect(await screen.findByRole('alert')).toHaveTextContent('sem permissão');
+    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(2));
   });
 });

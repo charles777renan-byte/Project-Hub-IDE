@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import type { GitStatusDto } from '@project-hub/contracts';
+import type { AppResult, GitStatusDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from './mission-text';
 import { PROJECTS_CHANGED_EVENT } from './projects-events';
 
@@ -192,4 +192,22 @@ export function useGitPanel(projectId: string | null, active: boolean): GitPanel
     },
     track: <T>(promise: Promise<T>) => (projectId === null ? promise : track(projectId, promise)),
   };
+}
+
+/**
+ * Espera o resultado de uma escrita Git (já marcada em `track`) e entrega a mensagem do processo principal a
+ * `onError` quando ela falha ou lança. Devolve `true` só quando a escrita deu certo.
+ */
+export async function settleWrite(
+  write: Promise<AppResult<unknown>>,
+  onError: (message: string) => void,
+): Promise<boolean> {
+  try {
+    const result = await write;
+    if (result.ok) return true;
+    onError(result.error.message);
+  } catch {
+    onError(RIGHT_PANEL_TEXT.git.writeError);
+  }
+  return false;
 }
