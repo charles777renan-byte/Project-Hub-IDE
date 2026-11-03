@@ -247,21 +247,78 @@ export function compactNumber(value: number): string {
   return `${ONE_DECIMAL.format(Math.floor((value / size) * 10) / 10)}${unit}`;
 }
 
-/** Parte de um agente numa métrica do período. */
-export type AgentShare = { agent: string; value: number };
+/** Uma linha da tabela "Por agente": a soma de cada métrica no período, ou `null` quando o agente não tem leitor dela. */
+export type AgentRow = {
+  id: string;
+  label: string;
+  messages: number | null;
+  tokens: number | null;
+};
 
 /**
- * A parte de cada agente numa métrica dentro de `days`, na ordem do registro (`data.agents`). Só entra quem tem
- * valor maior que zero; nos tokens, quem não tem dado (`null`) fica de fora.
+ * Uma linha por agente do registro (`data.agents`), na ordem dele, com as mensagens e os tokens dentro de `days`.
+ * Agente com leitor da métrica e sem uso no período vale 0; agente sem leitor da métrica vale `null`, para a tela
+ * mostrar "indisponível" e nunca um zero que não existe.
  */
-export function agentShares(data: AgentActivity, days: string[], metric: Metric): AgentShare[] {
+export function agentRows(data: AgentActivity, days: string[]): AgentRow[] {
   const inWindow = new Set(days);
-  return data.agents
-    .map((item) => ({
-      agent: item.id,
-      value: data.days
-        .filter((row) => row.agent === item.id && inWindow.has(row.date))
-        .reduce((sum, row) => sum + (row[metric] ?? 0), 0),
-    }))
-    .filter((share) => share.value > 0);
+  return data.agents.map((item) => {
+    const own = data.days.filter((row) => row.agent === item.id && inWindow.has(row.date));
+    return {
+      id: item.id,
+      label: item.label,
+      messages: item.messagesAvailable ? (sumOf(own, 'messages') ?? 0) : null,
+      tokens: item.tokensAvailable ? (sumOf(own, 'tokens') ?? 0) : null,
+    };
+  });
+}
+
+/**
+ * Como os dias ocupam as colunas do mapa (semanas de domingo a sábado): `blanks` são os espaços antes do primeiro
+ * dia, na primeira coluna, e `weeks` o número de colunas. O último dia (hoje) pode deixar a última coluna incompleta.
+ */
+export function weekLayout(days: string[]): { blanks: number; weeks: number } {
+  const first = days[0];
+  if (first === undefined) return { blanks: 0, weeks: 0 };
+  const blanks = parseKey(first).getDay();
+  return { blanks, weeks: Math.ceil((blanks + days.length) / 7) };
+}
+
+const MONTH_NAME = new Intl.DateTimeFormat('pt-BR', { month: 'short' });
+
+/** "out", sem o ponto que a abreviatura do Intl traz ("out."). */
+function monthLabel(date: Date): string {
+  return MONTH_NAME.format(date).replace('.', '');
+}
+
+/**
+ * A régua de meses do mapa: um item por coluna de semana, com o nome do mês na coluna em que o dia 1º cai e
+ * `null` nas outras. A primeira coluna leva o mês do primeiro dia, a menos que o próximo mês comece logo na
+ * segunda coluna: o texto de um não caberia antes do outro.
+ */
+export function monthMarks(days: string[]): (string | null)[] {
+  const { blanks, weeks } = weekLayout(days);
+  const marks: (string | null)[] = Array.from({ length: weeks }, () => null);
+  days.forEach((key, index) => {
+    const date = parseKey(key);
+    if (date.getDate() === 1) marks[Math.floor((index + blanks) / 7)] = monthLabel(date);
+  });
+  const first = days[0];
+  if (first !== undefined) {
+    const firstMark = marks.findIndex((mark) => mark !== null);
+    if (firstMark === -1 || firstMark >= 2) marks[0] = monthLabel(parseKey(first));
+  }
+  return marks;
+}
+
+/** O tamanho das células do mapa: maior para poucas semanas, menor para muitas, para o mapa caber na coluna dele. */
+export type GridSize = 'roomy' | 'normal' | 'tight';
+
+/**
+ * Até 6 semanas (7 e 30 dias, que ocupam 2 e 5 ou 6) as células são maiores; de 7 a 26, normais; acima disso,
+ * apertadas. O corte de 6 é o do mapa que cabe ao lado da tabela já em 31rem de bloco (ver home.css).
+ */
+export function gridSize(weeks: number): GridSize {
+  if (weeks <= 6) return 'roomy';
+  return weeks <= 26 ? 'normal' : 'tight';
 }

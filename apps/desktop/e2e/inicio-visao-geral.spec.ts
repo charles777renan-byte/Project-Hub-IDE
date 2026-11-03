@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   createProjectRepository,
   createTerminalSessionRepository,
   openDatabase,
 } from '@project-hub/database';
 import type { Page } from '@playwright/test';
+import { claudeFolderOf, jsonl, localAt, two, writeText } from './atividade-agentes';
 import { expect, test } from './fixtures';
 import { addGitProject } from './missions';
 
@@ -25,12 +25,6 @@ import { addGitProject } from './missions';
 //   Antigravity (ontem, 12h): 1 mensagem, sem tokens (o histórico dele não os traz)
 // Total: 5 mensagens e 4.300 tokens, "sem Antigravity CLI". Há 3 mensagens 2 dias atrás (Codex lidera) e 2 ontem.
 
-/** Um instante local de `daysAgo` dias atrás, às `hour` horas e `minute` minutos. */
-function localAt(daysAgo: number, hour: number, minute = 0): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, hour, minute);
-}
-
 /** O nome do dia como o app o escreve ("24 de out."), pela mesma biblioteca de datas da janela. */
 function dayLabel(page: Page, date: Date): Promise<string> {
   return page.evaluate(
@@ -38,25 +32,6 @@ function dayLabel(page: Page, date: Date): Promise<string> {
       new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'short' }).format(new Date(ms)),
     date.getTime(),
   );
-}
-
-function jsonl(...records: unknown[]): string {
-  return records.map((record) => JSON.stringify(record)).join('\n') + '\n';
-}
-
-function writeText(file: string, text: string): void {
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, text, 'utf8');
-}
-
-/** Pasta do transcript do Claude Code para um projeto: o caminho com tudo fora de [A-Za-z0-9] trocado por `-`. */
-function claudeFolderOf(projectPath: string): string {
-  return projectPath.replace(/[^A-Za-z0-9]/g, '-');
-}
-
-/** Dois dígitos, como as pastas `AAAA/MM/DD` das sessões do Codex. */
-function two(value: number): string {
-  return String(value).padStart(2, '0');
 }
 
 test('Visão geral: soma mensagens e tokens do que o app abriu, por agente e por dia', async ({
@@ -178,6 +153,14 @@ test('Visão geral: soma mensagens e tokens do que o app abriu, por agente e por
 
   // 4. Reabre o app: o Início mostra o bloco no topo, com os totais esperados.
   const { page, close } = await launchApp();
+  // A CSP do app não aceita estilo escrito: o mapa, a tabela e as barras (SVG) não podem gerar violação.
+  await page.evaluate(() => {
+    const violations: string[] = [];
+    Object.assign(window, { cspViolations: violations });
+    document.addEventListener('securitypolicyviolation', (event) => {
+      violations.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
+  });
   const block = page.getByRole('region', { name: 'Visão geral' });
   await expect(block).toBeVisible();
   const needsYou = page.getByRole('region', { name: 'Precisa de você' });
@@ -226,6 +209,11 @@ test('Visão geral: soma mensagens e tokens do que o app abriu, por agente e por
   await block.getByRole('button', { name: 'Antigravity CLI' }).click();
   await expect(block.getByText('Tokens indisponíveis para o Antigravity CLI.')).toBeVisible();
   await expect(block.getByRole('group', { name: /tokens/ })).toHaveCount(0);
+
+  const violations = await page.evaluate(
+    () => (window as unknown as { cspViolations: string[] }).cspViolations,
+  );
+  expect(violations).toEqual([]);
 
   await close();
 });

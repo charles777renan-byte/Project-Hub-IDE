@@ -484,7 +484,8 @@ export const HOME_TEXT = {
     title: 'Visão geral',
     error: 'Não foi possível carregar o uso dos agentes.',
     tabsLabel: 'Visões do uso dos agentes',
-    tabs: { overview: 'Visão geral', messages: 'Mensagens', tokens: 'Tokens' },
+    // A primeira aba é "Resumo" (e não "Visão geral") para não repetir o título do bloco.
+    tabs: { overview: 'Resumo', messages: 'Mensagens', tokens: 'Tokens' },
     periodGroup: 'Período',
     periods: { all: 'Tudo', 7: '7 dias', 30: '30 dias', 90: '90 dias' },
     agentGroup: 'Agente',
@@ -497,8 +498,12 @@ export const HOME_TEXT = {
     unavailable: (metric: 'messages' | 'tokens', agentLabel: string) =>
       `${metric === 'messages' ? 'Mensagens indisponíveis' : 'Tokens indisponíveis'} para o ${agentLabel}.`,
     statsLabel: 'Resumo do período',
-    /** Nome da legenda de um total: "Mensagens no período por agente". */
-    sharesLabel: (total: string) => `${total} por agente`,
+    /** Títulos das três colunas: o mapa, a tabela de agentes e os totais. */
+    columns: { day: 'Por dia', agents: 'Por agente', totals: 'No período' },
+    /** A tabela de agentes: o nome acessível, os cabeçalhos de coluna e a linha de total (Mensagens e Tokens). */
+    agentsLabel: 'Uso por agente',
+    agentsHead: { agent: 'Agente', bar: 'Proporção', share: 'Parte' },
+    agentsTotal: 'Total no período',
     stat: {
       messages: 'Mensagens no período',
       tokens: 'Tokens no período',
