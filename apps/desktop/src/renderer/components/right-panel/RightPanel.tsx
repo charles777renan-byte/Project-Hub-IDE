@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { openFile, type FileMode } from '../../open-files';
 import { projectViewFromParams } from '../../project-views';
 import { projectViewPath, workspacePath } from '../../routes';
+import { useGithubPanel } from '../../use-github-panel';
 import { EmptyState } from '../EmptyState';
 import { Hint } from '../Hint';
 import {
@@ -49,6 +50,9 @@ export function RightPanel({
   const [tab, setTab] = useState<RightTab>(readRightTab);
   const location = useLocation();
   const navigate = useNavigate();
+  // O PR é dado do painel, não da aba: o ponto de estado da barra precisa dele com a aba fechada. É chamado uma
+  // vez, aqui; a aba Checks e o ponto vão ler o retorno. A releitura de 30 s só vale com a aba visível.
+  useGithubPanel(projectId, tab === 'checks');
 
   function open(project: string, path: string, mode?: FileMode) {
     if (mode === undefined) openFile(project, path);
