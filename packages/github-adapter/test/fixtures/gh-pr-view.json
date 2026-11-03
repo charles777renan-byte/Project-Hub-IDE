@@ -1,0 +1,88 @@
+{
+  "additions": 1657,
+  "baseRefName": "main",
+  "comments": [],
+  "deletions": 261,
+  "headRefName": "feat/inicio-visao-geral-redesenho",
+  "isDraft": false,
+  "mergeStateStatus": "UNKNOWN",
+  "mergeable": "UNKNOWN",
+  "number": 47,
+  "reviewDecision": "",
+  "state": "MERGED",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:50:47Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831318",
+      "name": "Windows (lint, tipos, build)",
+      "startedAt": "2026-11-03T20:48:30Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:52:38Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831593",
+      "name": "Windows (testes unitários, parte 1 de 3)",
+      "startedAt": "2026-11-03T20:48:29Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:52:48Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831846",
+      "name": "Windows (testes unitários, parte 2 de 3)",
+      "startedAt": "2026-11-03T20:48:29Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:53:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831607",
+      "name": "Windows (testes unitários, parte 3 de 3)",
+      "startedAt": "2026-11-03T20:48:29Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:52:17Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831632",
+      "name": "Windows (testes de integração, parte 1 de 3)",
+      "startedAt": "2026-11-03T20:48:29Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:51:15Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831499",
+      "name": "Windows (testes de integração, parte 2 de 3)",
+      "startedAt": "2026-11-03T20:48:29Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-11-03T20:52:20Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/charles777renan-byte/Project-Hub-IDE/actions/runs/41715947027/job/126195831508",
+      "name": "Windows (testes de integração, parte 3 de 3)",
+      "startedAt": "2026-11-03T20:48:29Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "title": "feat(desktop): redesenha a Visão geral do Início em colunas",
+  "updatedAt": "2026-11-03T20:53:49Z",
+  "url": "https://github.com/charles777renan-byte/Project-Hub-IDE/pull/47"
+}
