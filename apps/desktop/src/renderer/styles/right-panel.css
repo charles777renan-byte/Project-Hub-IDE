@@ -1457,3 +1457,208 @@
   color: var(--muted);
   font-size: var(--text-xs);
 }
+
+/* Aba Checks: o PR da branch e a lista de checks. Só tokens; o acabamento fino vem depois. */
+.checks-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.checks-tab__header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2) var(--space-2) var(--space-3);
+}
+
+.checks-tab__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* O número do PR é um botão que abre a página dele; fica com cara de link, e o foco aparece por dentro. */
+.checks-tab__number {
+  flex: none;
+  padding: 0 var(--space-1);
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.checks-tab__number:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.checks-tab__branches {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* O título vem do GitHub: texto puro, com quebra em qualquer ponto para um título longo não alargar o painel. */
+.checks-tab__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.checks-tab__updated {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.checks-tab__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.checks-tab__status {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* A leitura antiga continua na tela: o aviso tem barra à esquerda para não depender só de cor. */
+.checks-tab__stale {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--warn);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.checks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checks-list__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.checks-list__items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checks-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  text-align: left;
+}
+
+.checks-list__row:hover {
+  background: var(--surface-2);
+}
+
+.checks-list__row:focus-visible {
+  outline-offset: -2px;
+}
+
+.checks-list__chevron {
+  flex: none;
+  color: var(--muted);
+}
+
+.checks-list__icon {
+  flex: none;
+}
+
+.checks-list__icon--success {
+  color: var(--cyan);
+}
+
+.checks-list__icon--failure {
+  color: var(--danger);
+}
+
+.checks-list__icon--pending {
+  color: var(--warn);
+}
+
+.checks-list__icon--neutral {
+  color: var(--muted);
+}
+
+.checks-list__name {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checks-list__state {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.checks-list__details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2) var(--space-5);
+}
+
+.checks-list__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.checks-list__facts dt {
+  color: var(--muted);
+}
+
+.checks-list__facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
