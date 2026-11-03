@@ -18,6 +18,13 @@ describe('casca do app', () => {
     expect(shell.get('height')).toBe('100vh');
   });
 
+  // Sem isto, um conteúdo que passa da janela põe barras no documento: a barra come a altura de 100vh e a barra de
+  // status fica embaixo da barra de rolagem.
+  it('a janela não rola: a casca corta o que passa dela e o body não tem barra de rolagem', () => {
+    expect(ruleDeclarations(workspaceCss, '.app-shell').get('overflow')).toBe('clip');
+    expect(ruleDeclarations(readCss('app.css'), 'body').get('overflow')).toBe('hidden');
+  });
+
   it('o fundo da janela leva o brilho violeta sobre a cor de fundo', () => {
     expect(ruleDeclarations(workspaceCss, '.app-shell').get('background')).toBe(
       'var(--glow-app), var(--bg)',
