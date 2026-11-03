@@ -324,6 +324,86 @@ describe('WorkspacePage', () => {
       expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
     });
 
+    describe('atalhos Ctrl+Alt+número', () => {
+      const atalho = (
+        digit: number,
+        extra: { shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {},
+      ) =>
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Abrir terminal' }), {
+          code: `Digit${digit}`,
+          key: ['¹', '²', '³'][digit - 1] ?? String(digit),
+          ctrlKey: true,
+          altKey: true,
+          ...extra,
+        });
+
+      it('Ctrl+Alt+1 abre o primeiro programa do menu sem abrir o menu', async () => {
+        api.workspaces.addPane.mockResolvedValue({ ok: true, data: dto(leaf('n', 'claude')) });
+        renderAt();
+        await screen.findByRole('button', { name: 'Abrir terminal' });
+        atalho(1);
+        await waitFor(() => expect(api.workspaces.addPane).toHaveBeenCalledWith('w1', 'claude'));
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+      });
+
+      it('Ctrl+Alt+3 abre o terceiro programa', async () => {
+        api.workspaces.addPane.mockResolvedValue({ ok: true, data: dto(leaf('n', 'shell')) });
+        renderAt();
+        await screen.findByRole('button', { name: 'Abrir terminal' });
+        atalho(3);
+        await waitFor(() => expect(api.workspaces.addPane).toHaveBeenCalledWith('w1', 'shell'));
+      });
+
+      it('o atalho de um programa não instalado não abre nada', async () => {
+        renderAt();
+        await screen.findByRole('button', { name: 'Abrir terminal' });
+        atalho(2);
+        expect(api.workspaces.addPane).not.toHaveBeenCalled();
+      });
+
+      it('um número sem programa no menu não abre nada', async () => {
+        renderAt();
+        await screen.findByRole('button', { name: 'Abrir terminal' });
+        atalho(7);
+        expect(api.workspaces.addPane).not.toHaveBeenCalled();
+      });
+
+      it('sem Alt, com Shift ou sem Ctrl, o número passa direto', async () => {
+        renderAt();
+        await screen.findByRole('button', { name: 'Abrir terminal' });
+        atalho(1, { altKey: false });
+        atalho(1, { shiftKey: true });
+        atalho(1, { ctrlKey: false });
+        expect(api.workspaces.addPane).not.toHaveBeenCalled();
+      });
+
+      it('o atalho vale como o clique: com a pasta indisponível não abre nada', async () => {
+        api.projects.list.mockResolvedValue({
+          ok: true,
+          data: [{ id: 'p1', name: 'app', path: 'x', repositoryKind: 'git', available: false }],
+        });
+        renderAt();
+        await screen.findByRole('alert');
+        atalho(1);
+        expect(api.workspaces.addPane).not.toHaveBeenCalled();
+      });
+
+      it('o atalho engole a tecla, para o ¹ do AltGr não chegar ao terminal', async () => {
+        renderAt();
+        const botao = await screen.findByRole('button', { name: 'Abrir terminal' });
+        const evento = new KeyboardEvent('keydown', {
+          code: 'Digit1',
+          key: '¹',
+          ctrlKey: true,
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        botao.dispatchEvent(evento);
+        expect(evento.defaultPrevented).toBe(true);
+      });
+    });
+
     it('falha ao abrir vira aviso com a mensagem do IPC', async () => {
       api.workspaces.addPane.mockResolvedValue({
         ok: false,

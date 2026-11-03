@@ -2,10 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ProviderInfo } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  LIMIT_HINT,
-  WorkspaceToolbar,
-} from '../../src/renderer/workspace/WorkspaceToolbar';
+import { LIMIT_HINT, WorkspaceToolbar } from '../../src/renderer/workspace/WorkspaceToolbar';
 
 const providers: ProviderInfo[] = [
   { id: 'claude', label: 'Claude Code', available: true },
@@ -63,20 +60,201 @@ describe('WorkspaceToolbar', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 
-  it('as setas percorrem só os programas disponíveis, com volta; Home e End vão às pontas', async () => {
+  it('o menu abre com o foco no campo de busca', async () => {
     setup();
     await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveFocus();
+  });
+
+  it('as setas percorrem só os programas disponíveis, com volta pela busca; Home e End vão às pontas', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveFocus();
     await userEvent.keyboard('{ArrowUp}');
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
     expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveFocus();
     await userEvent.keyboard('{Home}');
     expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveFocus();
     await userEvent.keyboard('{End}');
     expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveFocus();
+  });
+
+  it('Home e End no campo de busca mexem no cursor, não no menu', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('pow{Home}{End}');
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveFocus();
+  });
+
+  it('digitar com um item focado leva a tecla ao campo de busca', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('{ArrowDown}p');
+    const search = screen.getByRole('searchbox', { name: 'Buscar programa' });
+    expect(search).toHaveFocus();
+    expect(search).toHaveValue('p');
+  });
+
+  it('a busca filtra os programas pelo nome, sem diferenciar maiúsculas nem acentos', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('POWER');
+    expect(itemNames()).toEqual(['PowerShell']);
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Buscar programa' }));
+    await userEvent.keyboard('cõdex');
+    expect(itemNames()).toEqual(['Codex']);
+  });
+
+  it('sem resultado, o menu diz que nenhum programa foi encontrado', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('zzz');
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(screen.getByRole('status')).toHaveTextContent('Nenhum programa encontrado');
+  });
+
+  it('Enter na busca abre o primeiro programa disponível que sobrou', async () => {
+    const { onOpen } = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('{Enter}');
+    expect(onOpen).toHaveBeenLastCalledWith('claude');
+    expect(screen.queryByRole('menu')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('pow{Enter}');
+    expect(onOpen).toHaveBeenLastCalledWith('shell');
+  });
+
+  it('Enter na busca não abre programa que não está instalado', async () => {
+    const { onOpen } = setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('codex{Enter}');
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('só o item marcado mostra a descrição, e a marca acompanha o mouse', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    // Sem o mouse em nenhum item, o primeiro disponível é o marcado.
+    expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveTextContent(
+      'Agente de código da Anthropic',
+    );
+    expect(screen.getByRole('menuitem', { name: /PowerShell/ })).not.toHaveTextContent(
+      'Terminal do sistema',
+    );
+    await userEvent.hover(screen.getByRole('menuitem', { name: /PowerShell/ }));
+    expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveTextContent(
+      'Terminal do sistema',
+    );
+    expect(screen.getByRole('menuitem', { name: /Claude Code/ })).not.toHaveTextContent(
+      'Agente de código da Anthropic',
+    );
+    expect(document.querySelectorAll('[data-marked="true"]')).toHaveLength(1);
+  });
+
+  it('o mouse sobre outro item leva o foco do teclado para ele: um item só fica selecionado', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveFocus();
+    await userEvent.hover(screen.getByRole('menuitem', { name: /PowerShell/ }));
+    expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveFocus();
+    expect(document.querySelectorAll('[data-marked="true"]')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: /Claude Code/ })).toHaveAttribute(
+      'data-marked',
+      'false',
+    );
+  });
+
+  it('o mouse não rouba o foco da busca: dá para digitar com o ponteiro sobre a lista', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.hover(screen.getByRole('menuitem', { name: /PowerShell/ }));
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveFocus();
+    await userEvent.keyboard('cl');
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveValue('cl');
+  });
+
+  it('a marca acompanha o foco do teclado', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveAttribute(
+      'data-marked',
+      'true',
+    );
+  });
+
+  it('as linhas não trazem etiqueta de empresa ou tipo', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    expect(document.querySelector('.workspace__menu-badge')).toBeNull();
+  });
+
+  it('cada linha traz o atalho (Ctrl+Alt+posição no menu) e o anuncia por aria-keyshortcuts', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    const claude = screen.getByRole('menuitem', { name: /Claude Code/ });
+    const shell = screen.getByRole('menuitem', { name: /PowerShell/ });
+    expect(claude).toHaveAttribute('aria-keyshortcuts', 'Control+Alt+1');
+    expect(shell).toHaveAttribute('aria-keyshortcuts', 'Control+Alt+3');
+    const kbd = shell.querySelector('kbd.workspace__menu-kbd');
+    expect(kbd).toHaveTextContent('Ctrl+Alt+3');
+    // O leitor de tela já tem o aria-keyshortcuts: a tecla visual não entra no nome do item.
+    expect(kbd).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('o atalho fica na linha do nome, para a descrição ter a largura toda da linha', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    const shell = screen.getByRole('menuitem', { name: /PowerShell/ });
+    const head = shell.querySelector('.workspace__menu-head');
+    expect(head).toContainElement(shell.querySelector('.workspace__menu-name') as HTMLElement);
+    expect(head).toContainElement(shell.querySelector('kbd.workspace__menu-kbd') as HTMLElement);
+    expect(head).not.toContainElement(shell.querySelector('small'));
+  });
+
+  it('o atalho segue a posição no menu, mesmo com a lista filtrada', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('pow');
+    expect(screen.getByRole('menuitem', { name: /PowerShell/ })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+Alt+3',
+    );
+  });
+
+  it('um separador divide o PowerShell dos agentes', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    const separators = screen.getAllByRole('separator');
+    expect(separators).toHaveLength(1);
+    expect(separators[0]?.nextElementSibling).toContainElement(
+      screen.getByRole('menuitem', { name: /PowerShell/ }),
+    );
+  });
+
+  it('com uma lista de um item só, não sobra separador solto', async () => {
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.keyboard('pow');
+    expect(screen.queryAllByRole('separator')).toHaveLength(0);
+  });
+
+  it('reabrir o menu limpa a busca', async () => {
+    setup();
+    const trigger = screen.getByRole('button', { name: 'Abrir terminal' });
+    await userEvent.click(trigger);
+    await userEvent.keyboard('pow{Escape}');
+    await userEvent.click(trigger);
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveValue('');
+    expect(itemNames()).toEqual(['Claude Code', 'Codex', 'PowerShell']);
   });
 
   it('Esc fecha o menu e devolve o foco ao botão', async () => {
@@ -155,9 +333,7 @@ describe('WorkspaceToolbar', () => {
     const { onOpen, rerender } = setup();
     await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
-    rerender(
-      <WorkspaceToolbar providers={providers} busy={false} limitReached onOpen={onOpen} />,
-    );
+    rerender(<WorkspaceToolbar providers={providers} busy={false} limitReached onOpen={onOpen} />);
     expect(screen.queryByRole('menu')).toBeNull();
     expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeDisabled();
     expect(onOpen).not.toHaveBeenCalled();

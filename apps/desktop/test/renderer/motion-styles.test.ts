@@ -45,6 +45,8 @@ describe('keyframes de entrada', () => {
 
   it('declara as entradas e saídas dos painéis e da paleta de comandos', () => {
     expect(blocks.map((block) => block.name).sort()).toEqual([
+      'menu-item-in',
+      'menu-pop',
       'paleta-fundo-in',
       'paleta-fundo-out',
       'paleta-in',
@@ -212,6 +214,49 @@ describe('movimento reduzido', () => {
   it('desliga a transição da aba e da pílula', () => {
     expect(ruleDeclarations(reduced, '.tab').get('transition')).toBe('none');
     expect(ruleDeclarations(reduced, '.tab::before').get('transition')).toBe('none');
+  });
+});
+
+describe('menu de programas (Abrir terminal)', () => {
+  const POPUP = '.workspace__popup';
+  const LINHA = '.workspace__menu-row';
+
+  it('o painel abre descendo e crescendo (menu-pop), sem deixar nada depois do fim', () => {
+    const animation = flat(ruleDeclarations(motionCss, POPUP).get('animation'));
+    expect(animation).toContain('menu-pop');
+    expect(animation).toContain('backwards');
+  });
+
+  it('as linhas entram uma a uma de cima para baixo: o atraso cresce com o --i de cada linha', () => {
+    const animation = flat(ruleDeclarations(motionCss, LINHA).get('animation'));
+    expect(animation).toContain('menu-item-in');
+    expect(animation).toContain('backwards');
+    // O atraso sai dos tokens (nada de tempo literal) e do índice da linha.
+    // Sem espera de partida: a primeira linha começa junto com o painel, e cada seguinte espera um passo a mais.
+    expect(animation).toContain('calc(var(--i, 0) * var(--dur-fast) / 3)');
+  });
+
+  it('a busca e o rodapé entram na mesma sequência das linhas, de cima para baixo', () => {
+    for (const selector of ['.workspace__menu-search', '.workspace__menu-foot']) {
+      const animation = flat(ruleDeclarations(motionCss, selector).get('animation'));
+      expect(animation, selector).toContain('menu-item-in');
+      expect(animation, selector).toContain('calc(var(--i, 0) * var(--dur-fast) / 3)');
+      expect(animation, selector).toContain('backwards');
+    }
+  });
+
+  it('o atalho da linha acende com a transição curta de opacidade', () => {
+    expect(flat(ruleDeclarations(motionCss, '.workspace__menu-kbd').get('transition'))).toBe(
+      'opacity var(--dur-fast) var(--ease)',
+    );
+  });
+
+  it('"reduzir movimento" desliga a entrada e a transição do atalho', () => {
+    expect(ruleDeclarations(reduced, POPUP).get('animation')).toBe('none');
+    expect(ruleDeclarations(reduced, LINHA).get('animation')).toBe('none');
+    expect(ruleDeclarations(reduced, '.workspace__menu-search').get('animation')).toBe('none');
+    expect(ruleDeclarations(reduced, '.workspace__menu-foot').get('animation')).toBe('none');
+    expect(ruleDeclarations(reduced, '.workspace__menu-kbd').get('transition')).toBe('none');
   });
 });
 

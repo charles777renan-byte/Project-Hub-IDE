@@ -337,6 +337,44 @@ describe('botões, campos e anel de foco', () => {
     expect(item.get('outline')).not.toBe('none');
   });
 
+  it('o painel do menu de programas nasce no canto do botão e cresce a partir dele', () => {
+    const popup = rule('.workspace__popup');
+    expect(popup.get('position')).toBe('absolute');
+    expect(popup.get('transform-origin')).toBe('top left');
+    expect(popup.get('background')).toBe('var(--surface-2)');
+  });
+
+  it('o item marcado do menu acende o fundo e uma marca lateral, sem depender só da cor', () => {
+    const marked = rule(".workspace__menu-item[data-marked='true']");
+    expect(marked.get('background')).toBe('var(--line)');
+    expect(marked.get('box-shadow')).toContain('inset');
+  });
+
+  it('o atalho da linha fica escondido e só aparece com o mouse em cima ou com o foco do teclado', () => {
+    expect(rule('.workspace__menu-kbd').get('opacity')).toBe('0');
+    expect(rule('.workspace__menu-item:hover .workspace__menu-kbd').get('opacity')).toBe('1');
+    expect(rule('.workspace__menu-item:focus-visible .workspace__menu-kbd').get('opacity')).toBe(
+      '1',
+    );
+  });
+
+  it('a busca do menu acende o anel de foco do app na linha inteira, por dentro, e não só no campo', () => {
+    const row = rule('.workspace__menu-search:focus-within');
+    expect(row.get('outline')).not.toBe('none');
+    expect(row.get('outline-offset')).toBe('-2px');
+    // Cantos arredondados na linha, para o anel não sair como um retângulo seco.
+    expect(rule('.workspace__menu-search').get('border-radius')).toBe('var(--radius)');
+    // O anel é o da linha: o do campo seria um retângulo solto dentro dela.
+    expect(rule('.workspace__menu-search input').get('outline')).toBe('none');
+  });
+
+  it('as linhas do menu são planas: sem a borda nem o negrito que o botão do app traz', () => {
+    const item = rule('.workspace__menu-item');
+    expect(item.get('border-color')).toBe('transparent');
+    expect(item.get('font-weight')).toBe('500');
+    expect(rule('.workspace__menu-text small').get('font-weight')).toBe('400');
+  });
+
   it('campos têm fundo --surface (sólido; o cartão .form é translúcido), borda --field-line e raio de controle', () => {
     const field = rule('.field input');
     expect(field.get('background')).toBe('var(--surface)');
