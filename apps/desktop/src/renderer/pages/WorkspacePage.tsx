@@ -32,6 +32,7 @@ import {
   useEnteringLeaves,
   type PaneMotion,
 } from '../workspace/pane-motion';
+import { providerShortcutIndex } from '../workspace/provider-shortcuts';
 import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useWorkspace } from '../workspace/use-workspace';
 import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
@@ -406,8 +407,22 @@ function WorkspaceBody({
   };
   const motion: PaneMotion = { entering, leaving, onEntered: settle, onLeft: finishLeaving };
 
-  // Ctrl+Alt com as setas troca de aba. Vale na captura, antes do xterm: dentro do terminal o xterm tomaria a tecla.
+  // Ctrl+Alt+número abre o programa dessa posição no menu "Abrir terminal", e vale como o clique no menu: com o limite
+  // de painéis, a pasta sumida ou uma abertura em andamento, a tecla é engolida e nada abre. Ctrl+Alt com as setas
+  // troca de aba. As duas valem na captura, antes do xterm: dentro do terminal o xterm tomaria a tecla.
   const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
+    const shortcut = providerShortcutIndex(event.nativeEvent);
+    const target = shortcut === null ? undefined : providers[shortcut];
+    if (target !== undefined) {
+      event.preventDefault();
+      event.stopPropagation();
+      const blocked =
+        opening ||
+        unavailableReason !== undefined ||
+        leavesOf(layout).length >= LAYOUT_LIMITS.maxLeaves;
+      if (!blocked && target.available !== false) void openPane(target.id);
+      return;
+    }
     if (soloLeaf === undefined || !event.ctrlKey || !event.altKey) return;
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
