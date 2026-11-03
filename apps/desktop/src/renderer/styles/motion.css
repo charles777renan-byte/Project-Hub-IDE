@@ -193,7 +193,44 @@
   animation: panel-in var(--dur) var(--ease) backwards;
 }
 
+/*
+ * Menu "Abrir terminal". O painel abre descendo 4px e crescendo de 97% a partir do canto do botão, e as linhas
+ * entram uma a uma, de cima para baixo: cada uma desce 8px enquanto aparece, esperando um terço da duração curta
+ * a mais que a de cima (o `--i` de cada linha vem do WorkspaceToolbar). Com `backwards`, a linha fica invisível
+ * até a vez dela e solta tudo no fim. O atalho de cada linha acende por opacidade.
+ */
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+@keyframes menu-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.workspace__popup {
+  animation: menu-pop var(--dur) var(--ease) backwards;
+}
+
+.workspace__menu-row,
+.workspace__menu-sep {
+  animation: menu-item-in var(--dur) var(--ease)
+    calc(var(--dur-fast) / 2 + var(--i, 0) * var(--dur-fast) / 3) backwards;
+}
+
+.workspace__menu-kbd {
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .workspace__popup,
+  .workspace__menu-row,
+  .workspace__menu-sep,
   .project-tab__panel:not([hidden]),
   .mission-dock__panel:not([hidden]),
   .project-tab__panel--terminais:not([hidden]),
@@ -215,6 +252,7 @@
 
   .tab,
   .tab::before,
+  .workspace__menu-kbd,
   .pane__usage-value,
   .paleta__item,
   .paleta__enter {
