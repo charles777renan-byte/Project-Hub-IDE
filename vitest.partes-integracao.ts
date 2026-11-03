@@ -50,6 +50,8 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'apps/desktop/test/terminal-host/claude-agent.integration.test.ts': 3, // 0 s
   'apps/desktop/test/terminal-host/hook-receiver.integration.test.ts': 3, // 0 s
   'packages/git-adapter/test/missing-git.integration.test.ts': 3, // 0 s
+  'packages/github-adapter/test/gh-write.integration.test.ts': 3, // 2 s
+  'packages/github-adapter/test/gh-read.integration.test.ts': 3, // 1 s
   'packages/agent-adapters/test/demo-script.integration.test.ts': 3, // 0 s
 };
 
