@@ -8,6 +8,7 @@ import {
   openFile,
   resetOpenFilesForTests,
   setActive,
+  setFileMode,
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
@@ -85,6 +86,27 @@ describe('open-files', () => {
     expect(result.current.active).toBe('a.ts');
     expect(result.current.files.map((file) => file.path)).toEqual(['a.ts', 'b.ts']);
     expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('openFile com modo abre a aba nesse modo; numa aba aberta, troca o modo e mantém a edição', async () => {
+    const { result } = mount();
+    act(() => openFile('p1', 'a.ts', { mode: 'alteracoes' }));
+    await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
+    expect(result.current.files[0]?.mode).toBe('alteracoes');
+
+    act(() => updateText('p1', 'a.ts', 'editado'));
+    act(() => setFileMode('p1', 'a.ts', 'arquivo'));
+    expect(result.current.files[0]).toMatchObject({
+      mode: 'arquivo',
+      text: 'editado',
+      dirty: true,
+    });
+
+    act(() => openFile('p1', 'a.ts'));
+    expect(result.current.files[0]?.mode).toBe('arquivo');
+    act(() => openFile('p1', 'a.ts', { mode: 'alteracoes' }));
+    expect(result.current.files[0]).toMatchObject({ mode: 'alteracoes', text: 'editado' });
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   it('updateText marca dirty quando o texto difere do salvo e desmarca quando volta a igualar', async () => {

@@ -254,6 +254,49 @@ describe('RightPanel: abrir arquivo', () => {
   });
 });
 
+describe('RightPanel: abrir pela aba Código-fonte', () => {
+  beforeEach(() => {
+    vi.mocked(openFile).mockClear();
+    window.projectHub = {
+      git: {
+        status: vi.fn(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: {
+              branch: 'main',
+              upstream: null,
+              ahead: null,
+              behind: null,
+              baseRef: 'origin/main',
+              linesAdded: null,
+              linesRemoved: null,
+              files: [{ path: 'src/a.ts', staged: null, unstaged: 'M' as const }],
+            },
+          }),
+        ),
+        branchChanges: vi.fn(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: { baseRef: 'origin/main', mergeBase: 'abc', files: [] },
+          }),
+        ),
+        log: vi.fn(() => Promise.resolve({ ok: true as const, data: [] })),
+      },
+    } as unknown as ProjectHubApi;
+  });
+
+  it('o clique no nome de um arquivo alterado abre a aba em Alterações e leva a rota para os Terminais', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(STORAGE_KEY, 'codigo');
+    renderPanel({ projectId: 'p1' }, '/workspaces/p1?visao=missoes');
+
+    await user.click(await screen.findByRole('button', { name: 'Ver alterações de src/a.ts' }));
+
+    expect(openFile).toHaveBeenCalledWith('p1', 'src/a.ts', { mode: 'alteracoes' });
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+  });
+});
+
 describe('estado do painel direito', () => {
   it('as abas são Arquivos, Sessões, Código-fonte e Checks, nessa ordem', () => {
     expect(RIGHT_TABS).toEqual(['arquivos', 'sessoes', 'codigo', 'checks']);

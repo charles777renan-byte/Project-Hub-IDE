@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { AppResult, GitStatusDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
+import type { FileMode } from '../../open-files';
 import { settleWrite, useGitPanel } from '../../use-git-panel';
 import { EmptyState } from '../EmptyState';
 import { CircleAlert, Folder, FolderGit2 } from '../Icon';
@@ -92,7 +93,16 @@ function describe(
  * processo principal (a saída de um hook tem várias linhas e vira texto puro). Os outros estados dizem o que
  * houve com texto, nunca só com cor. Sem projeto, o mesmo aviso da aba Arquivos; o hook não lê nada.
  */
-export function GitTab({ projectId, active }: { projectId: string | null; active: boolean }) {
+export function GitTab({
+  projectId,
+  active,
+  onOpenFile,
+}: {
+  projectId: string | null;
+  active: boolean;
+  /** Abre um arquivo numa aba, no modo pedido; vai para a lista de alterações. */
+  onOpenFile?: (path: string, mode: FileMode) => void;
+}) {
   const git = useGitPanel(projectId, active);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -257,6 +267,7 @@ export function GitTab({ projectId, active }: { projectId: string | null; active
           busy={git.busy}
           track={track}
           onError={setWriteError}
+          {...(onOpenFile === undefined ? {} : { onOpenFile })}
         />
         <GitCommitsList projectId={id} reloadKey={git.data} />
       </div>

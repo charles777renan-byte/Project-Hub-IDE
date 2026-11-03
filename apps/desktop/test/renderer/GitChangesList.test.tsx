@@ -192,3 +192,60 @@ describe('GitChangesList: Commitado na branch', () => {
     expect(screen.getByText('f11.ts')).toBeInTheDocument();
   });
 });
+
+describe('GitChangesList: abrir o arquivo', () => {
+  function renderOpen(files: GitPanelFileDto[], onOpenFile: Mock) {
+    return render(
+      <GitChangesList
+        projectId="p1"
+        files={files}
+        busy={false}
+        track={track as never}
+        onError={onError}
+        onOpenFile={onOpenFile}
+      />,
+    );
+  }
+
+  it('o clique no nome de um arquivo em "Alterações" abre a aba no modo Alterações', async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    renderOpen([MODIFIED], onOpenFile);
+
+    await user.click(screen.getByRole('button', { name: 'Ver alterações de src/a.ts' }));
+
+    expect(onOpenFile).toHaveBeenCalledWith('src/a.ts', 'alteracoes');
+    expect(stage).not.toHaveBeenCalled();
+  });
+
+  it('vale também para "Em stage" e para um arquivo removido', async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    const removed: GitPanelFileDto = { path: 'velho.ts', staged: null, unstaged: 'D' };
+    renderOpen([STAGED, removed], onOpenFile);
+
+    await user.click(screen.getByRole('button', { name: 'Ver alterações de src/b.ts' }));
+    await user.click(screen.getByRole('button', { name: 'Ver alterações de velho.ts' }));
+
+    expect(onOpenFile).toHaveBeenNthCalledWith(1, 'src/b.ts', 'alteracoes');
+    expect(onOpenFile).toHaveBeenNthCalledWith(2, 'velho.ts', 'alteracoes');
+  });
+
+  it('o clique em "Commitado na branch" também abre no modo Alterações', async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    branchChanges.mockResolvedValue({
+      ok: true,
+      data: {
+        baseRef: 'origin/main',
+        mergeBase: 'abc',
+        files: [{ path: 'x.ts', status: 'M', added: 3, removed: 1 }],
+      },
+    });
+    renderOpen([], onOpenFile);
+
+    await user.click(await screen.findByRole('button', { name: 'Ver alterações de x.ts' }));
+
+    expect(onOpenFile).toHaveBeenCalledWith('x.ts', 'alteracoes');
+  });
+});
