@@ -97,6 +97,8 @@ describe('AgentOverview: carregamento', () => {
     expect(await screen.findByText('Nenhuma mensagem pelo app neste período.')).toBeInTheDocument();
     expect(container.querySelector('.overview-grid')).toBeNull();
     expect(container.querySelector('.overview-legend')).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(container.querySelector('.overview-col')).toBeNull();
     expect(screen.getByRole('button', { name: '7 dias' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -111,29 +113,18 @@ describe('AgentOverview: Visão geral', () => {
     const stats = screen.getByRole('list', { name: 'Resumo do período' });
     expect(within(stats).getByText('Mensagens no período').nextSibling).toHaveTextContent('24');
     expect(within(stats).getByText('Tokens no período').nextSibling).toHaveTextContent(
-      '11.100 · sem Antigravity',
+      '11.100 sem Antigravity',
     );
     expect(within(stats).getByText('Sequência atual').nextSibling).toHaveTextContent('3 dias');
     expect(within(stats).getByText('Dia mais ativo').nextSibling).toHaveTextContent('sábado');
     expect(within(stats).queryByText('Agente mais usado')).toBeNull();
-    // Tokens curtos na tela, com o número inteiro para o leitor de tela; cada total traz a parte de cada agente.
+    // Tokens curtos na tela, com o número inteiro para o leitor de tela.
     const tokens = within(stats).getByText('Tokens no período').nextSibling as HTMLElement;
     expect(tokens.querySelector('[aria-hidden="true"]')).toHaveTextContent('11,1k');
     expect(tokens.querySelector('.visually-hidden')).toHaveTextContent('11.100');
-    const messageShares = within(stats).getByRole('list', {
-      name: 'Mensagens no período por agente',
-    });
-    expect(
-      within(messageShares)
-        .getAllByRole('listitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Claude 1212', 'Codex 77', 'Antigravity 55']);
-    const tokenShares = within(stats).getByRole('list', { name: 'Tokens no período por agente' });
-    expect(
-      within(tokenShares)
-        .getAllByRole('listitem')
-        .map((item) => item.textContent),
-    ).toEqual(['Claude 7,1k7.100', 'Codex 4k4.000']);
+    // A parte de cada agente mora na tabela "Por agente", não mais nos totais: sem barra nem legenda aqui.
+    expect(within(stats).queryByRole('list', { name: /por agente/ })).toBeNull();
+    expect(stats.querySelector('.overview-share')).toBeNull();
   });
 
   it('com só tokens de missão no período, mostra o aviso e os tokens ao lado', async () => {
@@ -156,12 +147,11 @@ describe('AgentOverview: Visão geral', () => {
     await renderReady();
 
     expect(screen.getByRole('region', { name: 'Visão geral' })).toBeInTheDocument();
+    // O rótulo do bloco é "Visão geral"; a primeira aba é "Resumo", para os dois não dizerem a mesma coisa.
     const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
-    expect(tabs).toEqual(['Visão geral', 'Mensagens', 'Tokens']);
-    expect(screen.getByRole('tab', { name: 'Visão geral' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(tabs).toEqual(['Resumo', 'Mensagens', 'Tokens']);
+    expect(screen.getByRole('tab', { name: 'Resumo' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('tab', { name: 'Visão geral' })).toBeNull();
     expect(screen.getByRole('button', { name: '90 dias' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '7 dias' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
@@ -291,6 +281,7 @@ describe('AgentOverview: abas e chips', () => {
     expect(screen.getByText('Tokens indisponíveis para o Antigravity.')).toBeInTheDocument();
     expect(container.querySelector('.overview-grid')).toBeNull();
     expect(container.querySelector('.overview-legend')).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('agente do registro sem leitor entra como chip e avisa nas duas métricas', async () => {
@@ -309,6 +300,7 @@ describe('AgentOverview: abas e chips', () => {
     await user.click(screen.getByRole('tab', { name: 'Tokens' }));
     expect(screen.getByText('Tokens indisponíveis para o Novo.')).toBeInTheDocument();
   });
+
 });
 
 describe('AgentOverview: mapa', () => {
@@ -343,12 +335,14 @@ describe('AgentOverview: mapa', () => {
     expect(container.querySelector('.overview-agent--novo')).toBeNull();
   });
 
-  it('a primeira semana começa no dia da semana certo, com os rótulos seg, qua e sex', async () => {
+  it('a primeira coluna leva o canto da régua e os rótulos seg, qua e sex; a seguinte, o mês e os dias', async () => {
     const { container } = await renderReady();
 
     const grid = container.querySelector('.overview-grid') as HTMLElement;
     const items = [...grid.children];
-    expect(items.slice(0, 7).map((item) => item.textContent)).toEqual([
+    // Oito itens por coluna: a régua (vazia no canto) e os sete dias da semana.
+    expect(items.slice(0, 8).map((item) => item.textContent)).toEqual([
+      '',
       '',
       'seg',
       '',
@@ -357,10 +351,57 @@ describe('AgentOverview: mapa', () => {
       'sex',
       '',
     ]);
-    // 27/07 é segunda-feira: um espaço antes do primeiro dia.
-    const cells = items.slice(7);
-    expect(cells[0]).toHaveClass('overview-cell--blank');
-    expect(cells[1]).toHaveAttribute('aria-label', '27 de jul.: nenhuma mensagem');
+    expect(items[0]).toHaveClass('overview-grid__ruler');
+    // A segunda coluna começa pela régua ("ago": o 1º de agosto cai nela), e 27/07 é segunda-feira: um espaço antes.
+    expect(items[8]).toHaveClass('overview-grid__ruler');
+    expect(items[8]).toHaveTextContent('ago');
+    expect(items[9]).toHaveClass('overview-cell--blank');
+    expect(items[10]).toHaveAttribute('aria-label', '27 de jul.: nenhuma mensagem');
+  });
+
+  it('a régua de meses tem um item por semana e o nome do mês onde ele começa', async () => {
+    const { container } = await renderReady();
+
+    const rulers = [...container.querySelectorAll('.overview-grid__ruler')];
+    // O canto e as 13 semanas de 90 dias.
+    expect(rulers).toHaveLength(14);
+    expect(rulers.map((item) => item.textContent).filter(Boolean)).toEqual(['ago', 'set', 'out']);
+  });
+
+  it('só a régua da última semana se alinha ao fim, para o nome do mês não passar da borda direita do mapa', async () => {
+    const { container } = await renderReady();
+
+    const rulers = [...container.querySelectorAll('.overview-grid__ruler')];
+    const ending = rulers.filter((item) => item.classList.contains('overview-grid__ruler--end'));
+    expect(ending).toHaveLength(1);
+    expect(ending[0]).toBe(rulers[rulers.length - 1]);
+  });
+
+  it('o tamanho das células acompanha o número de semanas: 7 e 30 dias maiores, 90 dias normal', async () => {
+    const user = userEvent.setup();
+    const { container } = await renderReady();
+    const grid = () => container.querySelector('.overview-grid') as HTMLElement;
+
+    expect(grid().className).toBe('overview-grid');
+
+    await user.click(screen.getByRole('button', { name: '7 dias' }));
+    expect(grid()).toHaveClass('overview-grid--roomy');
+
+    await user.click(screen.getByRole('button', { name: '30 dias' }));
+    expect(grid()).toHaveClass('overview-grid--roomy');
+
+    await user.click(screen.getByRole('button', { name: '90 dias' }));
+    expect(grid().className).toBe('overview-grid');
+  });
+
+  it('muitas semanas ("Tudo" com meses de registro) apertam as células', async () => {
+    const user = userEvent.setup();
+    const { container } = await renderReady({ ...DATA, since: '2026-01-01' });
+
+    await user.click(screen.getByRole('button', { name: 'Tudo' }));
+
+    // 01/01 a 24/10 de 2026: 297 dias, 43 semanas.
+    expect(container.querySelector('.overview-grid')).toHaveClass('overview-grid--tight');
   });
 
   it('o grid é um grupo nomeado pelo resumo, e cada dia é uma imagem com nome igual ao title', async () => {
@@ -383,16 +424,23 @@ describe('AgentOverview: mapa', () => {
   it('rótulos de linha, células vazias, pontos dos chips e legenda ficam fora da árvore de acessibilidade', async () => {
     const { container } = await renderReady();
 
+    const count = (selector: string) => container.querySelectorAll(selector).length;
+    // 7 rótulos de linha, a régua (o canto e 13 semanas), 1 espaço antes do primeiro dia, a legenda, os pontos
+    // (3 nos chips e 3 na tabela) e uma barra por agente na tabela.
+    expect(count('.overview-grid__label')).toBe(7);
+    expect(count('.overview-grid__ruler')).toBe(14);
+    expect(count('.overview-cell--blank')).toBe(1);
+    expect(count('.overview-legend')).toBe(1);
+    expect(count('.overview-dot')).toBe(6);
+    expect(count('.overview-share')).toBe(3);
     const hidden = [
       ...container.querySelectorAll('.overview-grid__label'),
+      ...container.querySelectorAll('.overview-grid__ruler'),
       ...container.querySelectorAll('.overview-cell--blank'),
       ...container.querySelectorAll('.overview-legend'),
       ...container.querySelectorAll('.overview-dot'),
       ...container.querySelectorAll('.overview-share'),
     ];
-    // 7 rótulos, 1 espaço antes do primeiro dia, a legenda, os 3 pontos dos chips, os 5 pontos das legendas dos
-    // totais (3 agentes nas mensagens e 2 nos tokens) e as 2 barras por agente.
-    expect(hidden).toHaveLength(19);
     for (const element of hidden) {
       expect(element).toHaveAttribute('aria-hidden', 'true');
     }
@@ -426,5 +474,181 @@ describe('AgentOverview: mapa', () => {
     expect(panel).not.toBeNull();
     expect(panel).toHaveAttribute('role', 'tabpanel');
     expect(panel).toHaveAttribute('aria-labelledby', selected.id);
+  });
+});
+
+describe('AgentOverview: colunas', () => {
+  const panelOf = (container: HTMLElement) =>
+    container.querySelector('[role="tabpanel"]') as HTMLElement;
+  const titlesOf = (panel: HTMLElement) =>
+    within(panel)
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent);
+
+  it('o Resumo tem três colunas: por dia, por agente e no período', async () => {
+    const { container } = await renderReady();
+
+    const panel = panelOf(container);
+    expect(panel).toHaveClass('overview__body', 'overview__body--map', 'overview__body--stats');
+    expect(titlesOf(panel)).toEqual(['Por dia', 'Por agente', 'No período']);
+    expect(panel.querySelectorAll('.overview-col')).toHaveLength(3);
+    // O mapa, a tabela e os totais ficam cada um na sua coluna.
+    expect(panel.querySelector('.overview-col .overview-grid')).not.toBeNull();
+    expect(panel.querySelector('.overview-col .overview-agents')).not.toBeNull();
+    expect(panel.querySelector('.overview-col .overview-stats')).not.toBeNull();
+  });
+
+  it('Mensagens e Tokens têm só o mapa e a tabela, sem a coluna dos totais', async () => {
+    const user = userEvent.setup();
+    const { container } = await renderReady();
+
+    for (const name of ['Mensagens', 'Tokens']) {
+      await user.click(screen.getByRole('tab', { name }));
+      const panel = panelOf(container);
+      expect(panel, name).toHaveClass('overview__body--map');
+      expect(panel, name).not.toHaveClass('overview__body--stats');
+      expect(titlesOf(panel), name).toEqual(['Por dia', 'Por agente']);
+    }
+  });
+
+  it('só tokens de missão no período: o aviso e os totais, sem as colunas do mapa', async () => {
+    installAgents({
+      ok: true,
+      data: {
+        agents: AGENTS,
+        since: '2026-07-01',
+        days: [{ date: '2026-10-24', agent: 'claude', messages: 0, tokens: 4200 }],
+      },
+    });
+    const { container } = render(<AgentOverview today={TODAY} />);
+
+    await screen.findByText('Nenhuma mensagem pelo app neste período.');
+
+    const panel = panelOf(container);
+    expect(panel).toHaveClass('overview__body--stats');
+    expect(panel).not.toHaveClass('overview__body--map');
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+});
+
+describe('AgentOverview: tabela por agente', () => {
+  const table = () => screen.getByRole('table', { name: 'Uso por agente' });
+  const headers = () =>
+    within(table())
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+  /** As linhas de agente, sem a do cabeçalho e sem a do total. */
+  const agentRows = () =>
+    within(table())
+      .getAllByRole('row')
+      .filter((row) => within(row).queryByRole('rowheader') !== null)
+      .filter((row) => !/^Total no período/.test(row.textContent ?? ''));
+  const cells = (row: HTMLElement) =>
+    within(row)
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent);
+
+  it('no Resumo, uma linha por agente do registro, com as mensagens e os tokens do período', async () => {
+    await renderReady();
+
+    expect(headers()).toEqual(['Agente', 'Proporção', 'Mensagens', 'Tokens']);
+    const rows = agentRows();
+    expect(rows.map((row) => within(row).getByRole('rowheader').textContent)).toEqual([
+      'Claude',
+      'Codex',
+      'Antigravity',
+    ]);
+    // Tokens curtos na tela e inteiros para o leitor de tela. O Antigravity não tem leitor de tokens: traço.
+    expect(cells(rows[0] as HTMLElement)).toEqual(['12', '7,1k7.100']);
+    expect(cells(rows[1] as HTMLElement)).toEqual(['7', '4k4.000']);
+    expect(cells(rows[2] as HTMLElement)).toEqual(['5', '—indisponível']);
+  });
+
+  it('agente do registro sem leitor aparece com traço nas duas métricas, nunca com zero', async () => {
+    await renderReady({
+      ...DATA,
+      agents: [
+        ...AGENTS,
+        { id: 'novo', label: 'Novo', messagesAvailable: false, tokensAvailable: false },
+      ],
+    });
+
+    const row = agentRows().find(
+      (item) => within(item).getByRole('rowheader').textContent === 'Novo',
+    );
+    expect(row).toBeDefined();
+    expect(cells(row as HTMLElement)).toEqual(['—indisponível', '—indisponível']);
+  });
+
+  it('agente com leitor e sem uso no período mostra 0', async () => {
+    await renderReady({
+      ...DATA,
+      days: DATA.days.filter((row) => row.agent !== 'codex'),
+    });
+
+    const codex = agentRows()[1] as HTMLElement;
+    // Os tokens levam o valor curto na tela e o completo para o leitor de tela (a mesma regra dos outros valores).
+    expect(cells(codex)).toEqual(['0', '00']);
+  });
+
+  it('em Mensagens, o valor, a parte em % e o total na base', async () => {
+    const user = userEvent.setup();
+    await renderReady();
+
+    await user.click(screen.getByRole('tab', { name: 'Mensagens' }));
+
+    expect(headers()).toEqual(['Agente', 'Proporção', 'Mensagens', 'Parte']);
+    const rows = agentRows();
+    expect(cells(rows[0] as HTMLElement)).toEqual(['12', '50%']);
+    expect(cells(rows[1] as HTMLElement)).toEqual(['7', '29%']);
+    expect(cells(rows[2] as HTMLElement)).toEqual(['5', '21%']);
+    const total = within(table()).getByRole('row', { name: /Total no período/ });
+    expect(cells(total)).toEqual(['24', '100%']);
+  });
+
+  it('em Tokens, a parte é só de quem tem dado e o total avisa "sem Antigravity"', async () => {
+    const user = userEvent.setup();
+    await renderReady();
+
+    await user.click(screen.getByRole('tab', { name: 'Tokens' }));
+
+    expect(headers()).toEqual(['Agente', 'Proporção', 'Tokens', 'Parte']);
+    const rows = agentRows();
+    expect(cells(rows[0] as HTMLElement)).toEqual(['7,1k7.100', '64%']);
+    expect(cells(rows[1] as HTMLElement)).toEqual(['4k4.000', '36%']);
+    expect(cells(rows[2] as HTMLElement)).toEqual(['—indisponível', '']);
+    const total = within(table()).getByRole('row', { name: /Total no período/ });
+    expect(cells(total)).toEqual(['11,1k11.100', '100%']);
+    expect(total).toHaveTextContent('sem Antigravity');
+  });
+
+  it('cada linha tem uma barra com a parte do agente, com a largura no atributo e a cor na classe', async () => {
+    const { container } = await renderReady();
+
+    const bars = [...container.querySelectorAll('.overview-agents .overview-share')];
+    expect(bars).toHaveLength(3);
+    const parts = [...container.querySelectorAll('.overview-agents .overview-share__part')];
+    // Mensagens: 12, 7 e 5 de 24.
+    expect(parts.map((part) => Number(part.getAttribute('width')))).toEqual([
+      expect.closeTo(50, 5),
+      expect.closeTo((7 / 24) * 100, 5),
+      expect.closeTo((5 / 24) * 100, 5),
+    ]);
+    expect(parts[0]).toHaveClass('overview-agent--claude');
+    expect(parts[2]).toHaveClass('overview-agent--antigravity');
+    expect(container.querySelector('.overview-agents [style]')).toBeNull();
+  });
+
+  it('com um agente filtrado a tabela segue completa e só a linha dele fica marcada', async () => {
+    const user = userEvent.setup();
+    await renderReady();
+    expect(agentRows().filter((row) => row.hasAttribute('aria-current'))).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: 'Codex' }));
+
+    const rows = agentRows();
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.getAttribute('aria-current'))).toEqual([null, 'true', null]);
+    expect(rows[1]).toHaveClass('overview-agents__row--selected');
   });
 });

@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 // Só tipos do contrato: o barrel dos contratos puxaria o zod para o bundle do renderer.
 import type { AgentActivity } from '@project-hub/contracts';
 import {
-  agentShares,
+  agentRows,
   compactNumber,
   dayCells,
+  gridSize,
+  monthMarks,
   overviewStats,
+  weekLayout,
   windowOf,
   type AgentFilter,
-  type AgentShare,
+  type AgentRow,
   type DayCell,
   type Metric,
   type Period,
@@ -51,15 +54,18 @@ type State = { status: 'loading' } | { status: 'error' } | { status: 'ready'; da
 
 /**
  * Bloco "Visão geral" do Início, de largura toda: o uso dos agentes feito pelo app, em mensagens e em tokens por
- * dia. O cabeçalho traz o título, as abas (Visão geral, Mensagens e Tokens) e o período (Tudo, 7, 30 e 90 dias,
- * com 90 de padrão); abaixo, um chip por agente do registro, o mapa e uma nota. A aba Visão geral e a de
- * Mensagens desenham o mapa de mensagens, a de Tokens o de tokens; só a Visão geral leva os totais ao lado.
- * Com "Todos", cada dia leva a cor do agente dominante; com um agente filtrado, a rampa dele. Falta de dado
- * (os tokens do Antigravity, um agente sem leitor) aparece como aviso no lugar do mapa, nunca como zero.
- * A cor e o nível entram por classe, nunca por estilo escrito (CSP). Os dados vêm de `activity.agents`.
+ * dia. O cabeçalho traz o título, as abas (Resumo, Mensagens e Tokens) e o período (Tudo, 7, 30 e 90 dias, com 90
+ * de padrão); abaixo, um chip por agente do registro, o corpo em colunas e uma nota. O corpo tem "Por dia" (o
+ * mapa compacto, com a régua de meses), "Por agente" (a tabela com a parte de cada um) e, só no Resumo, "No
+ * período" (os totais). A aba Resumo e a de Mensagens desenham o mapa de mensagens, a de Tokens o de tokens.
+ * Com "Todos", cada dia leva a cor do agente dominante; com um agente filtrado, a rampa dele, e a linha dele
+ * fica marcada na tabela, que segue mostrando todos. Falta de dado (os tokens do Antigravity, um agente sem
+ * leitor) aparece como "indisponível" e como aviso no lugar do mapa, nunca como zero.
+ * A cor, o nível e o tamanho das células entram por classe, nunca por estilo escrito (CSP); a largura das barras
+ * vai em atributo de SVG. Os dados vêm de `activity.agents`.
  * Acessibilidade: o mapa é um grupo nomeado pelo resumo (que muda com a aba), cada dia é uma imagem com o mesmo
- * texto do `title` e não recebe foco; rótulos de linha, células vazias, pontos dos chips e legenda ficam
- * `aria-hidden`. `today` existe para o teste.
+ * texto do `title` e não recebe foco; rótulos de linha, régua, células vazias, pontos, barras e legenda ficam
+ * `aria-hidden` (a tabela diz os mesmos números em texto). `today` existe para o teste.
  */
 export function AgentOverview({ today }: { today?: Date }) {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -160,7 +166,7 @@ type ReadyProps = {
   onAgent: (agent: AgentFilter) => void;
 };
 
-/** Chips de agente, mapa (ou o aviso no lugar dele), totais e a nota, para a aba, o período e o agente dados. */
+/** Chips de agente, o corpo em colunas (ou o aviso no lugar dele) e a nota, para a aba, o período e o agente dados. */
 function Ready({ data, today, tab, period, agent, onAgent }: ReadyProps) {
   const metric: Metric = tab === 'tokens' ? 'tokens' : 'messages';
   const labelOf = (id: string): string => data.agents.find((item) => item.id === id)?.label ?? id;
@@ -174,12 +180,19 @@ function Ready({ data, today, tab, period, agent, onAgent }: ReadyProps) {
   const stats = overviewStats(data, days, agent);
   const total = (metric === 'messages' ? stats.messages : stats.tokens) ?? 0;
 
-  let body;
+  // Na Visão geral, os totais aparecem com mensagens ou tokens no período: um período só com tokens de
+  // missão (que não somam mensagens) mostra os tokens ao lado do aviso de "nenhuma mensagem".
+  const showStats =
+    tab === 'overview' && !unavailable && (total !== 0 || (stats.tokens ?? 0) !== 0);
+
+  let body: ReactNode;
+  let hasMap = false;
   if (selected !== undefined && unavailable) {
     body = <p className="overview-note">{TEXT.unavailable(metric, selected.label)}</p>;
   } else if (total === 0) {
     body = <p className="overview-note">{TEXT.empty[metric]}</p>;
   } else {
+    hasMap = true;
     const summary = TEXT.summary(
       metric,
       NUMBER_FORMAT.format(total),
@@ -188,20 +201,38 @@ function Ready({ data, today, tab, period, agent, onAgent }: ReadyProps) {
       period,
     );
     body = (
-      <HeatMap
-        cells={cells}
-        metric={metric}
-        summary={summary}
-        legendClass={selected === undefined ? 'outro' : agentClass(selected.id)}
-        labelOf={labelOf}
-      />
+      <>
+        <div className="overview-col">
+          <h3 className="overview-col__title">{TEXT.columns.day}</h3>
+          <HeatMap
+            cells={cells}
+            metric={metric}
+            summary={summary}
+            legendClass={selected === undefined ? 'outro' : agentClass(selected.id)}
+            labelOf={labelOf}
+          />
+        </div>
+        <div className="overview-col">
+          <h3 className="overview-col__title">{TEXT.columns.agents}</h3>
+          <AgentTable
+            data={data}
+            days={days}
+            tab={tab}
+            metric={metric}
+            selectedId={selected?.id ?? null}
+          />
+        </div>
+      </>
     );
   }
 
-  // Na Visão geral, os totais aparecem com mensagens ou tokens no período: um período só com tokens de
-  // missão (que não somam mensagens) mostra os tokens ao lado do aviso de "nenhuma mensagem".
-  const showStats =
-    tab === 'overview' && !unavailable && (total !== 0 || (stats.tokens ?? 0) !== 0);
+  const bodyClass = [
+    'overview__body',
+    hasMap ? 'overview__body--map' : null,
+    showStats ? 'overview__body--stats' : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <>
@@ -230,15 +261,13 @@ function Ready({ data, today, tab, period, agent, onAgent }: ReadyProps) {
           </button>
         ))}
       </div>
-      <div
-        role="tabpanel"
-        id={PANEL_ID}
-        aria-labelledby={`tab-${tab}`}
-        className={showStats ? 'overview__body overview__body--stats' : 'overview__body'}
-      >
+      <div role="tabpanel" id={PANEL_ID} aria-labelledby={`tab-${tab}`} className={bodyClass}>
         {body}
         {showStats ? (
-          <Stats data={data} days={days} agent={agent} stats={stats} labelOf={labelOf} />
+          <div className="overview-col">
+            <h3 className="overview-col__title">{TEXT.columns.totals}</h3>
+            <Stats data={data} days={days} stats={stats} />
+          </div>
         ) : null}
       </div>
       <p className="overview-note">{TEXT.note}</p>
@@ -254,8 +283,10 @@ function amountOf(metric: Metric, value: number | null): string {
 }
 
 /**
- * O mapa: um quadrado por dia em colunas de semana (domingo a sábado). A primeira coluna começa no dia da semana
- * do primeiro dia do período, então os dias antes dele entram como espaços em branco. O último dia é hoje.
+ * O mapa: um quadrado por dia em colunas de semana (domingo a sábado). Cada coluna começa por uma célula da régua
+ * de meses (com o nome do mês onde ele começa) e traz os sete dias; a primeira coluna leva os rótulos de dia. A
+ * primeira semana começa no dia da semana do primeiro dia do período, então os dias antes dele entram como
+ * espaços em branco. O último dia é hoje. Com muitas semanas o mapa rola na horizontal, já parado em hoje.
  */
 function HeatMap({
   cells,
@@ -270,46 +301,87 @@ function HeatMap({
   legendClass: string;
   labelOf: (id: string) => string;
 }) {
-  const first = cells[0];
-  const blanks = first === undefined ? 0 : parseKey(first.date).getDay();
-  return (
-    <div className="overview-map">
-      {/* Grupo nomeado pelo resumo; cada dia abaixo é uma imagem com nome, e o resto fica escondido. */}
-      <div className="overview-grid" role="group" aria-label={summary}>
-        {/* Primeira coluna: os rótulos de dia (uma linha por dia da semana). */}
-        {TEXT.rowLabels.map((label, row) => (
-          <span key={`label-${row}`} className="overview-grid__label" aria-hidden="true">
-            {label}
-          </span>
-        ))}
-        {Array.from({ length: blanks }, (_, index) => (
+  const days = cells.map((cell) => cell.date);
+  const { blanks, weeks } = weekLayout(days);
+  const marks = monthMarks(days);
+  const size = gridSize(weeks);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Um mapa mais largo que a coluna abre no fim, onde está hoje; sem sobra, a rolagem é zero e nada muda.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (element !== null) element.scrollLeft = element.scrollWidth;
+  }, [size, weeks]);
+
+  const items: ReactNode[] = [
+    // Primeira coluna: o canto da régua e os rótulos de dia (uma linha por dia da semana).
+    <span key="corner" className="overview-grid__ruler" aria-hidden="true" />,
+    ...TEXT.rowLabels.map((label, row) => (
+      <span key={`label-${row}`} className="overview-grid__label" aria-hidden="true">
+        {label}
+      </span>
+    )),
+  ];
+  for (let week = 0; week < weeks; week += 1) {
+    items.push(
+      <span
+        key={`ruler-${week}`}
+        className={
+          week === weeks - 1
+            ? 'overview-grid__ruler overview-grid__ruler--end'
+            : 'overview-grid__ruler'
+        }
+        aria-hidden="true"
+      >
+        {marks[week]}
+      </span>,
+    );
+    for (let row = 0; row < 7; row += 1) {
+      const slot = week * 7 + row;
+      const index = slot - blanks;
+      if (index < 0) {
+        items.push(
           <span
-            key={`blank-${index}`}
+            key={`blank-${slot}`}
             className="overview-cell overview-cell--blank"
             aria-hidden="true"
-          />
-        ))}
-        {cells.map((cell, index) => {
-          const color =
-            cell.level > 0 && cell.color !== null
-              ? ` overview-agent--${agentClass(cell.color)}`
-              : '';
-          const current = index === cells.length - 1 ? ' overview-cell--today' : '';
-          const name = TEXT.dayName(
-            DAY_FORMAT.format(parseKey(cell.date)),
-            amountOf(metric, cell.value),
-            cell.level > 0 && cell.color !== null ? labelOf(cell.color) : null,
-          );
-          return (
-            <span
-              key={cell.date}
-              className={`overview-cell overview-level--${cell.level}${color}${current}`}
-              role="img"
-              aria-label={name}
-              title={name}
-            />
-          );
-        })}
+          />,
+        );
+        continue;
+      }
+      const cell = cells[index];
+      // Depois de hoje não há mais dia: só a última coluna fica incompleta.
+      if (cell === undefined) break;
+      const color =
+        cell.level > 0 && cell.color !== null ? ` overview-agent--${agentClass(cell.color)}` : '';
+      const current = index === cells.length - 1 ? ' overview-cell--today' : '';
+      const name = TEXT.dayName(
+        DAY_FORMAT.format(parseKey(cell.date)),
+        amountOf(metric, cell.value),
+        cell.level > 0 && cell.color !== null ? labelOf(cell.color) : null,
+      );
+      items.push(
+        <span
+          key={cell.date}
+          className={`overview-cell overview-level--${cell.level}${color}${current}`}
+          role="img"
+          aria-label={name}
+          title={name}
+        />,
+      );
+    }
+  }
+
+  return (
+    <div className="overview-map">
+      <div className="overview-map__scroll" ref={scroller}>
+        {/* Grupo nomeado pelo resumo; cada dia abaixo é uma imagem com nome, e o resto fica escondido. */}
+        <div
+          className={size === 'normal' ? 'overview-grid' : `overview-grid overview-grid--${size}`}
+          role="group"
+          aria-label={summary}
+        >
+          {items}
+        </div>
       </div>
       <div className="overview-legend" aria-hidden="true">
         <span>{TEXT.legendLess}</span>
@@ -350,13 +422,21 @@ function Amount({ metric, value }: { metric: Metric; value: number }) {
   );
 }
 
+/** O traço de "sem dado": o leitor de tela ouve "indisponível", nunca um zero. */
+function Missing() {
+  return (
+    <>
+      <span aria-hidden="true">{TEXT.noValue}</span>
+      <span className="visually-hidden">{TEXT.unavailableValue}</span>
+    </>
+  );
+}
+
 /**
- * A barra fina com a parte de cada agente, em SVG: a largura de cada pedaço vai em atributo do SVG, porque a CSP
- * não aceita estilo escrito, e a cor vem da classe do agente. É só desenho (a legenda abaixo diz os números).
+ * A barra fina com a parte de um agente, em SVG: a largura vai em atributo do SVG, porque a CSP não aceita estilo
+ * escrito, e a cor vem da classe do agente. É só desenho (a tabela diz os números).
  */
-function ShareBar({ shares }: { shares: AgentShare[] }) {
-  const total = shares.reduce((sum, share) => sum + share.value, 0);
-  let x = 0;
+function ShareBar({ agent, percent }: { agent: string; percent: number }) {
   return (
     <svg
       className="overview-share"
@@ -365,105 +445,196 @@ function ShareBar({ shares }: { shares: AgentShare[] }) {
       aria-hidden="true"
       focusable="false"
     >
-      {shares.map((share) => {
-        const width = total === 0 ? 0 : (share.value / total) * 100;
-        const rect = (
-          <rect
-            key={share.agent}
-            className={`overview-share__part overview-agent--${agentClass(share.agent)}`}
-            x={x}
-            y={0}
-            width={width}
-            height={6}
-          />
-        );
-        x += width;
-        return rect;
-      })}
+      {percent > 0 ? (
+        <rect
+          className={`overview-share__part overview-agent--${agentClass(agent)}`}
+          x={0}
+          y={0}
+          width={percent}
+          height={6}
+        />
+      ) : null}
     </svg>
   );
 }
 
-/** Total de uma métrica com a barra por agente e a legenda (agente e a parte dele). */
-function TotalWithShares({
+/** O valor de uma métrica numa linha: o número (curto nos tokens) ou o traço de "indisponível". */
+function MetricValue({ metric, value }: { metric: Metric; value: number | null }) {
+  if (value === null) return <Missing />;
+  return metric === 'messages' ? (
+    <>{NUMBER_FORMAT.format(value)}</>
+  ) : (
+    <Amount metric={metric} value={value} />
+  );
+}
+
+/**
+ * A tabela "Por agente": uma linha por agente do registro, sempre todos (o filtro de agente não a muda, só marca a
+ * linha). No Resumo traz mensagens e tokens, cada um com o traço quando o agente não tem leitor; em Mensagens e em
+ * Tokens traz a métrica da aba, a parte de cada agente em % e uma linha de total. A barra de cada linha é a parte do
+ * agente na métrica da aba (mensagens, no Resumo).
+ */
+function AgentTable({
+  data,
+  days,
+  tab,
+  metric,
+  selectedId,
+}: {
+  data: AgentActivity;
+  days: string[];
+  tab: TabId;
+  metric: Metric;
+  selectedId: string | null;
+}) {
+  const rows = agentRows(data, days);
+  const sumOf = (key: Metric): number => rows.reduce((sum, row) => sum + (row[key] ?? 0), 0);
+  const base = sumOf(metric);
+  const percentOf = (row: AgentRow): number => (base > 0 ? ((row[metric] ?? 0) / base) * 100 : 0);
+  const overview = tab === 'overview';
+  const missing = metric === 'tokens' ? agentsWithoutTokens(data, days) : [];
+  const metricLabel = metric === 'messages' ? TEXT.tabs.messages : TEXT.tabs.tokens;
+
+  return (
+    <table className="overview-agents" aria-label={TEXT.agentsLabel}>
+      <thead>
+        <tr>
+          <th scope="col">{TEXT.agentsHead.agent}</th>
+          <th scope="col" className="overview-agents__bar">
+            <span className="visually-hidden">{TEXT.agentsHead.bar}</span>
+          </th>
+          {overview ? (
+            <>
+              <th scope="col" className="overview-agents__number">
+                {TEXT.tabs.messages}
+              </th>
+              <th scope="col" className="overview-agents__number">
+                {TEXT.tabs.tokens}
+              </th>
+            </>
+          ) : (
+            <>
+              <th scope="col" className="overview-agents__number">
+                {metricLabel}
+              </th>
+              <th scope="col" className="overview-agents__number">
+                {TEXT.agentsHead.share}
+              </th>
+            </>
+          )}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => {
+          const chosen = row.id === selectedId;
+          return (
+            <tr
+              key={row.id}
+              className={
+                chosen
+                  ? 'overview-agents__row overview-agents__row--selected'
+                  : 'overview-agents__row'
+              }
+              aria-current={chosen ? 'true' : undefined}
+            >
+              <th scope="row" className="overview-agents__name">
+                <span
+                  className={`overview-dot overview-agent--${agentClass(row.id)}`}
+                  aria-hidden="true"
+                />
+                {row.label}
+              </th>
+              <td className="overview-agents__bar" aria-hidden="true">
+                <ShareBar agent={row.id} percent={percentOf(row)} />
+              </td>
+              {overview ? (
+                <>
+                  <td className="overview-agents__number">
+                    <MetricValue metric="messages" value={row.messages} />
+                  </td>
+                  <td className="overview-agents__number">
+                    <MetricValue metric="tokens" value={row.tokens} />
+                  </td>
+                </>
+              ) : (
+                <>
+                  <td className="overview-agents__number">
+                    <MetricValue metric={metric} value={row[metric]} />
+                  </td>
+                  <td className="overview-agents__number">
+                    {row[metric] === null ? '' : `${Math.round(percentOf(row))}%`}
+                  </td>
+                </>
+              )}
+            </tr>
+          );
+        })}
+      </tbody>
+      {overview ? null : (
+        <tfoot>
+          <tr className="overview-agents__total">
+            <th scope="row" colSpan={2}>
+              {TEXT.agentsTotal}
+              {missing.length > 0 ? (
+                <span className="overview-stat__hint">{` ${TEXT.without(missing)}`}</span>
+              ) : null}
+            </th>
+            <td className="overview-agents__number">
+              <MetricValue metric={metric} value={base} />
+            </td>
+            <td className="overview-agents__number">{base > 0 ? '100%' : ''}</td>
+          </tr>
+        </tfoot>
+      )}
+    </table>
+  );
+}
+
+/** Um total do período: o rótulo à esquerda e o valor à direita, com a observação ("sem Antigravity") embaixo. */
+function Total({
   metric,
   label,
   value,
   hint,
-  shares,
-  labelOf,
 }: {
   metric: Metric;
   label: string;
   value: number | null;
   hint: string | null;
-  shares: AgentShare[];
-  labelOf: (id: string) => string;
 }) {
   return (
     <li className="overview-total">
       <span className="overview-stat__label">{label}</span>
       <span className="overview-total__value">
         {value === null ? TEXT.unavailableValue : <Amount metric={metric} value={value} />}
-        {hint === null ? null : <span className="overview-stat__hint">{` · ${hint}`}</span>}
+        {hint === null ? null : <span className="overview-stat__hint">{` ${hint}`}</span>}
       </span>
-      {value !== null && shares.length > 0 ? (
-        <>
-          <ShareBar shares={shares} />
-          <ul className="overview-legend-list" aria-label={TEXT.sharesLabel(label)}>
-            {shares.map((share) => (
-              <li key={share.agent} className="overview-legend-list__item">
-                <span
-                  className={`overview-dot overview-agent--${agentClass(share.agent)}`}
-                  aria-hidden="true"
-                />
-                {labelOf(share.agent)} <Amount metric={metric} value={share.value} />
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
     </li>
   );
 }
 
 /**
- * Totais do período ao lado do mapa (aba Visão geral): mensagens e tokens, cada um com a barra da parte de cada
- * agente, e embaixo a sequência atual e o dia mais ativo. Com um agente filtrado, a barra tem só ele.
+ * Os totais do período (aba Resumo): mensagens e tokens, e embaixo a sequência atual e o dia mais ativo. Com um
+ * agente filtrado, valem os números dele. A parte de cada agente fica na tabela "Por agente".
  */
 function Stats({
   data,
   days,
-  agent,
   stats,
-  labelOf,
 }: {
   data: AgentActivity;
   days: string[];
-  agent: AgentFilter;
   stats: ReturnType<typeof overviewStats>;
-  labelOf: (id: string) => string;
 }) {
   const missing = stats.tokensPartial ? agentsWithoutTokens(data, days) : [];
-  const own = (shares: AgentShare[]) =>
-    agent === 'all' ? shares : shares.filter((share) => share.agent === agent);
   return (
     <ul className="overview-stats" aria-label={TEXT.statsLabel}>
-      <TotalWithShares
-        metric="messages"
-        label={TEXT.stat.messages}
-        value={stats.messages}
-        hint={null}
-        shares={own(agentShares(data, days, 'messages'))}
-        labelOf={labelOf}
-      />
-      <TotalWithShares
+      <Total metric="messages" label={TEXT.stat.messages} value={stats.messages} hint={null} />
+      <Total
         metric="tokens"
         label={TEXT.stat.tokens}
         value={stats.tokens}
         hint={stats.tokens !== null && missing.length > 0 ? TEXT.without(missing) : null}
-        shares={own(agentShares(data, days, 'tokens'))}
-        labelOf={labelOf}
       />
       <li className="overview-stat">
         <span className="overview-stat__label">{TEXT.stat.streak}</span>
