@@ -123,4 +123,10 @@ export const CHANNELS = {
   gitLog: 'git:log:v1',
   /** Arquivos que a branch mudou em relação à base. */
   gitBranchChanges: 'git:branch-changes:v1',
+  /** Painel de checks (fase 3): o PR da branch atual, com checks e comentários. Só entra o id do projeto; o processo principal descobre o PR. */
+  githubPr: 'github:pr:v1',
+  /** Comenta no PR. Entram o id do projeto, o número do PR e o texto; o número é conferido contra o PR da branch atual. */
+  githubComment: 'github:comment:v1',
+  /** Mescla o PR depois de reler o estado: só com PR aberto e mesclável. Sem `--admin`, `--auto` nem `--delete-branch`. */
+  githubMerge: 'github:merge:v1',
 } as const;
