@@ -38,6 +38,7 @@ export {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  RefreshCw,
   Search,
   ShieldQuestionMark,
   SquareTerminal,
