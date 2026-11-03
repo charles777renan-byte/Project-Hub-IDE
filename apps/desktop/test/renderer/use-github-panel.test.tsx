@@ -503,6 +503,26 @@ describe('useGithubPanel', () => {
       expect(result.current.state.writing).toBe(false);
     });
 
+    it('uma exceção síncrona do preload na escrita não deixa "writing" ligado', async () => {
+      const api = installApi(() => Promise.resolve(okPr([PASSED])));
+      api.merge.mockImplementationOnce(() => {
+        throw new Error('boom');
+      });
+      const { result } = renderHook(() => useGithubPanel('p1', false));
+      await settle();
+
+      let outcome: AppResult<void> | undefined;
+      await act(async () => {
+        outcome = await result.current.merge('merge');
+      });
+
+      expect(outcome).toMatchObject({
+        ok: false,
+        error: { message: 'Não foi possível concluir a operação no GitHub.' },
+      });
+      expect(result.current.state.writing).toBe(false);
+    });
+
     it('sem PR na tela, não chama o processo principal e devolve GH_PR_NOT_FOUND', async () => {
       const api = installApi(() => Promise.resolve({ ok: true, data: { kind: 'no-pr' } }));
       const { result } = renderHook(() => useGithubPanel('p1', false));
