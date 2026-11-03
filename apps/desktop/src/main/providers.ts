@@ -19,13 +19,28 @@ export type ProviderRegistryDeps = {
 };
 
 /** Executável de cada agente. O shell não passa pela busca no PATH. */
-const EXECUTABLES = { claude: 'claude', codex: 'codex', antigravity: 'agy' } as const;
+const EXECUTABLES = {
+  claude: 'claude',
+  codex: 'codex',
+  antigravity: 'agy',
+  opencode: 'opencode',
+  freebuff: 'freebuff',
+} as const;
 const AGENT_LABELS = {
   claude: 'Claude Code',
   codex: 'Codex',
   antigravity: 'Antigravity CLI',
+  opencode: 'OpenCode',
+  freebuff: 'Freebuff',
 } as const;
-const ORDER: readonly ProviderId[] = ['claude', 'codex', 'antigravity', 'shell'];
+const ORDER: readonly ProviderId[] = [
+  'claude',
+  'codex',
+  'antigravity',
+  'opencode',
+  'freebuff',
+  'shell',
+];
 
 /** No Windows, o `.exe` roda direto e os scripts `.cmd` e `.bat` só rodam pelo interpretador de comandos. */
 const WINDOWS_EXTENSIONS = ['.exe', '.cmd', '.bat'] as const;

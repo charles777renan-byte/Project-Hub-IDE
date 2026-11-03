@@ -12,6 +12,8 @@ const DESCRIPTION: Record<ProviderId, string> = {
   claude: 'Agente de código da Anthropic',
   codex: 'Agente de código da OpenAI',
   antigravity: 'Agente de linha de comando do Google',
+  opencode: 'Agente de código open source',
+  freebuff: 'Agente de código gratuito',
   shell: 'Terminal do sistema',
 };
 
