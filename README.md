@@ -41,7 +41,7 @@ O projeto está em desenvolvimento ativo, então a interface e os fluxos mudam c
 
 ### Agentes e terminais
 
-- Terminais para Claude Code, Codex, Antigravity CLI e o terminal do sistema, em painéis divididos lado a lado.
+- Terminais para Claude Code, Codex, Antigravity CLI, OpenCode, Freebuff e o terminal do sistema, em painéis divididos lado a lado.
 - Os terminais rodam num processo separado do app. Eles continuam vivos quando a janela fecha e são reaproveitados quando o app abre de novo.
 
 ### Início
