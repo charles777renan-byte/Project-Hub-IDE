@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AppResult, BranchChangeDto, GitPanelFileDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
+import type { FileMode } from '../../open-files';
 import { settleWrite, type GitPanel } from '../../use-git-panel';
 import { ConfirmInline } from '../ConfirmButton';
 import { Hint } from '../Hint';
@@ -17,6 +18,8 @@ type Props = {
   track: GitPanel['track'];
   /** Recebe a mensagem de uma escrita que falhou. */
   onError: (message: string) => void;
+  /** Abre o arquivo numa aba, no modo pedido (o clique no nome pede `alteracoes`). Sem ela, o nome não é clicável. */
+  onOpenFile?: (path: string, mode: FileMode) => void;
 };
 
 /** Só 'M' e 'D' têm alteração na pasta de trabalho que dá para desfazer; 'U' (novo ou em conflito) não. */
@@ -36,7 +39,7 @@ type Confirming = { kind: 'file'; path: string } | { kind: 'all' } | null;
  * As seções "Em stage", "Alterações" e "Commitado na branch". As ações por arquivo ficam no DOM o tempo todo e
  * aparecem no foco e no mouse (CSS). Toda escrita passa por `track`; desfazer pede confirmação na mesma linha.
  */
-export function GitChangesList({ projectId, files, busy, track, onError }: Props) {
+export function GitChangesList({ projectId, files, busy, track, onError, onOpenFile }: Props) {
   const [confirming, setConfirming] = useState<Confirming>(null);
   const staged = files.filter((file) => file.staged !== null);
   const changes = files.filter((file) => file.unstaged !== null);
@@ -75,7 +78,12 @@ export function GitChangesList({ projectId, files, busy, track, onError }: Props
           </div>
           <ul className="git-changes__list">
             {staged.map((file) => (
-              <FileRow key={file.path} path={file.path} letter={file.staged ?? ''}>
+              <FileRow
+                key={file.path}
+                path={file.path}
+                letter={file.staged ?? ''}
+                onOpen={onOpenFile}
+              >
                 <Hint label={TEXT.unstageHint}>
                   <button
                     type="button"
@@ -154,7 +162,12 @@ export function GitChangesList({ projectId, files, busy, track, onError }: Props
                   />
                 </li>
               ) : (
-                <FileRow key={file.path} path={file.path} letter={file.unstaged ?? ''}>
+                <FileRow
+                  key={file.path}
+                  path={file.path}
+                  letter={file.unstaged ?? ''}
+                  onOpen={onOpenFile}
+                >
                   {canDiscard(file) ? (
                     <Hint label={TEXT.discardHint}>
                       <button
@@ -186,7 +199,7 @@ export function GitChangesList({ projectId, files, busy, track, onError }: Props
         </section>
       ) : null}
 
-      <BranchChanges projectId={projectId} reloadKey={files} />
+      <BranchChanges projectId={projectId} reloadKey={files} onOpen={onOpenFile} />
     </div>
   );
 }
@@ -195,13 +208,45 @@ function stateLabel(letter: string): string | undefined {
   return (TEXT.stateLabel as Record<string, string>)[letter];
 }
 
+/** O nome do arquivo: um botão que abre a aba no modo Alterações, ou só texto quando ninguém recebe o clique. */
+function FileName({
+  path,
+  name,
+  onOpen,
+}: {
+  path: string;
+  name: string;
+  onOpen: ((path: string, mode: FileMode) => void) | undefined;
+}) {
+  if (onOpen === undefined) {
+    return (
+      <span className="git-changes__name" title={path}>
+        {name}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="git-changes__name git-changes__open"
+      title={path}
+      aria-label={TEXT.openChanges(path)}
+      onClick={() => onOpen(path, 'alteracoes')}
+    >
+      {name}
+    </button>
+  );
+}
+
 function FileRow({
   path,
   letter,
+  onOpen,
   children,
 }: {
   path: string;
   letter: string;
+  onOpen: ((path: string, mode: FileMode) => void) | undefined;
   children?: ReactNode;
 }) {
   const { name, dir } = splitPath(path);
@@ -210,17 +255,23 @@ function FileRow({
       <span className="git-changes__letter" title={stateLabel(letter)}>
         {letter}
       </span>
-      <span className="git-changes__name" title={path}>
-        {name}
-      </span>
+      <FileName path={path} name={name} onOpen={onOpen} />
       {dir === '' ? null : <span className="git-changes__dir">{dir}</span>}
       {children === undefined ? null : <span className="git-changes__actions">{children}</span>}
     </li>
   );
 }
 
-/** "Commitado na branch": o que a branch mudou desde a base. O clique no arquivo só ganha efeito com o diff. */
-function BranchChanges({ projectId, reloadKey }: { projectId: string; reloadKey: unknown }) {
+/** "Commitado na branch": o que a branch mudou desde a base. O clique no nome abre o arquivo no modo Alterações. */
+function BranchChanges({
+  projectId,
+  reloadKey,
+  onOpen,
+}: {
+  projectId: string;
+  reloadKey: unknown;
+  onOpen: ((path: string, mode: FileMode) => void) | undefined;
+}) {
   const [files, setFiles] = useState<BranchChangeDto[]>([]);
   const [all, setAll] = useState(false);
 
@@ -256,9 +307,7 @@ function BranchChanges({ projectId, reloadKey }: { projectId: string; reloadKey:
               <span className="git-changes__letter" title={stateLabel(file.status)}>
                 {file.status}
               </span>
-              <span className="git-changes__name" title={file.path}>
-                {name}
-              </span>
+              <FileName path={file.path} name={name} onOpen={onOpen} />
               {dir === '' ? null : <span className="git-changes__dir">{dir}</span>}
               <span className="git-changes__lines">
                 {file.added === null || file.removed === null

@@ -19,9 +19,14 @@ const RELOADED_NOTICE_MS = 5_000;
 /** A aba fixa dos terminais. Um caminho de arquivo nunca é este valor, mas a chave é do mesmo tipo (texto). */
 export const TERMINALS_TAB = 'terminals';
 
+/** O que a aba de um arquivo mostra: o editor (`arquivo`) ou o diff contra a base, só leitura (`alteracoes`). */
+export type FileMode = 'arquivo' | 'alteracoes';
+
 export type OpenFileBuffer = {
   /** Caminho relativo à raiz do projeto, em POSIX: a identidade do arquivo e da aba dele. */
   path: string;
+  /** O modo da aba. Vive só na memória, como o texto: ausente vale `arquivo`. */
+  mode?: FileMode;
   load: 'loading' | 'ready' | 'error' | 'not-text' | 'too-large';
   /** O motivo, quando a leitura falhou (`error`, `not-text` e `too-large`). */
   message?: string;
@@ -211,15 +216,26 @@ function readRestored(projectId: string) {
   for (const path of paths) void load(projectId, path);
 }
 
-/** Abre o arquivo numa aba nova e a ativa, lendo-o; se já está aberto, só ativa a aba dele. */
-export function openFile(projectId: string, path: string): void {
+/**
+ * Abre o arquivo numa aba nova e a ativa, lendo-o; se já está aberto, só ativa a aba dele. Com `mode`, a aba abre
+ * (ou passa a estar) nesse modo; sem ele, uma aba nova abre em `arquivo` e uma aberta mantém o modo que tem.
+ */
+export function openFile(projectId: string, path: string, options: { mode?: FileMode } = {}): void {
   const state = stateOf(projectId);
   readRestored(projectId);
+  const { mode } = options;
   if (state.files.some((file) => file.path === path)) {
+    if (mode !== undefined) setFileMode(projectId, path, mode);
     setActive(projectId, path);
     return;
   }
-  const buffer: OpenFileBuffer = { path, load: 'loading', text: '', dirty: false };
+  const buffer: OpenFileBuffer = {
+    path,
+    load: 'loading',
+    text: '',
+    dirty: false,
+    ...(mode === undefined ? {} : { mode }),
+  };
   commit(projectId, build([...state.files, buffer], path), true);
   void load(projectId, path);
 }
@@ -247,6 +263,13 @@ export function setActive(projectId: string, key: 'terminals' | string): void {
   commit(projectId, build(state.files, key), true);
   // Ativar a aba é um bom momento para ver se um agente mexeu no arquivo enquanto ela estava de lado.
   if (key !== TERMINALS_TAB) void checkFileOnDisk(projectId, key);
+}
+
+/** Troca o modo da aba do arquivo. O texto do editor não muda: ele mora no buffer, não na tela. */
+export function setFileMode(projectId: string, path: string, mode: FileMode): void {
+  const file = fileOf(projectId, path);
+  if (file === undefined || (file.mode ?? 'arquivo') === mode) return;
+  patch(projectId, path, (buffer) => ({ ...buffer, mode }));
 }
 
 /** O texto novo do editor. Marca `dirty` quando difere do salvo; um arquivo ainda sem leitura não recebe texto. */

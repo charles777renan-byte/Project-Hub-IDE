@@ -639,6 +639,15 @@ export const RIGHT_PANEL_TEXT = {
     partial: 'Índice parcial: refine a busca',
     ignored: 'Ignorada pelo Git',
     listError: 'Não foi possível listar os arquivos.',
+    /** O estado de Git de um arquivo, em palavras, para leitor de tela: a letra é só o sinal visível. */
+    gitState: {
+      M: 'modificado',
+      U: 'não rastreado ou em conflito',
+      A: 'novo no stage',
+      D: 'removido',
+      R: 'renomeado',
+    },
+    folderChanged: 'contém alterações',
     searchError: 'Não foi possível buscar nos arquivos.',
     results: 'Resultados da busca',
     line: (line: number) => `linha ${line}`,
@@ -669,6 +678,7 @@ export const RIGHT_PANEL_TEXT = {
     stageHint: 'Colocar em stage',
     unstageHint: 'Tirar do stage',
     discardHint: 'Desfazer',
+    openChanges: (path: string) => `Ver alterações de ${path}`,
     stageAll: 'Colocar tudo em stage',
     unstageAll: 'Tirar tudo do stage',
     discardAll: 'Desfazer tudo',
@@ -758,6 +768,22 @@ export const RIGHT_PANEL_TEXT = {
     cannotEdit: 'Este arquivo não pode ser editado aqui',
     openDefault: 'Abrir no programa padrão',
     openDefaultError: 'Não foi possível abrir o arquivo no programa padrão.',
+    /** O par Arquivo | Alterações da barra do caminho e o diff contra a base (FileModeToggle, FileDiffView). */
+    mode: {
+      group: 'Modo da aba',
+      file: 'Arquivo',
+      changes: 'Alterações',
+      noBase: 'Esta branch não tem base para comparar.',
+      saveInChanges: 'Volte para Arquivo para salvar.',
+    },
+    diff: {
+      label: (path: string) => `Diff de ${path}`,
+      loading: 'Carregando as alterações…',
+      binary: 'Arquivo binário: não há diff de texto.',
+      empty: 'Este arquivo não tem alterações em relação à base.',
+      truncated: 'O diff passou do limite: mostrado só o começo.',
+      error: 'Não foi possível ler as alterações do arquivo.',
+    },
     /** A barra de status abaixo do editor (EditorStatusBar). */
     statusBar: {
       label: 'Informações do arquivo',

@@ -1,7 +1,7 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { openFile } from '../../open-files';
+import { openFile, type FileMode } from '../../open-files';
 import { projectViewFromParams } from '../../project-views';
 import { projectViewPath, workspacePath } from '../../routes';
 import { EmptyState } from '../EmptyState';
@@ -44,14 +44,15 @@ export function RightPanel({
   onOpenFile,
 }: {
   projectId: string | null;
-  onOpenFile?: (path: string) => void;
+  onOpenFile?: (path: string, mode?: FileMode) => void;
 }) {
   const [tab, setTab] = useState<RightTab>(readRightTab);
   const location = useLocation();
   const navigate = useNavigate();
 
-  function open(project: string, path: string) {
-    openFile(project, path);
+  function open(project: string, path: string, mode?: FileMode) {
+    if (mode === undefined) openFile(project, path);
+    else openFile(project, path, { mode });
     const here =
       location.pathname === workspacePath(project) &&
       projectViewFromParams(new URLSearchParams(location.search)) === 'terminais';
@@ -88,7 +89,18 @@ export function RightPanel({
         </RadixTabs.List>
         <RadixTabs.Content value={tab} className="right-panel__content">
           {tab === 'codigo' ? (
-            <GitTab projectId={projectId} active={tab === 'codigo'} />
+            <GitTab
+              projectId={projectId}
+              active={tab === 'codigo'}
+              {...(projectId === null
+                ? {}
+                : {
+                    onOpenFile: (path: string, mode: FileMode) =>
+                      onOpenFile === undefined
+                        ? open(projectId, path, mode)
+                        : onOpenFile(path, mode),
+                  })}
+            />
           ) : projectId === null ? (
             <EmptyState icon={Folder} title="Abra um projeto para ver os arquivos" />
           ) : tab === 'arquivos' ? (

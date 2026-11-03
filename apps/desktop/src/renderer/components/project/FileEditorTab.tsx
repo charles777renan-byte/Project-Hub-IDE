@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
-import { checkFileOnDisk, saveFile, updateText, useOpenFiles } from '../../open-files';
+import { checkFileOnDisk, saveFile, setFileMode, updateText, useOpenFiles } from '../../open-files';
+import { useGitPanel } from '../../use-git-panel';
 import { CodeEditor, type CursorInfo } from '../editor/CodeEditor';
 import { EditorStatusBar } from '../editor/EditorStatusBar';
 import { languageOf } from '../editor/languages';
 import { PathText } from '../PathText';
 import { FileConflictBar } from './FileConflictBar';
+import { FileDiffView } from './FileDiffView';
+import { FileModeToggle } from './FileModeToggle';
 import { fileName } from './FileTabs';
 
 const OPEN_FILES_TEXT = RIGHT_PANEL_TEXT.openFiles;
@@ -20,10 +23,17 @@ const TEXT = RIGHT_PANEL_TEXT.editor;
  * processo principal e mantém o texto. Quando o arquivo muda ou some do disco (`notice`), a faixa de conflito toma
  * conta: com o arquivo alterado, salvar daqui fica desligado (só a faixa decide); com o arquivo sumido, salvar pede
  * a confirmação de recriá-lo. A janela ganhar o foco confere o disco.
+ *
+ * Com o Git lido (`useGitPanel`, a mesma carga das outras abas), a barra ganha o par Arquivo | Alterações; sem Git, a
+ * aba é só o editor. O modo é da aba (`file.mode`, no store). Em Alterações o editor segue montado, escondido, e o
+ * texto fica no buffer: voltar mostra a mesma edição. Sem base (`baseRef === null`) o modo Alterações não existe e
+ * `git.diff` nunca é chamado. Em Alterações nada se grava: Ctrl+S é ignorado e o Salvar fica desligado.
  */
 export function FileEditorTab({ projectId, path }: { projectId: string; path: string }) {
   const { files } = useOpenFiles(projectId);
   const file = files.find((item) => item.path === path);
+  const git = useGitPanel(projectId, true);
+  const saveReasonId = useId();
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // O Salvar foi apertado com o arquivo sumido: a faixa pergunta se é para recriá-lo.
@@ -53,7 +63,13 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
   const mixed = file.saved?.eol === 'mixed';
   const missing = file.notice === 'missing';
   // Com o arquivo alterado no disco, só a faixa de conflito grava; com ele sumido, Salvar vale mesmo sem alteração.
+  const gitData = git.status === 'ready' ? git.data : null;
+  const gitReady = gitData !== null;
+  const canDiff = gitData !== null && gitData.baseRef !== null;
+  // O modo pedido vale se há base; enquanto o Git ainda carrega, a aba que pediu Alterações espera o diff.
+  const diffMode = file.mode === 'alteracoes' && (canDiff || git.status === 'loading');
   const canSave =
+    !diffMode &&
     file.load === 'ready' &&
     (file.dirty || missing) &&
     file.notice !== 'changed-on-disk' &&
@@ -95,6 +111,7 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
     if (event.key.toLowerCase() !== 's') return;
     // Dentro do editor, Ctrl+S é do arquivo, nunca da página: sem nada a salvar o navegador também fica quieto.
     event.preventDefault();
+    if (diffMode) return;
     void save();
   }
 
@@ -105,17 +122,32 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
         <span className="file-editor__path">
           <PathText path={path} />
         </span>
-        {file.load === 'ready' ? (
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!canSave}
-            aria-keyshortcuts="Control+S"
-            onClick={() => void save()}
-          >
-            {TEXT.save}
-          </button>
-        ) : null}
+        <div className="file-editor__actions">
+          {gitReady ? (
+            <FileModeToggle
+              mode={diffMode ? 'alteracoes' : 'arquivo'}
+              canDiff={canDiff}
+              onChange={(mode) => setFileMode(projectId, path, mode)}
+            />
+          ) : null}
+          {file.load === 'ready' ? (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!canSave}
+              aria-keyshortcuts="Control+S"
+              aria-describedby={diffMode ? saveReasonId : undefined}
+              onClick={() => void save()}
+            >
+              {TEXT.save}
+            </button>
+          ) : null}
+          {diffMode ? (
+            <span id={saveReasonId} className="visually-hidden">
+              {TEXT.mode.saveInChanges}
+            </span>
+          ) : null}
+        </div>
       </div>
       <FileConflictBar
         key={file.notice ?? 'none'}
@@ -130,40 +162,51 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
           {shownProblem}
         </p>
       )}
-      {file.load === 'loading' ? (
-        <p className="file-editor__status">{OPEN_FILES_TEXT.loading}</p>
-      ) : file.load === 'error' ? (
-        <p className="file-editor__status">{file.message ?? OPEN_FILES_TEXT.readError}</p>
-      ) : notEditable ? (
-        <div className="file-editor__cannot">
-          <p className="file-editor__cannot-title">{TEXT.cannotEdit}</p>
-          {file.message === undefined ? null : (
-            <p className="file-editor__status">{file.message}</p>
-          )}
-          <button type="button" className="btn-secondary" onClick={() => void openDefault()}>
-            {TEXT.openDefault}
-          </button>
-        </div>
-      ) : (
-        <>
-          <CodeEditor
-            value={file.text}
-            language={languageOf(path)}
-            readOnly={mixed}
-            ariaLabel={TEXT.label(fileName(path))}
-            onChange={(text) => updateText(projectId, path, text)}
-            onCursor={setCursor}
-          />
-          {file.saved === undefined ? null : (
-            <EditorStatusBar
-              cursor={cursor}
-              eol={file.saved.eol}
-              bom={file.saved.bom}
+      <div className="file-editor__pane" hidden={diffMode}>
+        {file.load === 'loading' ? (
+          <p className="file-editor__status">{OPEN_FILES_TEXT.loading}</p>
+        ) : file.load === 'error' ? (
+          <p className="file-editor__status">{file.message ?? OPEN_FILES_TEXT.readError}</p>
+        ) : notEditable ? (
+          <div className="file-editor__cannot">
+            <p className="file-editor__cannot-title">{TEXT.cannotEdit}</p>
+            {file.message === undefined ? null : (
+              <p className="file-editor__status">{file.message}</p>
+            )}
+            <button type="button" className="btn-secondary" onClick={() => void openDefault()}>
+              {TEXT.openDefault}
+            </button>
+          </div>
+        ) : (
+          <>
+            <CodeEditor
+              value={file.text}
               language={languageOf(path)}
+              readOnly={mixed}
+              ariaLabel={TEXT.label(fileName(path))}
+              onChange={(text) => updateText(projectId, path, text)}
+              onCursor={setCursor}
             />
+            {file.saved === undefined ? null : (
+              <EditorStatusBar
+                cursor={cursor}
+                eol={file.saved.eol}
+                bom={file.saved.bom}
+                language={languageOf(path)}
+              />
+            )}
+          </>
+        )}
+      </div>
+      {diffMode ? (
+        <div className="file-editor__changes">
+          {canDiff ? (
+            <FileDiffView projectId={projectId} path={path} reloadKey={gitData} />
+          ) : (
+            <p className="file-editor__status">{TEXT.diff.loading}</p>
           )}
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }
