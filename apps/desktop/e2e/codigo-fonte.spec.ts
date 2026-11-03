@@ -176,9 +176,10 @@ test.describe('Código-fonte com remoto local', () => {
     runGit(repo, env, ['add', 'longo.txt']);
     runGit(repo, env, ['commit', '--no-verify', '-m', 'adiciona longo']);
     runGit(repo, env, ['push']);
-    // Uma alteração no disco dá ao arquivo um diff contra a base (origin/main).
+    // Uma alteração commitada e ainda não publicada dá ao arquivo um diff contra a base (origin/main).
     lines[4] = 'linha numero 005 alterada';
     writeFileSync(join(repo, 'longo.txt'), `${lines.join('\n')}\n`);
+    runGit(repo, env, ['commit', '--no-verify', '-am', 'altera longo']);
 
     const { page } = await launchApp({ dialogPath: repo });
     await addGitProject(page, projectName);
@@ -219,8 +220,13 @@ test.describe('Código-fonte com remoto local', () => {
     const file = toggle.getByRole('button', { name: 'Arquivo' });
     await changes.click();
     await expect(changes).toHaveAttribute('aria-pressed', 'true');
+    // Em Alterações o editor sai do layout e o diff aparece.
+    await expect(host).toBeHidden();
+    await expect(page.getByLabel('Diff de longo.txt')).toBeVisible();
     await file.click();
     await expect(file).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByLabel('Diff de longo.txt')).toBeHidden();
+    await expect(host).toBeVisible();
     await expect(host.getByRole('textbox', { name: 'Editor de longo.txt' })).toBeVisible();
 
     const after = await snapshot();
