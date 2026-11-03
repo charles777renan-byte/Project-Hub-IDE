@@ -79,9 +79,22 @@ describe('createGitPanelPort', () => {
     expect((await port.status(repo.path)).files).toEqual([]);
   });
 
-  it('sem origin/main, o diff contra a base é null e as alterações da branch vêm sem base', async () => {
-    expect(await port.fileDiff(repo.path, 'a.txt')).toBeNull();
+  it('sem origin/main, as alterações da branch vêm sem base, e o diff do arquivo segue contra o HEAD', async () => {
+    writeFileSync(join(repo.path, 'a.txt'), 'mudou\n');
+
+    const diff = await port.fileDiff(repo.path, 'a.txt');
+
+    expect(diff).toMatchObject({ path: 'a.txt', baseRef: 'HEAD', binary: false });
+    expect(diff?.patch).toContain('+mudou');
     expect(await port.branchChanges(repo.path)).toMatchObject({ baseRef: null, files: [] });
+  });
+
+  it('repositório sem nenhum commit: o diff do arquivo é null', async () => {
+    const fresh = mkdtempSync(join(scratch, 'novo-'));
+    git(fresh, ['init', '--initial-branch=main']);
+    writeFileSync(join(fresh, 'x.txt'), 'x\n');
+
+    expect(await port.fileDiff(fresh, 'x.txt')).toBeNull();
   });
 
   it('push publica a branch, e fetch e pull rodam contra o remoto', async () => {

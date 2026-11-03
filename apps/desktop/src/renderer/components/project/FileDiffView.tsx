@@ -10,8 +10,9 @@ type Outcome =
   | { path: string; status: 'error'; message: string };
 
 /**
- * O modo Alterações da aba de arquivo: o diff do arquivo contra a base, só leitura (`git.diff`). Quem o monta já
- * conferiu que há base (o caso de uso recusa `git.diff` sem ela). Relê ao montar, ao trocar de arquivo e quando
+ * O modo Alterações da aba de arquivo: o diff do arquivo contra o `HEAD` (a pasta de trabalho contra o último
+ * commit), só leitura (`git.diff`). Quem o monta já conferiu que o Git foi lido; um projeto sem commit chega daqui
+ * como erro do caso de uso (`role="alert"`). Relê ao montar, ao trocar de arquivo e quando
  * `reloadKey` muda (o status do Git foi relido); enquanto relê, o diff anterior segue à vista. Binário, sem
  * alterações e truncado dizem isso em texto; uma falha do IPC aparece em `role="alert"` com a mensagem do processo
  * principal. O patch entra como texto, nunca como HTML.

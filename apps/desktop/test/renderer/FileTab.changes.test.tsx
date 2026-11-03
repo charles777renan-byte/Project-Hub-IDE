@@ -18,7 +18,7 @@ import {
 } from '../../src/renderer/open-files';
 import { stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
 
-/** A aba de arquivo com Git: o par Arquivo | Alterações e o diff contra a base, só leitura. */
+/** A aba de arquivo com Git: o par Arquivo | Alterações e o diff contra o HEAD, só leitura. */
 
 beforeAll(stubLayoutForCodeMirror);
 
@@ -46,7 +46,7 @@ function status(overrides: Partial<GitStatusDto> = {}): GitStatusDto {
 function diff(overrides: Partial<GitFileDiffDto> = {}): GitFileDiffDto {
   return {
     path: 'src/a.ts',
-    baseRef: 'origin/main',
+    baseRef: 'HEAD',
     patch: '@@ -1 +1 @@\n-velho\n+novo\n',
     binary: false,
     truncated: false,
@@ -169,31 +169,39 @@ describe('aba de arquivo: Arquivo | Alterações', () => {
     expect(state().mode).toBe('arquivo');
   });
 
-  it('sem base, Alterações fica desligado com o motivo em texto e não chama git.diff', async () => {
-    api.git.status.mockImplementation(() => ok(status({ baseRef: null })));
+  it('projeto sem commit: Alterações segue ligado e o erro do caso de uso aparece em role=alert', async () => {
+    api.git.diff.mockImplementation(() =>
+      Promise.resolve({
+        ok: false,
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Não há commit para comparar: o projeto ainda não tem nenhum commit.',
+          retryable: false,
+        },
+      } as AppResult<GitFileDiffDto>),
+    );
     const user = userEvent.setup();
     await mountEditor();
     await screen.findByRole('button', { name: 'Alterações' });
 
-    expect(changesButton()).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText('Esta branch não tem base para comparar.')).toBeInTheDocument();
-    expect(changesButton()).toHaveAccessibleDescription('Esta branch não tem base para comparar.');
-
+    expect(changesButton()).not.toHaveAttribute('aria-disabled');
     await user.click(changesButton());
-    fileButton().focus();
-    await user.keyboard('{ArrowRight}');
 
-    expect(fileButton()).toHaveAttribute('aria-pressed', 'true');
-    expect(api.git.diff).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Não há commit para comparar: o projeto ainda não tem nenhum commit.',
+    );
+    expect(api.git.diff).toHaveBeenCalledWith({ projectId: 'p1', path: 'src/a.ts' });
+    expect(changesButton()).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('um arquivo aberto no modo Alterações sem base cai no editor, sem chamar git.diff', async () => {
+  it('o diff é contra o HEAD: sem base no status, Alterações abre e chama git.diff', async () => {
     api.git.status.mockImplementation(() => ok(status({ baseRef: null })));
     await mountEditor({ mode: 'alteracoes' });
-    await screen.findByRole('button', { name: 'Alterações' });
 
-    expect(screen.queryByLabelText('Diff de src/a.ts')).not.toBeInTheDocument();
-    expect(api.git.diff).not.toHaveBeenCalled();
+    expect(await screen.findByLabelText('Diff de src/a.ts')).toBeInTheDocument();
+    expect(api.git.diff).toHaveBeenCalledWith({ projectId: 'p1', path: 'src/a.ts' });
+    expect(changesButton()).not.toHaveAttribute('aria-disabled');
+    expect(changesButton()).toHaveAttribute('aria-pressed', 'true');
   });
 
   it.each([
@@ -235,12 +243,12 @@ describe('aba de arquivo: Arquivo | Alterações', () => {
     expect(await screen.findByText('Arquivo binário: não há diff de texto.')).toBeInTheDocument();
   });
 
-  it('patch vazio diz que não há alterações em relação à base', async () => {
+  it('patch vazio diz que não há alterações em relação ao último commit', async () => {
     api.git.diff.mockImplementation(() => ok(diff({ patch: '' })));
     await mountEditor({ mode: 'alteracoes' });
 
     expect(
-      await screen.findByText('Este arquivo não tem alterações em relação à base.'),
+      await screen.findByText('Este arquivo não tem alterações em relação ao último commit.'),
     ).toBeInTheDocument();
   });
 

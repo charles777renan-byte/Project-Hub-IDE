@@ -101,7 +101,7 @@ export const CHANNELS = {
   filesSaveAllResult: 'files:save-all-result:v1',
   /** Painel de código-fonte (fase 2, ADR 0010): branch, upstream, à frente/atrás e arquivos alterados. Só entram o id do projeto, caminhos relativos POSIX e a mensagem do commit. */
   gitStatus: 'git:status:v1',
-  /** Diff de um arquivo contra a base (`origin/main`). */
+  /** Diff de um arquivo contra o último commit (`HEAD`). */
   gitDiff: 'git:diff:v1',
   /** Põe arquivos em stage. */
   gitStage: 'git:stage:v1',

@@ -45,7 +45,7 @@ export type CommitMessage = z.infer<typeof commitMessageSchema>;
 export const gitProjectInputSchema = z.object({ projectId: projectIdSchema });
 export type GitProjectInput = z.infer<typeof gitProjectInputSchema>;
 
-/** Entrada de `git:diff:v1`: o diff de um arquivo contra a base. */
+/** Entrada de `git:diff:v1`: o diff de um arquivo contra o último commit (`HEAD`). */
 export const gitDiffInputSchema = z.object({ projectId: projectIdSchema, path: gitPathSchema });
 export type GitDiffInput = z.infer<typeof gitDiffInputSchema>;
 
@@ -127,11 +127,13 @@ export const branchChangesSchema = z.object({
 export type BranchChangesDto = z.infer<typeof branchChangesSchema>;
 
 /**
- * Resposta de `git:diff:v1`: o diff de um arquivo contra a base. Não reutiliza `missionDiffDtoSchema`, que
- * descreve as alterações do worktree de uma missão em relação ao HEAD (lista de arquivos, sem a ref da base).
+ * Resposta de `git:diff:v1`: o diff de um arquivo contra o último commit (`HEAD`). Não reutiliza
+ * `missionDiffDtoSchema`, que descreve as alterações do worktree de uma missão em relação ao HEAD (lista de
+ * arquivos, sem a ref comparada).
  */
 export const gitFileDiffSchema = z.object({
   path: z.string(),
+  /** A ref comparada: sempre `HEAD`. */
   baseRef: z.string(),
   /** Só os trechos (`@@`), em diff unificado. Vazio em binário e em arquivo sem mudança. */
   patch: z.string(),

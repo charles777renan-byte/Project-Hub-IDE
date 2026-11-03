@@ -231,7 +231,7 @@ describe('GitChangesList: abrir o arquivo', () => {
     expect(onOpenFile).toHaveBeenNthCalledWith(2, 'velho.ts', 'alteracoes');
   });
 
-  it('o clique em "Commitado na branch" também abre no modo Alterações', async () => {
+  it('o clique em "Commitado na branch" abre o arquivo no modo Arquivo, não em Alterações', async () => {
     const user = userEvent.setup();
     const onOpenFile = vi.fn();
     branchChanges.mockResolvedValue({
@@ -244,8 +244,8 @@ describe('GitChangesList: abrir o arquivo', () => {
     });
     renderOpen([], onOpenFile);
 
-    await user.click(await screen.findByRole('button', { name: 'Ver alterações de x.ts' }));
+    await user.click(await screen.findByRole('button', { name: 'Abrir x.ts' }));
 
-    expect(onOpenFile).toHaveBeenCalledWith('x.ts', 'alteracoes');
+    expect(onOpenFile).toHaveBeenCalledWith('x.ts', 'arquivo');
   });
 });

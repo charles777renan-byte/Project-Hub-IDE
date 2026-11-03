@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   getBranchChanges,
   getBranchLog,
-  getFileDiffAgainstBase,
+  getFileDiffAgainstHead,
   getGitPanelStatus,
   parsePorcelainStatus,
 } from '../src/git-read';
@@ -381,9 +381,12 @@ describe('getGitPanelStatus', () => {
       { path: 'a.txt', status: 'M', added: 1, removed: 0 },
       { path: 'b.txt', status: 'A', added: 1, removed: 0 },
     ]);
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' });
-    expect(diff?.patch).toContain('+commitada');
-    expect(diff?.patch).not.toContain('nao commitada');
+    // O diff do arquivo é o contrário da lista: contra o HEAD, a edição em disco aparece e a linha já commitada
+    // fica só como contexto.
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
+    expect(diff?.patch).toContain('+nao commitada 1');
+    expect(diff?.patch).toContain('+nao commitada 2');
+    expect(diff?.patch).not.toContain('+commitada');
   });
 
   it('arquivo só editado, sem nenhum commit na branch, não aparece', async () => {
@@ -395,7 +398,10 @@ describe('getGitPanelStatus', () => {
 
     expect(status).toMatchObject({ baseRef: 'origin/main', linesAdded: 0, linesRemoved: 0 });
     expect((await getBranchChanges({ repo: repoPath })).files).toEqual([]);
-    expect((await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' }))?.patch).toBe('');
+    // A lista da branch não a vê, mas o diff do arquivo (contra o HEAD) mostra a edição em disco.
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
+    expect(diff?.patch).toContain('-conteudo inicial');
+    expect(diff?.patch).toContain('+só no disco');
   });
 
   it('ahead e behind com upstream local, e a base é origin/main', async () => {
@@ -699,91 +705,153 @@ describe('getBranchChanges', () => {
   });
 });
 
-describe('getFileDiffAgainstBase', () => {
-  it('devolve os trechos do arquivo contra a base, só dele', async () => {
-    addBareRemote({ setUpstream: true });
-    commitFile(repoPath, 'a.txt', 'conteudo inicial\nsegunda\n', 'Altera a.txt');
+describe('getFileDiffAgainstHead', () => {
+  // O diff do arquivo é contra o HEAD: a pasta de trabalho (disco e stage) contra o último commit. Nada aqui
+  // depende de `origin/main`: o repositório de teste nem tem remoto, a menos que o cenário peça um.
+  it('devolve os trechos da alteração em disco contra o HEAD, só do arquivo', async () => {
     commitFile(repoPath, 'outro.txt', 'x\n', 'Outro');
+    writeFileSync(join(repoPath, 'a.txt'), 'conteudo inicial\nsegunda\n');
+    writeFileSync(join(repoPath, 'outro.txt'), 'x\ny\n');
 
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' });
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
 
     expect(diff).toMatchObject({
       path: 'a.txt',
-      baseRef: 'origin/main',
+      baseRef: 'HEAD',
       binary: false,
       truncated: false,
     });
     expect(diff?.patch).toMatch(/^@@ /mu);
     expect(diff?.patch).toContain('+segunda');
     expect(diff?.patch).not.toContain('outro.txt');
+    expect(diff?.patch).not.toContain('+y');
     expect(diff?.patch).not.toContain('diff --git');
   });
 
-  it('nome com colchetes vale como nome, e não como padrão', async () => {
+  it('o que está no stage entra junto com a edição que veio depois dele', async () => {
+    writeFileSync(join(repoPath, 'a.txt'), 'conteudo inicial\nem stage\n');
+    git(repoPath, ['add', '--', 'a.txt']);
+    writeFileSync(join(repoPath, 'a.txt'), 'conteudo inicial\nem stage\nso no disco\n');
+
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
+
+    expect(diff?.patch).toContain('+em stage');
+    expect(diff?.patch).toContain('+so no disco');
+  });
+
+  it('alteração só commitada: a árvore é igual ao HEAD, e o patch vem vazio', async () => {
+    // Publicada antes e com um commit local à frente de origin/main: para o diff do arquivo isso não conta.
     addBareRemote({ setUpstream: true });
+    commitFile(repoPath, 'a.txt', 'conteudo inicial\ncommitada\n', 'Altera a.txt');
+
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
+
+    expect(diff).toEqual({
+      path: 'a.txt',
+      baseRef: 'HEAD',
+      patch: '',
+      binary: false,
+      truncated: false,
+    });
+  });
+
+  it('a alteração em disco aparece com origin/main configurado, sem depender dele', async () => {
+    addBareRemote({ setUpstream: true });
+    commitFile(repoPath, 'a.txt', 'conteudo inicial\ncommitada\n', 'Altera a.txt');
+    writeFileSync(join(repoPath, 'a.txt'), 'conteudo inicial\ncommitada\nnao commitada\n');
+
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
+
+    expect(diff?.patch).toContain('+nao commitada');
+    expect(diff?.patch).not.toContain('+commitada');
+  });
+
+  it('arquivo novo ainda fora do Git: patch vazio; depois de entrar no stage, o diff aparece', async () => {
+    writeFileSync(join(repoPath, 'novo.txt'), 'linha nova\n');
+
+    const untracked = await getFileDiffAgainstHead({ repo: repoPath, path: 'novo.txt' });
+    expect(untracked).toMatchObject({ path: 'novo.txt', patch: '', binary: false });
+
+    git(repoPath, ['add', '--', 'novo.txt']);
+    const staged = await getFileDiffAgainstHead({ repo: repoPath, path: 'novo.txt' });
+    expect(staged?.patch).toContain('+linha nova');
+  });
+
+  it('nome com colchetes vale como nome, e não como padrão', async () => {
     commitFile(repoPath, 'a1.txt', 'do irmão\n', 'Irmão');
     commitFile(repoPath, 'a[1].txt', 'do colchete\n', 'Colchete');
+    writeFileSync(join(repoPath, 'a1.txt'), 'do irmão\nirmão editado\n');
+    writeFileSync(join(repoPath, 'a[1].txt'), 'do colchete\ncolchete editado\n');
 
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'a[1].txt' });
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a[1].txt' });
 
-    expect(diff?.patch).toContain('+do colchete');
-    expect(diff?.patch).not.toContain('do irmão');
+    expect(diff?.patch).toContain('+colchete editado');
+    expect(diff?.patch).not.toContain('irmão');
   });
 
   it('nome que começa com hífen e nome com espaço e acento', async () => {
-    addBareRemote({ setUpstream: true });
     commitFile(repoPath, '-x', 'hífen\n', 'Hífen');
     commitFile(repoPath, 'com espaço ação.txt', 'acento\n', 'Acento');
+    writeFileSync(join(repoPath, '-x'), 'hífen\nhífen editado\n');
+    writeFileSync(join(repoPath, 'com espaço ação.txt'), 'acento\nacento editado\n');
 
-    expect((await getFileDiffAgainstBase({ repo: repoPath, path: '-x' }))?.patch).toContain(
-      '+hífen',
+    expect((await getFileDiffAgainstHead({ repo: repoPath, path: '-x' }))?.patch).toContain(
+      '+hífen editado',
     );
     expect(
-      (await getFileDiffAgainstBase({ repo: repoPath, path: 'com espaço ação.txt' }))?.patch,
-    ).toContain('+acento');
+      (await getFileDiffAgainstHead({ repo: repoPath, path: 'com espaço ação.txt' }))?.patch,
+    ).toContain('+acento editado');
   });
 
-  it('arquivo apagado na branch', async () => {
-    addBareRemote({ setUpstream: true });
-    git(repoPath, ['rm', '-q', '--', 'a.txt']);
-    git(repoPath, ['commit', '--no-verify', '-m', 'Apaga']);
+  it('arquivo apagado do disco, ainda sem commit', async () => {
+    rmSync(join(repoPath, 'a.txt'));
 
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' });
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
 
     expect(diff?.patch).toContain('-conteudo inicial');
   });
 
   it('binário: sem prévia, marcado como binário', async () => {
-    addBareRemote({ setUpstream: true });
     writeFileSync(join(repoPath, 'binario.bin'), Buffer.from([0, 1, 2, 0, 255]));
     git(repoPath, ['add', '--', 'binario.bin']);
     git(repoPath, ['commit', '--no-verify', '-m', 'Binário']);
+    writeFileSync(join(repoPath, 'binario.bin'), Buffer.from([0, 9, 8, 0, 254, 7]));
 
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'binario.bin' });
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'binario.bin' });
 
     expect(diff).toMatchObject({ path: 'binario.bin', binary: true, patch: '' });
   });
 
   it('arquivo grande: o patch é cortado, e truncated avisa', async () => {
-    addBareRemote({ setUpstream: true });
-    commitFile(repoPath, 'grande.txt', `${'linha de texto comprida\n'.repeat(20_000)}`, 'Grande');
+    commitFile(repoPath, 'grande.txt', 'uma linha\n', 'Grande');
+    writeFileSync(join(repoPath, 'grande.txt'), `${'linha de texto comprida\n'.repeat(20_000)}`);
 
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'grande.txt' });
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'grande.txt' });
 
     expect(diff?.truncated).toBe(true);
     expect(Buffer.byteLength(diff?.patch ?? '')).toBeLessThanOrEqual(256 * 1024);
   });
 
-  it('arquivo sem mudança contra a base: patch vazio', async () => {
-    addBareRemote({ setUpstream: true });
+  it('arquivo sem mudança contra o HEAD: patch vazio', async () => {
+    const diff = await getFileDiffAgainstHead({ repo: repoPath, path: 'a.txt' });
 
-    const diff = await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' });
-
-    expect(diff).toMatchObject({ path: 'a.txt', patch: '', binary: false, truncated: false });
+    expect(diff).toEqual({
+      path: 'a.txt',
+      baseRef: 'HEAD',
+      patch: '',
+      binary: false,
+      truncated: false,
+    });
   });
 
-  it('sem base: null, sem erro', async () => {
-    expect(await getFileDiffAgainstBase({ repo: repoPath, path: 'a.txt' })).toBeNull();
+  it('sem nenhum commit: null, sem erro', async () => {
+    const fresh = newScratchDir('sem-commit-');
+    git(fresh, ['init', '--initial-branch=main']);
+    configureIdentity(fresh);
+    writeFileSync(join(fresh, 'x.txt'), 'x\n');
+    git(fresh, ['add', '--', 'x.txt']);
+
+    expect(await getFileDiffAgainstHead({ repo: fresh, path: 'x.txt' })).toBeNull();
   });
 
   it.each([
@@ -793,9 +861,7 @@ describe('getFileDiffAgainstBase', () => {
     ['com barra invertida', 'pasta\\a.txt'],
     ['vazio', ''],
   ])('caminho %s: VALIDATION_FAILED', async (_label, path) => {
-    addBareRemote({ setUpstream: true });
-
-    const error = await failureOf(getFileDiffAgainstBase({ repo: repoPath, path }));
+    const error = await failureOf(getFileDiffAgainstHead({ repo: repoPath, path }));
 
     expect(error.code).toBe('VALIDATION_FAILED');
   });

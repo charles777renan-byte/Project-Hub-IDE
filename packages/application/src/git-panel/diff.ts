@@ -2,7 +2,10 @@ import type { AppResult, GitFileDiffDto } from '@project-hub/contracts';
 import { failure } from '../result';
 import { eligibleGitProject, ensureInsideProject, type GitPanelDeps } from './project';
 
-/** O diff de um arquivo contra a base. O caminho é relativo à pasta do projeto e é conferido antes da porta. */
+/**
+ * O diff de um arquivo contra o último commit (`HEAD`): a pasta de trabalho comparada com ele. O caminho é
+ * relativo à pasta do projeto e é conferido antes da porta. Projeto sem nenhum commit não tem com o que comparar.
+ */
 export async function getFileDiff(
   deps: GitPanelDeps,
   input: { projectId: string; path: string },
@@ -15,7 +18,7 @@ export async function getFileDiff(
   if (diff === null) {
     return failure(
       'VALIDATION_FAILED',
-      'Não há base para comparar: a referência origin/main não existe.',
+      'Não há commit para comparar: o projeto ainda não tem nenhum commit.',
     );
   }
   return { ok: true, data: diff };

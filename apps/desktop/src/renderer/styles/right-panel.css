@@ -567,7 +567,7 @@
   font-size: var(--text-xs);
 }
 
-.file-mode__button:hover:not([aria-pressed='true']):not([aria-disabled='true']) {
+.file-mode__button:hover:not([aria-pressed='true']) {
   background: var(--surface-2);
 }
 
@@ -577,18 +577,8 @@
   color: var(--text);
 }
 
-.file-mode__button[aria-disabled='true'] {
-  cursor: not-allowed;
-  text-decoration: line-through;
-}
-
 .file-mode__button:focus-visible {
   outline-offset: -2px;
-}
-
-.file-mode__reason {
-  color: var(--muted);
-  font-size: var(--text-xs);
 }
 
 /* O editor (e seus avisos de carga) escondido em Alterações: segue montado, com o texto e o cursor. */
@@ -603,7 +593,7 @@
   display: none;
 }
 
-/* O diff contra a base: rola por conta própria, e o desenho das linhas é o de .diff__line (app.css). */
+/* O diff contra o HEAD: rola por conta própria, e o desenho das linhas é o de .diff__line (app.css). */
 .file-editor__changes {
   flex: 1;
   min-height: 0;

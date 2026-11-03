@@ -19,7 +19,7 @@ const RELOADED_NOTICE_MS = 5_000;
 /** A aba fixa dos terminais. Um caminho de arquivo nunca é este valor, mas a chave é do mesmo tipo (texto). */
 export const TERMINALS_TAB = 'terminals';
 
-/** O que a aba de um arquivo mostra: o editor (`arquivo`) ou o diff contra a base, só leitura (`alteracoes`). */
+/** O que a aba de um arquivo mostra: o editor (`arquivo`) ou o diff contra o HEAD, só leitura (`alteracoes`). */
 export type FileMode = 'arquivo' | 'alteracoes';
 
 export type OpenFileBuffer = {

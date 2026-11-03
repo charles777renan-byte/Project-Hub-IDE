@@ -21,7 +21,7 @@ export {
 export {
   getBranchChanges,
   getBranchLog,
-  getFileDiffAgainstBase,
+  getFileDiffAgainstHead,
   getGitPanelStatus,
   type BranchChangeFile,
   type BranchChanges,

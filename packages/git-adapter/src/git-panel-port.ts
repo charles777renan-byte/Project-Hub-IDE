@@ -8,7 +8,12 @@ import {
   stagePaths,
   unstagePaths,
 } from './git-write';
-import { getBranchChanges, getBranchLog, getFileDiffAgainstBase, getGitPanelStatus } from './git-read';
+import {
+  getBranchChanges,
+  getBranchLog,
+  getFileDiffAgainstHead,
+  getGitPanelStatus,
+} from './git-read';
 
 /**
  * A porta do painel de código-fonte (ADR 0010) sobre as leituras e escritas do adaptador. Cada método só
@@ -19,7 +24,7 @@ import { getBranchChanges, getBranchLog, getFileDiffAgainstBase, getGitPanelStat
 export function createGitPanelPort(): GitPanelPort {
   return {
     status: (repoPath) => getGitPanelStatus({ repo: repoPath }),
-    fileDiff: (repoPath, path) => getFileDiffAgainstBase({ repo: repoPath, path }),
+    fileDiff: (repoPath, path) => getFileDiffAgainstHead({ repo: repoPath, path }),
     stage: (repoPath, paths) => stagePaths({ repo: repoPath, paths }),
     unstage: (repoPath, paths) => unstagePaths({ repo: repoPath, paths }),
     discard: (repoPath, paths) => discardPaths({ repo: repoPath, paths }),
