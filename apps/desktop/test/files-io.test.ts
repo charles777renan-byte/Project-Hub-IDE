@@ -1,7 +1,8 @@
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import type * as FsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FILE_SIZE_LIMIT_BYTES } from '@project-hub/contracts';
 import { FilesError } from '../src/main/files/files-error';
 import {
@@ -11,6 +12,24 @@ import {
   statProjectFile,
   writeProjectFile,
 } from '../src/main/files/file-io';
+
+/** Falhas injetadas em `rename`: com `failures` acima de zero, a troca recusa com o código `code` (EPERM por padrão). */
+const renameBlock = vi.hoisted(() => ({ failures: 0, calls: 0, code: 'EPERM' }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromises>();
+  return {
+    ...actual,
+    rename: async (from: string, to: string) => {
+      renameBlock.calls += 1;
+      if (renameBlock.failures > 0) {
+        renameBlock.failures -= 1;
+        throw Object.assign(new Error(`${renameBlock.code}: operação recusada`), { code: renameBlock.code });
+      }
+      return actual.rename(from, to);
+    },
+  };
+});
 
 /** Um instante redondo, em segundos: sem fração, o mtime volta idêntico depois de um `utimes`. */
 const FIXED_MTIME_S = 1_700_000_000;
@@ -266,6 +285,58 @@ describe('writeProjectFile', () => {
       expect(await readdir(dir)).toEqual(['a.txt']);
     } finally {
       await chmod(file, 0o644);
+    }
+  });
+
+  it('um rename recusado com EPERM uma vez é repetido e a gravação sai certa', async () => {
+    const file = join(dir, 'a.txt');
+    await writeFile(file, 'antes\n');
+    const content = await readProjectFile(file);
+    renameBlock.failures = 1;
+    renameBlock.calls = 0;
+    await writeProjectFile(file, { text: 'depois\n', eol: 'lf', bom: false, expected: content.version });
+    expect(renameBlock.calls).toBe(2);
+    expect(await readFile(file, 'utf8')).toBe('depois\n');
+    expect(await readdir(dir)).toEqual(['a.txt']);
+  });
+
+  it('EPERM que não passa: PERMISSION_DENIED depois de 10 tentativas, arquivo intacto e nenhum .tmp', async () => {
+    const file = join(dir, 'a.txt');
+    await writeFile(file, 'antes\n');
+    const content = await readProjectFile(file);
+    renameBlock.failures = 1_000;
+    renameBlock.calls = 0;
+    try {
+      const error = await expectFilesError(
+        writeProjectFile(file, { text: 'depois\n', eol: 'lf', bom: false, expected: content.version }),
+        'PERMISSION_DENIED',
+      );
+      expect(error.message).not.toContain(dir);
+      expect(renameBlock.calls).toBe(10);
+      expect(await readFile(file, 'utf8')).toBe('antes\n');
+      expect(await readdir(dir)).toEqual(['a.txt']);
+    } finally {
+      renameBlock.failures = 0;
+    }
+  });
+
+  it('erro que não é transitório (ENOENT) não é repetido: FILE_NOT_FOUND na primeira tentativa', async () => {
+    const file = join(dir, 'a.txt');
+    await writeFile(file, 'antes\n');
+    const content = await readProjectFile(file);
+    renameBlock.failures = 1_000;
+    renameBlock.code = 'ENOENT';
+    renameBlock.calls = 0;
+    try {
+      await expectFilesError(
+        writeProjectFile(file, { text: 'depois\n', eol: 'lf', bom: false, expected: content.version }),
+        'FILE_NOT_FOUND',
+      );
+      expect(renameBlock.calls).toBe(1);
+      expect(await readdir(dir)).toEqual(['a.txt']);
+    } finally {
+      renameBlock.failures = 0;
+      renameBlock.code = 'EPERM';
     }
   });
 });
