@@ -730,25 +730,36 @@
   box-shadow: inset 0 -1px 0 var(--line);
 }
 
+/* O resumo do cabeçalho: branch, → base, +linhas −linhas e ↑à frente ↓atrás, quebrando de linha se faltar largura. */
 .git-tab__summary {
   display: flex;
   flex: 1;
-  flex-direction: column;
+  flex-flow: row wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
   min-width: 0;
 }
 
 .git-tab__branch {
   overflow: hidden;
+  max-width: 100%;
   margin: 0;
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.git-tab__count {
+.git-tab__target,
+.git-tab__lines,
+.git-tab__ahead-behind {
+  overflow: hidden;
+  max-width: 100%;
   margin: 0;
   color: var(--muted);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .git-tab__refresh {
@@ -795,6 +806,164 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
+  /* A saída de um hook tem várias linhas: elas ficam como vieram (texto puro, nunca HTML). */
+  white-space: pre-wrap;
+}
+
+.git-tab__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* O botão do menu de ações remotas e a lista dele (GitActionsMenu): sem Radix modal, com a lista logo abaixo. */
+.git-menu {
+  position: relative;
+  flex: none;
+}
+
+.git-menu__trigger {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: var(--field-line);
+}
+
+.git-menu__trigger:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-menu__list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 16rem;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  list-style: none;
+}
+
+.git-menu__row {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-menu__item {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.git-menu__item:hover,
+.git-menu__item:focus-visible {
+  background: var(--line);
+}
+
+.git-menu__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-menu__item[aria-disabled='true'] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.git-menu__reason {
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* O diálogo de confirmação (GitConfirmDialog): um <dialog> modal nativo no meio da janela, sem a borda e a margem do navegador. */
+.git-dialog {
+  inset: 0;
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(80vh, 32rem);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.git-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: inherit;
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.git-dialog__title {
+  margin: 0;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.git-dialog__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.git-dialog__message {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.git-dialog__list {
+  max-height: 10rem;
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.git-dialog__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.git-dialog__warning {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.git-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .git-commit {

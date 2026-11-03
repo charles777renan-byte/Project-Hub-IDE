@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { GitPanelFileDto, ProjectHubApi } from '@project-hub/contracts';
@@ -25,16 +26,24 @@ const STAGED: GitPanelFileDto = { path: 'a.ts', staged: 'M', unstaged: null };
 const STAGED_2: GitPanelFileDto = { path: 'b.ts', staged: 'A', unstaged: null };
 const DIRTY: GitPanelFileDto = { path: 'c.ts', staged: null, unstaged: 'M' };
 
-function renderBox(files: GitPanelFileDto[], busy = false) {
-  return render(
+/** A mensagem mora em quem monta a caixa (GitTab); aqui um estado local faz o mesmo papel. */
+function Harness({ files, busy }: { files: GitPanelFileDto[]; busy: boolean }) {
+  const [message, setMessage] = useState('');
+  return (
     <GitCommitBox
       projectId="p1"
       files={files}
       busy={busy}
+      message={message}
+      onMessageChange={setMessage}
       track={track as never}
       onError={onError}
-    />,
+    />
   );
+}
+
+function renderBox(files: GitPanelFileDto[], busy = false) {
+  return render(<Harness files={files} busy={busy} />);
 }
 
 describe('GitCommitBox', () => {

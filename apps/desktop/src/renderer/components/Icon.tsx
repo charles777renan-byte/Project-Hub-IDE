@@ -15,6 +15,7 @@ export {
   Clock,
   Copy,
   CornerDownLeft,
+  Ellipsis,
   Eye,
   File,
   Files,

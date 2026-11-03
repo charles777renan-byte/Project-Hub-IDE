@@ -1,50 +1,44 @@
-import { useState } from 'react';
 import type { GitPanelFileDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { settleWrite, type GitPanel } from '../../use-git-panel';
+import { commitReason } from './git-commit-reason';
 
 const TEXT = RIGHT_PANEL_TEXT.git;
-/** O limite do contrato (`commitMessageSchema`); o contrato não o exporta e o renderer só importa tipos dele. */
-const COMMIT_MESSAGE_MAX = 10_000;
 const REASON_ID = 'git-commit-reason';
 
 /**
  * A mensagem e o botão principal. Com arquivos em stage, "Commit (N)"; sem nada em stage e com alterações,
- * "Colocar tudo em stage". Quando "Commit (N)" está desligado, o motivo aparece como texto.
+ * "Colocar tudo em stage". Quando "Commit (N)" está desligado, o motivo aparece como texto. A mensagem mora em
+ * `GitTab` (o menu de ações também a usa); depois de um commit bem-sucedido, a caixa a limpa por
+ * `onMessageChange('')`.
  */
 export function GitCommitBox({
   projectId,
   files,
   busy,
+  message,
+  onMessageChange,
   track,
   onError,
 }: {
   projectId: string;
   files: GitPanelFileDto[];
   busy: boolean;
+  message: string;
+  onMessageChange: (message: string) => void;
   track: GitPanel['track'];
   onError: (message: string) => void;
 }) {
-  const [message, setMessage] = useState('');
   const stagedCount = files.filter((file) => file.staged !== null).length;
   const unstagedPaths = files.filter((file) => file.unstaged !== null).map((file) => file.path);
-  const trimmed = message.trim();
-
-  const reason =
-    stagedCount === 0
-      ? TEXT.reasonNothingStaged
-      : trimmed === ''
-        ? TEXT.reasonEmptyMessage
-        : trimmed.length > COMMIT_MESSAGE_MAX
-          ? TEXT.reasonMessageTooLong
-          : null;
+  const reason = commitReason(files, message);
 
   async function commit() {
     const done = await settleWrite(
-      track(window.projectHub.git.commit({ projectId, message: trimmed })),
+      track(window.projectHub.git.commit({ projectId, message: message.trim() })),
       onError,
     );
-    if (done) setMessage('');
+    if (done) onMessageChange('');
   }
 
   const stageAll = stagedCount === 0 && unstagedPaths.length > 0;
@@ -56,7 +50,7 @@ export function GitCommitBox({
         placeholder={TEXT.commitPlaceholder}
         rows={3}
         value={message}
-        onChange={(event) => setMessage(event.target.value)}
+        onChange={(event) => onMessageChange(event.target.value)}
       />
       {stageAll ? (
         <button
