@@ -20,7 +20,7 @@ const WRITE_NAMED_EXPORTS: Record<string, string> = {
   pushBranch: 'o push da aba Código-fonte, só da branch atual, sem forçar',
   // Só avança em fast-forward (`pull --ff-only`); nunca faz merge nem rebase.
   pullFastForward: 'o pull da aba Código-fonte, só em fast-forward',
-  // Atualiza as refs remotas (`fetch origin`) sem mexer na pasta de trabalho.
+  // Atualiza as refs remotas (`fetch --prune origin`) sem mexer na pasta de trabalho.
   fetchOrigin: 'o fetch da aba Código-fonte, só da origem',
 };
 

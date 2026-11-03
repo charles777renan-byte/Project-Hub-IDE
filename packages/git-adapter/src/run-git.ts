@@ -192,11 +192,9 @@ const COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
  * só caminhos, que o Git lê como arquivos e nunca como opção. Contra a base do painel de código-fonte
  * (ADR 0010): o nome inteiro de um commit (o `merge-base` calculado pelo adaptador, e não um nome de
  * branch) e `HEAD`, nessa ordem, para comparar só o que está commitado (com um operando só o Git compara com a
- * pasta de trabalho). Três formas exatas:
- * - `diff --name-status -z <commit> HEAD` e `diff --numstat -z <commit> HEAD`: uma só das duas listas, com `-z`,
- *   sem `--` nem caminhos;
- * - `diff <commit> HEAD --patch ... -- <caminho>`: um caminho só, com `--no-ext-diff` e `--no-textconv` (que
- *   desligam programas que o repositório configura, seção 17.1), sem `-z`, `--numstat` nem `--name-status`.
+ * pasta de trabalho). Duas formas exatas: `diff --name-status -z <commit> HEAD` e `diff --numstat -z <commit> HEAD`,
+ * uma só das duas listas, com `-z`, sem `--` nem caminhos. O patch de um arquivo só existe contra `HEAD` (a
+ * primeira família): a forma `diff <commit> HEAD --patch -- <caminho>` não tem chamador e é recusada.
  * As opções de cada forma saem de `DIFF_READ_OPTIONS`.
  */
 function isDiffRead(rest: readonly string[]): boolean {
@@ -213,16 +211,7 @@ function isDiffRead(rest: readonly string[]): boolean {
     return false;
   }
   const lists = options.filter((option) => option === '--numstat' || option === '--name-status');
-  if (lists.length > 0) {
-    return lists.length === 1 && options.includes('-z') && paths === undefined;
-  }
-  return (
-    !options.includes('-z') &&
-    options.includes('--no-ext-diff') &&
-    options.includes('--no-textconv') &&
-    paths?.length === 1 &&
-    paths[0] !== ''
-  );
+  return lists.length === 1 && options.includes('-z') && paths === undefined;
 }
 
 /**

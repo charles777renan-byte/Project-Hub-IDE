@@ -282,6 +282,33 @@ describe('FileTree: letras e pontos do Git', () => {
     expect(item('README.md')).not.toHaveAccessibleName(/modificado/);
   });
 
+  it('o ponto vale para cada pasta do caminho, também a intermediária (src/ui), e não para a vizinha', async () => {
+    const user = await renderGit([{ path: 'src/ui/Botao.tsx', staged: null, unstaged: 'M' }]);
+    await user.click(item('src'));
+    await screen.findByRole('treeitem', { name: /^ui/ });
+    await user.click(item('ui'));
+    await screen.findByRole('treeitem', { name: /^Botao\.tsx/ });
+
+    // A pasta de cima e a intermediária: o ponto e as palavras em cada uma.
+    expect(item('src')).toHaveAccessibleName(/contém alterações/);
+    expect(item('src').querySelector('.files-tree__dot')).not.toBeNull();
+    expect(item('ui')).toHaveAccessibleName(/contém alterações/);
+    expect(item('ui').querySelector('.files-tree__dot')).not.toBeNull();
+    // O arquivo leva a letra, e não o ponto; a pasta vizinha e os arquivos sem alteração ficam sem nada.
+    expect(item('Botao.tsx')).toHaveAccessibleName(/modificado/);
+    expect(item('Botao.tsx').querySelector('.files-tree__dot')).toBeNull();
+    expect(item('docs').querySelector('.files-tree__dot')).toBeNull();
+    expect(item('main.ts').querySelector('.files-tree__dot')).toBeNull();
+    expect(item('main.ts').querySelector('.files-tree__git')).toBeNull();
+  });
+
+  it('arquivo renomeado no stage tem a letra R e o nome "renomeado"', async () => {
+    await renderGit([{ path: 'README.md', staged: 'R', unstaged: null }]);
+
+    expect(item('README.md')).toHaveAccessibleName(/renomeado/);
+    expect(item('README.md').querySelector('.files-tree__git')).toHaveTextContent('R');
+  });
+
   it('sem Git (sem gitFiles), a árvore não mostra letra, ponto nem aviso', async () => {
     await renderGit(undefined);
 

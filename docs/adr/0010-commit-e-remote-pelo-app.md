@@ -1,6 +1,6 @@
 # ADR 0010: Commit, stage, push, pull e fetch pelo aplicativo
 
-- Status: aceita (aprovada pelo usuário em 2026-11-02; implementação na fase 2)
+- Status: aceita (aprovada pelo usuário em 2026-11-02); implementada na fase 2, no ramo `feat/painel-direito-fase-2`, até o commit `1593b43`.
 - Data: 2026-11-02
 - Origem: aba Código-fonte do painel direito, em `docs/superpowers/specs/2026-11-02-painel-direito-design.md`
 - Altera: ADR 0004 e ADR 0007 (RF-GIT-007 deixa de proibir commit e remote na pasta do projeto), e o ADR 0009 (que liberou só o primeiro commit de um projeto sem Git)
@@ -50,3 +50,8 @@ Diferente das missões, estas ações acontecem na pasta do projeto, na branch q
 - O teste de superfície da API pública do adaptador proíbe exportar nomes com `commit`, `push`, `merge`, `fetch` ou `pull`. Com esta decisão, esse teste precisa mudar de forma explícita, e a regra nova deve ficar escrita no teste. Isso é decidido no plano da fase 2.
 - Testes com repositório temporário e Git real: commit com hook que falha, push para remote local, pull que não pode avançar, `restore` com confirmação, stage de caminho com espaço e acento, e bloqueio de cada forma não listada.
 - A fase 2 entrega esta decisão com a aba Código-fonte. Checks (`gh`) e Sessões ficam para as fases 3 e 4, cada uma com o seu ADR.
+
+## Notas de implementação (fase 2)
+
+- O modo Alterações da aba de arquivo compara a pasta de trabalho com `HEAD`, não com a base. O usuário escolheu essa forma em 2026-11-02. Projeto sem nenhum commit recebe erro de validação na comparação. Um arquivo só commitado não mostra diff nesse modo; o clique na lista de commitados abre o arquivo no modo Arquivo.
+- Link rastreado que aponta para fora da pasta do projeto é recusado em stage, unstage e descarte. É a escolha segura.

@@ -662,12 +662,6 @@ export const RIGHT_PANEL_TEXT = {
     loadError: 'Não foi possível ler o estado do Git.',
     noProject: 'Abra um projeto para ver os arquivos',
     detachedHead: 'HEAD destacado',
-    changedFiles: (count: number) =>
-      count === 0
-        ? 'Nenhum arquivo alterado'
-        : count === 1
-          ? '1 arquivo alterado'
-          : `${count} arquivos alterados`,
     staged: 'Em stage',
     changes: 'Alterações',
     committedOnBranch: 'Commitado na branch',
