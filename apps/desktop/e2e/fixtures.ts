@@ -240,7 +240,11 @@ export const test = base.extend<Fixtures>({
     }
   },
 
-  launchApp: async ({ launchProcess, closeFailures }, use) => {
+  // `gitRepo` entra aqui só para ficar montado antes do app: o Playwright desmonta na ordem inversa, então a
+  // pasta do repositório só é apagada depois que o app fecha. Sem isso, um teste que pede `launchApp` antes de
+  // `gitRepo` tenta apagar a pasta com o app ainda aberto, e a remoção falha com EPERM no Windows.
+  launchApp: async ({ gitRepo, launchProcess, closeFailures }, use) => {
+    void gitRepo;
     async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
       const launched = await launchProcess(options);
       try {
