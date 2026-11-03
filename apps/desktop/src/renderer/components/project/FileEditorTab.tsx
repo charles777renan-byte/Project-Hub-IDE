@@ -25,9 +25,10 @@ const TEXT = RIGHT_PANEL_TEXT.editor;
  * a confirmação de recriá-lo. A janela ganhar o foco confere o disco.
  *
  * Com o Git lido (`useGitPanel`, a mesma carga das outras abas), a barra ganha o par Arquivo | Alterações; sem Git, a
- * aba é só o editor. O modo é da aba (`file.mode`, no store). Em Alterações o editor segue montado, escondido, e o
- * texto fica no buffer: voltar mostra a mesma edição. Sem base (`baseRef === null`) o modo Alterações não existe e
- * `git.diff` nunca é chamado. Em Alterações nada se grava: Ctrl+S é ignorado e o Salvar fica desligado.
+ * barra não tem o par e a aba é só o editor. O modo é da aba (`file.mode`, no store). Em Alterações o editor segue
+ * montado, escondido, e o texto fica no buffer: voltar mostra a mesma edição. Com o Git lido, `git.diff` é chamado
+ * (o diff é contra o `HEAD`, e não depende da base da branch), e um erro do caso de uso aparece como `role="alert"`,
+ * inclusive o de projeto sem commit. Em Alterações nada se grava: Ctrl+S é ignorado e o Salvar fica desligado.
  */
 export function FileEditorTab({ projectId, path }: { projectId: string; path: string }) {
   const { files } = useOpenFiles(projectId);
@@ -64,9 +65,8 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
   const missing = file.notice === 'missing';
   // Com o arquivo alterado no disco, só a faixa de conflito grava; com ele sumido, Salvar vale mesmo sem alteração.
   const gitData = git.status === 'ready' ? git.data : null;
-  const gitReady = gitData !== null;
-  const canDiff = gitData !== null && gitData.baseRef !== null;
-  // O modo pedido vale se há base; enquanto o Git ainda carrega, a aba que pediu Alterações espera o diff.
+  const canDiff = gitData !== null;
+  // O modo pedido vale com o Git lido; enquanto ele ainda carrega, a aba que pediu Alterações espera o diff.
   const diffMode = file.mode === 'alteracoes' && (canDiff || git.status === 'loading');
   const canSave =
     !diffMode &&
@@ -123,10 +123,9 @@ export function FileEditorTab({ projectId, path }: { projectId: string; path: st
           <PathText path={path} />
         </span>
         <div className="file-editor__actions">
-          {gitReady ? (
+          {canDiff ? (
             <FileModeToggle
               mode={diffMode ? 'alteracoes' : 'arquivo'}
-              canDiff={canDiff}
               onChange={(mode) => setFileMode(projectId, path, mode)}
             />
           ) : null}

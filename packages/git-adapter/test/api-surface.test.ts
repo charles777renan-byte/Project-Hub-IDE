@@ -102,7 +102,7 @@ describe('superfície da API', () => {
         'getGitPanelStatus',
         'getBranchLog',
         'getBranchChanges',
-        'getFileDiffAgainstBase',
+        'getFileDiffAgainstHead',
       ]),
     );
   });

@@ -183,11 +183,9 @@ test.describe('Código-fonte com remoto local', () => {
     writeFileSync(join(repo, 'longo.txt'), `${lines.join('\n')}\n`);
     runGit(repo, env, ['add', 'longo.txt']);
     runGit(repo, env, ['commit', '--no-verify', '-m', 'adiciona longo']);
-    runGit(repo, env, ['push']);
-    // Uma alteração commitada e ainda não publicada dá ao arquivo um diff contra a base (origin/main).
+    // A alteração fica no disco, sem commit: o diff do arquivo é contra o HEAD, então ela dá ao arquivo um diff.
     lines[4] = 'linha numero 005 alterada';
     writeFileSync(join(repo, 'longo.txt'), `${lines.join('\n')}\n`);
-    runGit(repo, env, ['commit', '--no-verify', '-am', 'altera longo']);
 
     const { page } = await launchApp({ dialogPath: repo });
     await addGitProject(page, projectName);

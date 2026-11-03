@@ -2,9 +2,9 @@ import { isRelativePosixPath } from './git-write';
 import { GitError, isOperand, LOG_FORMAT, MAX_LOG_ENTRIES, runGit } from './run-git';
 
 /**
- * Leituras do painel de código-fonte (ADR 0010): estado, log, alterações da branch e diff contra a base.
- * Todas passam por `runGit` (só leitura, formas exatas) e devolvem dados simples. O texto bruto do Git nunca
- * entra na mensagem de um erro: uma saída que o painel não entende vira um `GitError` com texto fixo.
+ * Leituras do painel de código-fonte (ADR 0010): estado, log, alterações da branch e diff de um arquivo contra
+ * o HEAD. Todas passam por `runGit` (só leitura, formas exatas) e devolvem dados simples. O texto bruto do Git
+ * nunca entra na mensagem de um erro: uma saída que o painel não entende vira um `GitError` com texto fixo.
  */
 
 export type ReadOptions = {
@@ -70,8 +70,10 @@ export type BranchChanges = {
   files: BranchChangeFile[];
 };
 
+/** O diff de um arquivo contra o último commit (`HEAD`): a pasta de trabalho, com o que está no stage, comparada com ele. */
 export type FileDiffAgainstBase = {
   path: string;
+  /** Sempre `HEAD`: o diff do arquivo é contra o último commit, e não contra a base da branch. */
   baseRef: string;
   /** Só os trechos (`@@`), em diff unificado. Vazio em binário e em arquivo sem mudança. */
   patch: string;
@@ -421,10 +423,12 @@ function literal(path: string): string {
 }
 
 /**
- * O diff de um arquivo contra a base, só os trechos (`@@`), sem o cabeçalho. Binário vem sem prévia. Sem base
- * devolve `null`. O caminho é relativo à pasta do projeto (senão, `VALIDATION_FAILED`).
+ * O diff de um arquivo contra o último commit (`HEAD`): a pasta de trabalho (edições em disco, ainda sem
+ * commit, mais o que está no stage) comparada com ele, só os trechos (`@@`), sem o cabeçalho. Binário vem sem
+ * prévia. Um arquivo igual ao `HEAD`, ou novo e ainda fora do Git, vem com o patch vazio. Num repositório sem
+ * nenhum commit devolve `null`. O caminho é relativo à pasta do projeto (senão, `VALIDATION_FAILED`).
  */
-export async function getFileDiffAgainstBase(
+export async function getFileDiffAgainstHead(
   options: ReadOptions & { path: string; maxBytes?: number },
 ): Promise<FileDiffAgainstBase | null> {
   if (!isRelativePosixPath(options.path)) {
@@ -434,22 +438,21 @@ export async function getFileDiffAgainstBase(
     );
   }
   const parsed = await readBranchHeader(options);
-  const { baseRef, mergeBase } = await resolveBase(options, parsed);
-  if (baseRef === null || mergeBase === null) return null;
+  if (!parsed.hasCommits) return null;
 
   const { stdout } = await runGit(
-    ['diff', mergeBase, 'HEAD', '--patch', ...DIFF_FLAGS, '--', literal(options.path)],
+    ['diff', 'HEAD', '--patch', ...DIFF_FLAGS, '--', literal(options.path)],
     { cwd: options.repo, gitBinary: options.gitBinary },
   );
   const hunks = /^@@/mu.exec(stdout);
   if (hunks === null) {
     const binary = /^Binary files .* differ$/mu.test(stdout) || stdout.includes('GIT binary patch');
-    return { path: options.path, baseRef, patch: '', binary, truncated: false };
+    return { path: options.path, baseRef: 'HEAD', patch: '', binary, truncated: false };
   }
   const limited = limitText(stdout.slice(hunks.index), options.maxBytes ?? DEFAULT_MAX_PATCH_BYTES);
   return {
     path: options.path,
-    baseRef,
+    baseRef: 'HEAD',
     patch: limited.text,
     binary: false,
     truncated: limited.truncated,

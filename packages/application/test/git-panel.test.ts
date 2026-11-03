@@ -156,11 +156,14 @@ describe('getFileDiff', () => {
     expect(git.calls).toEqual([]);
   });
 
-  it('sem base para comparar: VALIDATION_FAILED, e não um diff vazio', async () => {
+  it('sem commit para comparar: VALIDATION_FAILED, e não um diff vazio', async () => {
     const { deps } = setup({ fileDiff: null });
 
     await expect(getFileDiff(deps, { projectId: 'p1', path: 'a.ts' })).resolves.toEqual(
-      fail('VALIDATION_FAILED', 'Não há base para comparar: a referência origin/main não existe.'),
+      fail(
+        'VALIDATION_FAILED',
+        'Não há commit para comparar: o projeto ainda não tem nenhum commit.',
+      ),
     );
   });
 

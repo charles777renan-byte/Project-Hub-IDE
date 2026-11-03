@@ -120,7 +120,7 @@ export interface FileSystemPort {
  */
 export interface GitPanelPort {
   status(repoPath: string): Promise<GitStatusDto>;
-  /** O diff do arquivo contra a base, ou `null` quando a base não existe. */
+  /** O diff do arquivo contra o último commit (`HEAD`), ou `null` quando o repositório ainda não tem commit. */
   fileDiff(repoPath: string, path: string): Promise<GitFileDiffDto | null>;
   stage(repoPath: string, paths: readonly string[]): Promise<void>;
   unstage(repoPath: string, paths: readonly string[]): Promise<void>;

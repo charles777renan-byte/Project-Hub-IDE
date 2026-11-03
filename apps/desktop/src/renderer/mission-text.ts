@@ -679,6 +679,7 @@ export const RIGHT_PANEL_TEXT = {
     unstageHint: 'Tirar do stage',
     discardHint: 'Desfazer',
     openChanges: (path: string) => `Ver alterações de ${path}`,
+    openFile: (path: string) => `Abrir ${path}`,
     stageAll: 'Colocar tudo em stage',
     unstageAll: 'Tirar tudo do stage',
     discardAll: 'Desfazer tudo',
@@ -768,19 +769,18 @@ export const RIGHT_PANEL_TEXT = {
     cannotEdit: 'Este arquivo não pode ser editado aqui',
     openDefault: 'Abrir no programa padrão',
     openDefaultError: 'Não foi possível abrir o arquivo no programa padrão.',
-    /** O par Arquivo | Alterações da barra do caminho e o diff contra a base (FileModeToggle, FileDiffView). */
+    /** O par Arquivo | Alterações da barra do caminho e o diff contra HEAD (FileModeToggle, FileDiffView). */
     mode: {
       group: 'Modo da aba',
       file: 'Arquivo',
       changes: 'Alterações',
-      noBase: 'Esta branch não tem base para comparar.',
       saveInChanges: 'Volte para Arquivo para salvar.',
     },
     diff: {
       label: (path: string) => `Diff de ${path}`,
       loading: 'Carregando as alterações…',
       binary: 'Arquivo binário: não há diff de texto.',
-      empty: 'Este arquivo não tem alterações em relação à base.',
+      empty: 'Este arquivo não tem alterações em relação ao último commit.',
       truncated: 'O diff passou do limite: mostrado só o começo.',
       error: 'Não foi possível ler as alterações do arquivo.',
     },

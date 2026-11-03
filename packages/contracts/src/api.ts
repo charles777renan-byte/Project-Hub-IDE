@@ -230,7 +230,7 @@ export type ProjectHubApi = {
   git: {
     /** Branch, upstream, à frente/atrás, linhas contra a base e arquivos alterados do projeto. */
     status(input: GitProjectInput): Promise<AppResult<GitStatusDto>>;
-    /** Diff de um arquivo contra a base (`origin/main`). O caminho é relativo, em POSIX. */
+    /** Diff de um arquivo contra o último commit (`HEAD`). O caminho é relativo, em POSIX. */
     diff(input: GitDiffInput): Promise<AppResult<GitFileDiffDto>>;
     /** Põe os arquivos em stage. Os caminhos são relativos, em POSIX. */
     stage(input: GitPathsInput): Promise<AppResult<void>>;

@@ -208,14 +208,19 @@ function stateLabel(letter: string): string | undefined {
   return (TEXT.stateLabel as Record<string, string>)[letter];
 }
 
-/** O nome do arquivo: um botão que abre a aba no modo Alterações, ou só texto quando ninguém recebe o clique. */
+/**
+ * O nome do arquivo: um botão que abre a aba no modo pedido (Alterações, ou Arquivo para o commitado), ou só texto
+ * quando ninguém recebe o clique.
+ */
 function FileName({
   path,
   name,
+  mode,
   onOpen,
 }: {
   path: string;
   name: string;
+  mode: FileMode;
   onOpen: ((path: string, mode: FileMode) => void) | undefined;
 }) {
   if (onOpen === undefined) {
@@ -230,8 +235,8 @@ function FileName({
       type="button"
       className="git-changes__name git-changes__open"
       title={path}
-      aria-label={TEXT.openChanges(path)}
-      onClick={() => onOpen(path, 'alteracoes')}
+      aria-label={mode === 'arquivo' ? TEXT.openFile(path) : TEXT.openChanges(path)}
+      onClick={() => onOpen(path, mode)}
     >
       {name}
     </button>
@@ -255,14 +260,17 @@ function FileRow({
       <span className="git-changes__letter" title={stateLabel(letter)}>
         {letter}
       </span>
-      <FileName path={path} name={name} onOpen={onOpen} />
+      <FileName path={path} name={name} mode="alteracoes" onOpen={onOpen} />
       {dir === '' ? null : <span className="git-changes__dir">{dir}</span>}
       {children === undefined ? null : <span className="git-changes__actions">{children}</span>}
     </li>
   );
 }
 
-/** "Commitado na branch": o que a branch mudou desde a base. O clique no nome abre o arquivo no modo Alterações. */
+/**
+ * "Commitado na branch": o que a branch mudou desde a base. O clique no nome abre o arquivo no modo Arquivo: o diff
+ * contra HEAD de um arquivo só commitado é vazio, então Alterações não mostraria nada útil.
+ */
 function BranchChanges({
   projectId,
   reloadKey,
@@ -307,7 +315,7 @@ function BranchChanges({
               <span className="git-changes__letter" title={stateLabel(file.status)}>
                 {file.status}
               </span>
-              <FileName path={file.path} name={name} onOpen={onOpen} />
+              <FileName path={file.path} name={name} mode="arquivo" onOpen={onOpen} />
               {dir === '' ? null : <span className="git-changes__dir">{dir}</span>}
               <span className="git-changes__lines">
                 {file.added === null || file.removed === null
