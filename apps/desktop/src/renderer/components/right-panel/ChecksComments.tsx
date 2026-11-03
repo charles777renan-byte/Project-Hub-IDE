@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AppResult, CommentDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { ChecksComposer } from './ChecksComposer';
@@ -50,7 +50,18 @@ export function ChecksComments({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  /** Para onde o foco vai depois da próxima renderização: o botão que o tinha pode ter sumido ou ficado desligado. */
+  const [pendingFocus, setPendingFocus] = useState<'field' | 'lost' | null>(null);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
   const base = useId();
+
+  // Roda depois do efeito do diálogo (filho), que devolve o foco a quem o tinha antes de abrir.
+  useEffect(() => {
+    if (pendingFocus === null) return;
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (pendingFocus === 'field' || lost) fieldRef.current?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus]);
 
   function change(value: string) {
     setText(value);
@@ -68,6 +79,7 @@ export function ChecksComments({
     if (sending) return;
     setConfirming(false);
     setError(null);
+    setPendingFocus('lost');
   }
 
   async function confirm() {
@@ -76,7 +88,8 @@ export function ChecksComments({
     setNotice(TEXT.sending);
     let result: AppResult<void>;
     try {
-      result = await onComment(text.trim());
+      // Só o fim é aparado: um comentário que começa com bloco de código (quatro espaços) mantém a indentação.
+      result = await onComment(text.trimEnd());
     } finally {
       setSending(false);
     }
@@ -84,6 +97,8 @@ export function ChecksComments({
       setConfirming(false);
       setText('');
       setNotice(TEXT.sent);
+      // Enviar fica desligado com o campo vazio: o foco vai para o campo, onde a conversa continua.
+      setPendingFocus('field');
     } else {
       setNotice('');
       setError(result.error.message);
@@ -118,7 +133,13 @@ export function ChecksComments({
       <p className="checks-comments__live" role="status">
         {notice}
       </p>
-      <ChecksComposer value={text} onChange={change} disabled={writing} onSend={ask} />
+      <ChecksComposer
+        value={text}
+        onChange={change}
+        disabled={writing}
+        onSend={ask}
+        fieldRef={fieldRef}
+      />
       <GitConfirmDialog
         open={confirming}
         title={TEXT.confirmTitle(prNumber)}
@@ -129,7 +150,7 @@ export function ChecksComments({
         onCancel={close}
       >
         <p className="git-dialog__label">{TEXT.confirmPreview}</p>
-        <p className="git-dialog__message">{text.trim()}</p>
+        <p className="git-dialog__message">{text.trimEnd()}</p>
         {error === null ? null : (
           <p className="git-dialog__warning" role="alert">
             {error}

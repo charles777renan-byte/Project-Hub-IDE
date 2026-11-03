@@ -1692,9 +1692,15 @@
   border-bottom-left-radius: 0;
 }
 
+/* O anel do foco (lima, como o botão) fica por fora e sobe sobre a outra metade, em vez de sumir por dentro dela. */
 .checks-merge__arrow:focus-visible,
 .checks-merge__main:focus-visible {
-  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+.checks-merge__live:focus-visible {
+  outline-offset: 0;
 }
 
 .checks-merge__list {

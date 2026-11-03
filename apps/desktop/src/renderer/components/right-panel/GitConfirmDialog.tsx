@@ -55,6 +55,11 @@ export function GitConfirmDialog({
     previousFocus.current = null;
   }, [open]);
 
+  // Uma falha tira o botão de confirmar (o foco estava nele): o foco vai para o de fechar, em vez de cair no corpo.
+  useEffect(() => {
+    if (open && confirmLabel === null) cancelRef.current?.focus();
+  }, [open, confirmLabel]);
+
   return (
     <dialog
       ref={dialogRef}

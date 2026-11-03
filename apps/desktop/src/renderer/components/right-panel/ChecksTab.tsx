@@ -107,7 +107,12 @@ export function ChecksTab({
                 {state.error === null ? null : `: ${state.error.message}`}
               </p>
             ) : null}
-            <ChecksMergeBar reading={state.reading} writing={state.writing} onMerge={merge} />
+            <ChecksMergeBar
+              reading={state.reading}
+              stale={state.stale}
+              writing={state.writing}
+              onMerge={merge}
+            />
             <ChecksList checks={state.reading.checks} />
             <ChecksComments
               prNumber={state.reading.pr.number}
