@@ -32,6 +32,12 @@ const FSMONITOR_OFF = ['-c', 'core.fsmonitor=false'];
 /** Chaves de identidade que `config --get` lê. O primeiro commit do repositório criado usa só elas (ADR 0009). */
 const IDENTITY_KEYS: ReadonlySet<string> = new Set(['user.name', 'user.email']);
 
+/**
+ * Chaves de `config --get` que a leitura aceita, uma por vez: a identidade do commit (ADR 0009) e o endereço
+ * do `origin`, que o painel de código-fonte mostra (ADR 0010).
+ */
+const CONFIG_READ_KEYS: ReadonlySet<string> = new Set([...IDENTITY_KEYS, 'remote.origin.url']);
+
 /** Opções que `symbolic-ref` aceita só para ler. Qualquer outra, como `-d` e `-m`, escreve ou apaga. */
 const SYMBOLIC_REF_READ_OPTIONS = new Set(['--short', '-q', '--quiet']);
 
@@ -51,6 +57,17 @@ const DIFF_READ_OPTIONS = new Set([
   '-z',
 ]);
 
+/**
+ * O formato do `git log` do painel (ADR 0010), fixo: nome inteiro, nome curto, autor, data em ISO 8601,
+ * etiquetas (`%D`, sem parênteses) e assunto, separados por NUL (`%x00`), um commit por linha. Nenhum desses
+ * campos tem NUL nem quebra de linha (o assunto `%s` já vem numa linha só), então um assunto com `|` ou aspas
+ * não quebra a leitura. É o único formato que a lista de permissão aceita.
+ */
+export const LOG_FORMAT = '--format=%H%x00%h%x00%an%x00%aI%x00%D%x00%s';
+
+/** Quantos commits o `log` do painel lê, no máximo. */
+export const MAX_LOG_ENTRIES = 50;
+
 export type RunGitOptions = {
   /** Pasta onde o Git roda. */
   cwd: string;
@@ -62,25 +79,35 @@ export type RunGitOptions = {
 
 /**
  * Falha ao rodar o Git. Os campos `code` e `message` seguem o `AppError` do contrato (a mensagem é
- * segura para exibir). A saída de erro do Git fica só em `stderr`, porque pode trazer conteúdo do
- * repositório (seção 17.1), que não é texto confiável.
+ * segura para exibir). A saída do Git fica só em `stderr` e `stdout`, e nunca na mensagem, porque pode
+ * trazer conteúdo do repositório (seção 17.1), que não é texto confiável. `stdout` só vem preenchido
+ * quando o comando falhou depois de escrever nele: um hook `pre-push` que recusa escreve ali, e a
+ * mensagem de `GIT_HOOK_FAILED` (git-write.ts) mostra as duas saídas.
  */
 export class GitError extends Error {
   readonly code: ErrorCode;
   /** Código de saída do processo, quando o Git chegou a rodar e terminou com erro. */
   readonly exitCode: number | undefined;
   readonly stderr: string;
+  /** Saída padrão do processo que falhou. Vazia quando o erro não vem de um processo que terminou. */
+  readonly stdout: string;
 
   constructor(
     code: ErrorCode,
     message: string,
-    details: { exitCode?: number | undefined; stderr?: string | undefined; cause?: unknown } = {},
+    details: {
+      exitCode?: number | undefined;
+      stderr?: string | undefined;
+      stdout?: string | undefined;
+      cause?: unknown;
+    } = {},
   ) {
     super(message, details.cause === undefined ? undefined : { cause: details.cause });
     this.name = 'GitError';
     this.code = code;
     this.exitCode = details.exitCode;
     this.stderr = details.stderr ?? '';
+    this.stdout = details.stdout ?? '';
   }
 }
 
@@ -90,8 +117,10 @@ export class GitError extends Error {
  * opções que escrevem, e `diff` só contra `HEAD`, com as opções de `DIFF_READ_OPTIONS`.
  * `check-ignore` só vale como `check-ignore -- <caminhos>` (a leitura do `.worktreeinclude`): ao
  * menos um caminho, nenhum vazio, e sem `-z` (que o Git só aceita com `--stdin`), `--stdin`,
- * `--no-index` ou qualquer outra opção. Tudo o que não está aqui é recusado antes de criar um
- * processo. Opções antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando
+ * `--no-index` ou qualquer outra opção. As leituras do painel de código-fonte (ADR 0010) têm uma forma
+ * exata cada: `log`, `rev-list`, `merge-base`, `ls-files` e o `diff` contra um commit (ver as funções
+ * abaixo); `status` e `rev-parse` seguem abertos como antes. Tudo o que não está aqui é recusado antes de
+ * criar um processo. Opções antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando
  * precisa ser o primeiro argumento.
  */
 function isReadOnly(args: readonly string[]): boolean {
@@ -115,33 +144,95 @@ function isReadOnly(args: readonly string[]): boolean {
       return separator === '--' && paths.length > 0 && paths.every((path) => path !== '');
     }
     case 'config': {
-      // Só a leitura da identidade do commit (ADR 0009), uma chave por vez.
+      // Só a leitura de chaves conhecidas (`CONFIG_READ_KEYS`), uma por vez.
       const [flag, key, ...extra] = rest;
-      return flag === '--get' && key !== undefined && IDENTITY_KEYS.has(key) && extra.length === 0;
+      return (
+        flag === '--get' && key !== undefined && CONFIG_READ_KEYS.has(key) && extra.length === 0
+      );
+    }
+    case 'log':
+      return isLogRead(rest);
+    case 'rev-list': {
+      // `rev-list --left-right --count <ref>...HEAD`: o `<ref>` nunca começa com `-`.
+      const [leftRight, count, range, ...extra] = rest;
+      return (
+        leftRight === '--left-right' &&
+        count === '--count' &&
+        range !== undefined &&
+        range.endsWith('...HEAD') &&
+        isOperand(range.slice(0, -'...HEAD'.length)) &&
+        extra.length === 0
+      );
+    }
+    case 'merge-base': {
+      // `merge-base HEAD <ref>`: sem `--is-ancestor`, `--all` e as demais opções.
+      const [head, ref, ...extra] = rest;
+      return head === 'HEAD' && isOperand(ref) && extra.length === 0;
+    }
+    case 'ls-files': {
+      // `ls-files -z -- <caminhos>`: depois do `--` só há caminhos, que o Git lê como nomes.
+      const [nulSeparated, separator, ...paths] = rest;
+      return (
+        nulSeparated === '-z' &&
+        separator === '--' &&
+        paths.length > 0 &&
+        paths.every((path) => path !== '')
+      );
     }
     default:
       return false;
   }
 }
 
+/** O nome inteiro de um commit (SHA-1 ou SHA-256): o que `merge-base` devolve. Nunca começa com `-`. */
+const COMMIT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+
 /**
- * `diff` só compara com `HEAD`, com as opções de `DIFF_READ_OPTIONS`. Depois de `--` vêm só caminhos,
- * que o Git lê como arquivos e nunca como opção.
+ * `diff` tem duas famílias de forma. Contra `HEAD`: as opções de `DIFF_READ_OPTIONS` e, depois de `--`,
+ * só caminhos, que o Git lê como arquivos e nunca como opção. Contra a base do painel de código-fonte
+ * (ADR 0010): o nome inteiro de um commit (o `merge-base` calculado pelo adaptador, e não um nome de
+ * branch) e `HEAD`, nessa ordem, para comparar só o que está commitado (com um operando só o Git compara com a
+ * pasta de trabalho). Duas formas exatas: `diff --name-status -z <commit> HEAD` e `diff --numstat -z <commit> HEAD`,
+ * uma só das duas listas, com `-z`, sem `--` nem caminhos. O patch de um arquivo só existe contra `HEAD` (a
+ * primeira família): a forma `diff <commit> HEAD --patch -- <caminho>` não tem chamador e é recusada.
+ * As opções de cada forma saem de `DIFF_READ_OPTIONS`.
  */
 function isDiffRead(rest: readonly string[]): boolean {
   const separator = rest.indexOf('--');
   const revisions = separator === -1 ? rest : rest.slice(0, separator);
+  const paths = separator === -1 ? undefined : rest.slice(separator + 1);
   const operands = revisions.filter((arg) => !arg.startsWith('-'));
   const options = revisions.filter((arg) => arg.startsWith('-'));
+  if (!options.every((option) => DIFF_READ_OPTIONS.has(option))) return false;
+  if (operands.length === 1) return operands[0] === 'HEAD';
+
+  const [commit, head, ...extra] = operands;
+  if (commit === undefined || !COMMIT_ID.test(commit) || head !== 'HEAD' || extra.length > 0) {
+    return false;
+  }
+  const lists = options.filter((option) => option === '--numstat' || option === '--name-status');
+  return lists.length === 1 && options.includes('-z') && paths === undefined;
+}
+
+/**
+ * `log -n <1 a 50> <LOG_FORMAT> --decorate=short`, nessa ordem e com esses argumentos, sem mais nenhum:
+ * `--output` e as demais opções ficam de fora, e a lista não aceita nome de branch.
+ */
+function isLogRead(rest: readonly string[]): boolean {
+  const [flag, count, format, decorate, ...extra] = rest;
   return (
-    operands.length === 1 &&
-    operands[0] === 'HEAD' &&
-    options.every((option) => DIFF_READ_OPTIONS.has(option))
+    flag === '-n' &&
+    count !== undefined &&
+    /^[1-9][0-9]?$/u.test(count) &&
+    Number(count) <= MAX_LOG_ENTRIES &&
+    format === LOG_FORMAT &&
+    decorate === '--decorate=short' &&
+    extra.length === 0
   );
 }
 
 /** Um argumento que o Git lê como valor: não vazio e sem `-` na frente, que o faria virar opção. */
-function isOperand(arg: string | undefined): arg is string {
+export function isOperand(arg: string | undefined): arg is string {
   return arg !== undefined && arg !== '' && !arg.startsWith('-');
 }
 
@@ -177,14 +268,22 @@ function isWorktreeWrite(args: readonly string[]): boolean {
 /**
  * Ambiente do processo: mensagens do Git em inglês (a detecção reconhece "not a git repository" no
  * texto), sem travas opcionais (o `status` não regrava o índice) e sem variáveis de repositório.
+ * `extra` são variáveis que o adaptador acrescenta (nunca do chamador) e que vencem as herdadas, mas
+ * não as de repositório, que são sempre removidas.
  */
-function gitEnvironment(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' };
+function gitEnvironment(extra: Readonly<Record<string, string>> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...extra,
+    LC_ALL: 'C',
+    GIT_OPTIONAL_LOCKS: '0',
+  };
   for (const name of REPOSITORY_VARIABLES) delete env[name];
   return env;
 }
 
-type Outcome = { error: null; stdout: string } | { error: ExecFileException; stderr: string };
+type Outcome =
+  { error: null; stdout: string } | { error: ExecFileException; stdout: string; stderr: string };
 
 /**
  * Roda o executável sem shell, com os argumentos em array, depois da lista de permissão. Nunca
@@ -195,6 +294,7 @@ function execGit(
   args: readonly string[],
   config: readonly string[],
   options: RunGitOptions,
+  env: Readonly<Record<string, string>>,
 ): Promise<Outcome> {
   return new Promise((resolve) => {
     execFile(
@@ -202,14 +302,14 @@ function execGit(
       [...FSMONITOR_OFF, ...config, ...args],
       {
         cwd: options.cwd,
-        env: gitEnvironment(),
+        env: gitEnvironment(env),
         timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxBuffer: MAX_OUTPUT_BYTES,
         encoding: 'utf8',
         windowsHide: true,
       },
       (error, stdout, stderr) => {
-        resolve(error === null ? { error: null, stdout } : { error, stderr });
+        resolve(error === null ? { error: null, stdout } : { error, stdout, stderr });
       },
     );
   });
@@ -225,6 +325,7 @@ async function isDirectory(path: string): Promise<boolean> {
 
 async function toGitError(
   error: ExecFileException,
+  stdout: string,
   stderr: string,
   args: readonly string[],
   options: RunGitOptions,
@@ -244,6 +345,7 @@ async function toGitError(
   }
   if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
     return new GitError('UNKNOWN', 'A saída do Git passou do limite aceito.', {
+      stdout,
       stderr,
       cause: error,
     });
@@ -251,6 +353,7 @@ async function toGitError(
   if (error.killed === true) {
     const seconds = (options.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000;
     return new GitError('UNKNOWN', `O Git demorou mais de ${seconds} s e foi interrompido.`, {
+      stdout,
       stderr,
       cause: error,
     });
@@ -259,25 +362,32 @@ async function toGitError(
     return new GitError(
       'UNKNOWN',
       `O comando "git ${args[0] ?? ''}" terminou com erro (código ${error.code}).`,
-      { exitCode: error.code, stderr, cause: error },
+      { exitCode: error.code, stdout, stderr, cause: error },
     );
   }
-  return new GitError('UNKNOWN', 'Não foi possível executar o Git.', { stderr, cause: error });
+  return new GitError('UNKNOWN', 'Não foi possível executar o Git.', {
+    stdout,
+    stderr,
+    cause: error,
+  });
 }
 
 /**
- * Roda o comando que a lista de permissão do chamador já aprovou. Não é exportada: só `runGit` e
- * `runGitWorktree` chegam aqui, cada uma depois da sua checagem. `config` são `-c chave=valor` que
- * o adaptador acrescenta depois do `-c core.fsmonitor=false`, nunca vindos do chamador.
+ * Roda o comando que a lista de permissão do chamador já aprovou. É exportada só para o pacote (não
+ * entra em `index.ts`): `runGit`, `runGitWorktree`, `runGitInitRepository` e `runGitWrite` chegam
+ * aqui, cada uma depois da sua checagem. `config` são `-c chave=valor` que o adaptador acrescenta
+ * depois do `-c core.fsmonitor=false`, e `env` são variáveis de ambiente que ele acrescenta; nenhum
+ * dos dois vem do chamador.
  */
-async function runApproved(
+export async function runApproved(
   args: readonly string[],
   options: RunGitOptions,
   config: readonly string[] = [],
+  env: Readonly<Record<string, string>> = {},
 ): Promise<{ stdout: string }> {
-  const outcome = await execGit(options.gitBinary ?? 'git', args, config, options);
+  const outcome = await execGit(options.gitBinary ?? 'git', args, config, options, env);
   if (outcome.error === null) return { stdout: outcome.stdout };
-  throw await toGitError(outcome.error, outcome.stderr, args, options);
+  throw await toGitError(outcome.error, outcome.stdout, outcome.stderr, args, options);
 }
 
 /**

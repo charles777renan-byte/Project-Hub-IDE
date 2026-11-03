@@ -462,7 +462,9 @@ describe.each([
 /**
  * Painel direito (right-panel.css): só tokens de tokens.css, sem cor literal e sem animação. O lima (--accent) fica
  * de fora (o anel de foco é o --focus, herdado de app.css). A aba ativa usa --fill, o preenchimento que sustenta
- * texto, com um contorno de --field-line além da cor; a divisória é --line.
+ * texto, com um contorno de --field-line além da cor; a divisória é --line. As cores de estado e do Git
+ * (--cyan, --warn, --danger, --violet, --blue) entram só na aba Código-fonte, sempre junto de uma letra ou de um
+ * texto (a letra do arquivo, a pílula ↑↓, o ponto do commit atual, a barra de erro).
  */
 describe('cores do painel direito (right-panel.css)', () => {
   const css = readFileSync(
@@ -477,6 +479,11 @@ describe('cores do painel direito (right-panel.css)', () => {
     '--fill',
     '--muted',
     '--text',
+    '--cyan',
+    '--warn',
+    '--danger',
+    '--violet',
+    '--blue',
   ]);
   const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)|^--shadow-card$/;
 
@@ -505,6 +512,17 @@ describe('cores do painel direito (right-panel.css)', () => {
   it('os ícones e o aviso passam de 4,5:1 sobre o cartão e sobre o realce do mouse (--surface-2)', () => {
     for (const surface of ['--surface', '--surface-2']) {
       for (const color of ['--text', '--muted']) {
+        expect(
+          contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+      }
+    }
+  });
+
+  it('as cores de estado e do Git passam de 4,5:1 sobre o cartão e sobre o realce do mouse (--surface-2)', () => {
+    for (const surface of ['--surface', '--surface-2']) {
+      for (const color of ['--cyan', '--warn', '--danger', '--violet', '--blue']) {
         expect(
           contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
           `${color} sobre ${surface}`,

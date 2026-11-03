@@ -77,11 +77,12 @@ describe('RightPanel', () => {
     expect(screen.getByRole('tabpanel')).toBeInTheDocument();
   });
 
-  it('as três abas sem conteúdo ficam aria-disabled e Arquivos não', () => {
+  it('as duas abas sem conteúdo ficam aria-disabled; Arquivos e Código-fonte não', () => {
     renderPanel({ projectId: 'p1' });
 
     expect(tab('Arquivos')).not.toHaveAttribute('aria-disabled');
-    for (const name of ['Sessões', 'Código-fonte', 'Checks']) {
+    expect(tab('Código-fonte')).not.toHaveAttribute('aria-disabled');
+    for (const name of ['Sessões', 'Checks']) {
       expect(tab(name)).toHaveAttribute('aria-disabled', 'true');
     }
   });
@@ -90,11 +91,25 @@ describe('RightPanel', () => {
     const user = userEvent.setup();
     renderPanel({ projectId: 'p1' });
 
-    await user.click(tab('Código-fonte'));
+    await user.click(tab('Checks'));
 
-    expect(tab('Código-fonte')).toHaveAttribute('aria-selected', 'false');
+    expect(tab('Checks')).toHaveAttribute('aria-selected', 'false');
     expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('clicar em Código-fonte a seleciona, guarda e mostra o conteúdo dela', async () => {
+    const user = userEvent.setup();
+    window.projectHub = {
+      git: { status: vi.fn(() => new Promise(() => undefined)) },
+    } as unknown as ProjectHubApi;
+    renderPanel({ projectId: 'p1' });
+
+    await user.click(tab('Código-fonte'));
+
+    expect(tab('Código-fonte')).toHaveAttribute('aria-selected', 'true');
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('codigo');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Carregando…');
   });
 
   it('andar pelas abas com as setas foca as desligadas, mas não as seleciona', async () => {
@@ -127,6 +142,14 @@ describe('RightPanel', () => {
 
     expect(tab('Arquivos')).toHaveFocus();
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Arquivos');
+  });
+
+  it('a aba Código-fonte guardada sem projeto mostra o aviso de abrir um projeto', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'codigo');
+
+    renderPanel({ projectId: null });
+
+    expect(screen.getByText('Abra um projeto para ver os arquivos')).toBeInTheDocument();
   });
 
   it('a aba guardada volta ao abrir', () => {
@@ -228,6 +251,49 @@ describe('RightPanel: abrir arquivo', () => {
     expect(spy).toHaveBeenCalledWith('README.md');
     expect(openFile).not.toHaveBeenCalled();
     expect(location.search).toBe('?visao=missoes');
+  });
+});
+
+describe('RightPanel: abrir pela aba Código-fonte', () => {
+  beforeEach(() => {
+    vi.mocked(openFile).mockClear();
+    window.projectHub = {
+      git: {
+        status: vi.fn(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: {
+              branch: 'main',
+              upstream: null,
+              ahead: null,
+              behind: null,
+              baseRef: 'origin/main',
+              linesAdded: null,
+              linesRemoved: null,
+              files: [{ path: 'src/a.ts', staged: null, unstaged: 'M' as const }],
+            },
+          }),
+        ),
+        branchChanges: vi.fn(() =>
+          Promise.resolve({
+            ok: true as const,
+            data: { baseRef: 'origin/main', mergeBase: 'abc', files: [] },
+          }),
+        ),
+        log: vi.fn(() => Promise.resolve({ ok: true as const, data: [] })),
+      },
+    } as unknown as ProjectHubApi;
+  });
+
+  it('o clique no nome de um arquivo alterado abre a aba em Alterações e leva a rota para os Terminais', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(STORAGE_KEY, 'codigo');
+    renderPanel({ projectId: 'p1' }, '/workspaces/p1?visao=missoes');
+
+    await user.click(await screen.findByRole('button', { name: 'Ver alterações de src/a.ts' }));
+
+    expect(openFile).toHaveBeenCalledWith('p1', 'src/a.ts', { mode: 'alteracoes' });
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
   });
 });
 

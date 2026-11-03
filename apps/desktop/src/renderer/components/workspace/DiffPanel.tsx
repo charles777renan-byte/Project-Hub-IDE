@@ -183,17 +183,27 @@ function FileDiff({ file }: { file: MissionDiffFileDto }) {
   return (
     <div className="diff__file-view">
       {file.truncated ? <p className="diff__note">Arquivo grande: mostrando só o começo.</p> : null}
-      <pre className="diff__patch" aria-label={`Diff de ${file.path}`}>
-        {file.patch
-          .replace(/\n$/, '')
-          .split('\n')
-          .map((line, index) => (
-            <span key={index} className={`diff__line ${lineClass(line)}`}>
-              {line}
-            </span>
-          ))}
-      </pre>
+      <DiffPatch patch={file.patch} label={`Diff de ${file.path}`} />
     </div>
+  );
+}
+
+/**
+ * Os trechos de um diff unificado, uma linha por `span`, com a classe de cor pelo primeiro caractere. O sinal (`+`,
+ * `-`, `@@`) fica no texto, então a cor não é o único sinal. Tudo entra como texto, nunca como HTML.
+ */
+export function DiffPatch({ patch, label }: { patch: string; label: string }) {
+  return (
+    <pre className="diff__patch" aria-label={label}>
+      {patch
+        .replace(/\n$/, '')
+        .split('\n')
+        .map((line, index) => (
+          <span key={index} className={`diff__line ${lineClass(line)}`}>
+            {line}
+          </span>
+        ))}
+    </pre>
   );
 }
 

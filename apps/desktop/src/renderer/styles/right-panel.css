@@ -280,6 +280,26 @@
   text-overflow: ellipsis;
 }
 
+/* A letra do Git à direita (texto, nunca só cor) e o ponto da pasta com alterações dentro (decorativo; o nome acessível o diz). */
+.files-tree__git {
+  flex: none;
+  margin-left: auto;
+  padding-right: var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.files-tree__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  margin-right: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--text);
+}
+
 .files-tree__note {
   padding: var(--space-1) var(--space-2);
   color: var(--muted);
@@ -507,8 +527,86 @@
   font-size: var(--text-xs);
 }
 
-.file-editor__bar > button {
+.file-editor__bar {
+  flex-wrap: wrap;
+}
+
+.file-editor__actions {
+  display: flex;
   flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.file-editor__actions > button {
+  flex: none;
+}
+
+/* O par Arquivo | Alterações: o modo escolhido ganha --fill e o contorno de 1px, para o estado não ficar só na cor. */
+.file-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.file-mode__buttons {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.file-mode__button {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.file-mode__button:hover:not([aria-pressed='true']) {
+  background: var(--surface-2);
+}
+
+.file-mode__button[aria-pressed='true'] {
+  background: var(--fill);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--text);
+}
+
+.file-mode__button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* O editor (e seus avisos de carga) escondido em Alterações: segue montado, com o texto e o cursor. */
+.file-editor__pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-editor__pane[hidden] {
+  display: none;
+}
+
+/* O diff contra o HEAD: rola por conta própria, e o desenho das linhas é o de .diff__line (app.css). */
+.file-editor__changes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-changes {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 .file-editor__notice,
@@ -711,4 +809,651 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   resize: none;
+}
+
+/* Aba Código-fonte (GitTab). Tudo começa na mesma margem (--space-3 no cabeçalho, --space-2 no corpo mais o recuo das linhas). */
+.git-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.git-tab__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2) var(--space-3);
+}
+
+/* O resumo em duas linhas: a branch com as linhas somadas à direita; embaixo, a base e a situação ↑↓. */
+.git-tab__summary {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.git-tab__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* A branch em peso forte e fonte mono; o nome corta com reticências. */
+.git-tab__branch {
+  overflow: hidden;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* As linhas somadas e removidas: o + em ciano (Git) e o − em vermelho; o sinal fica no texto, não só na cor. */
+.git-tab__lines {
+  flex: none;
+  margin: 0 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.git-tab__add {
+  color: var(--cyan);
+}
+
+.git-tab__del {
+  color: var(--danger);
+}
+
+/* Contagem zero (+0 ou −0) fica em --muted: a cor só aparece quando há alteração de fato. */
+.git-count--zero {
+  color: var(--muted);
+}
+
+.git-tab__target,
+.git-tab__ahead-behind {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.git-tab__target {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.git-tab__ahead-behind {
+  flex: none;
+}
+
+/* Atualizar e o menu de ações remotas, à direita da linha da base. */
+.git-tab__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.git-tab__refresh {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: var(--field-line);
+}
+
+.git-tab__refresh:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-tab__status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Aba Código-fonte: o corpo rolável com a caixa de commit, as listas de alterações e os commits. */
+.git-tab__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+/* Uma escrita que falhou: um cartão com a barra à esquerda, para o aviso não depender só de cor. */
+.git-tab__error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--danger);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  /* A saída de um hook tem várias linhas: elas ficam como vieram (texto puro, nunca HTML). */
+  white-space: pre-wrap;
+}
+
+.git-tab__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* O botão do menu de ações remotas e a lista dele (GitActionsMenu): sem Radix modal, com a lista logo abaixo. */
+.git-menu {
+  position: relative;
+  flex: none;
+}
+
+.git-menu__trigger {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: var(--field-line);
+}
+
+.git-menu__trigger:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-menu__list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 16rem;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  list-style: none;
+}
+
+.git-menu__row {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-menu__item {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.git-menu__item:hover,
+.git-menu__item:focus-visible {
+  background: var(--line);
+}
+
+.git-menu__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-menu__item[aria-disabled='true'] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.git-menu__reason {
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* O diálogo de confirmação (GitConfirmDialog): um <dialog> modal nativo no meio da janela, sem a borda e a margem do navegador. */
+.git-dialog {
+  inset: 0;
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(80vh, 32rem);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.git-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: inherit;
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.git-dialog__title {
+  margin: 0;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.git-dialog__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.git-dialog__message {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.git-dialog__list {
+  max-height: 10rem;
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.git-dialog__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.git-dialog__warning {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.git-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* A caixa de commit: a mensagem num campo um tom acima do cartão, e o botão principal embaixo, na largura toda. */
+.git-commit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.git-commit__message {
+  width: 100%;
+  min-height: 5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.git-commit__message::placeholder {
+  color: var(--muted);
+}
+
+.git-commit__message:hover {
+  border-color: var(--muted);
+}
+
+.git-commit__reason {
+  margin: 0;
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* As seções Em stage, Alterações e Commitado na branch, em sequência, separadas só pelo espaço (como na referência). */
+.git-changes {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-changes__section {
+  padding-top: var(--space-2);
+}
+
+.git-changes__section + .git-changes__section {
+  margin-top: var(--space-3);
+}
+
+.git-changes__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  padding: 0 var(--space-2) 0 var(--space-2);
+}
+
+/* O título em caixa-alta, na cor do texto; a contagem vem ao lado, em --muted, sem moldura. */
+.git-changes__title {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.git-changes__count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.git-changes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Uma linha por arquivo, com a mesma margem do título. O realce do mouse cabe dentro da coluna. */
+.git-changes__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.git-changes__row:hover,
+.git-changes__row:focus-within {
+  background: var(--surface-2);
+}
+
+/* O ícone de arquivo à esquerda, em --muted. */
+.git-changes__icon {
+  flex: none;
+  color: var(--muted);
+}
+
+/*
+ * A letra do Git à direita da linha, em negrito. A cor de cada estado vai na letra, nunca no lugar dela: M amarelo
+ * (--warn), A ciano do Git, D vermelho (--danger), U violeta (aguarda a sua decisão) e R azul.
+ */
+.git-changes__letter {
+  flex: none;
+  width: 1rem;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-align: center;
+}
+
+.git-changes__letter[data-status='M'] {
+  color: var(--warn);
+}
+
+.git-changes__letter[data-status='A'] {
+  color: var(--cyan);
+}
+
+.git-changes__letter[data-status='D'] {
+  color: var(--danger);
+}
+
+.git-changes__letter[data-status='U'] {
+  color: var(--violet);
+}
+
+.git-changes__letter[data-status='R'] {
+  color: var(--blue);
+}
+
+.git-changes__name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* O nome como botão (abre a aba em Alterações): sem moldura de botão, com o aspecto do texto e o foco visível. */
+.git-changes__open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.git-changes__open:hover {
+  text-decoration: underline;
+}
+
+.git-changes__open:focus-visible {
+  outline-offset: 2px;
+}
+
+.git-changes__dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+}
+
+/* As linhas da branch: o + em ciano e o − em vermelho (como no cabeçalho); "binário" fica em --muted. */
+.git-changes__lines {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.git-changes__add {
+  color: var(--cyan);
+}
+
+.git-changes__del {
+  color: var(--danger);
+}
+
+/* Ações por arquivo: no DOM o tempo todo; só aparecem no mouse e no foco (teclado ou clique). */
+.git-changes__actions {
+  display: flex;
+  flex: none;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.git-changes__row:hover .git-changes__actions,
+.git-changes__row:focus-within .git-changes__actions {
+  opacity: 1;
+}
+
+.git-changes__action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-color: transparent;
+}
+
+.git-changes__action:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-changes__confirm {
+  padding: var(--space-1);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* "Ver tudo" no cabeçalho da seção: um texto em --muted, sem moldura, que fica claro no mouse. */
+.git-changes__more {
+  flex: none;
+  padding: 0 var(--space-1);
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.git-changes__more:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
+.git-changes__more:focus-visible {
+  outline-offset: -2px;
+}
+
+/* A seção Commits, recolhível, com um espaço acima e o mesmo título das de alterações. */
+.git-commits {
+  padding-top: var(--space-2);
+}
+
+/* O título recolhível. O hover do botão global (borda --muted) não aparece aqui: o título fica sem moldura. */
+.git-commits__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.git-commits__toggle:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
+.git-commits__toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+.git-commits__note {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* A linha do tempo: um fio --line passa pelos pontos dos commits, que ficam no mesmo eixo do título. */
+.git-commits__list {
+  position: relative;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.git-commits__list::before {
+  content: '';
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: 0.75rem;
+  width: 1px;
+  background: var(--field-line);
+}
+
+.git-commits__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+}
+
+/* O ponto de cada commit: vazio, com contorno --muted; o commit atual (o primeiro) fica cheio. */
+.git-commits__item::before {
+  content: '';
+  position: absolute;
+  top: 0.625rem;
+  left: var(--space-2);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--muted);
+}
+
+.git-commits__item:first-child::before {
+  background: var(--cyan);
+  box-shadow: none;
+}
+
+.git-commits__subject {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-commits__item:first-child .git-commits__subject {
+  font-weight: 600;
+}
+
+.git-commits__meta {
+  color: var(--muted);
+  font-size: var(--text-xs);
 }
