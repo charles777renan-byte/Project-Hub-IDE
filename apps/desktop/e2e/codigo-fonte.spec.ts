@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect } from './fixtures';
@@ -21,8 +21,14 @@ const B_ORIGINAL = 'conteudo original de b\n';
 const B_NOVO = 'conteudo alterado de b\n';
 
 /** O conteúdo do arquivo, ou `null` se ele não existe agora (o restore do Git apaga e recria): o poll tenta de novo. */
-const readDisk = (path: string): string | null =>
-  existsSync(path) ? readFileSync(path, 'utf8') : null;
+const readDisk = (path: string): string | null => {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+};
 
 /** Abre o projeto nos Terminais e a aba Código-fonte do painel direito. */
 async function openSourceTab(page: Page, projectName: string): Promise<void> {
