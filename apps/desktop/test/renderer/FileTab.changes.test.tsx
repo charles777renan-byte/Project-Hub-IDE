@@ -16,7 +16,7 @@ import {
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
-import { stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
+import { shadowOf, stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
 
 /** A aba de arquivo com Git: o par Arquivo | Alterações e o diff contra o HEAD, só leitura. */
 
@@ -126,11 +126,12 @@ async function mountEditor(options: { mode?: 'arquivo' | 'alteracoes' } = {}) {
 const fileButton = () => screen.getByRole('button', { name: 'Arquivo' });
 const changesButton = () => screen.getByRole('button', { name: 'Alterações' });
 
-function ctrlS(target: Element): boolean {
+function ctrlS(target: Element, { meta = false }: { meta?: boolean } = {}): boolean {
   const event = new KeyboardEvent('keydown', {
     key: 's',
     code: 'KeyS',
-    ctrlKey: true,
+    ctrlKey: !meta,
+    metaKey: meta,
     bubbles: true,
     composed: true,
     cancelable: true,
@@ -313,13 +314,49 @@ describe('aba de arquivo: Arquivo | Alterações', () => {
     expect(state().dirty).toBe(true);
   });
 
-  it('restaurar com edição não salva: Salvar mostra a faixa e não grava por cima do disco', async () => {
-    // O disco como um Desfazer o deixaria: outro conteúdo, outra versão. A gravação confere a versão esperada.
-    let disk = content();
-    api.files.stat.mockImplementation(() => ok({ exists: true as const, version: disk.version }));
-    api.files.read.mockImplementation(() => ok(disk));
-    api.files.write.mockImplementation((input) => {
-      if (input.expected?.hash !== disk.version.hash) {
+  it('em Alterações, nenhum caminho do editor grava: Ctrl+S, Cmd+S, o editor escondido e o botão desligado', async () => {
+    const user = userEvent.setup();
+    const { container } = await mountEditor();
+    act(() => updateText('p1', 'src/a.ts', 'texto editado'));
+    await user.click(await screen.findByRole('button', { name: 'Alterações' }));
+    const patch = await screen.findByLabelText('Diff de src/a.ts');
+    // O editor segue montado, escondido: uma tecla que chegue a ele também não pode gravar.
+    const hiddenEditor = shadowOf(container).querySelector('.cm-content')!;
+
+    expect(ctrlS(patch)).toBe(true);
+    expect(ctrlS(patch, { meta: true })).toBe(true);
+    expect(ctrlS(hiddenEditor)).toBe(true);
+    expect(ctrlS(hiddenEditor, { meta: true })).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    expect(api.files.write).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Salvar' })).toHaveAccessibleDescription(
+      'Volte para Arquivo para salvar.',
+    );
+    expect(state().dirty).toBe(true);
+
+    // Controle: de volta em Arquivo o mesmo texto grava, então o silêncio de cima era a guarda, e não um editor travado.
+    await user.click(fileButton());
+    expect(ctrlS(shadowOf(container).querySelector('.cm-content')!)).toBe(true);
+
+    await waitFor(() => expect(state().dirty).toBe(false));
+    expect(api.files.write).toHaveBeenCalledTimes(1);
+    expect(api.files.write).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'texto editado', expected: VERSION }),
+    );
+  });
+
+  /**
+   * O disco como o processo principal o confere (`assertUnchanged`): só grava se a versão esperada for a do disco.
+   * `expected: null` espera o arquivo ausente, então com o arquivo no disco ele também é conflito.
+   */
+  function diskThatChecksExpected(
+    current: () => FileContentDto,
+    replace: (next: FileContentDto) => void,
+  ) {
+    return (input: Parameters<ProjectHubApi['files']['write']>[0]) => {
+      if (input.expected === null || input.expected.hash !== current().version.hash) {
         return Promise.resolve({
           ok: false,
           error: {
@@ -329,9 +366,50 @@ describe('aba de arquivo: Arquivo | Alterações', () => {
           },
         } as AppResult<FileVersionDto>);
       }
-      disk = content({ text: input.text, version: DISK_VERSION });
+      replace(content({ text: input.text, version: DISK_VERSION }));
       return ok(DISK_VERSION);
-    });
+    };
+  }
+
+  it('gravar com o disco intacto envia a versão lida: `expected` nulo seria conflito e o texto não chegaria ao disco', async () => {
+    let disk = content();
+    api.files.stat.mockImplementation(() => ok({ exists: true as const, version: disk.version }));
+    api.files.read.mockImplementation(() => ok(disk));
+    api.files.write.mockImplementation(
+      diskThatChecksExpected(
+        () => disk,
+        (next) => {
+          disk = next;
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    await mountEditor();
+    act(() => updateText('p1', 'src/a.ts', 'texto editado'));
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(state().dirty).toBe(false));
+    expect(api.files.write).toHaveBeenCalledTimes(1);
+    expect(api.files.write.mock.calls[0]?.[0].expected).toEqual(VERSION);
+    expect(disk.text).toBe('texto editado');
+    expect(state().notice).toBeUndefined();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('restaurar com edição não salva: Salvar mostra a faixa e não grava por cima do disco', async () => {
+    // O disco como um Desfazer o deixaria: outro conteúdo, outra versão. A gravação confere a versão esperada.
+    let disk = content();
+    api.files.stat.mockImplementation(() => ok({ exists: true as const, version: disk.version }));
+    api.files.read.mockImplementation(() => ok(disk));
+    api.files.write.mockImplementation(
+      diskThatChecksExpected(
+        () => disk,
+        (next) => {
+          disk = next;
+        },
+      ),
+    );
     const user = userEvent.setup();
     await mountEditor();
     act(() => updateText('p1', 'src/a.ts', 'texto editado'));

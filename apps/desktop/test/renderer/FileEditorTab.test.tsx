@@ -370,6 +370,26 @@ describe('FileEditorTab', () => {
     expect(api.write).not.toHaveBeenCalled();
   });
 
+  it('Ctrl+S com fins de linha misturados e o texto já sujo no store não grava nem mostra alerta', async () => {
+    api.read.mockResolvedValue({ ok: true, data: content({ text: 'a\nb', eol: 'mixed' }) });
+    const { container } = await mountEditor();
+    // O editor é só leitura, mas o store pode ter o texto sujo (outra tela, um restauro): a guarda de `save()` é que segura.
+    act(() => updateText('p1', 'src/a.ts', 'a\nb!'));
+    expect(state().dirty).toBe(true);
+
+    const prevented = ctrlS(shadowOf(container).querySelector('.cm-content')!);
+    // O que `save()` faz depois do primeiro `await` (mostrar o motivo da recusa) precisa ter acontecido antes de conferir.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(prevented).toBe(true);
+    expect(api.write).not.toHaveBeenCalled();
+    // Sem a guarda de `save()`, o store recusaria com a mensagem dos fins de linha e a aba a mostraria em alerta.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(state().dirty).toBe(true);
+  });
+
   it('um arquivo que não é de texto mostra o aviso e abre no programa padrão', async () => {
     api.read.mockResolvedValue({
       ok: false,

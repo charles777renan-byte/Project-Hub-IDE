@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect } from './fixtures';
 import {
@@ -84,6 +84,25 @@ test.describe('Código-fonte com remoto local', () => {
     await expect(question).toBeVisible();
     // Nada foi desfeito antes da confirmação.
     expect(readDisk(join(repo, 'b.txt'))).toBe(B_NOVO);
+
+    // "Voltar" é a saída da confirmação: a pergunta some, o botão Desfazer volta e o disco fica como estava.
+    await question.getByRole('button', { name: 'Voltar' }).click();
+    await expect(question).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Desfazer b.txt' })).toBeVisible();
+    // Atualizar relê o Git depois de qualquer escrita que o "Voltar" tivesse disparado: o arquivo segue alterado.
+    await page
+      .getByRole('complementary', { name: 'Painel direito' })
+      .getByRole('button', { name: 'Atualizar' })
+      .click();
+    await expect(page.getByRole('button', { name: 'Desfazer b.txt' })).toBeVisible();
+    expect(readDisk(join(repo, 'b.txt'))).toBe(B_NOVO);
+    expect(runGit(repo, env, ['status', '--porcelain', '--', 'b.txt'])).toBe('M b.txt');
+    // O arquivo em stage continua em stage: o cancelamento não mexeu em nada.
+    expect(runGit(repo, env, ['diff', '--cached', '--name-only'])).toBe('a.txt');
+
+    // De novo, agora confirmando.
+    await page.getByRole('button', { name: 'Desfazer b.txt' }).click();
+    await expect(question).toBeVisible();
     await question.getByRole('button', { name: 'Desfazer alterações' }).click();
 
     await expect.poll(() => readDisk(join(repo, 'b.txt'))).toBe(B_ORIGINAL);
@@ -127,12 +146,38 @@ test.describe('Código-fonte com remoto local', () => {
     const { page } = await launchApp({ dialogPath: repo });
     await addGitProject(page, projectName);
     await openSourceTab(page, projectName);
+    // `toHaveCount(0)` só vê o instante da conferência. O observador guarda qualquer diálogo que abra, mesmo por um
+    // instante, até o fim do teste. O `<dialog>` da confirmação fica sempre no DOM e abre pelo atributo `open`.
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      Reflect.set(window, '__dialogsSeen', seen);
+      new MutationObserver((records) => {
+        for (const record of records) {
+          const { target } = record;
+          if (record.type === 'attributes' && target instanceof HTMLDialogElement && target.open) {
+            seen.push('dialog aberto');
+          }
+          for (const node of record.addedNodes) {
+            if (node instanceof Element && node.matches('[role="dialog"], [role="alertdialog"]')) {
+              seen.push('role=dialog adicionado');
+            }
+          }
+        }
+      }).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['open'],
+        childList: true,
+        subtree: true,
+      });
+    });
 
     await chooseMenu(page, 'Pull');
+    // O aviso só vem depois de o pull rodar: se pedisse confirmação, ele não apareceria sem um clique do teste.
     await expect(
       page.getByRole('status').filter({ hasText: 'A branch já está atualizada.' }),
     ).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, '__dialogsSeen') as string[])).toEqual([]);
   });
 
   test('hook pre-commit que falha: a saída aparece em texto e nenhum commit sai', async ({
@@ -160,15 +205,27 @@ test.describe('Código-fonte com remoto local', () => {
   });
 
   test('sem violação de CSP com a aba Código-fonte aberta', async ({ launchApp }) => {
-    const { repo, projectName } = setup;
+    const { repo, remote, projectName, env } = setup;
     writeFileSync(join(repo, 'a.txt'), A_NOVO);
+    // Outro clone manda um commit ao remoto: o fetch traz esse commit, e o `↓1` do cabeçalho diz que ele terminou.
+    const other = join(dirname(remote), 'outro-clone');
+    runGit(dirname(remote), env, ['clone', remote, other]);
+    writeFileSync(join(other, 'remoto.txt'), 'veio do remoto\n');
+    runGit(other, env, ['add', 'remoto.txt']);
+    runGit(other, env, ['commit', '--no-verify', '-m', 'commit vindo do remoto']);
+    runGit(other, env, ['push', 'origin', 'main']);
+
     const { page } = await launchApp({ dialogPath: repo });
     const consoleCsp = await watchCsp(page);
     await addGitProject(page, projectName);
     await openSourceTab(page, projectName);
     await expect(page.getByRole('button', { name: 'Colocar em stage a.txt' })).toBeVisible();
-    // O menu também entra na conferência.
+    // Antes do fetch o app ainda não sabe do commit novo.
+    const aheadBehind = page.locator('.git-tab__ahead-behind');
+    await expect(aheadBehind).toHaveText('↑0 ↓0');
+    // O menu também entra na conferência, e a conferência espera o fetch terminar.
     await chooseMenu(page, 'Fetch');
+    await expect(aheadBehind).toHaveText('↑0 ↓1');
     await expectNoViolations(page, consoleCsp, { allowXterm: true });
   });
 

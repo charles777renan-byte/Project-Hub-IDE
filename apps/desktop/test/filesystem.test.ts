@@ -87,23 +87,27 @@ describe('createIsInsideProject', () => {
     await expect(isInside(project, join(outside, 'segredo.txt'))).resolves.toBe(false);
   });
 
-  it('link simbólico que aponta para fora: false, também para arquivo que não existe lá', async () => {
+  it('link simbólico que aponta para fora: false, também para arquivo que não existe lá', async ({
+    skip,
+  }) => {
     try {
       // `junction` não pede privilégio de administrador no Windows; nos outros sistemas vira link comum.
       await symlink(outside, join(project, 'atalho'), 'junction');
     } catch {
-      return; // sem permissão para criar link neste ambiente: o teste com o `realpath` injetado cobre a lógica
+      // Sem permissão para criar link neste ambiente: o teste vira "pulado" no relatório, em vez de passar em
+      // branco. O teste com o `realpath` injetado, mais abaixo, cobre a lógica.
+      skip('sem permissão para criar link neste ambiente');
     }
 
     await expect(isInside(project, 'atalho/segredo.txt')).resolves.toBe(false);
     await expect(isInside(project, 'atalho/novo.txt')).resolves.toBe(false);
   });
 
-  it('link simbólico que aponta para dentro da pasta: true', async () => {
+  it('link simbólico que aponta para dentro da pasta: true', async ({ skip }) => {
     try {
       await symlink(join(project, 'src'), join(project, 'apelido'), 'junction');
     } catch {
-      return;
+      skip('sem permissão para criar link neste ambiente');
     }
 
     await expect(isInside(project, 'apelido/a.ts')).resolves.toBe(true);

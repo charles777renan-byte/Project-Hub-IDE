@@ -533,8 +533,9 @@ describe('GitTab: ações de commit e remote', () => {
 
   it('com mais de 50 commits à frente, lista 50 e diz "e mais X"', async () => {
     const user = userEvent.setup();
+    // O log devolve os 60 commits: quem corta em 50 é o diálogo, e não o mock.
     installRemote(status({ ahead: 60 }), {
-      log: vi.fn(() => Promise.resolve({ ok: true, data: commits(50) })) as never,
+      log: vi.fn(() => Promise.resolve({ ok: true, data: commits(60) })) as never,
     });
     render(<GitTab projectId="p1" active />);
 

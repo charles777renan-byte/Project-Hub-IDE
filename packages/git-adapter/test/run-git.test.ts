@@ -151,6 +151,10 @@ describe('runGit: só comandos de leitura', () => {
     [['diff', SHA, 'HEAD', ...PATCH_OPTIONS, '--output=x', '--', 'a.txt']],
     [['diff', 'main', 'HEAD', ...PATCH_OPTIONS, '--', 'a.txt']],
     [['diff', 'HEAD', SHA, ...PATCH_OPTIONS, '--', 'a.txt']],
+    // O patch de um arquivo só vale contra `HEAD`: a forma com commit (`diff <commit> HEAD --patch -- <caminho>`)
+    // não tem chamador e deixou de ser aceita.
+    [['diff', SHA, 'HEAD', '--patch', ...PATCH_OPTIONS, '--', 'pasta/a.txt']],
+    [['diff', SHA, 'HEAD', ...PATCH_OPTIONS, '--', ':(literal)a[1].txt']],
     // `ls-files -z -- <caminhos>`: sem as opções que listam outra coisa nem leem de fora.
     [['ls-files']],
     [['ls-files', '-z']],
@@ -235,8 +239,6 @@ describe('runGit: só comandos de leitura', () => {
     [['diff', '--numstat', '-z', SHA, 'HEAD']],
     [['diff', '--numstat', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', SHA, 'HEAD']],
     [['diff', '--numstat', '-z', SHA256, 'HEAD']],
-    [['diff', SHA, 'HEAD', ...PATCH_OPTIONS, '--', ':(literal)a[1].txt']],
-    [['diff', SHA, 'HEAD', '--patch', ...PATCH_OPTIONS, '--', 'pasta/a.txt']],
     [['ls-files', '-z', '--', 'a.txt']],
     [['ls-files', '-z', '--', ':(literal)a[1].txt', ':(literal)./-x']],
     [['config', '--get', 'remote.origin.url']],
