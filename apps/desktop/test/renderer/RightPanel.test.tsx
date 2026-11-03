@@ -77,23 +77,22 @@ describe('RightPanel', () => {
     expect(screen.getByRole('tabpanel')).toBeInTheDocument();
   });
 
-  it('as duas abas sem conteúdo ficam aria-disabled; Arquivos e Código-fonte não', () => {
+  it('só Sessões fica aria-disabled; Arquivos, Código-fonte e Checks não', () => {
     renderPanel({ projectId: 'p1' });
 
-    expect(tab('Arquivos')).not.toHaveAttribute('aria-disabled');
-    expect(tab('Código-fonte')).not.toHaveAttribute('aria-disabled');
-    for (const name of ['Sessões', 'Checks']) {
-      expect(tab(name)).toHaveAttribute('aria-disabled', 'true');
+    for (const name of ['Arquivos', 'Código-fonte', 'Checks']) {
+      expect(tab(name)).not.toHaveAttribute('aria-disabled');
     }
+    expect(tab('Sessões')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('clicar numa aba desligada não a seleciona nem guarda', async () => {
     const user = userEvent.setup();
     renderPanel({ projectId: 'p1' });
 
-    await user.click(tab('Checks'));
+    await user.click(tab('Sessões'));
 
-    expect(tab('Checks')).toHaveAttribute('aria-selected', 'false');
+    expect(tab('Sessões')).toHaveAttribute('aria-selected', 'false');
     expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
@@ -110,6 +109,31 @@ describe('RightPanel', () => {
     expect(tab('Código-fonte')).toHaveAttribute('aria-selected', 'true');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('codigo');
     expect(screen.getByRole('tabpanel')).toHaveTextContent('Carregando…');
+  });
+
+  it('clicar em Checks a seleciona, guarda e mostra a aba, com o PR lido uma vez só', async () => {
+    const user = userEvent.setup();
+    const pr = vi.fn(() => new Promise(() => undefined));
+    window.projectHub = {
+      git: { status: vi.fn(() => new Promise(() => undefined)) },
+      github: { pr },
+    } as unknown as ProjectHubApi;
+    renderPanel({ projectId: 'p1' });
+
+    await user.click(tab('Checks'));
+
+    expect(tab('Checks')).toHaveAttribute('aria-selected', 'true');
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('checks');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Carregando…');
+    expect(pr).toHaveBeenCalledTimes(1);
+  });
+
+  it('a aba Checks sem projeto mostra o aviso de abrir um projeto', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'checks');
+
+    renderPanel({ projectId: null });
+
+    expect(screen.getByText('Abra um projeto para ver os arquivos')).toBeInTheDocument();
   });
 
   it('andar pelas abas com as setas foca as desligadas, mas não as seleciona', async () => {
