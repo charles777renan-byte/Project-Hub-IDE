@@ -742,6 +742,12 @@ export const RIGHT_PANEL_TEXT = {
     commitsEmpty: 'Nenhum commit ainda',
     commitsError: 'Não foi possível ler o histórico.',
   },
+  /** Mensagens do hook de dados da aba Checks (`use-github-panel`); os textos da tela ficam com a aba. */
+  github: {
+    loadError: 'Não foi possível ler o PR.',
+    writeError: 'Não foi possível concluir a operação no GitHub.',
+    noPr: 'Esta branch não tem PR.',
+  },
   /** Os arquivos abertos como abas ao lado dos terminais. */
   openFiles: {
     tabs: 'Arquivos abertos',
