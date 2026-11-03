@@ -1,4 +1,5 @@
 import { configDefaults, defineConfig } from 'vitest/config';
+import PartesDaIntegracao from './vitest.partes-integracao.ts';
 
 /**
  * Configuração base do Vitest.
@@ -29,6 +30,8 @@ export default defineConfig({
   test: {
     // Sem arquivos de teste não é erro: os pacotes ainda estão chegando.
     passWithNoTests: true,
+    // Divide a integração em partes equilibradas pelo tempo (ver `vitest.partes-integracao.ts`).
+    sequence: { sequencer: PartesDaIntegracao },
     projects: [
       {
         extends: true,
