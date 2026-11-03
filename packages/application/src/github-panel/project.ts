@@ -7,6 +7,12 @@ import type { GithubPanelPort } from './port';
 /** Dependências dos casos de uso do painel Checks: as do painel de código-fonte mais a porta do `gh`. */
 export type GithubPanelDeps = GitPanelDeps & { github: GithubPanelPort };
 
+/** Mesmo texto do adaptador para um repositório que não é do `github.com`. */
+const UNSUPPORTED_REPOSITORY_MESSAGE =
+  'Este repositório não é do github.com, e o Project Hub só lê PRs de lá.';
+
+const NOT_THE_BRANCH_PR_MESSAGE = 'O PR informado não é o da branch atual do projeto.';
+
 /** O número de PR de 10 dígitos é o maior que o adaptador aceita (`^[1-9][0-9]{0,9}$`). */
 const PR_NUMBER_MAX_DIGITS = 10;
 
@@ -34,7 +40,7 @@ export function ghFailure(error: unknown): AppResult<never> {
 
 /** O host da URL do remoto: `https://`, `ssh://`, `git://` ou a forma curta `git@host:dono/repo`. */
 function remoteHost(url: string): string | null {
-  const scp = /^[^@/\\s]+@([^:/\\s]+):/u.exec(url);
+  const scp = /^[^@/\s]+@([^:/\s]+):/u.exec(url);
   if (scp?.[1] !== undefined) return scp[1].toLowerCase();
   try {
     const host = new URL(url).hostname.toLowerCase();
@@ -69,8 +75,17 @@ export async function githubWriteProject(
 ): Promise<AppResult<GithubProject>> {
   const eligible = await eligibleGitProject(deps, projectId);
   if (!eligible.ok) return eligible;
-  const status = await deps.git.status(eligible.data.path);
-  return { ok: true, data: { path: eligible.data.path, branch: status.branch } };
+  const path = eligible.data.path;
+  try {
+    // O `origin` vem antes de qualquer chamada ao `gh`: fora do `github.com`, a escrita nem começa.
+    if (!isGithubRemote(await deps.github.originUrl(path))) {
+      return failure('GH_NOT_AVAILABLE', UNSUPPORTED_REPOSITORY_MESSAGE);
+    }
+    const status = await deps.git.status(path);
+    return { ok: true, data: { path, branch: status.branch } };
+  } catch (error) {
+    return ghFailure(error);
+  }
 }
 
 /**
@@ -88,8 +103,18 @@ export async function readPullRequestOfBranch(
   } catch (error) {
     return ghFailure(error);
   }
-  if (!isPullRequestOfBranch(reading, project.branch)) {
-    return failure('GH_PR_NOT_FOUND', 'O PR informado não é o da branch atual do projeto.');
+  if (project.branch === null || !isPullRequestOfBranch(reading, project.branch)) {
+    return failure('GH_PR_NOT_FOUND', NOT_THE_BRANCH_PR_MESSAGE);
+  }
+  // O número pedido precisa ser o PR que a branch atual tem: a tela não escolhe em que PR escrever.
+  let branchPr: number | null;
+  try {
+    branchPr = await deps.github.pullRequestForBranch(project.path, project.branch);
+  } catch (error) {
+    return ghFailure(error);
+  }
+  if (branchPr !== prNumber) {
+    return failure('GH_PR_NOT_FOUND', NOT_THE_BRANCH_PR_MESSAGE);
   }
   return { ok: true, data: reading };
 }
