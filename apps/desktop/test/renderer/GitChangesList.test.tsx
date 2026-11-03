@@ -167,7 +167,8 @@ describe('GitChangesList: Commitado na branch', () => {
     renderList([]);
 
     expect(await screen.findByText('x.ts')).toBeInTheDocument();
-    expect(screen.getByText('+3 −1')).toBeInTheDocument();
+    expect(screen.getByText('+3')).toBeInTheDocument();
+    expect(screen.getByText('−1')).toBeInTheDocument();
     expect(screen.getByText('binário')).toBeInTheDocument();
     expect(branchChanges).toHaveBeenCalledWith({ projectId: 'p1' });
   });
