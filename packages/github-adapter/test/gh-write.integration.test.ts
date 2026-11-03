@@ -1,7 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GhError, addComment, mergePullRequest } from '../src/index';
+import { GhError, addComment, getPullRequest, mergePullRequest } from '../src/index';
 import { runGh } from '../src/run-gh';
 import {
   createWorkspace,
@@ -68,6 +68,55 @@ describe('addComment', () => {
   });
 });
 
+describe('addComment: comentário que o sistema não consegue executar', () => {
+  it('comentário longo demais para a linha de comando: VALIDATION_FAILED em português, sem criar processo', async () => {
+    // Abaixo dos 65 536 do contrato, mas acima do que o Windows aceita numa linha de comando (cerca de 32 700).
+    const error = await failureOf(
+      addComment(workspace.repo, 12, 'a'.repeat(40_000), { env: env() }),
+    );
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('grande demais');
+    expect(error.message).toContain('Divida o texto');
+    expect(readCalls(workspace)).toEqual([]);
+  });
+
+  it('o escape de aspas conta: 20 000 aspas passam do limite, embora tenham menos de 30 000 caracteres', async () => {
+    const error = await failureOf(
+      addComment(workspace.repo, 12, '"'.repeat(20_000), { env: env() }),
+    );
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(readCalls(workspace)).toEqual([]);
+  });
+
+  it('o escape de barras invertidas conta no pior caso', async () => {
+    const error = await failureOf(
+      addComment(workspace.repo, 12, '\\'.repeat(15_001), { env: env() }),
+    );
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(readCalls(workspace)).toEqual([]);
+  });
+
+  it('um comentário grande mas dentro do limite (29 000 caracteres) chega inteiro ao gh', async () => {
+    const body = `${'a'.repeat(28_990)}
+fim com "aspas"`;
+
+    await addComment(workspace.repo, 12, body, { env: env() });
+
+    expect(readCalls(workspace)[0]?.argv).toEqual(['pr', 'comment', '12', `--body=${body}`]);
+  });
+
+  it('corpo com caractere nulo: VALIDATION_FAILED em português, sem criar processo', async () => {
+    const error = await failureOf(addComment(workspace.repo, 12, 'antes\0depois', { env: env() }));
+
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.message).toContain('caractere nulo');
+    expect(readCalls(workspace)).toEqual([]);
+  });
+});
+
 describe('mergePullRequest', () => {
   it.each(['merge', 'squash', 'rebase'] as const)(
     'chama o gh com a forma exata: pr merge <n> --%s',
@@ -125,7 +174,6 @@ describe('ambiente do gh', () => {
 describe('falhas do gh viram códigos com mensagem em português e sem a saída dele', () => {
   const outcomes = [
     ['unauthenticated', 'GH_NOT_AUTHENTICATED', /gh auth login/u],
-    ['network', 'GH_NETWORK_FAILED', /conexão/u],
     ['not-found', 'GH_PR_NOT_FOUND', /não foi encontrado/u],
   ] as const;
 
@@ -137,6 +185,35 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
     await expect(attempt).rejects.toMatchObject({
       stderr: expect.not.stringMatching(/^$/u) as unknown,
     });
+  });
+
+  it.each([
+    ['comentar', (env: NodeJS.ProcessEnv) => addComment(workspace.repo, 12, 'oi', { env })],
+    [
+      'mesclar',
+      (env: NodeJS.ProcessEnv) => mergePullRequest(workspace.repo, 12, 'squash', { env }),
+    ],
+  ])(
+    'falha de rede ao %s: GH_NETWORK_FAILED manda conferir o PR, e não só "tente de novo"',
+    async (_name, run) => {
+      const error = await failureOf(run(env('network')));
+
+      expect(error.code).toBe('GH_NETWORK_FAILED');
+      expect(error.message).toContain('pode ter sido concluída');
+      expect(error.message).toContain('confira o PR antes de tentar de novo');
+      expect(error.message).not.toBe(
+        'Não foi possível falar com o GitHub. Verifique a conexão e tente de novo.',
+      );
+      expect(error.message).not.toMatch(/proxyconnect|dial tcp/u);
+    },
+  );
+
+  it('falha de rede numa leitura segue com a mensagem de tentar de novo', async () => {
+    const error = await failureOf(getPullRequest(workspace.repo, 47, { env: env('network') }));
+
+    expect(error.code).toBe('GH_NETWORK_FAILED');
+    expect(error.message).toContain('Verifique a conexão e tente de novo');
+    expect(error.message).not.toContain('pode ter sido concluída');
   });
 
   it('merge recusado pelo GitHub: GH_PR_NOT_MERGEABLE, com o stderr só no campo stderr', async () => {
