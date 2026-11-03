@@ -24,8 +24,10 @@
   scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
 }
 
+/* A janela não rola: a rolagem fica nas áreas internas (a página, a lateral, os painéis). */
 body {
   margin: 0;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);

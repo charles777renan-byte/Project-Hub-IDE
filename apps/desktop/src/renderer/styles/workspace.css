@@ -19,6 +19,11 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /*
+   * O que passa da janela é cortado aqui. Sem isso, um conteúdo mais largo ou mais alto que a casca põe barras de
+   * rolagem na janela, que comem a altura de 100vh e empurram a barra de status para baixo da barra de rolagem.
+   */
+  overflow: clip;
   /* Brilho violeta suave no topo, sobre a cor de fundo; o fundo topográfico o repete por cima do canvas. */
   background: var(--glow-app), var(--bg);
 }
