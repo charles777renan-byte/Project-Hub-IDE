@@ -8,6 +8,19 @@ import type {
   FilesWriteInput,
   NameSearchDto,
 } from './files';
+import type {
+  BranchChangesDto,
+  GitCommitInput,
+  GitCommitResultDto,
+  GitDiffInput,
+  GitFileDiffDto,
+  GitLogEntryDto,
+  GitPathsInput,
+  GitProjectInput,
+  GitPullResultDto,
+  GitPushResultDto,
+  GitStatusDto,
+} from './git-panel';
 import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
 import type { SystemUsageDto } from './system';
@@ -213,6 +226,31 @@ export type ProjectHubApi = {
      * volta). Com qualquer outra resposta a janela fica aberta. Devolve a função que cancela a assinatura.
      */
     onSaveAllRequest(handler: () => Promise<boolean>): () => void;
+  };
+  git: {
+    /** Branch, upstream, à frente/atrás, linhas contra a base e arquivos alterados do projeto. */
+    status(input: GitProjectInput): Promise<AppResult<GitStatusDto>>;
+    /** Diff de um arquivo contra o último commit (`HEAD`). O caminho é relativo, em POSIX. */
+    diff(input: GitDiffInput): Promise<AppResult<GitFileDiffDto>>;
+    /** Põe os arquivos em stage. Os caminhos são relativos, em POSIX. */
+    stage(input: GitPathsInput): Promise<AppResult<void>>;
+    unstage(input: GitPathsInput): Promise<AppResult<void>>;
+    /** Descarta as alterações dos arquivos no disco. Não tem volta: a tela pede confirmação antes. */
+    discard(input: GitPathsInput): Promise<AppResult<void>>;
+    /** Cria o commit com o que está em stage. Os hooks rodam; se um recusar, volta GIT_HOOK_FAILED. */
+    commit(input: GitCommitInput): Promise<AppResult<GitCommitResultDto>>;
+    /** Envia a branch atual para `origin`. Exige upstream, nunca força; o nome da branch sai do processo principal. */
+    push(input: GitProjectInput): Promise<AppResult<GitPushResultDto>>;
+    /** Publica a branch atual (`push -u origin`). Exige que ela ainda não tenha upstream; o nome da branch sai do processo principal. */
+    publish(input: GitProjectInput): Promise<AppResult<GitPushResultDto>>;
+    /** Traz os commits do remoto só se a branch puder avançar (sem commit de merge). */
+    pull(input: GitProjectInput): Promise<AppResult<GitPullResultDto>>;
+    /** Atualiza as refs remotas, sem mexer na branch local. */
+    fetch(input: GitProjectInput): Promise<AppResult<void>>;
+    /** Histórico da branch atual. */
+    log(input: GitProjectInput): Promise<AppResult<GitLogEntryDto[]>>;
+    /** Arquivos que a branch mudou em relação à base. */
+    branchChanges(input: GitProjectInput): Promise<AppResult<BranchChangesDto>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */
