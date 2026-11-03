@@ -2,6 +2,8 @@
 
 Data: 2026-11-01. Origem: conversa com a pessoa, com esboços no navegador (direção A, cores por agente, posição no topo).
 
+> **Atualização de 2026-11-03.** O corpo do bloco foi redesenhado: a primeira aba passou a se chamar "Resumo" (o título do bloco continua "Visão geral", e a aba repetia o nome); o mapa ficou compacto e de células de tamanho fixo, com a régua de meses; o corpo ganhou três colunas, "Por dia" (o mapa), "Por agente" (uma tabela com a parte de cada agente, no lugar da barra e da legenda dos totais) e "No período" (os totais). O número de colunas depende da largura do próprio bloco (consulta de contêiner). O que as abas, os períodos, as cores e as fontes de dados mostram não mudou.
+
 ## Intenção
 
 O Início está fraco e com muito espaço vazio: a coluna da esquerda acaba em "Missões" e o mapa de atividade conta só eventos de missão (2 em 90 dias, mesmo com uso diário dos terminais). A pessoa quer ver, ao abrir o app, quanto usou cada agente: mensagens enviadas e tokens por dia, separados por agente, no estilo da tela `/stats` do Claude Code (abas no topo, mapa de dias, filtro de período).

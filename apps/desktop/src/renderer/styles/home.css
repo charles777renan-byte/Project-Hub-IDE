@@ -362,11 +362,18 @@
 
 /*
  * Visão geral: bloco de largura toda no alto do Início. O cabeçalho leva o título, as abas e o período; abaixo
- * vêm os chips de agente, o mapa (um quadrado por dia, em colunas de semana de domingo a sábado, com os rótulos
- * seg, qua e sex à esquerda) e, na aba Visão geral, os totais ao lado do mapa. A cor e o nível de cada dia
+ * vêm os chips de agente e o corpo em colunas: "Por dia" (o mapa compacto, um quadrado por dia em colunas de
+ * semana de domingo a sábado, com a régua de meses em cima e os rótulos seg, qua e sex à esquerda), "Por agente"
+ * (a tabela com a parte de cada um) e, na aba Resumo, "No período" (os totais). A cor e o nível de cada dia
  * entram por classe (overview-agent--<id> e overview-level--0 a --4), nunca por estilo escrito.
+ *
+ * Quantas colunas cabem depende da largura do próprio bloco (`container-type: inline-size`), e não da janela:
+ * a lateral esquerda divide a largura da janela com o Início. O mapa leva só o que as células pedem
+ * (`max-content`) e a tabela fica com o resto; as colunas esticam até a altura da mais alta e se separam por um
+ * fio, então não sobra faixa vazia abaixo do mapa nem ao lado dele.
  */
 .overview {
+  container-type: inline-size;
   gap: var(--space-3);
 }
 
@@ -407,17 +414,114 @@
   font-size: var(--text-sm);
 }
 
+/* Em janela estreita, uma coluna só: o mapa, a tabela e os totais, um abaixo do outro. */
 .overview__body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: start;
+  align-items: stretch;
   min-width: 0;
 }
 
-@media (min-width: 900px) {
-  .overview__body--stats {
-    grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
+.overview-col {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.overview-col + .overview-col {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.overview-col__title {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* A partir de 31rem de bloco, um mapa curto (7 e 30 dias, `overview-grid--roomy`: até uns 11,5rem de largura) já
+   fica ao lado da tabela, com as mesmas regras do bloco de 38rem abaixo. `:where` zera a especificidade do `:has`,
+   então a regra de 38rem (que vem depois) e a de 56rem mandam por ordem, sem que esta as vença. */
+@container (min-width: 31rem) {
+  .overview__body--map:where(:has(.overview-grid--roomy)) {
+    grid-template-columns: minmax(0, max-content) minmax(17rem, 1fr);
+  }
+
+  .overview__body--map:where(:has(.overview-grid--roomy)) > .overview-col:nth-child(2) {
+    padding: 0 0 0 var(--space-3);
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .overview__body--map:where(:has(.overview-grid--roomy)) > .overview-col:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .overview__body--map:where(:has(.overview-grid--roomy)) .overview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+  }
+}
+
+/* A partir de 38rem de bloco (o Início com a lateral e o painel da direita abertos, numa janela de 1360px, dá
+   uns 38rem): o mapa e a tabela lado a lado, com o fio à esquerda da tabela. O mapa de 90 dias leva uns 17,5rem
+   e a tabela cabe no resto; um mapa mais largo que a coluna rola por dentro (`overview-map__scroll`). Os totais
+   descem para uma linha só, de largura toda e em duas colunas, até caberem as três colunas. Lado a lado o mapa
+   deixa de crescer com a coluna: as células voltam a 16px, e a trilha fixa as preenche. */
+@container (min-width: 38rem) {
+  .overview__body--map {
+    grid-template-columns: minmax(0, max-content) minmax(17rem, 1fr);
+  }
+
+  /* Lado a lado, o mapa normal tem células fixas de 16px e a trilha preenche a célula. Estas regras vencem as da base
+     por especificidade (o :not duplo e o .overview-grid .overview-cell), e não pela ordem do arquivo: a base vem
+     depois deste bloco na leitura. Os tamanhos por classe (--roomy e --tight) ficam de fora do :not. */
+  .overview-grid:not(.overview-grid--roomy):not(.overview-grid--tight) {
+    grid-template-rows: 0.875rem repeat(7, 1rem);
+    grid-auto-columns: 1rem;
+    align-items: stretch;
+  }
+
+  .overview-grid .overview-cell {
+    aspect-ratio: auto;
+  }
+
+  .overview__body--map > .overview-col:nth-child(2) {
+    padding: 0 0 0 var(--space-3);
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .overview__body--map > .overview-col:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .overview__body--map .overview-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+  }
+}
+
+/* A partir de 56rem de bloco, o Resumo ganha a terceira coluna, a dos totais. */
+@container (min-width: 56rem) {
+  .overview__body--map.overview__body--stats {
+    grid-template-columns: minmax(0, max-content) minmax(17rem, 1fr) minmax(14rem, 17rem);
+  }
+
+  .overview__body--map > .overview-col:nth-child(3) {
+    grid-column: auto;
+    padding: 0 0 0 var(--space-3);
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .overview__body--map .overview-stats {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -427,26 +531,77 @@
   min-width: 0;
 }
 
-/* Uma grade só: a primeira coluna leva os rótulos de dia, as demais são as semanas. As células são
-   quadradas (aspect-ratio) e a largura delas nunca passa do cartão (minmax(0, ...)). */
+/* Um mapa mais largo que a coluna (muitas semanas) rola aqui, sem rolar a legenda. A sobra de 3px, desfeita pela
+   margem negativa, dá lugar ao contorno do dia de hoje, que a rolagem cortaria na borda. */
+.overview-map__scroll {
+  min-width: 0;
+  margin: -3px;
+  padding: 3px;
+  overflow-x: auto;
+}
+
+/* Uma grade só: a primeira coluna leva o canto da régua e os rótulos de dia, as demais são as semanas (a régua de
+   meses e os sete dias). Empilhado, num bloco estreito (uma coluna só), as células crescem de 16px a 24px para o
+   mapa ocupar a coluna, e cada linha leva a altura da célula quadrada (`aspect-ratio`). Lado a lado (38rem ou
+   mais, acima) elas ficam em 16px, para a tabela ter o resto. Poucas semanas (7 e 30 dias, `--roomy`) ganham células
+   fixas de 24px e muitas ("Tudo", depois de meses, `--tight`) de 12px, em qualquer largura. */
 .overview-grid {
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, auto);
+  grid-template-rows: 0.875rem repeat(7, auto);
   grid-template-columns: auto;
-  grid-auto-columns: minmax(0, 1.25rem);
-  gap: 3px;
+  grid-auto-columns: minmax(1rem, 1.5rem);
+  gap: 2px;
   justify-content: start;
   align-items: start;
   min-width: 0;
 }
 
+.overview-grid--roomy {
+  grid-template-rows: 0.875rem repeat(7, 1.5rem);
+  grid-auto-columns: 1.5rem;
+  align-items: stretch;
+}
+
+.overview-grid--tight {
+  grid-template-rows: 0.875rem repeat(7, 0.75rem);
+  grid-auto-columns: 0.75rem;
+  align-items: stretch;
+}
+
+/* Os rótulos de dia (e o canto da régua) ficam fixos à esquerda quando o mapa rola, por cima das semanas. */
 .overview-grid__label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   align-self: center;
   padding-right: var(--space-2);
+  background: var(--surface);
   color: var(--muted);
   font-size: var(--text-xs);
   line-height: 1;
+}
+
+.overview-grid__ruler:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+/* O mês que começa na última semana ("nov" numa coluna de 12 a 16px) cresce para a esquerda: o que passa da
+   borda direita não entra na largura da coluna do mapa, e o mapa rolaria uns pixels sem precisar. */
+.overview-grid__ruler--end {
+  justify-self: end;
+}
+
+/* A régua de meses: o nome do mês sai da célula da coluna em que ele começa e passa por cima das vizinhas. */
+.overview-grid__ruler {
+  overflow: visible;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 0.875rem;
+  white-space: nowrap;
 }
 
 .overview-cell {
@@ -454,6 +609,15 @@
   min-width: 0;
   aspect-ratio: 1;
   border-radius: var(--radius-sm);
+}
+
+/* Trilha fixa nos dois eixos: a célula a preenche, sem proporção própria. */
+.overview-grid--roomy .overview-cell {
+  aspect-ratio: auto;
+}
+
+.overview-grid--tight .overview-cell {
+  aspect-ratio: auto;
 }
 
 .overview-cell--blank {
@@ -571,13 +735,93 @@
 .overview-legend .overview-cell {
   width: 0.625rem;
   height: 0.625rem;
-  aspect-ratio: auto;
 }
 
-/* Totais ao lado do mapa: mensagens e tokens com a barra por agente, e duas linhas pequenas embaixo. */
+/*
+ * A tabela "Por agente": uma linha por agente, com o nome (e o ponto na cor dele) à esquerda, a barra da parte dele
+ * no meio, que leva o espaço que sobra, e os números à direita. Os fios entre as linhas são de --line; a linha do
+ * agente filtrado leva o fundo --surface-2.
+ */
+.overview-agents {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.overview-agents th,
+.overview-agents td {
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.overview-agents th:last-child,
+.overview-agents td:last-child {
+  padding-right: 0;
+}
+
+.overview-agents thead th {
+  padding-top: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.overview-agents__name {
+  min-width: 7rem;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.overview-agents__name .overview-dot {
+  display: inline-block;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+
+.overview-agents__bar {
+  width: 100%;
+  min-width: 1.5rem;
+}
+
+.overview-agents__number {
+  color: var(--text);
+  font-family: var(--font-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.overview-agents thead .overview-agents__number {
+  font-family: var(--font-sans);
+}
+
+.overview-agents__row--selected {
+  background: var(--surface-2);
+}
+
+.overview-agents__total th,
+.overview-agents__total td {
+  padding-bottom: 0;
+  border-bottom: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* A barra fina com a parte do agente (SVG; a cor do pedaço vem da classe do agente). */
+.overview-share {
+  display: block;
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+}
+
+/* Os totais do período: linhas com o rótulo à esquerda e o valor à direita, separadas por fios. */
 .overview-stats {
   display: grid;
-  gap: var(--space-3);
+  gap: 0;
   align-content: start;
   margin: 0;
   padding: 0;
@@ -585,11 +829,13 @@
 }
 
 .overview-total {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  justify-content: space-between;
   align-items: baseline;
-  gap: var(--space-1) var(--space-2);
+  gap: var(--space-2);
   min-width: 0;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .overview-total__value {
@@ -600,13 +846,9 @@
   text-align: right;
 }
 
-/* A barra fina com a parte de cada agente (SVG; a cor de cada pedaço vem da classe do agente). */
-.overview-share {
-  grid-column: 1 / -1;
-  width: 100%;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
+/* A observação ("sem Antigravity") desce para uma linha própria, sob o valor. */
+.overview-total .overview-stat__hint {
+  display: block;
 }
 
 .overview-share__part.overview-agent--claude {
@@ -625,24 +867,6 @@
   fill: var(--muted);
 }
 
-.overview-legend-list {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
-.overview-legend-list__item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
 /* Sequência e dia mais ativo: rótulo à esquerda e valor à direita, numa linha. */
 .overview-stat {
   display: flex;
@@ -650,8 +874,8 @@
   align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--line);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .overview-stat__label {
