@@ -61,7 +61,8 @@ describe('GitHeader', () => {
   it('mostra as linhas somadas e removidas', () => {
     renderHeader(status());
 
-    expect(screen.getByText('+12 −3')).toBeInTheDocument();
+    expect(screen.getByText('+12')).toBeInTheDocument();
+    expect(screen.getByText('−3')).toBeInTheDocument();
   });
 
   it('sem medida das linhas (sem base), não inventa números', () => {

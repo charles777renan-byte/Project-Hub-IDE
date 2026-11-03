@@ -55,7 +55,7 @@ export function GitCommitBox({
       {stageAll ? (
         <button
           type="button"
-          className="btn-primary"
+          className="btn-secondary"
           disabled={busy}
           onClick={() =>
             void settleWrite(
@@ -70,7 +70,7 @@ export function GitCommitBox({
         <>
           <button
             type="button"
-            className="btn-primary"
+            className={reason === null ? 'btn-primary' : 'btn-secondary'}
             disabled={busy || reason !== null}
             aria-describedby={reason === null ? undefined : REASON_ID}
             onClick={() => void commit()}

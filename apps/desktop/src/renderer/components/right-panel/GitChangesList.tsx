@@ -5,7 +5,7 @@ import type { FileMode } from '../../open-files';
 import { settleWrite, type GitPanel } from '../../use-git-panel';
 import { ConfirmInline } from '../ConfirmButton';
 import { Hint } from '../Hint';
-import { ICON_PROPS, Minus, Plus, Undo2 } from '../Icon';
+import { File, ICON_PROPS, Minus, Plus, Undo2 } from '../Icon';
 
 const TEXT = RIGHT_PANEL_TEXT.git;
 /** Quantos arquivos de "Commitado na branch" aparecem antes de "Ver tudo". */
@@ -257,12 +257,13 @@ function FileRow({
   const { name, dir } = splitPath(path);
   return (
     <li className="git-changes__row">
-      <span className="git-changes__letter" title={stateLabel(letter)}>
-        {letter}
-      </span>
+      <File className="git-changes__icon" {...ICON_PROPS} />
       <FileName path={path} name={name} mode="alteracoes" onOpen={onOpen} />
       {dir === '' ? null : <span className="git-changes__dir">{dir}</span>}
       {children === undefined ? null : <span className="git-changes__actions">{children}</span>}
+      <span className="git-changes__letter" data-status={letter} title={stateLabel(letter)}>
+        {letter}
+      </span>
     </li>
   );
 }
@@ -306,31 +307,45 @@ function BranchChanges({
         <h3 className="git-changes__title">
           {TEXT.committedOnBranch} <span className="git-changes__count">{files.length}</span>
         </h3>
+        {!all && files.length > BRANCH_PREVIEW ? (
+          <button type="button" className="git-changes__more" onClick={() => setAll(true)}>
+            {TEXT.showAll(files.length)}
+          </button>
+        ) : null}
       </div>
       <ul className="git-changes__list">
         {shown.map((file) => {
           const { name, dir } = splitPath(file.path);
           return (
             <li key={file.path} className="git-changes__row">
-              <span className="git-changes__letter" title={stateLabel(file.status)}>
-                {file.status}
-              </span>
+              <File className="git-changes__icon" {...ICON_PROPS} />
               <FileName path={file.path} name={name} mode="arquivo" onOpen={onOpen} />
               {dir === '' ? null : <span className="git-changes__dir">{dir}</span>}
               <span className="git-changes__lines">
-                {file.added === null || file.removed === null
-                  ? TEXT.binary
-                  : `+${file.added} −${file.removed}`}
+                {file.added === null || file.removed === null ? (
+                  TEXT.binary
+                ) : (
+                  <>
+                    <span className={file.added > 0 ? 'git-changes__add' : 'git-count--zero'}>
+                      {`+${file.added}`}
+                    </span>{' '}
+                    <span className={file.removed > 0 ? 'git-changes__del' : 'git-count--zero'}>
+                      {`−${file.removed}`}
+                    </span>
+                  </>
+                )}
+              </span>
+              <span
+                className="git-changes__letter"
+                data-status={file.status}
+                title={stateLabel(file.status)}
+              >
+                {file.status}
               </span>
             </li>
           );
         })}
       </ul>
-      {!all && files.length > BRANCH_PREVIEW ? (
-        <button type="button" className="git-changes__more" onClick={() => setAll(true)}>
-          {TEXT.showAll(files.length)}
-        </button>
-      ) : null}
     </section>
   );
 }
