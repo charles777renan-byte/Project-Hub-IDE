@@ -40,6 +40,10 @@ export const GH_NOT_AUTHENTICATED_MESSAGE =
   'O GitHub CLI não está autenticado. Faça "gh auth login" no terminal.';
 export const GH_NETWORK_FAILED_MESSAGE =
   'Não foi possível falar com o GitHub. Verifique a conexão e tente de novo.';
+/** Uma escrita que falhou no meio pode ter chegado ao GitHub: conferir antes de repetir evita comentário duplicado. */
+const WRITE_MAY_HAVE_COMPLETED =
+  'A ação pode ter sido concluída: atualize a aba e confira o PR antes de tentar de novo.';
+export const GH_NETWORK_FAILED_WRITE_MESSAGE = `Não foi possível falar com o GitHub. ${WRITE_MAY_HAVE_COMPLETED}`;
 export const GH_PR_NOT_FOUND_MESSAGE = 'O PR não foi encontrado no GitHub.';
 export const GH_PR_NOT_MERGEABLE_MESSAGE =
   'O GitHub recusou o merge: o PR não pode ser mesclado agora. Atualize a aba e confira o estado do PR.';
@@ -271,25 +275,81 @@ function execGh(
   options: RunGhOptions,
   timeoutMs: number,
 ): Promise<Outcome> {
-  return new Promise((resolve) => {
-    const child = execFile(
-      command.command,
-      [...command.commandPrefix, ...args],
-      {
-        cwd: options.cwd,
-        env: ghEnvironment(options.env ?? process.env, command.extraEnv),
-        timeout: timeoutMs,
-        maxBuffer: MAX_OUTPUT_BYTES,
-        encoding: 'utf8',
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        resolve(error === null ? { error: null, stdout } : { error, stdout, stderr });
-      },
-    );
-    // O `gh` nunca lê a entrada padrão aqui: fechá-la evita esperar por ela.
-    child.stdin?.end();
+  return new Promise((resolve, reject) => {
+    try {
+      const child = execFile(
+        command.command,
+        [...command.commandPrefix, ...args],
+        {
+          cwd: options.cwd,
+          env: ghEnvironment(options.env ?? process.env, command.extraEnv),
+          timeout: timeoutMs,
+          maxBuffer: MAX_OUTPUT_BYTES,
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+        (error, stdout, stderr) => {
+          resolve(error === null ? { error: null, stdout } : { error, stdout, stderr });
+        },
+      );
+      // O `gh` nunca lê a entrada padrão aqui: fechá-la evita esperar por ela.
+      child.stdin?.end();
+    } catch (error) {
+      // O `execFile` também lança de forma síncrona (linha de comando longa demais, argumento com NUL).
+      // Sem isto o chamador receberia um `Error` cru, sem código nem mensagem segura.
+      reject(toSpawnThrowError(error));
+    }
   });
+}
+
+/**
+ * Converte o que o `execFile` lançou de forma síncrona em `GhError`. Linha de comando longa demais
+ * (`ENAMETOOLONG`, `E2BIG`) e argumento que o sistema não aceita (`ERR_INVALID_ARG_*`, como um NUL) são
+ * entrada inválida; qualquer outra coisa é `UNKNOWN`. A mensagem nunca traz o texto do erro do Node.
+ */
+export function toSpawnThrowError(error: unknown): GhError {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'ENAMETOOLONG' || code === 'E2BIG') {
+    return new GhError('VALIDATION_FAILED', COMMAND_TOO_LONG_MESSAGE, { cause: error });
+  }
+  if (code === 'ERR_INVALID_ARG_VALUE' || code === 'ERR_INVALID_ARG_TYPE') {
+    return new GhError('VALIDATION_FAILED', INVALID_TEXT_MESSAGE, { cause: error });
+  }
+  return new GhError('UNKNOWN', 'Não foi possível executar o GitHub CLI.', { cause: error });
+}
+
+/**
+ * Teto da linha de comando estimada. O Windows aceita 32 767 caracteres na linha inteira (medido: um argumento
+ * de 32 726 caracteres comuns passa e um de 32 727 falha com `ENAMETOOLONG`, 32 de caminho do executável incluídos).
+ * 30 000 deixa 2 700 de folga para o executável (até um caminho longo do Windows), `pr comment 12 --body=` e o resto
+ * das formas fixas. A estimativa pega o pior caso do escape: cada aspa e cada barra invertida contam 2 (medido: com
+ * só aspas o limite cai para 16 362). Vale em todos os sistemas, para a recusa não depender de onde roda.
+ */
+export const MAX_COMMAND_LINE_CHARS = 30_000;
+
+const COMMAND_TOO_LONG_MESSAGE =
+  'O comentário é grande demais para enviar pelo GitHub CLI (cerca de 30 000 caracteres, menos se tiver muitas aspas ou barras invertidas). Divida o texto em partes menores.';
+const INVALID_TEXT_MESSAGE =
+  'O texto tem um caractere que o GitHub CLI não aceita (caractere nulo).';
+
+/** Linha de comando estimada, no pior caso do escape: cada argumento entre aspas e cada `"` e `\` valendo 2. */
+export function estimateCommandLineLength(args: readonly string[]): number {
+  let total = 0;
+  for (const arg of args) {
+    total += arg.length + 3;
+    for (const char of arg) if (char === '"' || char === '\\') total += 1;
+  }
+  return total;
+}
+
+/** Recusa, antes de criar o processo, o que o sistema não conseguiria executar. */
+function checkCommandLine(args: readonly string[]): void {
+  if (args.some((arg) => arg.includes('\0'))) {
+    throw new GhError('VALIDATION_FAILED', INVALID_TEXT_MESSAGE);
+  }
+  if (estimateCommandLineLength(args) > MAX_COMMAND_LINE_CHARS) {
+    throw new GhError('VALIDATION_FAILED', COMMAND_TOO_LONG_MESSAGE);
+  }
 }
 
 async function isDirectory(path: string): Promise<boolean> {
@@ -330,7 +390,7 @@ async function toGhError(
     // Uma escrita interrompida pode ter chegado ao GitHub: mandar "tentar de novo" poderia duplicar um
     // comentário público. A mensagem manda conferir antes.
     const advice = isWriteCommand(args)
-      ? 'A ação pode ter sido concluída: atualize a aba e confira o PR antes de tentar de novo.'
+      ? WRITE_MAY_HAVE_COMPLETED
       : 'Verifique a conexão e tente de novo.';
     return new GhError(
       'GH_NETWORK_FAILED',
@@ -341,7 +401,12 @@ async function toGhError(
   const exitCode = typeof error.code === 'number' ? error.code : undefined;
   const recognized = classifyGhFailure(args, stderr);
   if (recognized !== undefined) {
-    return new GhError(recognized, RECOGNIZED_MESSAGES[recognized], {
+    // A rede pode cair depois de o GitHub aceitar a escrita: nunca mandar "tentar de novo" numa escrita.
+    const message =
+      recognized === 'GH_NETWORK_FAILED' && isWriteCommand(args)
+        ? GH_NETWORK_FAILED_WRITE_MESSAGE
+        : RECOGNIZED_MESSAGES[recognized];
+    return new GhError(recognized, message, {
       exitCode,
       stdout,
       stderr,
@@ -385,6 +450,7 @@ export async function runGh(
       'Comando do GitHub CLI recusado: só são permitidos ler, comentar e mesclar PRs, nas formas fixas.',
     );
   }
+  checkCommandLine(args);
   const timeoutMs =
     options.timeoutMs ?? (isWriteCommand(args) ? WRITE_TIMEOUT_MS : READ_TIMEOUT_MS);
   const outcome = await execGh(
