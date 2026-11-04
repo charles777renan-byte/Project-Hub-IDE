@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { AppResult } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { openExternal } from '../../open-external';
 import { useGitPanel } from '../../use-git-panel';
@@ -40,12 +41,24 @@ export function ChecksTab({
   const { state, refresh, comment, merge } = github;
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
 
-  /** Abre o link pelo canal do processo principal; uma recusa vira o aviso (texto puro, a mensagem do erro). */
+  const lastLinkRequest = useRef(0);
+
+  /**
+   * Abre o link pelo canal do processo principal. Uma recusa vira o aviso (texto puro, a mensagem do erro) e uma
+   * falha do próprio pedido (o `invoke` rejeitar, ou lançar na hora) vira o aviso fixo. Só a resposta do clique
+   * mais recente conta: uma resposta antiga, que chega depois, não troca o aviso.
+   */
   function openLink(url: string) {
+    const request = ++lastLinkRequest.current;
     setLinkNotice(null);
-    void openExternal(url).then((result) => {
-      if (!result.ok) setLinkNotice(result.error.message);
-    });
+    new Promise<AppResult<void>>((resolve) => resolve(openExternal(url)))
+      .then(
+        (result) => (result.ok ? null : result.error.message),
+        () => TEXT.openLinkError,
+      )
+      .then((notice) => {
+        if (request === lastLinkRequest.current) setLinkNotice(notice);
+      });
   }
 
   if (projectId === null) {
@@ -118,12 +131,12 @@ export function ChecksTab({
           />
           <div className="checks-tab__body">
             {linkNotice === null ? null : (
-              <p className="checks-tab__stale" role="status">
+              <p className="checks-tab__notice" role="status" data-notice="link">
                 {linkNotice}
               </p>
             )}
             {state.stale ? (
-              <p className="checks-tab__stale" role="status">
+              <p className="checks-tab__notice" role="status">
                 <strong>{TEXT.stale}</strong>
                 {state.error === null ? null : `: ${state.error.message}`}
               </p>

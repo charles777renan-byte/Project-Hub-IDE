@@ -764,6 +764,8 @@ export const RIGHT_PANEL_TEXT = {
     noLoginCommand: 'gh auth login',
     noLoginAfter: ' no terminal',
     stale: 'Desatualizado',
+    /** O pedido de abrir um link falhou antes de uma resposta do processo principal. */
+    openLinkError: 'Não foi possível abrir o link.',
     prState: { open: 'Aberto', merged: 'Mesclado', closed: 'Fechado', draft: 'Rascunho' },
     openPr: (number: number) => `Abrir o PR #${number} no GitHub`,
     branches: (head: string, base: string) => `${head} → ${base}`,

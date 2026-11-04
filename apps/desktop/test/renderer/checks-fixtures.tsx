@@ -98,7 +98,10 @@ const GIT_STATUS: GitStatusDto = {
 
 export const OK_VOID: AppResult<void> = { ok: true, data: undefined };
 
-/** Instala `window.projectHub` com `github.pr`, `comment`, `merge` e `openUrl` falsos e o estado do Git de uma pasta com Git. */
+/**
+ * Instala `window.projectHub` com `github.pr`, `comment`, `merge` e `openUrl` falsos e o estado do Git de uma
+ * pasta com Git.
+ */
 export function install(pr: () => Promise<AppResult<GithubPanelDto>>) {
   const api = {
     pr: vi.fn(pr),
