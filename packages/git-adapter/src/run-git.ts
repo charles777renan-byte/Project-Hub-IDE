@@ -278,7 +278,10 @@ function gitEnvironment(extra: Readonly<Record<string, string>> = {}): NodeJS.Pr
     LC_ALL: 'C',
     GIT_OPTIONAL_LOCKS: '0',
   };
-  for (const name of REPOSITORY_VARIABLES) delete env[name];
+  // No Windows os nomes de variável não diferenciam maiúsculas: `git_dir` valeria como `GIT_DIR`.
+  for (const name of Object.keys(env)) {
+    if (REPOSITORY_VARIABLES.includes(name.toUpperCase())) delete env[name];
+  }
   return env;
 }
 

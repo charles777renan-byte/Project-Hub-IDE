@@ -310,6 +310,23 @@ describe('runGit: como o processo é criado', () => {
     expect(env).not.toHaveProperty('GIT_WORK_TREE');
     expect(env).not.toHaveProperty('GIT_INDEX_FILE');
   });
+
+  it('remove as variáveis de repositório mesmo escritas em minúsculas ou com caixa mista', async () => {
+    vi.stubEnv('git_dir', '/outro/.git');
+    vi.stubEnv('Git_Work_Tree', '/outro');
+    vi.stubEnv('git_index_file', '/outro/.git/index');
+    vi.stubEnv('git_common_dir', '/outro/.git');
+    vi.stubEnv('PH_TESTE_VARIAVEL', 'mantida');
+
+    await runGit(['status'], { cwd });
+
+    const env = call().options.env as Record<string, string | undefined>;
+    const repositoryNames = Object.keys(env).filter((name) =>
+      ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'].includes(name.toUpperCase()),
+    );
+    expect(repositoryNames).toEqual([]);
+    expect(env).toMatchObject({ LC_ALL: 'C', PH_TESTE_VARIAVEL: 'mantida' });
+  });
 });
 
 describe('runGit: falhas', () => {
