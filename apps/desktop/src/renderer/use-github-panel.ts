@@ -211,7 +211,11 @@ function startPolling(projectId: string): () => void {
   return () => clearInterval(id);
 }
 
-/** Escreve no PR da leitura atual; sem projeto ou sem PR na tela, devolve `GH_PR_NOT_FOUND` sem chamar nada. */
+/**
+ * Escreve no PR da leitura atual; sem projeto ou sem PR na tela, devolve `GH_PR_NOT_FOUND` sem chamar nada.
+ * Com outra escrita em andamento (comentário ou merge), recusa sem chamar nada: duas escritas seguidas não
+ * chegam juntas ao processo principal, mesmo que a tela deixe de desabilitar o botão por um instante.
+ */
 function write(
   projectId: string | null,
   start: (projectId: string, prNumber: number) => Promise<AppResult<void>>,
@@ -222,6 +226,12 @@ function write(
     return Promise.resolve({
       ok: false,
       error: { code: 'GH_PR_NOT_FOUND', message: RIGHT_PANEL_TEXT.github.noPr, retryable: false },
+    });
+  }
+  if (entry.writing > 0) {
+    return Promise.resolve({
+      ok: false,
+      error: appError('UNKNOWN', RIGHT_PANEL_TEXT.github.writeError),
     });
   }
   entry.writing += 1;

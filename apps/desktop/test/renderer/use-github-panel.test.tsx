@@ -485,6 +485,46 @@ describe('useGithubPanel', () => {
       expect(result.current.state.writing).toBe(false);
     });
 
+    it('duas escritas seguidas: só a primeira chega ao processo principal', async () => {
+      const api = installApi(() => Promise.resolve(okPr([PASSED])));
+      let finish: (value: AppResult<void>) => void = () => undefined;
+      api.comment.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+      const { result } = renderHook(() => useGithubPanel('p1', false));
+      await settle();
+
+      let first: Promise<AppResult<void>> | undefined;
+      let second: AppResult<void> | undefined;
+      let third: AppResult<void> | undefined;
+      await act(async () => {
+        first = result.current.comment('um');
+        second = await result.current.comment('dois');
+        third = await result.current.merge('squash');
+      });
+
+      expect(api.comment).toHaveBeenCalledTimes(1);
+      expect(api.comment).toHaveBeenCalledWith({ projectId: 'p1', prNumber: 12, body: 'um' });
+      expect(api.merge).not.toHaveBeenCalled();
+      const refused = {
+        ok: false,
+        error: { code: 'UNKNOWN', message: 'Não foi possível concluir a operação no GitHub.' },
+      };
+      expect(second).toMatchObject(refused);
+      expect(third).toMatchObject(refused);
+      expect(result.current.state.writing).toBe(true);
+
+      await act(async () => {
+        finish({ ok: true, data: undefined });
+        await first;
+      });
+      expect(result.current.state.writing).toBe(false);
+
+      // Terminada a primeira, uma escrita nova volta a valer.
+      await act(async () => {
+        await result.current.comment('três');
+      });
+      expect(api.comment).toHaveBeenCalledTimes(2);
+    });
+
     it('uma exceção do preload na escrita vira erro com o texto geral', async () => {
       const api = installApi(() => Promise.resolve(okPr([PASSED])));
       api.comment.mockRejectedValueOnce(new Error('boom'));
