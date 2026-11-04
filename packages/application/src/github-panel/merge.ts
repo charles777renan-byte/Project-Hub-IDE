@@ -15,8 +15,8 @@ import {
 /**
  * Mescla o PR da branch atual. O número e a forma são conferidos antes de qualquer chamada. Em seguida o PR é
  * relido (e isso também confere o host e que ele é o da branch atual): só segue se estiver `OPEN` e
- * `MERGEABLE`. Senão, `GH_PR_NOT_MERGEABLE` sem chamar `gh pr merge`. Se a leitura falhar, a escrita não
- * acontece.
+ * `MERGEABLE` e não for rascunho. Senão, `GH_PR_NOT_MERGEABLE` sem chamar `gh pr merge`. Se a leitura falhar,
+ * a escrita não acontece.
  */
 export async function mergeProjectPullRequest(
   deps: GithubPanelDeps,
@@ -32,6 +32,12 @@ export async function mergeProjectPullRequest(
   if (!project.ok) return project;
   const reading = await readPullRequestOfBranch(deps, project.data, number.data);
   if (!reading.ok) return reading;
+  if (reading.data.pr.isDraft) {
+    return failure(
+      'GH_PR_NOT_MERGEABLE',
+      'O PR está em rascunho: marque-o como pronto para revisão no GitHub antes de mesclar.',
+    );
+  }
   if (reading.data.pr.state !== 'OPEN' || reading.data.pr.mergeable !== 'MERGEABLE') {
     return failure(
       'GH_PR_NOT_MERGEABLE',

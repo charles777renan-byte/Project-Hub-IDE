@@ -431,6 +431,22 @@ describe('mergeProjectPullRequest', () => {
     },
   );
 
+  it('PR em rascunho: GH_PR_NOT_MERGEABLE com mensagem de rascunho, sem chamar gh pr merge', async () => {
+    const { deps, github } = setup({
+      github: {
+        pullRequest: () => Promise.resolve(prReading({ isDraft: true, mergeable: 'MERGEABLE' })),
+      },
+    });
+
+    await expect(mergeProjectPullRequest(deps, input)).resolves.toEqual(
+      fail(
+        'GH_PR_NOT_MERGEABLE',
+        'O PR está em rascunho: marque-o como pronto para revisão no GitHub antes de mesclar.',
+      ),
+    );
+    expect(github.mergePullRequest).not.toHaveBeenCalled();
+  });
+
   it('forma de merge inválida: VALIDATION_FAILED, sem chamar nada', async () => {
     const { deps, github } = setup();
 
