@@ -4,6 +4,7 @@ export * from './channels';
 export * from './errors';
 export * from './files';
 export * from './git-panel';
+export * from './github';
 export * from './limits';
 export * from './mission';
 export * from './profile';

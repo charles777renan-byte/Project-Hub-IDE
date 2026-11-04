@@ -30,6 +30,10 @@ import {
   type GitPullResultDto,
   type GitPushResultDto,
   type GitStatusDto,
+  type GithubCommentInput,
+  type GithubMergeInput,
+  type GithubPanelDto,
+  type GithubProjectInput,
   type LayoutNode,
   type LimitsDto,
   type MissionDiffDto,
@@ -294,6 +298,12 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       log: (input: GitProjectInput) => call<GitLogEntryDto[]>(CHANNELS.gitLog, input),
       branchChanges: (input: GitProjectInput) =>
         call<BranchChangesDto>(CHANNELS.gitBranchChanges, input),
+    },
+    github: {
+      pr: (input: GithubProjectInput) => call<GithubPanelDto>(CHANNELS.githubPr, input),
+      comment: (input: GithubCommentInput) => call<void>(CHANNELS.githubComment, input),
+      merge: (input: GithubMergeInput) => call<void>(CHANNELS.githubMerge, input),
+      openUrl: (url: string) => call<void>(CHANNELS.githubOpenUrl, { url }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

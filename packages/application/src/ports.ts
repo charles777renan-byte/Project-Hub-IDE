@@ -135,6 +135,8 @@ export interface GitPanelPort {
   fetch(repoPath: string): Promise<void>;
   log(repoPath: string, limit: number): Promise<GitLogEntryDto[]>;
   branchChanges(repoPath: string): Promise<BranchChangesDto>;
+  /** A URL do remoto `origin` (`git config --get remote.origin.url`), ou `null` quando a pasta não tem `origin`. */
+  originUrl(repoPath: string): Promise<string | null>;
 }
 
 /**

@@ -9,6 +9,12 @@ import type {
   NameSearchDto,
 } from './files';
 import type {
+  GithubCommentInput,
+  GithubMergeInput,
+  GithubPanelDto,
+  GithubProjectInput,
+} from './github';
+import type {
   BranchChangesDto,
   GitCommitInput,
   GitCommitResultDto,
@@ -251,6 +257,22 @@ export type ProjectHubApi = {
     log(input: GitProjectInput): Promise<AppResult<GitLogEntryDto[]>>;
     /** Arquivos que a branch mudou em relação à base. */
     branchChanges(input: GitProjectInput): Promise<AppResult<BranchChangesDto>>;
+  };
+  github: {
+    /**
+     * O PR da branch atual, com checks e comentários. Sem PR e pasta que não é do GitHub são respostas de
+     * sucesso (`no-pr`, `not-applicable`); sem `gh`, sem login e sem rede voltam como erro (`GH_*`).
+     */
+    pr(input: GithubProjectInput): Promise<AppResult<GithubPanelDto>>;
+    /** Comenta no PR. O corpo é texto puro; o número é conferido contra o PR da branch atual. */
+    comment(input: GithubCommentInput): Promise<AppResult<void>>;
+    /** Mescla o PR depois de reler o estado (só aberto e mesclável). A tela pede confirmação antes. */
+    merge(input: GithubMergeInput): Promise<AppResult<void>>;
+    /**
+     * Abre no navegador padrão um endereço que veio do GitHub. O processo principal confere: só `https://github.com`,
+     * sem usuário, senha nem porta; o resto volta como erro, sem abrir. Abre direto, sem confirmação.
+     */
+    openUrl(url: string): Promise<AppResult<void>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */

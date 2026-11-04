@@ -41,6 +41,7 @@ import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
 import { registerFilesHandlers } from './ipc/files';
 import { registerGitHandlers } from './ipc/git';
+import { registerGithubHandlers } from './ipc/github';
 import { registerSaveAllResultHandler } from './ipc/save-all';
 import { createProjectFiles } from './files/project-files';
 import {
@@ -376,6 +377,8 @@ app
           }
         : {}),
       planner,
+      // O `gh` falso dos testes só vale fora do aplicativo empacotado.
+      allowGhTestOverrides: !app.isPackaged,
     });
     app.once('will-quit', () => {
       services.close();
@@ -429,6 +432,10 @@ app
       openPath: (path) => shell.openPath(path),
     });
     registerGitHandlers(ipcMain, isTrustedSender, services.gitPanelDeps);
+    registerGithubHandlers(ipcMain, isTrustedSender, {
+      panel: services.githubPanelDeps,
+      openExternal: (url) => shell.openExternal(url),
+    });
     registerSaveAllResultHandler(ipcMain, isTrustedSender, (requestId, saved) =>
       saveBeforeClose?.finish(requestId, saved),
     );

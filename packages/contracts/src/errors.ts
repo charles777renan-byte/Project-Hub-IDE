@@ -53,6 +53,12 @@ export const ERROR_CODES = [
   'GIT_NOT_FAST_FORWARD',
   'GIT_NOTHING_TO_COMMIT',
   'GIT_DETACHED_HEAD',
+  // Acrescentados pela fase 3 do painel direito: aba Checks, pelo GitHub CLI (`gh`).
+  'GH_NOT_AVAILABLE',
+  'GH_NOT_AUTHENTICATED',
+  'GH_NETWORK_FAILED',
+  'GH_PR_NOT_FOUND',
+  'GH_PR_NOT_MERGEABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

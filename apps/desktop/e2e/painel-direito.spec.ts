@@ -97,16 +97,14 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
     'aria-selected',
     'true',
   );
-  // Arquivos e Código-fonte não trazem `aria-disabled="true"`: só Sessões e Checks seguem desligadas.
-  for (const name of ['Arquivos', 'Código-fonte']) {
+  // Arquivos, Código-fonte e Checks não trazem `aria-disabled="true"`: só Sessões segue desligada.
+  for (const name of ['Arquivos', 'Código-fonte', 'Checks']) {
     await expect(panelTabs.getByRole('tab', { name })).not.toHaveAttribute('aria-disabled', 'true');
   }
-  for (const name of ['Sessões', 'Checks']) {
-    const disabled = panelTabs.getByRole('tab', { name });
-    await expect(disabled).toHaveAttribute('aria-disabled', 'true');
-    await disabled.click({ force: true });
-    await expect(disabled).toHaveAttribute('aria-selected', 'false');
-  }
+  const disabled = panelTabs.getByRole('tab', { name: 'Sessões' });
+  await expect(disabled).toHaveAttribute('aria-disabled', 'true');
+  await disabled.click({ force: true });
+  await expect(disabled).toHaveAttribute('aria-selected', 'false');
   await expect(panelTabs.getByRole('tab', { name: 'Arquivos' })).toHaveAttribute(
     'aria-selected',
     'true',

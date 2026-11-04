@@ -287,6 +287,9 @@ importers:
       '@project-hub/git-adapter':
         specifier: workspace:*
         version: link:../../packages/git-adapter
+      '@project-hub/github-adapter':
+        specifier: workspace:*
+        version: link:../../packages/github-adapter
       '@project-hub/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -415,6 +418,12 @@ importers:
       '@project-hub/test-utils':
         specifier: workspace:*
         version: link:../test-utils
+
+  packages/github-adapter:
+    dependencies:
+      '@project-hub/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/test-utils: {}
 

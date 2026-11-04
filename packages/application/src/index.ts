@@ -28,6 +28,11 @@ export {
 export { getProjectBranchLog } from './git-panel/log';
 export { getProjectBranchChanges } from './git-panel/branch-changes';
 export type { GitPanelDeps } from './git-panel/project';
+export { getPullRequestPanel } from './github-panel/pull-request';
+export { addPullRequestComment } from './github-panel/comment';
+export { mergeProjectPullRequest } from './github-panel/merge';
+export type { GithubPanelDeps } from './github-panel/project';
+export type { GithubPanelPort } from './github-panel/port';
 export {
   createOrchestrator,
   type MissionPlan,
