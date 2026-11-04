@@ -314,6 +314,7 @@ describe('leitura do stderr do gh (classifyGhFailure)', () => {
     'X Pull request #12 is already merged',
     'X Pull request #12 is closed',
     'Pull request #12 is a draft',
+    'X Pull request #12 is still a draft',
     // Textos conhecidos do gh e do GitHub, NÃO capturados do gh real (isso exigiria um merge de verdade).
   ])('merge recusado: %s', (stderr) => {
     expect(classifyGhFailure(merge, stderr)).toBe('GH_PR_NOT_MERGEABLE');

@@ -246,7 +246,7 @@ const NETWORK_PATTERN =
   /dial tcp|no such host|connection (?:refused|reset|timed out)|connectex|proxyconnect|i\/o timeout|timed out|timeout|network is unreachable|tls:|could not resolve host|unable to connect|temporary failure in name resolution|wsarecv|wsasend|deadline exceeded|error connecting to|internet connection|unexpected eof|\bEOF\b|http 5\d\d/iu;
 const PR_NOT_FOUND_PATTERN = /could not resolve to a pullrequest|no pull requests? found/iu;
 const NOT_MERGEABLE_PATTERN =
-  /not mergeable|cannot be cleanly created|merge conflict|conflicts?\b|required status check|review is required|base branch policy|protected branch|already merged|is closed|is a draft|draft pull request|(?:merge commits?|squash merges?|rebase merges?) (?:are|is) not allowed/iu;
+  /not mergeable|cannot be cleanly created|merge conflict|conflicts?\b|required status check|review is required|base branch policy|protected branch|already merged|is closed|is a draft|still a draft|draft pull request|(?:merge commits?|squash merges?|rebase merges?) (?:are|is) not allowed/iu;
 
 /** As falhas que o texto do `gh` permite reconhecer. */
 export type RecognizedGhFailure =
