@@ -118,13 +118,13 @@ export function ChecksList({
   const keys = keysOf(checks);
   return (
     <section className="checks-list" aria-label={TEXT.listLabel}>
-      <p className="checks-list__summary" aria-label={TEXT.summary.group}>
+      <div className="checks-list__summary" role="group" aria-label={TEXT.summary.group}>
         <span>{TEXT.summary.success(total.success)}</span>
         <span aria-hidden="true">/</span>
         <span>{TEXT.summary.failed(total.failure)}</span>
         <span aria-hidden="true">/</span>
         <span>{TEXT.summary.pending(total.pending)}</span>
-      </p>
+      </div>
       <ul className="checks-list__items">
         {checks.map((check, index) => {
           const key = keys[index] ?? String(index);

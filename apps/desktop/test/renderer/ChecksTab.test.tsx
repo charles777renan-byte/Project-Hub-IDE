@@ -206,7 +206,8 @@ describe('ChecksTab: resumo e lista', () => {
     install(() => Promise.resolve(okPr(CHECKS)));
     render(<Harness />);
 
-    const group = await screen.findByLabelText('Resumo dos checks');
+    // O rótulo fica num `role="group"`: `aria-label` não é permitido num `<p>`.
+    const group = await screen.findByRole('group', { name: 'Resumo dos checks' });
     expect(group).toHaveTextContent('2 com sucesso/1 falhou/2 pendentes');
   });
 
@@ -214,7 +215,7 @@ describe('ChecksTab: resumo e lista', () => {
     install(() => Promise.resolve(okPr([FAILED, { ...FAILED, name: 'x' }, PASSED])));
     render(<Harness />);
 
-    expect(await screen.findByLabelText('Resumo dos checks')).toHaveTextContent(
+    expect(await screen.findByRole('group', { name: 'Resumo dos checks' })).toHaveTextContent(
       '1 com sucesso/2 falharam/0 pendentes',
     );
   });
