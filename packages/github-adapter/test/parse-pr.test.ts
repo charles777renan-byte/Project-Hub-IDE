@@ -316,20 +316,54 @@ describe('saída inesperada do gh', () => {
 });
 
 describe('parsePullRequestNumber', () => {
-  it('devolve o número do primeiro PR', () => {
-    expect(parsePullRequestNumber('[{"number":47}]')).toBe(47);
+  const list = (...items: { number: number; isCrossRepository: boolean }[]) =>
+    JSON.stringify(items);
+
+  it('só PR local: devolve o número dele', () => {
+    expect(parsePullRequestNumber(list({ number: 47, isCrossRepository: false }))).toBe(47);
+  });
+
+  it('PR de fork antes do PR local: devolve o número do PR local', () => {
+    expect(
+      parsePullRequestNumber(
+        list(
+          { number: 99, isCrossRepository: true },
+          { number: 47, isCrossRepository: false },
+          { number: 12, isCrossRepository: false },
+        ),
+      ),
+    ).toBe(47);
+  });
+
+  it('só PR de fork: a branch não tem PR (null)', () => {
+    expect(
+      parsePullRequestNumber(
+        list({ number: 99, isCrossRepository: true }, { number: 98, isCrossRepository: true }),
+      ),
+    ).toBeNull();
   });
 
   it('lista vazia: a branch não tem PR', () => {
     expect(parsePullRequestNumber('[]')).toBeNull();
   });
 
-  it.each(['', 'não é json', '{}', '[{}]', '[{"number":0}]', '[{"number":"47"}]', '[null]'])(
-    'recusa %j com UNKNOWN',
-    (stdout) => {
-      expect(() => parsePullRequestNumber(stdout)).toThrowError(
-        expect.objectContaining({ code: 'UNKNOWN' }) as Error,
-      );
-    },
-  );
+  it.each([
+    '',
+    'não é json',
+    '{}',
+    '[{}]',
+    '[null]',
+    '[{"number":47}]',
+    '[{"isCrossRepository":false}]',
+    '[{"number":0,"isCrossRepository":false}]',
+    '[{"number":1.5,"isCrossRepository":false}]',
+    '[{"number":"47","isCrossRepository":false}]',
+    '[{"number":47,"isCrossRepository":"false"}]',
+    '[{"number":47,"isCrossRepository":null}]',
+    '[{"number":47,"isCrossRepository":false},{"number":5}]',
+  ])('recusa %j com UNKNOWN', (stdout) => {
+    expect(() => parsePullRequestNumber(stdout)).toThrowError(
+      expect.objectContaining({ code: 'UNKNOWN' }) as Error,
+    );
+  });
 });
