@@ -127,7 +127,7 @@ function isOperand(arg: string | undefined): arg is string {
 /**
  * Lista de permissão: as quatro formas do desenho da aba Checks, com argumentos exatos, e nenhuma outra.
  *
- * - `pr list --head <branch> --state all --limit 1 --json number`
+ * - `pr list --head <branch> --state all --limit 30 --json number,isCrossRepository`
  * - `pr view <n> --json <PR_VIEW_FIELDS>`
  * - `pr comment <n> --body=<texto>` (o texto pode ter quebra de linha e `-` na frente: é parte do mesmo
  *   argumento, nunca um argumento solto)
@@ -149,9 +149,9 @@ export function isAllowedGhCommand(args: readonly string[]): boolean {
         stateFlag === '--state' &&
         state === 'all' &&
         limitFlag === '--limit' &&
-        limit === '1' &&
+        limit === '30' &&
         jsonFlag === '--json' &&
-        fields === 'number' &&
+        fields === 'number,isCrossRepository' &&
         extra.length === 0
       );
     }
