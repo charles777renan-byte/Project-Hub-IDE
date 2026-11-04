@@ -44,6 +44,7 @@
 
 /* Sem o padding e a borda do botão padrão, a caixa fica do tamanho declarado e o ícone centrado. */
 .right-panel__tab {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
@@ -58,6 +59,35 @@
 
 .right-panel__tab svg {
   display: block;
+}
+
+/*
+ * O ponto de estado da aba Checks, no canto de cima à direita do botão. Só reforça: o estado também vai no nome e
+ * na dica do botão, em texto. A cor vem do token do estado e o formato muda com ele (círculo cheio, anel, losango).
+ */
+.right-panel__dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+
+.right-panel__dot--ok {
+  border-radius: 50%;
+  background: var(--cyan);
+}
+
+.right-panel__dot--pending {
+  border: 2px solid var(--warn);
+  border-radius: 50%;
+}
+
+.right-panel__dot--failed {
+  background: var(--danger);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
 
 .right-panel__tab:hover:not([aria-disabled='true']):not([aria-selected='true']) {
@@ -1456,4 +1486,411 @@
 .git-commits__meta {
   color: var(--muted);
   font-size: var(--text-xs);
+}
+
+/* Aba Checks: o PR da branch e a lista de checks. Só tokens; o acabamento fino vem depois. */
+.checks-tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.checks-tab__header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2) var(--space-2) var(--space-3);
+}
+
+.checks-tab__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* O número do PR é um botão que abre a página dele; fica com cara de link, e o foco aparece por dentro. */
+.checks-tab__number {
+  flex: none;
+  padding: 0 var(--space-1);
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.checks-tab__number:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.checks-tab__branches {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* O título vem do GitHub: texto puro, com quebra em qualquer ponto para um título longo não alargar o painel. */
+.checks-tab__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.checks-tab__updated {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.checks-tab__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.checks-tab__status {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* A leitura antiga continua na tela: o aviso tem barra à esquerda para não depender só de cor. */
+.checks-tab__stale {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--warn);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.checks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checks-list__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.checks-list__items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checks-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  text-align: left;
+}
+
+.checks-list__row:hover {
+  background: var(--surface-2);
+}
+
+.checks-list__row:focus-visible {
+  outline-offset: -2px;
+}
+
+.checks-list__chevron {
+  flex: none;
+  color: var(--muted);
+}
+
+.checks-list__icon {
+  flex: none;
+}
+
+.checks-list__icon--success {
+  color: var(--cyan);
+}
+
+.checks-list__icon--failure {
+  color: var(--danger);
+}
+
+.checks-list__icon--pending {
+  color: var(--warn);
+}
+
+.checks-list__icon--neutral {
+  color: var(--muted);
+}
+
+.checks-list__name {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checks-list__state {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.checks-list__details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2) var(--space-5);
+}
+
+.checks-list__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.checks-list__facts dt {
+  color: var(--muted);
+}
+
+.checks-list__facts dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Mesclar: o botão principal (lima, a única ação de destaque da aba) com a seta que troca a forma. */
+.checks-merge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.checks-merge__split {
+  position: relative;
+  display: flex;
+}
+
+.checks-merge__main {
+  flex: 1;
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.checks-merge__arrow {
+  display: grid;
+  flex: none;
+  place-items: center;
+  padding: var(--space-2);
+  border-left-color: var(--surface);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* O anel do foco (lima, como o botão) fica por fora e sobe sobre a outra metade, em vez de sumir por dentro dela. */
+.checks-merge__arrow:focus-visible,
+.checks-merge__main:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.checks-merge__live:focus-visible {
+  outline-offset: 0;
+}
+
+.checks-merge__list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  margin: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  list-style: none;
+}
+
+.checks-merge__item {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+/* A forma escolhida tem marca além da cor: o texto fica em negrito e ganha um traço à esquerda. */
+.checks-merge__item[aria-checked='true'] {
+  box-shadow: inset 3px 0 0 var(--text);
+  font-weight: 800;
+}
+
+.checks-merge__item:hover,
+.checks-merge__item:focus-visible {
+  background: var(--line);
+}
+
+.checks-merge__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.checks-merge__live,
+.checks-comments__live {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* Comentários do PR: autor e hora em cima, o corpo como texto puro com as quebras de linha dele. */
+.checks-comments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checks-comments__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checks-comments__title {
+  font-size: var(--text-sm);
+}
+
+.checks-comments__empty {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.checks-comments__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checks-comments__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.checks-comments__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.checks-comments__author {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.checks-comments__body {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* O campo de novo comentário: barra de formatação, texto e botões. */
+.checks-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.checks-composer__toolbar {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.checks-composer__tool {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: var(--field-line);
+}
+
+.checks-composer__tool:focus-visible {
+  outline-offset: -2px;
+}
+
+.checks-composer__field {
+  width: 100%;
+  min-height: 5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.checks-composer__field::placeholder {
+  color: var(--muted);
+}
+
+.checks-composer__field:hover {
+  border-color: var(--muted);
+}
+
+.checks-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
