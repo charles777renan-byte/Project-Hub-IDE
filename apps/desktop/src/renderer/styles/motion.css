@@ -229,6 +229,11 @@
   transition: opacity var(--dur-fast) var(--ease);
 }
 
+/* A marca lateral acende no mesmo tempo que o fundo do item marcado (app.css). */
+.workspace__menu-item::before {
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workspace__popup,
   .workspace__menu-search,
@@ -257,6 +262,7 @@
   .tab,
   .tab::before,
   .workspace__menu-kbd,
+  .workspace__menu-item::before,
   .pane__usage-value,
   .paleta__item,
   .paleta__enter {

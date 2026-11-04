@@ -1414,6 +1414,9 @@ button:disabled {
 }
 
 .workspace__menu-item {
+  position: relative;
+  /* Corta a marca lateral pelos cantos arredondados do item. */
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -1429,11 +1432,28 @@ button:disabled {
   user-select: none;
 }
 
-/* O item marcado (mouse em cima ou foco) acende o fundo e uma marca lateral lima: a marca sozinha já o distingue,
-   sem depender só da cor do fundo. */
+/*
+ * A marca lateral lima do item marcado (mouse em cima ou foco) é um filete (::before) que aparece por opacidade junto
+ * com o fundo (motion.css). Antes era um box-shadow, que acendia de uma vez enquanto o fundo ainda esmaecia.
+ */
+.workspace__menu-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0;
+}
+
+/* O item marcado acende o fundo e a marca lateral: a marca sozinha já o distingue, sem depender só da cor do fundo. */
 .workspace__menu-item[data-marked='true'] {
   background: var(--line);
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.workspace__menu-item[data-marked='true']::before {
+  opacity: 1;
 }
 
 /* O anel de foco do app fica por dentro do item, como no menu de ações (um fundo só não basta: WCAG 2.4.7). */
