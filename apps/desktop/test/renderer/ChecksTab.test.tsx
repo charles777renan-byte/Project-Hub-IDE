@@ -17,7 +17,7 @@ import {
   summarizeChecks,
 } from '../../src/renderer/components/right-panel/checks-status';
 import { isPendingCheck, useGithubPanel } from '../../src/renderer/use-github-panel';
-import { readCss } from './css-rules';
+import { readCss, ruleDeclarations } from './css-rules';
 
 /** A aba Checks com o hook real e `window.projectHub` falso: cabeçalho, resumo, lista e cada estado vazio. */
 
@@ -637,6 +637,24 @@ describe('checks-status', () => {
 });
 
 describe('estilo da aba Checks', () => {
+  it('texto do GitHub isola a direção (unicode-bidi: isolate): título, branches, nome do check, comentário e caixas', () => {
+    const css = readCss('checks.css');
+    for (const selector of [
+      '.checks-tab__title',
+      '.checks-tab__branches',
+      '.checks-list__name',
+      '.checks-comments__author',
+      '.checks-comments__body',
+      '.checks-dialog__message',
+    ]) {
+      expect(ruleDeclarations(css, selector).get('unicode-bidi'), selector).toBe('isolate');
+    }
+    // A caixa do Git (aba Git) não muda: a regra geral fica em right-panel.css, sem o isolamento.
+    expect(
+      ruleDeclarations(readCss('right-panel.css'), '.git-dialog__message').has('unicode-bidi'),
+    ).toBe(false);
+  });
+
   it('só usa tokens: nenhuma cor escrita nas regras da aba', () => {
     const css = readCss('checks.css');
     const start = css.indexOf('.checks-tab {');

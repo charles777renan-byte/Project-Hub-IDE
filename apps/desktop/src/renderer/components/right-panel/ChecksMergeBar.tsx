@@ -231,11 +231,11 @@ export function ChecksMergeBar({
         onCancel={close}
       >
         <p className="git-dialog__label">{TEXT.prTitle}</p>
-        <p className="git-dialog__message">{pr.title}</p>
+        <p className="git-dialog__message checks-dialog__message">{pr.title}</p>
         <p className="git-dialog__label">{TEXT.from}</p>
-        <p className="git-dialog__message">{pr.headRefName}</p>
+        <p className="git-dialog__message checks-dialog__message">{pr.headRefName}</p>
         <p className="git-dialog__label">{TEXT.into}</p>
-        <p className="git-dialog__message">{pr.baseRefName}</p>
+        <p className="git-dialog__message checks-dialog__message">{pr.baseRefName}</p>
         <p className="git-dialog__label">{TEXT.checks}</p>
         <p className="git-dialog__note">
           {`${SUMMARY.success(total.success)} / ${SUMMARY.failed(total.failure)} / ${SUMMARY.pending(total.pending)}`}
