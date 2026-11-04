@@ -195,6 +195,28 @@ describe('getPullRequestPanel', () => {
     expect(plain.github.pullRequestForBranch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['EACCES do Node', 'EACCES'],
+    ['código do contrato, mas de fora dos adaptadores', 'PERMISSION_DENIED'],
+  ])('erro comum com code (%s) não vaza a mensagem: resposta genérica', async (_name, code) => {
+    const leaked = "EACCES: permission denied, open 'C:\Users\ana\segredo\.git\config'";
+    const error = Object.assign(new Error(leaked), { code });
+    const generic = fail('UNKNOWN', 'Algo deu errado. Tente de novo.');
+
+    const fromGit = setup({ git: { errors: { status: error } } });
+    await expect(getPullRequestPanel(fromGit.deps, { projectId: 'p1' })).resolves.toEqual(generic);
+
+    const fromGh = setup({ github: { pullRequestForBranch: () => Promise.reject(error) } });
+    const panel = await getPullRequestPanel(fromGh.deps, { projectId: 'p1' });
+    expect(panel).toEqual(generic);
+    expect(JSON.stringify(panel)).not.toContain('segredo');
+
+    const commenting = setup({ github: { addComment: () => Promise.reject(error) } });
+    await expect(
+      addPullRequestComment(commenting.deps, { projectId: 'p1', prNumber: 37, body: 'oi' }),
+    ).resolves.toEqual(generic);
+  });
+
   it('pasta sem Git: not-applicable, sem tocar o git nem o gh', async () => {
     const { deps, git, github } = setup({ seed: [project({ repositoryKind: 'none' })] });
 
