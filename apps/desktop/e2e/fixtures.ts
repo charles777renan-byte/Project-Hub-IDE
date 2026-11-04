@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -40,7 +40,13 @@ export const FAKE_GH = join(
 /** Variáveis do `gh` falso que não podem vir da máquina de quem roda: só as opções do teste as definem. */
 const GH_ENV = ['PROJECT_HUB_GH_BIN', 'FAKE_GH_SCENARIO', 'FAKE_GH_LOG', 'FAKE_GH_HEAD'];
 
-/** O PATH sem as pastas que têm um `gh` (o real), para o teste "sem GitHub CLI"; o Git continua achável. */
+/**
+ * O PATH sem as pastas que têm um `gh` (o real), para o teste "sem GitHub CLI"; o Git continua achável.
+ *
+ * Limite conhecido: se o `gh` e o `git` ficam na mesma pasta, ela sai do PATH junto, o app não acha o Git e o teste
+ * de "sem gh" falha por um motivo que não é o do teste. Nesse caso, aponte o Git explicitamente (por exemplo,
+ * acrescentando ao PATH uma pasta de teste com só o `git`) em vez de mexer na lógica abaixo.
+ */
 function pathWithoutGh(path: string): string {
   const names = ['gh', 'gh.exe', 'gh.cmd', 'gh.bat'];
   return path
@@ -357,8 +363,20 @@ export const test = base.extend<Fixtures>({
       env['PROJECT_HUB_AGY_HISTORY'] = antigravityHistory;
       // O `gh` é sempre o falso (o app só aceita `PROJECT_HUB_GH_BIN` com `PROJECT_HUB_ENV=test`, definido acima).
       // Nada do `gh` vem da máquina de quem roda; sem `ghMissing`, o falso responde o cenário pedido.
-      for (const name of GH_ENV) delete env[name];
+      // Sem diferenciar maiúsculas (no Windows `gh_token` vale como `GH_TOKEN`), como o `ghEnvironment` do adaptador.
+      for (const name of Object.keys(env)) {
+        if (GH_ENV.includes(name.toUpperCase())) delete env[name];
+      }
       if (options.ghMissing === true) {
+        // Sem `gh`, nenhuma credencial nem configuração do `gh` da máquina deve ficar ao alcance do app.
+        for (const name of Object.keys(env)) {
+          if (['GH_TOKEN', 'GITHUB_TOKEN', 'GH_CONFIG_DIR'].includes(name.toUpperCase())) {
+            delete env[name];
+          }
+        }
+        const emptyGhConfig = join(dataDir, 'gh-config-vazio');
+        mkdirSync(emptyGhConfig, { recursive: true });
+        env['GH_CONFIG_DIR'] = emptyGhConfig;
         const pathName = Object.keys(env).find((name) => name.toUpperCase() === 'PATH');
         if (pathName !== undefined) env[pathName] = pathWithoutGh(env[pathName] ?? '');
       } else {
