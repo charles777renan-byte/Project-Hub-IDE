@@ -199,7 +199,7 @@ describe('getPullRequestPanel', () => {
     ['EACCES do Node', 'EACCES'],
     ['código do contrato, mas de fora dos adaptadores', 'PERMISSION_DENIED'],
   ])('erro comum com code (%s) não vaza a mensagem: resposta genérica', async (_name, code) => {
-    const leaked = "EACCES: permission denied, open 'C:\Users\ana\segredo\.git\config'";
+    const leaked = "EACCES: permission denied, open 'C:/Users/ana/segredo/.git/config'";
     const error = Object.assign(new Error(leaked), { code });
     const generic = fail('UNKNOWN', 'Algo deu errado. Tente de novo.');
 
