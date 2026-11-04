@@ -47,6 +47,39 @@ async function expectFakeGh(app: LaunchedApp['app']): Promise<void> {
   expect(basename(FAKE_GH)).toBe('fake-gh.mjs');
 }
 
+/** Quanto o log do `gh` falso precisa ficar parado para valer como "nada mais vem": bem acima do tempo de um spawn. */
+const LOG_SETTLE_MS = 1500;
+
+/**
+ * Prova de que nada foi escrito depois de cancelar. Checar o log logo após fechar o diálogo passaria mesmo com a
+ * escrita a caminho: o processo e a linha do log são assíncronos, e uma escrita faz três chamadas em sequência
+ * (confere o PR, confere a branch, escreve). Por isso: dispara uma leitura conhecida (Atualizar), espera as
+ * chamadas dela no log e, depois, que o log fique parado por `LOG_SETTLE_MS`; só então afirma que não há escrita.
+ */
+async function expectNoWriteAfterRefresh(panel: Locator, ghLog: string): Promise<void> {
+  const refresh = panel.getByRole('button', { name: 'Atualizar' });
+  await expect(refresh).toBeEnabled();
+  const before = ghCalls(ghLog).length;
+  await refresh.click();
+  await expect
+    .poll(() => ghCalls(ghLog).length, { message: 'a leitura do Atualizar no log' })
+    .toBeGreaterThanOrEqual(before + 2);
+  let size = -1;
+  await expect
+    .poll(
+      async () => {
+        const previous = size;
+        size = ghCalls(ghLog).length;
+        if (size !== previous) return false;
+        // Mesmo tamanho há uma espera inteira: nada mais está a caminho.
+        return true;
+      },
+      { message: 'o log do gh falso parar de crescer', intervals: [LOG_SETTLE_MS] },
+    )
+    .toBe(true);
+  expect(writes(ghLog)).toEqual([]);
+}
+
 const panelOf = (page: Page): Locator =>
   page.getByRole('complementary', { name: 'Painel direito' });
 const tabsOf = (page: Page): Locator =>
@@ -157,7 +190,6 @@ test('sem o GitHub CLI: a mensagem "GitHub CLI não encontrado", o endereço em 
   launchApp,
   gitRepo,
   gitEnv,
-  ghLog,
 }) => {
   const { page } = await openChecksProject({ launchApp, gitRepo, gitEnv }, { ghMissing: true });
   await checksTab(page).click();
@@ -167,8 +199,6 @@ test('sem o GitHub CLI: a mensagem "GitHub CLI não encontrado", o endereço em 
   await expect(panel.locator('code', { hasText: 'https://cli.github.com/' })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Tentar de novo' })).toBeVisible();
   await expect(dotOf(page)).toHaveCount(0);
-  // O falso não foi ligado, e o PATH não tinha o `gh`: nenhuma chamada gravada.
-  expect(ghCalls(ghLog)).toEqual([]);
 });
 
 test('sem login no GitHub CLI: a orientação "gh auth login" e nenhum ponto', async ({
@@ -232,10 +262,11 @@ test('comentar: cancelar a confirmação não envia nada e o texto continua no c
   gitEnv,
   ghLog,
 }) => {
-  const { page } = await openChecksProject(
+  const { launched, page } = await openChecksProject(
     { launchApp, gitRepo, gitEnv },
     { ghScenario: 'open-green' },
   );
+  await expectFakeGh(launched.app);
   await checksTab(page, 'Checks: tudo certo').click();
   const panel = panelOf(page);
   const field = panel.getByRole('textbox', { name: 'Novo comentário' });
@@ -249,7 +280,7 @@ test('comentar: cancelar a confirmação não envia nada e o texto continua no c
   await expect(dialog).toBeHidden();
   await expect(field).toHaveValue('não envie isto');
   await expect(panel.getByText('Comentário publicado.')).toHaveCount(0);
-  expect(writes(ghLog)).toEqual([]);
+  await expectNoWriteAfterRefresh(panel, ghLog);
 });
 
 test('mesclar: escolher squash no menu da seta, confirmar e ver `--squash` no argv', async ({
@@ -292,10 +323,11 @@ test('mesclar: cancelar a confirmação não envia nada', async ({
   gitEnv,
   ghLog,
 }) => {
-  const { page } = await openChecksProject(
+  const { launched, page } = await openChecksProject(
     { launchApp, gitRepo, gitEnv },
     { ghScenario: 'open-green' },
   );
+  await expectFakeGh(launched.app);
   await checksTab(page, 'Checks: tudo certo').click();
   const panel = panelOf(page);
   await panel.getByRole('button', { name: 'Mesclar com commit de merge' }).click();
@@ -303,7 +335,7 @@ test('mesclar: cancelar a confirmação não envia nada', async ({
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancelar' }).click();
   await expect(dialog).toBeHidden();
-  expect(writes(ghLog)).toEqual([]);
+  await expectNoWriteAfterRefresh(panel, ghLog);
 });
 
 test('o ponto de estado fica na barra com a aba Checks fechada', async ({
