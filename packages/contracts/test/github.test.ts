@@ -216,13 +216,20 @@ describe('entradas dos canais github', () => {
     expect(githubProjectInputSchema.safeParse({ projectId: '' }).success).toBe(false);
   });
 
-  it('githubCommentInputSchema aceita o comentário e apara as pontas', () => {
-    const parsed = githubCommentInputSchema.parse({
-      projectId: 'p1',
-      prNumber: 47,
-      body: '  ok  ',
-    });
-    expect(parsed.body).toBe('ok');
+  it('githubCommentInputSchema preserva o início do comentário e apara só o final', () => {
+    const parse = (body: string) =>
+      githubCommentInputSchema.parse({ projectId: 'p1', prNumber: 47, body }).body;
+    expect(parse('  ok  ')).toBe('  ok');
+    expect(parse('    código\n')).toBe('    código');
+    expect(parse('\n\n    bloco\n    de código \t\n')).toBe('\n\n    bloco\n    de código');
+  });
+
+  it('o limite de 65 536 caracteres vale para o texto enviado, sem o espaço do final', () => {
+    const at = (body: string) =>
+      githubCommentInputSchema.safeParse({ projectId: 'p1', prNumber: 47, body }).success;
+    expect(at('a'.repeat(65_536))).toBe(true);
+    expect(at(`${'a'.repeat(65_536)}   \n`)).toBe(true);
+    expect(at(`  ${'a'.repeat(65_536)}`)).toBe(false);
   });
 
   it.each([
