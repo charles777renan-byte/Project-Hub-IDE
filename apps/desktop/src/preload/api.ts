@@ -303,6 +303,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       pr: (input: GithubProjectInput) => call<GithubPanelDto>(CHANNELS.githubPr, input),
       comment: (input: GithubCommentInput) => call<void>(CHANNELS.githubComment, input),
       merge: (input: GithubMergeInput) => call<void>(CHANNELS.githubMerge, input),
+      openUrl: (url: string) => call<void>(CHANNELS.githubOpenUrl, { url }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

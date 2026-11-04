@@ -1,9 +1,11 @@
+import type { AppResult } from '@project-hub/contracts';
+
 /**
- * Pede para abrir um endereço fora do aplicativo. O processo principal intercepta a janela nova
- * (`restrictNavigation`): só `https:` e `mailto:` passam, e uma caixa nativa pergunta à pessoa antes de abrir no
- * programa padrão do sistema. O renderer não valida o endereço nem recebe resposta: passa só a URL que veio do
- * contrato. O canal `files:open-external:v1`, com a lista de domínio, ainda não existe no preload.
+ * Pede ao processo principal para abrir no navegador um endereço que veio do GitHub (`github:open-url:v1`). A
+ * checagem do endereço (só `https://github.com`, sem usuário, senha nem porta) é do processo principal: o renderer
+ * não valida nem monta a URL, só repassa a que recebeu. Abre direto, sem confirmação. Uma recusa volta como erro,
+ * com a mensagem que a pessoa pode ler.
  */
-export function openExternal(url: string): void {
-  window.open(url, '_blank', 'noopener,noreferrer');
+export function openExternal(url: string): Promise<AppResult<void>> {
+  return window.projectHub.github.openUrl(url);
 }
