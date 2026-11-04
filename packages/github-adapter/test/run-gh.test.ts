@@ -146,7 +146,7 @@ describe('executável do gh (resolveGhCommand)', () => {
 
   it('com PROJECT_HUB_ENV=test e PROJECT_HUB_GH_BIN, roda o script pelo execPath', () => {
     expect(
-      resolveGhCommand({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_GH_BIN: script }, '/bin/node'),
+      resolveGhCommand({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_GH_BIN: script }, true, '/bin/node'),
     ).toEqual({
       command: '/bin/node',
       commandPrefix: [script],
@@ -157,14 +157,28 @@ describe('executável do gh (resolveGhCommand)', () => {
   it('sem PROJECT_HUB_ENV, ou com outro valor, a variável é ignorada e vale o gh do PATH', () => {
     for (const value of [undefined, '', 'production', 'development', 'TEST', 'true']) {
       expect(
-        resolveGhCommand({ PROJECT_HUB_ENV: value, PROJECT_HUB_GH_BIN: script }, '/bin/node'),
+        resolveGhCommand({ PROJECT_HUB_ENV: value, PROJECT_HUB_GH_BIN: script }, true, '/bin/node'),
       ).toEqual({ command: 'gh', commandPrefix: [], extraEnv: {} });
     }
   });
 
+  it('sem allowTestOverrides (aplicativo empacotado), PROJECT_HUB_GH_BIN é ignorada mesmo com PROJECT_HUB_ENV=test', () => {
+    expect(
+      resolveGhCommand({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_GH_BIN: script }, false, '/bin/node'),
+    ).toEqual({ command: 'gh', commandPrefix: [], extraEnv: {} });
+  });
+
+  it('com allowTestOverrides, mas sem PROJECT_HUB_ENV=test, a variável também é ignorada', () => {
+    expect(resolveGhCommand({ PROJECT_HUB_GH_BIN: script }, true, '/bin/node')).toEqual({
+      command: 'gh',
+      commandPrefix: [],
+      extraEnv: {},
+    });
+  });
+
   it('com PROJECT_HUB_ENV=test e sem a variável (ou vazia), vale o gh do PATH', () => {
     for (const bin of [undefined, '']) {
-      expect(resolveGhCommand({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_GH_BIN: bin })).toEqual({
+      expect(resolveGhCommand({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_GH_BIN: bin }, true)).toEqual({
         command: 'gh',
         commandPrefix: [],
         extraEnv: {},

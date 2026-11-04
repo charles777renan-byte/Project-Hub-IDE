@@ -109,6 +109,11 @@ export type AppServicesOptions = {
   agent?: OrchestratorDeps['agent'] | undefined;
   /** Planejador das tarefas do plano. Sem ele, o plano sai com um passo por critério de aceite. */
   planner?: Planner | undefined;
+  /**
+   * Libera o `gh` falso dos testes (`PROJECT_HUB_GH_BIN`) no painel Checks. Sem valor, vale `false`. O
+   * `index.ts` passa `!app.isPackaged`.
+   */
+  allowGhTestOverrides?: boolean | undefined;
 };
 
 /**
@@ -363,7 +368,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     initializer: createRepositoryInitializer(),
     fs,
     gitPanelDeps,
-    githubPanelDeps: { ...gitPanelDeps, github: createGithubPanelPort(gitPanelPort.originUrl) },
+    githubPanelDeps: {
+      ...gitPanelDeps,
+      github: createGithubPanelPort(gitPanelPort.originUrl, options.allowGhTestOverrides === true),
+    },
     platform: options.platform,
     now,
     newId,

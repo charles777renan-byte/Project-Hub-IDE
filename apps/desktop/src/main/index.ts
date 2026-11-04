@@ -377,6 +377,8 @@ app
           }
         : {}),
       planner,
+      // O `gh` falso dos testes só vale fora do aplicativo empacotado.
+      allowGhTestOverrides: !app.isPackaged,
     });
     app.once('will-quit', () => {
       services.close();

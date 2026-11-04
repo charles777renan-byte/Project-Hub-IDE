@@ -27,6 +27,7 @@ export async function addComment(
   await runGh(['pr', 'comment', prNumber, `--body=${checked.data}`], {
     cwd: repoPath,
     env: options.env,
+    allowTestOverrides: options.allowTestOverrides,
     timeoutMs: options.timeoutMs,
   });
 }
@@ -56,6 +57,7 @@ export async function mergePullRequest(
   await runGh(['pr', 'merge', prNumber, `--${checked.data}`], {
     cwd: repoPath,
     env: options.env,
+    allowTestOverrides: options.allowTestOverrides,
     timeoutMs: options.timeoutMs,
   });
 }
