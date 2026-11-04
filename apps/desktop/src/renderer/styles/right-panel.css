@@ -1571,8 +1571,8 @@
   text-align: center;
 }
 
-/* A leitura antiga continua na tela: o aviso tem barra à esquerda para não depender só de cor. */
-.checks-tab__stale {
+/* Aviso de texto puro na aba: leitura antiga ou link recusado. A barra à esquerda evita depender só de cor. */
+.checks-tab__notice {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);

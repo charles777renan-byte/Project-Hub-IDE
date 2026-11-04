@@ -125,7 +125,7 @@ export function RightPanel({
               onOpenFile={onOpenFile ?? ((path) => open(projectId, path))}
             />
           ) : tab === 'checks' ? (
-            <ChecksTab projectId={projectId} github={github} />
+            <ChecksTab key={projectId} projectId={projectId} github={github} />
           ) : (
             <EmptyState icon={TAB_INFO[tab].icon} title="Em breve" />
           )}

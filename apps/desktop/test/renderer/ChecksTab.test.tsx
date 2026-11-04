@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AppError,
@@ -95,9 +95,9 @@ const GIT_STATUS: GitStatusDto = {
 
 const OK_VOID: AppResult<void> = { ok: true, data: undefined };
 
-/** O aviso de uma recusa do canal de abrir links (a aba tem outras regiões vivas, por isso a busca é pela classe). */
+/** O aviso de uma recusa ou falha ao abrir um link (a aba tem outras regiões vivas, por isso o atributo de dados). */
 function linkNotice(): Element | null {
-  return document.querySelector('.checks-tab__body > .checks-tab__stale');
+  return document.querySelector('[data-notice="link"]');
 }
 
 type PrCall = () => Promise<AppResult<GithubPanelDto>>;
@@ -307,6 +307,116 @@ describe('ChecksTab: resumo e lista', () => {
     await user.click(screen.getByRole('button', { name: 'Ver detalhes completos' }));
     await waitFor(() => expect(linkNotice()).toBeNull());
     expect(api.openUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('se o pedido ao processo principal rejeitar, mostra o aviso fixo em vez de engolir a falha', async () => {
+    const api = install(() => Promise.resolve(okPr([PASSED])));
+    api.openUrl.mockRejectedValue(new Error('No handler registered for github:open-url:v1'));
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(await screen.findByRole('button', { name: 'Abrir o PR #12 no GitHub' }));
+
+    const notice = await screen.findByText('Não foi possível abrir o link.');
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice).not.toHaveTextContent('handler');
+  });
+
+  it('se o preload lançar na hora, também mostra o aviso fixo', async () => {
+    const api = install(() => Promise.resolve(okPr([PASSED])));
+    api.openUrl.mockImplementation(() => {
+      throw new Error('preload quebrado');
+    });
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(await screen.findByRole('button', { name: 'Abrir o PR #12 no GitHub' }));
+
+    expect(await screen.findByText('Não foi possível abrir o link.')).toBeInTheDocument();
+  });
+
+  describe('dois cliques em voo: só a resposta do mais recente conta', () => {
+    function controlled() {
+      let resolve!: (result: AppResult<void>) => void;
+      const promise = new Promise<AppResult<void>>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    }
+
+    async function twoClicks() {
+      const api = install(() => Promise.resolve(okPr([PASSED])));
+      const first = controlled();
+      const second = controlled();
+      api.openUrl.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      const user = userEvent.setup();
+      render(<Harness />);
+      const link = await screen.findByRole('button', { name: 'Abrir o PR #12 no GitHub' });
+      await user.click(link);
+      await user.click(link);
+      await waitFor(() => expect(api.openUrl).toHaveBeenCalledTimes(2));
+      return { first, second };
+    }
+
+    it('A recusado chega depois de B aberto: sem aviso', async () => {
+      const { first, second } = await twoClicks();
+
+      await act(async () => {
+        second.resolve(OK_VOID);
+        await second.promise;
+      });
+      await act(async () => {
+        first.resolve(fail('VALIDATION_FAILED', 'Link recusado.'));
+        await first.promise;
+      });
+
+      expect(screen.queryByText('Link recusado.')).not.toBeInTheDocument();
+      expect(linkNotice()).toBeNull();
+    });
+
+    it('A recusado chega antes de B aberto: o aviso de A não fica', async () => {
+      const { first, second } = await twoClicks();
+
+      await act(async () => {
+        first.resolve(fail('VALIDATION_FAILED', 'Link recusado.'));
+        await first.promise;
+      });
+      expect(linkNotice()).toBeNull();
+      await act(async () => {
+        second.resolve(OK_VOID);
+        await second.promise;
+      });
+
+      expect(linkNotice()).toBeNull();
+    });
+
+    it('A aberto chega antes de B recusado: fica o aviso de B', async () => {
+      const early = await twoClicks();
+      await act(async () => {
+        early.first.resolve(OK_VOID);
+        await early.first.promise;
+      });
+      await act(async () => {
+        early.second.resolve(fail('VALIDATION_FAILED', 'B recusado.'));
+        await early.second.promise;
+      });
+      expect(await screen.findByText('B recusado.')).toBeInTheDocument();
+    });
+
+    it('B recusado chega antes de A aberto: o aviso de B continua', async () => {
+      const { first, second } = await twoClicks();
+
+      await act(async () => {
+        second.resolve(fail('VALIDATION_FAILED', 'B recusado.'));
+        await second.promise;
+      });
+      await act(async () => {
+        first.resolve(OK_VOID);
+        await first.promise;
+      });
+
+      expect(screen.getByText('B recusado.')).toBeInTheDocument();
+    });
   });
 
   it('sem endereço de detalhes, o botão não aparece', async () => {
