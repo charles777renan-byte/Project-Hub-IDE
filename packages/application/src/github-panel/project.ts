@@ -28,14 +28,30 @@ export function checkPrNumber(prNumber: number): AppResult<number> {
   return { ok: true, data: parsed.data };
 }
 
+/** Mensagem de um erro que não é do adaptador: o texto dele (caminho, mensagem do sistema) não sai daqui. */
+const UNEXPECTED_ERROR_MESSAGE = 'Algo deu errado. Tente de novo.';
+
 /**
- * Converte a falha da porta do `gh` em `AppResult`. O erro traz `code` e uma mensagem já em português e segura:
- * é repassada como veio. Um erro sem código do contrato é inesperado e continua subindo.
+ * Só os erros dos adaptadores (`GhError` e `GitError`) trazem `code` do contrato e uma mensagem já em
+ * português e segura. A aplicação não depende dos adaptadores, então o reconhecimento é pelo `name` que as
+ * duas classes fixam, junto com o código do contrato. Um erro qualquer com `code` (um `EACCES` do Node, com o
+ * caminho na mensagem) não é reconhecido: a mensagem dele nunca vira texto da tela.
+ */
+function isAdapterError(error: unknown): error is Error {
+  return error instanceof Error && (error.name === 'GhError' || error.name === 'GitError');
+}
+
+/**
+ * Converte a falha da porta do `gh` em `AppResult`. Erro de adaptador com código do contrato: o código e a
+ * mensagem passam como vieram. Outro erro que traga um `code` (do Node, de uma biblioteca) vira `UNKNOWN` com
+ * mensagem genérica, sem o texto dele. Um erro sem `code` é inesperado e continua subindo.
  */
 export function ghFailure(error: unknown): AppResult<never> {
   const code = errorCode(error);
-  if (code === undefined || !(error instanceof Error)) throw error;
-  return failure(code, error.message);
+  if (code !== undefined && isAdapterError(error)) return failure(code, error.message);
+  if (error instanceof Error && 'code' in error)
+    return failure('UNKNOWN', UNEXPECTED_ERROR_MESSAGE);
+  throw error;
 }
 
 /** O host da URL do remoto: `https://`, `ssh://`, `git://` ou a forma curta `git@host:dono/repo`. */

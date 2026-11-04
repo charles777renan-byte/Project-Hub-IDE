@@ -49,6 +49,7 @@ export function fakeGithubPanel(overrides: Partial<GithubPanelPort> = {}): FakeG
 
 /** Erro como o `GhError` da porta real: traz `code` e uma mensagem em português. */
 export class FakeGhError extends Error {
+  override readonly name = 'GhError';
   readonly code: string;
 
   constructor(code: string, message: string) {
