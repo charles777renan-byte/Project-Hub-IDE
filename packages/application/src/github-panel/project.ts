@@ -73,7 +73,8 @@ export function isGithubRemote(url: string | null): boolean {
 
 /**
  * O PR é o da branch atual? A `headRefName` do PR lido precisa ser a branch lida do repositório: a checagem
- * compara só o nome; um fork com o mesmo nome segue como limite conhecido (ADR 0011).
+ * compara só o nome. A busca do PR da branch já ignora PR de fork (`isCrossRepository`, ADR 0011); esta
+ * checagem do nome é a segunda defesa.
  */
 export function isPullRequestOfBranch(reading: PrReadingDto, branch: string | null): boolean {
   return branch !== null && reading.pr.headRefName === branch;

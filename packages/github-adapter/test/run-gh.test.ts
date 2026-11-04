@@ -20,14 +20,14 @@ const LIST = [
   '--state',
   'all',
   '--limit',
-  '1',
+  '30',
   '--json',
-  'number',
+  'number,isCrossRepository',
 ];
 const VIEW = ['pr', 'view', '12', '--json', PR_VIEW_FIELDS];
 
 describe('lista de permissão: formas permitidas', () => {
-  it('pr list --head <branch> --state all --limit 1 --json number', () => {
+  it('pr list --head <branch> --state all --limit 30 --json number,isCrossRepository', () => {
     expect(isAllowedGhCommand(LIST)).toBe(true);
   });
 
@@ -114,8 +114,16 @@ describe('lista de permissão: formas proibidas', () => {
   it('pr list: outros --state, --limit e --json, ou argumento a mais', () => {
     const base = [...LIST];
     expect(isAllowedGhCommand(base.map((a) => (a === 'all' ? 'open' : a)))).toBe(false);
-    expect(isAllowedGhCommand(base.map((a) => (a === '1' ? '100' : a)))).toBe(false);
-    expect(isAllowedGhCommand(base.map((a) => (a === 'number' ? 'number,title' : a)))).toBe(false);
+    expect(isAllowedGhCommand(base.map((a) => (a === '30' ? '100' : a)))).toBe(false);
+    expect(isAllowedGhCommand(base.map((a) => (a === '30' ? '1' : a)))).toBe(false);
+    expect(
+      isAllowedGhCommand(base.map((a) => (a === 'number,isCrossRepository' ? 'number' : a))),
+    ).toBe(false);
+    expect(
+      isAllowedGhCommand(
+        base.map((a) => (a === 'number,isCrossRepository' ? 'number,isCrossRepository,title' : a)),
+      ),
+    ).toBe(false);
     expect(isAllowedGhCommand([...base, '--web'])).toBe(false);
   });
 

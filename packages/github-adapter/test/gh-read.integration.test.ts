@@ -28,7 +28,18 @@ describe('getPullRequestForBranch', () => {
 
     expect(number).toBe(47);
     expect(readCalls(workspace).map((call) => call.argv)).toEqual([
-      ['pr', 'list', '--head', 'feat/painel', '--state', 'all', '--limit', '1', '--json', 'number'],
+      [
+        'pr',
+        'list',
+        '--head',
+        'feat/painel',
+        '--state',
+        'all',
+        '--limit',
+        '30',
+        '--json',
+        'number,isCrossRepository',
+      ],
     ]);
   });
 

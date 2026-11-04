@@ -60,7 +60,7 @@ if (scenario === 'unknown-error') fail(1, 'algo que o adaptador não reconhece <
 if (scenario === 'hang') setInterval(() => undefined, 1000);
 else if (scenario === 'garbage') process.stdout.write('isto não é JSON');
 else if (argv[0] === 'pr' && argv[1] === 'list') {
-  process.stdout.write(scenario === 'no-pr' ? '[]' : '[{"number":47}]');
+  process.stdout.write(scenario === 'no-pr' ? '[]' : '[{"number":47,"isCrossRepository":false}]');
 } else if (argv[0] === 'pr' && argv[1] === 'view') {
   const pr = fixture();
   if (scenario === 'foreign-host') {

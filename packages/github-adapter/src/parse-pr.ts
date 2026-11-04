@@ -209,14 +209,22 @@ export function parsePullRequest(stdout: string, readAt: string): PrReadingDto {
 }
 
 /**
- * Saída de `gh pr list --head <branch> --state all --limit 1 --json number`: o número do PR, ou `null` quando
- * a branch não tem nenhum (lista vazia).
+ * Saída de `gh pr list --head <branch> --state all --limit 30 --json number,isCrossRepository`: o número do
+ * primeiro PR que não é de fork (`isCrossRepository` falso), ou `null` quando a lista é vazia ou só tem PR de
+ * fork. O `--head` casa pelo nome da branch, inclusive o de um fork com o mesmo nome. Cada item precisa ter
+ * `number` (inteiro positivo) e `isCrossRepository` (booleano); qualquer outra forma falha com `UNKNOWN`.
  */
 export function parsePullRequestNumber(stdout: string): number | null {
   const list = parseJson(stdout);
   if (!Array.isArray(list)) throw unexpected();
-  if (list.length === 0) return null;
-  const number = prNumberSchema.safeParse(asRecord(list[0] as unknown)?.['number']);
-  if (!number.success) throw unexpected(number.error);
-  return number.data;
+  let local: number | null = null;
+  for (const item of list as unknown[]) {
+    const record = asRecord(item);
+    const number = prNumberSchema.safeParse(record?.['number']);
+    if (!number.success) throw unexpected(number.error);
+    const crossRepository = record?.['isCrossRepository'];
+    if (typeof crossRepository !== 'boolean') throw unexpected();
+    if (!crossRepository && local === null) local = number.data;
+  }
+  return local;
 }
