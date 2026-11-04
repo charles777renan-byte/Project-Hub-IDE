@@ -30,7 +30,7 @@ const env = (scenario = 'pr-open', extra: NodeJS.ProcessEnv = {}) =>
 
 describe('addComment', () => {
   it('chama o gh com a forma exata: pr comment <n> --body=<texto>, na pasta do projeto', async () => {
-    await addComment(workspace.repo, 12, 'Pode mesclar.', { env: env() });
+    await addComment(workspace.repo, 12, 'Pode mesclar.', { allowTestOverrides: true, env: env() });
 
     const calls = readCalls(workspace);
     expect(calls).toHaveLength(1);
@@ -41,13 +41,13 @@ describe('addComment', () => {
   it('corpo com quebra de linha, aspas e "-" na frente chega inteiro, num argumento só', async () => {
     const body = '--admin\nsegunda linha com "aspas" e $(isto) e `aquilo` ; & | > <x>';
 
-    await addComment(workspace.repo, 12, body, { env: env() });
+    await addComment(workspace.repo, 12, body, { allowTestOverrides: true, env: env() });
 
     expect(readCalls(workspace)[0]?.argv).toEqual(['pr', 'comment', '12', `--body=${body}`]);
   });
 
   it('o corpo sai sem o espaço do final e com a indentação do início, como o contrato o normaliza', async () => {
-    await addComment(workspace.repo, 12, '    oi  \n', { env: env() });
+    await addComment(workspace.repo, 12, '    oi  \n', { allowTestOverrides: true, env: env() });
 
     expect(readCalls(workspace)[0]?.argv[3]).toBe('--body=    oi');
   });
@@ -61,7 +61,9 @@ describe('addComment', () => {
     ['corpo só de espaços', 12, ' \n\t '],
     ['corpo com mais de 65 536 caracteres', 12, 'a'.repeat(65_537)],
   ])('%s: VALIDATION_FAILED, sem criar processo', async (_name, number, body) => {
-    await expect(addComment(workspace.repo, number, body, { env: env() })).rejects.toMatchObject({
+    await expect(
+      addComment(workspace.repo, number, body, { allowTestOverrides: true, env: env() }),
+    ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
     });
     expect(readCalls(workspace)).toEqual([]);
@@ -72,7 +74,7 @@ describe('addComment: comentário que o sistema não consegue executar', () => {
   it('comentário longo demais para a linha de comando: VALIDATION_FAILED em português, sem criar processo', async () => {
     // Abaixo dos 65 536 do contrato, mas acima do que o Windows aceita numa linha de comando (cerca de 32 700).
     const error = await failureOf(
-      addComment(workspace.repo, 12, 'a'.repeat(40_000), { env: env() }),
+      addComment(workspace.repo, 12, 'a'.repeat(40_000), { allowTestOverrides: true, env: env() }),
     );
 
     expect(error.code).toBe('VALIDATION_FAILED');
@@ -83,7 +85,7 @@ describe('addComment: comentário que o sistema não consegue executar', () => {
 
   it('o escape de aspas conta: 20 000 aspas passam do limite, embora tenham menos de 30 000 caracteres', async () => {
     const error = await failureOf(
-      addComment(workspace.repo, 12, '"'.repeat(20_000), { env: env() }),
+      addComment(workspace.repo, 12, '"'.repeat(20_000), { allowTestOverrides: true, env: env() }),
     );
 
     expect(error.code).toBe('VALIDATION_FAILED');
@@ -92,7 +94,7 @@ describe('addComment: comentário que o sistema não consegue executar', () => {
 
   it('o escape de barras invertidas conta no pior caso', async () => {
     const error = await failureOf(
-      addComment(workspace.repo, 12, '\\'.repeat(15_001), { env: env() }),
+      addComment(workspace.repo, 12, '\\'.repeat(15_001), { allowTestOverrides: true, env: env() }),
     );
 
     expect(error.code).toBe('VALIDATION_FAILED');
@@ -103,13 +105,15 @@ describe('addComment: comentário que o sistema não consegue executar', () => {
     const body = `${'a'.repeat(28_990)}
 fim com "aspas"`;
 
-    await addComment(workspace.repo, 12, body, { env: env() });
+    await addComment(workspace.repo, 12, body, { allowTestOverrides: true, env: env() });
 
     expect(readCalls(workspace)[0]?.argv).toEqual(['pr', 'comment', '12', `--body=${body}`]);
   });
 
   it('corpo com caractere nulo: VALIDATION_FAILED em português, sem criar processo', async () => {
-    const error = await failureOf(addComment(workspace.repo, 12, 'antes\0depois', { env: env() }));
+    const error = await failureOf(
+      addComment(workspace.repo, 12, 'antes\0depois', { allowTestOverrides: true, env: env() }),
+    );
 
     expect(error.code).toBe('VALIDATION_FAILED');
     expect(error.message).toContain('caractere nulo');
@@ -121,7 +125,7 @@ describe('mergePullRequest', () => {
   it.each(['merge', 'squash', 'rebase'] as const)(
     'chama o gh com a forma exata: pr merge <n> --%s',
     async (method) => {
-      await mergePullRequest(workspace.repo, 12, method, { env: env() });
+      await mergePullRequest(workspace.repo, 12, method, { allowTestOverrides: true, env: env() });
 
       expect(readCalls(workspace).map((call) => call.argv)).toEqual([
         ['pr', 'merge', '12', `--${method}`],
@@ -133,14 +137,14 @@ describe('mergePullRequest', () => {
     const method = 'squash --admin' as unknown as 'squash';
 
     await expect(
-      mergePullRequest(workspace.repo, 12, method, { env: env() }),
+      mergePullRequest(workspace.repo, 12, method, { allowTestOverrides: true, env: env() }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     expect(readCalls(workspace)).toEqual([]);
   });
 
   it.each([0, -3, 2.5])('número %s: VALIDATION_FAILED, sem criar processo', async (number) => {
     await expect(
-      mergePullRequest(workspace.repo, number, 'merge', { env: env() }),
+      mergePullRequest(workspace.repo, number, 'merge', { allowTestOverrides: true, env: env() }),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     expect(readCalls(workspace)).toEqual([]);
   });
@@ -149,6 +153,7 @@ describe('mergePullRequest', () => {
 describe('ambiente do gh', () => {
   it('o gh recebe as variáveis fixas e não recebe GH_REPO nem GH_HOST herdados', async () => {
     await mergePullRequest(workspace.repo, 12, 'merge', {
+      allowTestOverrides: true,
       env: env('pr-open', {
         GH_REPO: 'outro/repositorio',
         GH_HOST: 'ghe.example.com',
@@ -178,7 +183,10 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
   ] as const;
 
   it.each(outcomes)('comentar com o cenário %s: %s', async (scenario, code, message) => {
-    const attempt = addComment(workspace.repo, 12, 'oi', { env: env(scenario) });
+    const attempt = addComment(workspace.repo, 12, 'oi', {
+      allowTestOverrides: true,
+      env: env(scenario),
+    });
 
     await expect(attempt).rejects.toBeInstanceOf(GhError);
     await expect(attempt).rejects.toMatchObject({ code, message: expect.stringMatching(message) });
@@ -188,10 +196,15 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
   });
 
   it.each([
-    ['comentar', (env: NodeJS.ProcessEnv) => addComment(workspace.repo, 12, 'oi', { env })],
+    [
+      'comentar',
+      (env: NodeJS.ProcessEnv) =>
+        addComment(workspace.repo, 12, 'oi', { env, allowTestOverrides: true }),
+    ],
     [
       'mesclar',
-      (env: NodeJS.ProcessEnv) => mergePullRequest(workspace.repo, 12, 'squash', { env }),
+      (env: NodeJS.ProcessEnv) =>
+        mergePullRequest(workspace.repo, 12, 'squash', { env, allowTestOverrides: true }),
     ],
   ])(
     'falha de rede ao %s: GH_NETWORK_FAILED manda conferir o PR, e não só "tente de novo"',
@@ -209,7 +222,9 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
   );
 
   it('falha de rede numa leitura segue com a mensagem de tentar de novo', async () => {
-    const error = await failureOf(getPullRequest(workspace.repo, 47, { env: env('network') }));
+    const error = await failureOf(
+      getPullRequest(workspace.repo, 47, { allowTestOverrides: true, env: env('network') }),
+    );
 
     expect(error.code).toBe('GH_NETWORK_FAILED');
     expect(error.message).toContain('Verifique a conexão e tente de novo');
@@ -217,7 +232,10 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
   });
 
   it('merge recusado pelo GitHub: GH_PR_NOT_MERGEABLE, com o stderr só no campo stderr', async () => {
-    const attempt = mergePullRequest(workspace.repo, 12, 'squash', { env: env('not-mergeable') });
+    const attempt = mergePullRequest(workspace.repo, 12, 'squash', {
+      allowTestOverrides: true,
+      env: env('not-mergeable'),
+    });
 
     await expect(attempt).rejects.toMatchObject({
       code: 'GH_PR_NOT_MERGEABLE',
@@ -232,6 +250,7 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
   it('a mensagem do sem login não carrega o stderr cru', async () => {
     const error = await failureOf(
       addComment(workspace.repo, 12, 'oi', {
+        allowTestOverrides: true,
         env: env('unauthenticated'),
       }),
     );
@@ -244,6 +263,7 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
   it('falha que o adaptador não reconhece: UNKNOWN com o código de saída, sem o texto do gh', async () => {
     const error = await failureOf(
       mergePullRequest(workspace.repo, 12, 'merge', {
+        allowTestOverrides: true,
         env: env('unknown-error'),
       }),
     );
@@ -257,7 +277,11 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
     const started = Date.now();
 
     await expect(
-      mergePullRequest(workspace.repo, 12, 'merge', { env: env('hang'), timeoutMs: 400 }),
+      mergePullRequest(workspace.repo, 12, 'merge', {
+        allowTestOverrides: true,
+        env: env('hang'),
+        timeoutMs: 400,
+      }),
     ).rejects.toMatchObject({
       code: 'GH_NETWORK_FAILED',
       message: expect.stringContaining('demorou mais de 0.4 s') as unknown,
@@ -267,7 +291,11 @@ describe('falhas do gh viram códigos com mensagem em português e sem a saída 
 
   it('tempo limite de uma escrita manda conferir o PR, para não duplicar um comentário público', async () => {
     const error = await failureOf(
-      addComment(workspace.repo, 12, 'oi', { env: env('hang'), timeoutMs: 400 }),
+      addComment(workspace.repo, 12, 'oi', {
+        allowTestOverrides: true,
+        env: env('hang'),
+        timeoutMs: 400,
+      }),
     );
 
     expect(error.message).toContain('A ação pode ter sido concluída');
@@ -284,6 +312,7 @@ describe('o gh falso só vale em teste', () => {
       const source = fakeGhEnv(workspace, 'pr-open', { PROJECT_HUB_ENV: value });
       const attempt = mergePullRequest(workspace.repo, 12, 'merge', {
         env: withoutGhOnPath(source, workspace.emptyDir),
+        allowTestOverrides: true,
       });
 
       await expect(attempt).rejects.toMatchObject({
@@ -294,11 +323,28 @@ describe('o gh falso só vale em teste', () => {
     },
   );
 
+  it.each([false, undefined])(
+    'com allowTestOverrides=%j (aplicativo empacotado) o falso não roda, mesmo com PROJECT_HUB_ENV=test',
+    async (allowTestOverrides) => {
+      const source = fakeGhEnv(workspace, 'pr-open');
+      const attempt = mergePullRequest(workspace.repo, 12, 'merge', {
+        env: withoutGhOnPath(source, workspace.emptyDir),
+        allowTestOverrides,
+      });
+
+      await expect(attempt).rejects.toMatchObject({ code: 'GH_NOT_AVAILABLE' });
+      expect(readCalls(workspace)).toEqual([]);
+    },
+  );
+
   it('sem gh no PATH e sem o falso: GH_NOT_AVAILABLE com a instrução de instalar', async () => {
     const source = { ...process.env, PROJECT_HUB_ENV: undefined, PROJECT_HUB_GH_BIN: undefined };
 
     await expect(
-      addComment(workspace.repo, 12, 'oi', { env: withoutGhOnPath(source, workspace.emptyDir) }),
+      addComment(workspace.repo, 12, 'oi', {
+        env: withoutGhOnPath(source, workspace.emptyDir),
+        allowTestOverrides: true,
+      }),
     ).rejects.toMatchObject({
       code: 'GH_NOT_AVAILABLE',
       message: expect.stringContaining('cli.github.com'),
@@ -307,7 +353,7 @@ describe('o gh falso só vale em teste', () => {
 
   it('pasta do projeto que não existe não é confundida com gh ausente', async () => {
     await expect(
-      addComment(join(workspace.repo, 'sumiu'), 12, 'oi', { env: env() }),
+      addComment(join(workspace.repo, 'sumiu'), 12, 'oi', { allowTestOverrides: true, env: env() }),
     ).rejects.toMatchObject({ code: 'PROJECT_PATH_UNAVAILABLE' });
   });
 });
@@ -329,7 +375,9 @@ describe('runGh recusa formas fora da lista sem criar processo', () => {
     ['pr', 'list', '--head', '', '--state', 'all', '--limit', '1', '--json', 'number'],
     ['pr', 'list', '--head', '--web', '--state', 'all', '--limit', '1', '--json', 'number'],
   ])('%s', async (...args) => {
-    await expect(runGh(args, { cwd: workspace.repo, env: env() })).rejects.toMatchObject({
+    await expect(
+      runGh(args, { cwd: workspace.repo, allowTestOverrides: true, env: env() }),
+    ).rejects.toMatchObject({
       code: 'PERMISSION_DENIED',
     });
     expect(readCalls(workspace)).toEqual([]);

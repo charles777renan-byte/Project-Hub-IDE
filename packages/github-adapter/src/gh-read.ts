@@ -6,6 +6,11 @@ import { GhError, PR_VIEW_FIELDS, runGh } from './run-gh';
 export type GhOptions = {
   /** Ambiente de onde o adaptador parte. O padrão é `process.env`; existe para os testes. */
   env?: NodeJS.ProcessEnv | undefined;
+  /**
+   * Libera o `gh` falso dos testes (`PROJECT_HUB_GH_BIN`). O padrão é `false`: o aplicativo empacotado nunca
+   * o liga.
+   */
+  allowTestOverrides?: boolean | undefined;
   /** Tempo limite em milissegundos. O padrão é 15000 na leitura e 60000 na escrita. */
   timeoutMs?: number | undefined;
   /** Relógio da hora da leitura (`readAt`). O padrão é a hora de agora. */
@@ -39,7 +44,12 @@ export async function getPullRequestForBranch(
 ): Promise<number | null> {
   const { stdout } = await runGh(
     ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', 'number'],
-    { cwd: repoPath, env: options.env, timeoutMs: options.timeoutMs },
+    {
+      cwd: repoPath,
+      env: options.env,
+      allowTestOverrides: options.allowTestOverrides,
+      timeoutMs: options.timeoutMs,
+    },
   );
   return parsePullRequestNumber(stdout);
 }
@@ -59,6 +69,7 @@ export async function getPullRequest(
     {
       cwd: repoPath,
       env: options.env,
+      allowTestOverrides: options.allowTestOverrides,
       timeoutMs: options.timeoutMs,
     },
   );

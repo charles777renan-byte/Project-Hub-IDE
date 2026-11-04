@@ -65,6 +65,11 @@ export type RunGhOptions = {
    * ambiente do processo: o chamador de produção não o passa.
    */
   env?: NodeJS.ProcessEnv | undefined;
+  /**
+   * Libera os ganchos de teste (`PROJECT_HUB_GH_BIN`, o `gh` falso). O padrão é `false`: sem ele, a variável é
+   * ignorada, mesmo com `PROJECT_HUB_ENV=test`. Quem chama liga só fora do aplicativo empacotado.
+   */
+  allowTestOverrides?: boolean | undefined;
   /** Tempo limite em milissegundos. O padrão é 15000 na leitura e 60000 na escrita. */
   timeoutMs?: number | undefined;
 };
@@ -191,18 +196,21 @@ export type GhCommand = {
 };
 
 /**
- * Executável do `gh`. Só com `PROJECT_HUB_ENV=test` a variável `PROJECT_HUB_GH_BIN` vale: ela aponta um
+ * Executável do `gh`. Só com `allowTestOverrides` (o chamador liga fora do aplicativo empacotado) e com
+ * `PROJECT_HUB_ENV=test` a variável `PROJECT_HUB_GH_BIN` vale: ela aponta um
  * script `.mjs` (o `gh` falso dos testes), que roda no próprio executável do processo (`execPath`: o Node, ou
  * o Electron com `ELECTRON_RUN_AS_NODE`). O Windows não executa um `.cmd` nem um `.js` direto pelo
  * `execFile`, e assim o falso é portátil, no mesmo padrão do planejador falso (`resolvePlannerCommand`). Em
- * qualquer outro caso a variável é ignorada e vale o `gh` do PATH, para que um ambiente comum nunca troque o
- * `gh` real por outro programa.
+ * qualquer outro caso a variável é ignorada e vale o `gh` do PATH, para que um ambiente comum, ou um
+ * aplicativo empacotado, nunca troque o `gh` real por outro programa.
  */
 export function resolveGhCommand(
   env: NodeJS.ProcessEnv,
+  allowTestOverrides: boolean,
   execPath: string = process.execPath,
 ): GhCommand {
-  const script = env['PROJECT_HUB_ENV'] === 'test' ? env['PROJECT_HUB_GH_BIN'] : undefined;
+  const script =
+    allowTestOverrides && env['PROJECT_HUB_ENV'] === 'test' ? env['PROJECT_HUB_GH_BIN'] : undefined;
   if (script !== undefined && script !== '') {
     return { command: execPath, commandPrefix: [script], extraEnv: { ELECTRON_RUN_AS_NODE: '1' } };
   }
@@ -461,7 +469,7 @@ export async function runGh(
   const timeoutMs =
     options.timeoutMs ?? (isWriteCommand(args) ? WRITE_TIMEOUT_MS : READ_TIMEOUT_MS);
   const outcome = await execGh(
-    resolveGhCommand(options.env ?? process.env),
+    resolveGhCommand(options.env ?? process.env, options.allowTestOverrides === true),
     args,
     options,
     timeoutMs,
