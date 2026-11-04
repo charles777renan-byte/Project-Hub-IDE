@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import {
   _electron as electron,
   expect,
@@ -20,6 +20,34 @@ import { E2E_HOOK_KEY, installTerminalHook } from './terminals';
 
 /** Entrada do processo principal construído (`pnpm test:e2e` roda o `electron-vite build` antes). */
 const MAIN_ENTRY = join(import.meta.dirname, '..', 'out', 'main', 'index.js');
+
+/**
+ * O `gh` falso (o mesmo dos testes do adaptador): um script Node que grava o argv e responde por cenário. O app só
+ * o usa com `PROJECT_HUB_ENV=test`, e é o único `gh` que um teste de ponta a ponta executa: nunca o real.
+ */
+export const FAKE_GH = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  '..',
+  'packages',
+  'github-adapter',
+  'test',
+  'fixtures',
+  'fake-gh.mjs',
+);
+
+/** Variáveis do `gh` falso que não podem vir da máquina de quem roda: só as opções do teste as definem. */
+const GH_ENV = ['PROJECT_HUB_GH_BIN', 'FAKE_GH_SCENARIO', 'FAKE_GH_LOG', 'FAKE_GH_HEAD'];
+
+/** O PATH sem as pastas que têm um `gh` (o real), para o teste "sem GitHub CLI"; o Git continua achável. */
+function pathWithoutGh(path: string): string {
+  const names = ['gh', 'gh.exe', 'gh.cmd', 'gh.bat'];
+  return path
+    .split(delimiter)
+    .filter((folder) => folder !== '' && !names.some((name) => existsSync(join(folder, name))))
+    .join(delimiter);
+}
 
 /** Prazo para o aplicativo fechar sozinho. Passado ele, o processo é encerrado à força. */
 const CLOSE_TIMEOUT_MS = 15_000;
@@ -73,6 +101,18 @@ export type LaunchOptions = {
    * a cota da assinatura de quem roda a suíte, então nada a liga por acidente.
    */
   limitsScript?: string;
+  /**
+   * O que o `gh` falso responde (`FAKE_GH_SCENARIO`; veja `fake-gh.mjs`). O padrão é `no-pr`: nenhum teste executa o
+   * `gh` real, e a aba Checks de um projeto do github.com mostra "sem PR". Cada chamada fica gravada em `ghLog`.
+   */
+  ghScenario?: string;
+  /** A branch do PR dos cenários `open-*` do `gh` falso (`FAKE_GH_HEAD`): a branch do repositório do teste. */
+  ghHead?: string;
+  /**
+   * Sem GitHub CLI: o `gh` falso não é ligado e as pastas do PATH que têm um `gh` saem dele, então o app não acha o
+   * executável. O Git continua no PATH.
+   */
+  ghMissing?: boolean;
   /** Espera a interface ficar pronta. O padrão confere a navegação principal. */
   waitForReady?: (page: Page) => Promise<void>;
   /** Chamado assim que o processo abre, antes de qualquer espera. */
@@ -110,6 +150,8 @@ type Fixtures = {
   codexHome: string;
   /** Histórico do Antigravity CLI (`PROJECT_HUB_AGY_HISTORY`) que o bloco "Visão geral" lê, dentro da pasta de dados. */
   antigravityHistory: string;
+  /** Arquivo onde o `gh` falso grava cada chamada (uma linha de JSON por chamada: `{ argv, cwd, env }`), na pasta de dados. */
+  ghLog: string;
   /** Repositório Git com um commit na branch `main` (fixada pelo helper), fora da pasta de dados. */
   gitRepo: TempRepo;
   /** Abre o aplicativo com a pasta de dados do teste. Pode ser chamada de novo para reiniciar. */
@@ -208,6 +250,10 @@ export const test = base.extend<Fixtures>({
     await use(join(dataDir, 'antigravity', 'history.jsonl'));
   },
 
+  ghLog: async ({ dataDir }, use) => {
+    await use(join(dataDir, 'gh-chamadas.jsonl'));
+  },
+
   gitEnv: async ({ dataDir }, use) => {
     const emptyConfig = join(dataDir, 'git-config-vazio');
     writeFileSync(emptyConfig, '');
@@ -266,7 +312,7 @@ export const test = base.extend<Fixtures>({
   },
 
   launchProcess: async (
-    { dataDir, gitEnv, claudeConfigDir, codexHome, antigravityHistory, closeFailures },
+    { dataDir, gitEnv, ghLog, claudeConfigDir, codexHome, antigravityHistory, closeFailures },
     use,
   ) => {
     /** Um aplicativo aberto. `observed`: o teste chamou `close()` e viu o resultado. */
@@ -309,6 +355,18 @@ export const test = base.extend<Fixtures>({
       env['PROJECT_HUB_CLAUDE_DIR'] = claudeConfigDir;
       env['PROJECT_HUB_CODEX_HOME'] = codexHome;
       env['PROJECT_HUB_AGY_HISTORY'] = antigravityHistory;
+      // O `gh` é sempre o falso (o app só aceita `PROJECT_HUB_GH_BIN` com `PROJECT_HUB_ENV=test`, definido acima).
+      // Nada do `gh` vem da máquina de quem roda; sem `ghMissing`, o falso responde o cenário pedido.
+      for (const name of GH_ENV) delete env[name];
+      if (options.ghMissing === true) {
+        const pathName = Object.keys(env).find((name) => name.toUpperCase() === 'PATH');
+        if (pathName !== undefined) env[pathName] = pathWithoutGh(env[pathName] ?? '');
+      } else {
+        env['PROJECT_HUB_GH_BIN'] = FAKE_GH;
+        env['FAKE_GH_SCENARIO'] = options.ghScenario ?? 'no-pr';
+        env['FAKE_GH_LOG'] = ghLog;
+        if (options.ghHead !== undefined) env['FAKE_GH_HEAD'] = options.ghHead;
+      }
 
       const app = await electron.launch({
         executablePath: electronExecutable(),

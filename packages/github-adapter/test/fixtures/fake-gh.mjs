@@ -5,6 +5,7 @@
 // Variáveis que o teste define:
 // - FAKE_GH_LOG: arquivo onde cada chamada é gravada, uma linha de JSON por chamada ({ argv, cwd, env }).
 // - FAKE_GH_SCENARIO: o que o falso responde (veja `scenario` abaixo). Sem ele, o PR 47 da fixture.
+// - FAKE_GH_HEAD: a branch do PR nos cenários `open-green` e `open-failing` (testes de ponta a ponta).
 //
 // A saída de `pr view` parte de `gh-pr-view.json` (saída real do `gh`, com um `StatusContext` e um comentário
 // sintéticos acrescentados pelo teste de contrato; aqui só a parte real).
@@ -66,6 +67,14 @@ else if (argv[0] === 'pr' && argv[1] === 'list') {
     pr.url = 'https://ghe.example.com/org/repo/pull/47';
   } else if (scenario === 'lookalike-host') {
     pr.url = 'https://github.com.exemplo.com/org/repo/pull/47';
+  } else if (scenario === 'open-green' || scenario === 'open-failing') {
+    // Para os testes de ponta a ponta: PR aberto, mesclável, com checks verdes (ou com o segundo falho).
+    // `FAKE_GH_HEAD` é a branch do PR (a do repositório descartável do teste).
+    pr.state = 'OPEN';
+    pr.mergeable = 'MERGEABLE';
+    pr.mergeStateStatus = 'CLEAN';
+    pr.headRefName = process.env['FAKE_GH_HEAD'] ?? pr.headRefName;
+    if (scenario === 'open-failing') pr.statusCheckRollup[1].conclusion = 'FAILURE';
   } else if (scenario === 'unknown-enums') {
     pr.state = 'SUSPENDED';
     pr.mergeable = 'MAYBE';
