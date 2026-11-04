@@ -1,7 +1,6 @@
 import { useId, useState } from 'react';
 import type { CheckDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
-import { openExternal } from '../../open-external';
 import {
   ChevronDown,
   ChevronRight,
@@ -50,7 +49,13 @@ function Detail({ term, value }: { term: string; value: string }) {
   );
 }
 
-function CheckDetails({ check }: { check: CheckDto }) {
+function CheckDetails({
+  check,
+  onOpenLink,
+}: {
+  check: CheckDto;
+  onOpenLink: (url: string) => void;
+}) {
   const url = detailsUrl(check);
   return (
     <div className="checks-list__details">
@@ -77,7 +82,7 @@ function CheckDetails({ check }: { check: CheckDto }) {
         )}
       </dl>
       {url === null ? null : (
-        <button type="button" className="btn-secondary" onClick={() => openExternal(url)}>
+        <button type="button" className="btn-secondary" onClick={() => onOpenLink(url)}>
           {TEXT.details}
         </button>
       )}
@@ -90,7 +95,13 @@ function CheckDetails({ check }: { check: CheckDto }) {
  * texto do estado, e é um botão que expande início, fim, identificadores e "Ver detalhes completos". Nomes e
  * identificadores vêm do GitHub e entram como texto puro.
  */
-export function ChecksList({ checks }: { checks: readonly CheckDto[] }) {
+export function ChecksList({
+  checks,
+  onOpenLink,
+}: {
+  checks: readonly CheckDto[];
+  onOpenLink: (url: string) => void;
+}) {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const base = useId();
 
@@ -145,7 +156,7 @@ export function ChecksList({ checks }: { checks: readonly CheckDto[] }) {
                 <span className="checks-list__state">{view.label}</span>
               </button>
               <div id={panelId} hidden={!expanded}>
-                {expanded ? <CheckDetails check={check} /> : null}
+                {expanded ? <CheckDetails check={check} onOpenLink={onOpenLink} /> : null}
               </div>
             </li>
           );

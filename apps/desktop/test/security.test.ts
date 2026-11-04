@@ -557,7 +557,7 @@ describe('buildProjectHubApi', () => {
       'status',
       'unstage',
     ]);
-    expect(Object.keys(api.github).sort()).toEqual(['comment', 'merge', 'pr']);
+    expect(Object.keys(api.github).sort()).toEqual(['comment', 'merge', 'openUrl', 'pr']);
     expect(Object.keys(api.providers)).toEqual(['list']);
     expect(Object.keys(api.terminals).sort()).toEqual([
       'list',
@@ -650,7 +650,7 @@ describe('buildProjectHubApi', () => {
     ]);
   });
 
-  it('github chama só os canais github:*:v1, levando o id do projeto e o número do PR', async () => {
+  it('github chama só os canais github:*:v1, levando o id do projeto, o número do PR e a URL', async () => {
     const calls: Array<[string, unknown]> = [];
     const api = hubApi((channel, payload) => {
       calls.push([channel, payload]);
@@ -658,15 +658,18 @@ describe('buildProjectHubApi', () => {
     });
     const comment = { projectId: 'p1', prNumber: 7, body: 'Ok' };
     const merge = { projectId: 'p1', prNumber: 7, method: 'merge' } as const;
+    const url = 'https://github.com/o/r/pull/7';
 
     await api.github.comment(comment);
     await api.github.merge(merge);
+    await api.github.openUrl(url);
     // A leitura do PR confere a resposta com o schema; a resposta vazia do falso vira VALIDATION_FAILED.
     const read = await api.github.pr({ projectId: 'p1' });
 
     expect(calls).toEqual([
       [CHANNELS.githubComment, comment],
       [CHANNELS.githubMerge, merge],
+      [CHANNELS.githubOpenUrl, { url }],
       [CHANNELS.githubPr, { projectId: 'p1' }],
     ]);
     expect(read.ok).toBe(false);

@@ -93,6 +93,13 @@ const GIT_STATUS: GitStatusDto = {
   files: [],
 };
 
+const OK_VOID: AppResult<void> = { ok: true, data: undefined };
+
+/** O aviso de uma recusa do canal de abrir links (a aba tem outras regiões vivas, por isso a busca é pela classe). */
+function linkNotice(): Element | null {
+  return document.querySelector('.checks-tab__body > .checks-tab__stale');
+}
+
 type PrCall = () => Promise<AppResult<GithubPanelDto>>;
 
 function install(
@@ -100,7 +107,12 @@ function install(
   git: () => Promise<AppResult<GitStatusDto>> = () =>
     Promise.resolve({ ok: true, data: GIT_STATUS }),
 ) {
-  const api = { pr: vi.fn(pr), comment: vi.fn(), merge: vi.fn() };
+  const api = {
+    pr: vi.fn(pr),
+    comment: vi.fn(),
+    merge: vi.fn(),
+    openUrl: vi.fn<(url: string) => Promise<AppResult<void>>>(() => Promise.resolve(OK_VOID)),
+  };
   window.projectHub = {
     github: api,
     git: { status: vi.fn(git) },
@@ -148,19 +160,32 @@ describe('ChecksTab: PR aberto', () => {
     },
   );
 
-  it('o número abre a página do PR pelo pedido de janela externa', async () => {
+  it('o número abre a página do PR pelo canal github.openUrl, sem aviso em sucesso', async () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    install(() => Promise.resolve(okPr([PASSED])));
+    const api = install(() => Promise.resolve(okPr([PASSED])));
     const user = userEvent.setup();
     render(<Harness />);
 
     await user.click(await screen.findByRole('button', { name: 'Abrir o PR #12 no GitHub' }));
 
-    expect(open).toHaveBeenCalledWith(
-      'https://github.com/o/r/pull/12',
-      '_blank',
-      'noopener,noreferrer',
-    );
+    expect(api.openUrl).toHaveBeenCalledTimes(1);
+    expect(api.openUrl).toHaveBeenCalledWith('https://github.com/o/r/pull/12');
+    expect(open).not.toHaveBeenCalled();
+    expect(linkNotice()).toBeNull();
+  });
+
+  it('a recusa do canal para o link do PR mostra a mensagem do erro como texto puro', async () => {
+    const api = install(() => Promise.resolve(okPr([PASSED])));
+    const message = 'Só abrimos links do github.com. <b>x</b>';
+    api.openUrl.mockResolvedValue(fail('VALIDATION_FAILED', message));
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(await screen.findByRole('button', { name: 'Abrir o PR #12 no GitHub' }));
+
+    const notice = await screen.findByText(message);
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice.querySelector('b')).toBeNull();
   });
 
   it('o botão Atualizar relê o PR', async () => {
@@ -250,28 +275,38 @@ describe('ChecksTab: resumo e lista', () => {
     expect(screen.getByText('Estado').nextElementSibling).toHaveTextContent('PENDING');
   });
 
-  it('"Ver detalhes completos" passa o endereço do contrato ao pedido de janela externa', async () => {
+  it('"Ver detalhes completos" passa o endereço do contrato ao canal github.openUrl', async () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    install(() => Promise.resolve(okPr([PASSED, LEGACY])));
+    const api = install(() => Promise.resolve(okPr([PASSED, LEGACY])));
     const user = userEvent.setup();
     render(<Harness />);
 
     await user.click(await screen.findByRole('button', { name: /build/ }));
     await user.click(screen.getByRole('button', { name: 'Ver detalhes completos' }));
-    expect(open).toHaveBeenLastCalledWith(
-      'https://github.com/o/r/actions/runs/1',
-      '_blank',
-      'noopener,noreferrer',
-    );
+    expect(api.openUrl).toHaveBeenLastCalledWith('https://github.com/o/r/actions/runs/1');
 
     await user.click(screen.getByRole('button', { name: /ci\/legado/ }));
     const buttons = screen.getAllByRole('button', { name: 'Ver detalhes completos' });
     await user.click(buttons[1] as HTMLElement);
-    expect(open).toHaveBeenLastCalledWith(
-      'https://github.com/o/r/status/2',
-      '_blank',
-      'noopener,noreferrer',
-    );
+    expect(api.openUrl).toHaveBeenLastCalledWith('https://github.com/o/r/status/2');
+    expect(api.openUrl).toHaveBeenCalledTimes(2);
+    expect(open).not.toHaveBeenCalled();
+    expect(linkNotice()).toBeNull();
+  });
+
+  it('a recusa do canal para o link de detalhes mostra o aviso e some no próximo clique que dá certo', async () => {
+    const api = install(() => Promise.resolve(okPr([PASSED])));
+    api.openUrl.mockResolvedValueOnce(fail('UNKNOWN', 'Não deu para abrir o link.'));
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(await screen.findByRole('button', { name: /build/ }));
+    await user.click(screen.getByRole('button', { name: 'Ver detalhes completos' }));
+    expect(await screen.findByText('Não deu para abrir o link.')).toHaveAttribute('role', 'status');
+
+    await user.click(screen.getByRole('button', { name: 'Ver detalhes completos' }));
+    await waitFor(() => expect(linkNotice()).toBeNull());
+    expect(api.openUrl).toHaveBeenCalledTimes(2);
   });
 
   it('sem endereço de detalhes, o botão não aparece', async () => {

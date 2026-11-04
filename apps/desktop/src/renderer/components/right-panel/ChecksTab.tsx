@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
+import { openExternal } from '../../open-external';
 import { useGitPanel } from '../../use-git-panel';
 import type { GithubPanel } from '../../use-github-panel';
 import { EmptyState } from '../EmptyState';
@@ -36,6 +38,15 @@ export function ChecksTab({
 }) {
   const git = useGitPanel(projectId, true);
   const { state, refresh, comment, merge } = github;
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
+
+  /** Abre o link pelo canal do processo principal; uma recusa vira o aviso (texto puro, a mensagem do erro). */
+  function openLink(url: string) {
+    setLinkNotice(null);
+    void openExternal(url).then((result) => {
+      if (!result.ok) setLinkNotice(result.error.message);
+    });
+  }
 
   if (projectId === null) {
     return <EmptyState icon={Folder} title={RIGHT_PANEL_TEXT.git.noProject} />;
@@ -99,8 +110,18 @@ export function ChecksTab({
     case 'ready':
       return (
         <div className="checks-tab">
-          <ChecksPrHeader pr={state.reading.pr} refreshing={state.refreshing} onRefresh={refresh} />
+          <ChecksPrHeader
+            pr={state.reading.pr}
+            refreshing={state.refreshing}
+            onRefresh={refresh}
+            onOpenLink={openLink}
+          />
           <div className="checks-tab__body">
+            {linkNotice === null ? null : (
+              <p className="checks-tab__stale" role="status">
+                {linkNotice}
+              </p>
+            )}
             {state.stale ? (
               <p className="checks-tab__stale" role="status">
                 <strong>{TEXT.stale}</strong>
@@ -113,7 +134,7 @@ export function ChecksTab({
               writing={state.writing}
               onMerge={merge}
             />
-            <ChecksList checks={state.reading.checks} />
+            <ChecksList checks={state.reading.checks} onOpenLink={openLink} />
             <ChecksComments
               prNumber={state.reading.pr.number}
               comments={state.reading.comments}

@@ -1,6 +1,5 @@
 import type { PrSummaryDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
-import { openExternal } from '../../open-external';
 import { Hint } from '../Hint';
 import { ICON_PROPS, RefreshCw } from '../Icon';
 import { StatusChip } from '../StatusChip';
@@ -32,10 +31,12 @@ export function ChecksPrHeader({
   pr,
   refreshing,
   onRefresh,
+  onOpenLink,
 }: {
   pr: PrSummaryDto;
   refreshing: boolean;
   onRefresh: () => void;
+  onOpenLink: (url: string) => void;
 }) {
   const state = prState(pr);
   const branches = TEXT.branches(pr.headRefName, pr.baseRefName);
@@ -47,7 +48,7 @@ export function ChecksPrHeader({
           type="button"
           className="checks-tab__number"
           aria-label={TEXT.openPr(pr.number)}
-          onClick={() => openExternal(pr.url)}
+          onClick={() => onOpenLink(pr.url)}
         >
           {`#${pr.number}`}
         </button>

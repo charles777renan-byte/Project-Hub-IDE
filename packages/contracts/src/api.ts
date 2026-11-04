@@ -268,6 +268,11 @@ export type ProjectHubApi = {
     comment(input: GithubCommentInput): Promise<AppResult<void>>;
     /** Mescla o PR depois de reler o estado (só aberto e mesclável). A tela pede confirmação antes. */
     merge(input: GithubMergeInput): Promise<AppResult<void>>;
+    /**
+     * Abre no navegador padrão um endereço que veio do GitHub. O processo principal confere: só `https://github.com`,
+     * sem usuário, senha nem porta; o resto volta como erro, sem abrir. Abre direto, sem confirmação.
+     */
+    openUrl(url: string): Promise<AppResult<void>>;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */
