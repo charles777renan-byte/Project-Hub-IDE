@@ -347,7 +347,10 @@ describe('botões, campos e anel de foco', () => {
   it('o item marcado do menu acende o fundo e uma marca lateral, sem depender só da cor', () => {
     const marked = rule(".workspace__menu-item[data-marked='true']");
     expect(marked.get('background')).toBe('var(--line)');
-    expect(marked.get('box-shadow')).toContain('inset');
+    // A marca é um filete (::before) que aparece por opacidade, junto com o fundo; não é mais um box-shadow.
+    expect(rule(".workspace__menu-item[data-marked='true']::before").get('opacity')).toBe('1');
+    expect(rule('.workspace__menu-item::before').get('opacity')).toBe('0');
+    expect(rule('.workspace__menu-item::before').get('background')).toBe('var(--accent)');
   });
 
   it('o atalho da linha fica escondido e só aparece com o mouse em cima ou com o foco do teclado', () => {
