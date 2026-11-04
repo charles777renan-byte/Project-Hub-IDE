@@ -351,7 +351,7 @@ describe('ChecksMerge: foco', () => {
 
 describe('estilo de comentar e mesclar', () => {
   it('o foco dos botões de mesclar não usa deslocamento negativo (o anel lima sumiria sobre o lima)', () => {
-    const css = readCss('right-panel.css');
+    const css = readCss('checks.css');
     for (const selector of [
       '.checks-merge__main:focus-visible',
       '.checks-merge__arrow:focus-visible',
@@ -366,7 +366,7 @@ describe('estilo de comentar e mesclar', () => {
     }
   });
   it('só usa tokens: nenhuma cor escrita nas regras novas, e o lima fica só no botão de mesclar', () => {
-    const css = readCss('right-panel.css');
+    const css = readCss('checks.css');
     const start = css.indexOf('.checks-merge {');
     expect(start).toBeGreaterThan(0);
     const block = css.slice(start);
