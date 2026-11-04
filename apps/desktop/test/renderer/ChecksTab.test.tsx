@@ -637,7 +637,7 @@ describe('checks-status', () => {
 
 describe('estilo da aba Checks', () => {
   it('só usa tokens: nenhuma cor escrita nas regras da aba', () => {
-    const css = readCss('right-panel.css');
+    const css = readCss('checks.css');
     const start = css.indexOf('.checks-tab {');
     expect(start).toBeGreaterThan(0);
     const block = css.slice(start);

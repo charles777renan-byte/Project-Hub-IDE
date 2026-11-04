@@ -460,17 +460,21 @@ describe.each([
 });
 
 /**
- * Painel direito (right-panel.css): só tokens de tokens.css, sem cor literal e sem animação. O lima (--accent) fica
+ * Painel direito (right-panel.css e checks.css, a aba Checks): só tokens de tokens.css, sem cor literal e sem animação. O lima (--accent) fica
  * de fora (o anel de foco é o --focus, herdado de app.css). A aba ativa usa --fill, o preenchimento que sustenta
  * texto, com um contorno de --field-line além da cor; a divisória é --line. As cores de estado e do Git
- * (--cyan, --warn, --danger, --violet, --blue) entram só na aba Código-fonte, sempre junto de uma letra ou de um
- * texto (a letra do arquivo, a pílula ↑↓, o ponto do commit atual, a barra de erro).
+ * (--cyan, --warn, --danger, --violet, --blue) entram na aba Código-fonte e na aba Checks, sempre junto de uma letra ou
+ * de um texto (a letra do arquivo, a pílula ↑↓, o ponto do commit atual, a barra de erro, o nome do estado do check).
+ * O ponto verde da aba Checks é --cyan (sucesso), e não lima: o lima fica com a ação principal (mesclar).
  */
 describe('cores do painel direito (right-panel.css)', () => {
-  const css = readFileSync(
-    resolve(import.meta.dirname, '../../src/renderer/styles/right-panel.css'),
-    'utf8',
-  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  // O painel direito é o right-panel.css e, para a aba Checks, o checks.css (as regras saíram de um para o outro).
+  const css = ['right-panel.css', 'checks.css']
+    .map((name) =>
+      readFileSync(resolve(import.meta.dirname, '../../src/renderer/styles', name), 'utf8'),
+    )
+    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
   const ALLOWED = new Set([
     '--surface',
     '--surface-2',
