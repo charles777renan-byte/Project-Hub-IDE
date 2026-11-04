@@ -243,6 +243,26 @@ describe('ambiente do gh (ghEnvironment)', () => {
     expect(env['PATH']).toBe('/bin');
   });
 
+  it('remove toda variável GIT_* (inclusive GIT_CONFIG_*, com qualquer caixa) e mantém as que não são GIT_*', () => {
+    const env = ghEnvironment({
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'remote.upstream.url',
+      git_config_key_0: 'remote.upstream.url',
+      GIT_CONFIG_VALUE_0: 'https://github.com/outro/repo',
+      GIT_CONFIG_PARAMETERS: "'remote.upstream.url=x'",
+      GIT_CONFIG_GLOBAL: '/outro/gitconfig',
+      GIT_CONFIG_SYSTEM: '/outro/sistema',
+      GIT_DIR: '/outro/.git',
+      GIT_ASKPASS: 'x',
+      FOO: 'fica',
+      GH_TOKEN: 'segredo',
+      GH_CONFIG_DIR: '/cfg',
+    });
+
+    expect(Object.keys(env).filter((name) => name.toUpperCase().startsWith('GIT_'))).toEqual([]);
+    expect(env).toMatchObject({ FOO: 'fica', GH_TOKEN: 'segredo', GH_CONFIG_DIR: '/cfg' });
+  });
+
   it('as variáveis GIT_* que vêm das extras também caem', () => {
     const env = ghEnvironment({}, { GIT_DIR: '/outro/.git' });
 
