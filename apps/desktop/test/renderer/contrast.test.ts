@@ -531,6 +531,17 @@ describe('cores do painel direito (right-panel.css)', () => {
     }
   });
 
+  it('o ponto de estado da aba Checks (--cyan, --warn, --danger) passa de 3:1 sobre a aba ativa (--fill), a barra e o realce', () => {
+    for (const surface of ['--fill', '--surface', '--surface-2']) {
+      for (const color of ['--cyan', '--warn', '--danger']) {
+        expect(
+          contrastRatio(tokens.get(color) ?? '', tokens.get(surface) ?? ''),
+          `${color} sobre ${surface}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
   it('o contorno da aba ativa (--field-line) passa de 3:1 sobre o cartão', () => {
     expect(
       contrastRatio(tokens.get('--field-line') ?? '', tokens.get('--surface') ?? ''),

@@ -44,6 +44,7 @@
 
 /* Sem o padding e a borda do botão padrão, a caixa fica do tamanho declarado e o ícone centrado. */
 .right-panel__tab {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
@@ -58,6 +59,35 @@
 
 .right-panel__tab svg {
   display: block;
+}
+
+/*
+ * O ponto de estado da aba Checks, no canto de cima à direita do botão. Só reforça: o estado também vai no nome e
+ * na dica do botão, em texto. A cor vem do token do estado e o formato muda com ele (círculo cheio, anel, losango).
+ */
+.right-panel__dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+
+.right-panel__dot--ok {
+  border-radius: 50%;
+  background: var(--cyan);
+}
+
+.right-panel__dot--pending {
+  border: 2px solid var(--warn);
+  border-radius: 50%;
+}
+
+.right-panel__dot--failed {
+  background: var(--danger);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
 
 .right-panel__tab:hover:not([aria-disabled='true']):not([aria-selected='true']) {

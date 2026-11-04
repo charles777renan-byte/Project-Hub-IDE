@@ -775,6 +775,14 @@ export const RIGHT_PANEL_TEXT = {
       pending: (count: number) => (count === 1 ? '1 pendente' : `${count} pendentes`),
     },
     listLabel: 'Checks',
+    /** O ponto de estado da aba Checks na barra: o texto vai no nome acessível e na dica do botão. */
+    tabStatus: {
+      name: (state: string) => `Checks: ${state}`,
+      ok: 'tudo certo',
+      pending: 'pendente',
+      failed: (count: number) => (count === 1 ? '1 falhou' : `${count} falharam`),
+      stale: 'desatualizado',
+    },
     noChecks: 'Este PR não tem checks',
     details: 'Ver detalhes completos',
     started: 'Início',
