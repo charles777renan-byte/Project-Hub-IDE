@@ -53,6 +53,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   text-overflow: ellipsis;
+  unicode-bidi: isolate;
   white-space: nowrap;
 }
 
@@ -62,6 +63,7 @@
   font-size: var(--text-md);
   font-weight: 600;
   overflow-wrap: anywhere;
+  unicode-bidi: isolate;
 }
 
 .checks-tab__updated {
@@ -175,6 +177,7 @@
   flex: 1;
   min-width: 0;
   text-overflow: ellipsis;
+  unicode-bidi: isolate;
   white-space: nowrap;
 }
 
@@ -351,12 +354,24 @@
 .checks-comments__author {
   color: var(--text);
   overflow-wrap: anywhere;
+  unicode-bidi: isolate;
 }
 
 .checks-comments__body {
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
+  unicode-bidi: isolate;
   white-space: pre-wrap;
+}
+
+/*
+ * Os textos do GitHub (título do PR, nomes de branch) e o comentário na caixa de confirmação de comentar e de
+ * mesclar. A caixa é a do Git (`git-dialog__message`, em right-panel.css, que a aba Git também usa): só estas
+ * caixas levam a classe a mais. Um caractere de controle bidi (RLO, LRO) no texto não reordena o que está ao
+ * redor.
+ */
+.checks-dialog__message {
+  unicode-bidi: isolate;
 }
 
 /* O campo de novo comentário: barra de formatação, texto e botões. */

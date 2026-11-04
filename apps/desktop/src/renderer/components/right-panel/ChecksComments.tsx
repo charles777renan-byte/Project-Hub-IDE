@@ -150,7 +150,7 @@ export function ChecksComments({
         onCancel={close}
       >
         <p className="git-dialog__label">{TEXT.confirmPreview}</p>
-        <p className="git-dialog__message">{text.trimEnd()}</p>
+        <p className="git-dialog__message checks-dialog__message">{text.trimEnd()}</p>
         {error === null ? null : (
           <p className="git-dialog__warning" role="alert">
             {error}
