@@ -18,6 +18,7 @@ import {
   gitPushResultSchema,
   gitStatusSchema,
 } from './git-panel';
+import { githubPanelSchema } from './github';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { systemUsageDtoSchema } from './system';
@@ -130,4 +131,8 @@ export const responseSchemas = {
   [CHANNELS.gitFetch]: appResultSchema(z.undefined()),
   [CHANNELS.gitLog]: appResultSchema(z.array(gitLogEntrySchema)),
   [CHANNELS.gitBranchChanges]: appResultSchema(branchChangesSchema),
+  [CHANNELS.githubPr]: appResultSchema(githubPanelSchema),
+  [CHANNELS.githubComment]: appResultSchema(z.undefined()),
+  [CHANNELS.githubMerge]: appResultSchema(z.undefined()),
+  [CHANNELS.githubOpenUrl]: appResultSchema(z.undefined()),
 } as const;

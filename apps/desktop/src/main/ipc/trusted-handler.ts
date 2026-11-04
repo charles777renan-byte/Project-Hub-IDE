@@ -2,6 +2,7 @@ import type { AppResult } from '@project-hub/contracts';
 import { failure } from '@project-hub/application';
 import { GitError } from '@project-hub/git-adapter';
 import type { IpcMainInvokeEvent } from 'electron';
+import type { ZodType } from 'zod';
 
 /** Diz se o remetente de uma chamada IPC é o aplicativo (ver `isTrustedSenderUrl`). */
 export type SenderCheck = (event: IpcMainInvokeEvent) => boolean;
@@ -40,4 +41,22 @@ export function registerTrustedHandler(
       return failure('UNKNOWN', 'Algo deu errado. Tente de novo.');
     }
   });
+}
+
+const INVALID_INPUT = 'Os dados do pedido não são válidos.';
+
+/**
+ * Confere a entrada com o schema do contrato (R28) e só então roda o caso de uso. Entrada inválida volta como
+ * `VALIDATION_FAILED`, sem tocar no projeto, no Git nem no `gh`. O que o schema não declara (como um nome de
+ * branch) é descartado pelo `parse`: o caso de uso só recebe o que o contrato permite.
+ */
+export function validated<T>(
+  schema: ZodType<T>,
+  run: (input: T) => Promise<AppResult<unknown>>,
+): (_event: unknown, payload: unknown) => Promise<AppResult<unknown>> {
+  return (_event, payload) => {
+    const input = schema.safeParse(payload);
+    if (!input.success) return Promise.resolve(failure('VALIDATION_FAILED', INVALID_INPUT));
+    return run(input.data);
+  };
 }

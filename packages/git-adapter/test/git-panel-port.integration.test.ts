@@ -109,6 +109,24 @@ describe('createGitPanelPort', () => {
     expect(await port.pull(repo.path)).toEqual({ updated: false });
   });
 
+  it('originUrl lê o remote.origin.url, e devolve null quando não há origin', async () => {
+    // Sem origin: a chave ausente sai com código 1, e isso é null, não erro.
+    expect(await port.originUrl(repo.path)).toBeNull();
+
+    git(repo.path, ['remote', 'add', 'origin', 'https://github.com/dono/repo.git']);
+    expect(await port.originUrl(repo.path)).toBe('https://github.com/dono/repo.git');
+
+    // Só o `origin` conta: outro remoto não vira o endereço.
+    git(repo.path, ['remote', 'remove', 'origin']);
+    git(repo.path, ['remote', 'add', 'upstream', 'https://github.com/outro/repo.git']);
+    expect(await port.originUrl(repo.path)).toBeNull();
+  });
+
+  it('originUrl numa pasta que não é repositório devolve null', async () => {
+    const plain = mkdtempSync(join(scratch, 'sem-git-'));
+    expect(await port.originUrl(plain)).toBeNull();
+  });
+
   it('não captura o GitError: ele sobe com o código do adaptador', async () => {
     const error: unknown = await port.commit(repo.path, 'nada em stage').catch((e: unknown) => e);
     expect(error).toBeInstanceOf(GitError);

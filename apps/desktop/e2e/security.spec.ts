@@ -88,6 +88,7 @@ test.describe('renderer isolado', () => {
         limits: names(api['limits']),
         files: names(api['files']),
         git: names(api['git']),
+        github: names(api['github']),
         worktrees: names(api['worktrees']),
         terminals: names(api['terminals']),
         workspaces: names(api['workspaces']),
@@ -101,6 +102,7 @@ test.describe('renderer isolado', () => {
       'approvals',
       'files',
       'git',
+      'github',
       'limits',
       'missions',
       'ping',
@@ -137,6 +139,7 @@ test.describe('renderer isolado', () => {
       'status',
       'unstage',
     ]);
+    expect(surface?.github).toEqual(['comment', 'merge', 'openUrl', 'pr']);
     expect(surface?.terminals).toEqual([
       'list',
       'onEvent',
@@ -153,6 +156,7 @@ test.describe('renderer isolado', () => {
       ...(surface?.limits ?? []),
       ...(surface?.files ?? []),
       ...(surface?.git ?? []),
+      ...(surface?.github ?? []),
       ...(surface?.worktrees ?? []),
       ...(surface?.terminals ?? []),
       ...(surface?.workspaces ?? []),

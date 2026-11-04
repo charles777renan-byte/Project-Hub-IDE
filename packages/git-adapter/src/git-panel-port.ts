@@ -13,6 +13,7 @@ import {
   getBranchLog,
   getFileDiffAgainstHead,
   getGitPanelStatus,
+  getOriginUrl,
 } from './git-read';
 
 /**
@@ -35,5 +36,6 @@ export function createGitPanelPort(): GitPanelPort {
     fetch: (repoPath) => fetchOrigin({ repo: repoPath }),
     log: (repoPath, limit) => getBranchLog({ repo: repoPath, limit }),
     branchChanges: (repoPath) => getBranchChanges({ repo: repoPath }),
+    originUrl: (repoPath) => getOriginUrl({ repo: repoPath }),
   };
 }
