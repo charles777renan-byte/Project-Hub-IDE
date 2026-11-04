@@ -34,8 +34,9 @@ export function checkedPrNumber(number: number): string {
 
 /**
  * O número do PR da branch (aberto, mesclado ou fechado), ou `null` quando ela não tem PR. É o
- * `gh pr list --head <branch> --state all --limit 1 --json number`. O repositório é o do `remote` de
- * `repoPath`.
+ * `gh pr list --head <branch> --state all --limit 30 --json number,isCrossRepository`. O `--head` casa pelo
+ * nome da branch, inclusive o de um fork; por isso o primeiro PR que não é de fork (`isCrossRepository`
+ * falso) é o escolhido, e um PR só de fork conta como "sem PR". O repositório é o do `remote` de `repoPath`.
  */
 export async function getPullRequestForBranch(
   repoPath: string,
@@ -43,7 +44,18 @@ export async function getPullRequestForBranch(
   options: GhOptions = {},
 ): Promise<number | null> {
   const { stdout } = await runGh(
-    ['pr', 'list', '--head', branch, '--state', 'all', '--limit', '1', '--json', 'number'],
+    [
+      'pr',
+      'list',
+      '--head',
+      branch,
+      '--state',
+      'all',
+      '--limit',
+      '30',
+      '--json',
+      'number,isCrossRepository',
+    ],
     {
       cwd: repoPath,
       env: options.env,

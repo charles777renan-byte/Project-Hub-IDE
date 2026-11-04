@@ -15,7 +15,7 @@ Comentar e mesclar são escritas num serviço público, que a pessoa não desfaz
 
 1. **Um pacote só para o `gh`: `packages/github-adapter`.** `runGh` (interno ao pacote) roda o executável sem shell (`execFile`), com os argumentos em array, e recusa com `PERMISSION_DENIED`, sem criar processo, tudo o que não está na lista abaixo.
 2. **Lista fixa de formas**, com argumentos exatos:
-   - `pr list --head <branch> --state all --limit 1 --json number` (acha o PR da branch);
+   - `pr list --head <branch> --state all --limit 30 --json number,isCrossRepository` (acha o PR da branch, ignorando PR de fork);
    - `pr view <n> --json <campos fixos>` (`number,title,state,isDraft,mergeable,mergeStateStatus,url,updatedAt,headRefName,baseRefName,additions,deletions,statusCheckRollup,comments,reviewDecision`);
    - `pr comment <n> --body=<texto>`;
    - `pr merge <n> --merge|--squash|--rebase`.
@@ -58,4 +58,4 @@ Comentar e mesclar são escritas num serviço público, que a pessoa não desfaz
 - O app passa a escrever no GitHub, só pelas duas formas acima e só depois de a tela pedir confirmação (a aba Checks).
 - O pacote não exporta `runGh` nem a lista de permissão; o teste de superfície (`api-surface.test.ts`) fixa os nomes exportados.
 - Comentário acima de cerca de 30 000 caracteres (menos, se tiver muitas aspas ou barras invertidas) é recusado, embora o GitHub aceite 65 536. A mensagem pede para dividir o texto.
-- **Fork.** O `pr list --head` casa pelo nome da branch de origem, inclusive de um fork com o mesmo nome, e a conferência da `headRefName` (item 8) compara só o nome da branch. O contrato não lê `isCrossRepository` nem o repositório de origem do PR, então um PR de fork com o mesmo nome de branch não é distinguido do PR da branch local. Isto não foi tratado na fase 3 e fica como limite conhecido: para fechar, o `pr view` precisaria dos campos `isCrossRepository` e `headRepositoryOwner`, o que muda a lista fixa de campos e o contrato.
+- **Fork.** A busca do PR da branch ignora PR de fork: o `pr list --head` casa pelo nome da branch de origem, inclusive de um fork com o mesmo nome, então a lista traz `isCrossRepository` e o adaptador escolhe o primeiro item com ele falso (só PR de fork conta como sem PR). A checagem do nome da branch (`headRefName`, item 8) continua como segunda defesa.
