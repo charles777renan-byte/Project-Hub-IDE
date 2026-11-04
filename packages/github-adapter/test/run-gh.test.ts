@@ -210,6 +210,31 @@ describe('ambiente do gh (ghEnvironment)', () => {
     expect(env).toMatchObject({ GH_TOKEN: 'segredo', GH_CONFIG_DIR: '/cfg', PATH: '/bin' });
   });
 
+  it('remove GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR e GIT_INDEX_FILE herdadas, com qualquer caixa', () => {
+    const env = ghEnvironment({
+      GIT_DIR: '/outro/.git',
+      git_dir: '/outro/.git',
+      GIT_WORK_TREE: '/outro',
+      Git_Common_Dir: '/outro/.git',
+      GIT_INDEX_FILE: '/outro/.git/index',
+      PATH: '/bin',
+    });
+
+    expect(env['GIT_DIR']).toBeUndefined();
+    expect(env['git_dir']).toBeUndefined();
+    expect(env['GIT_WORK_TREE']).toBeUndefined();
+    expect(env['Git_Common_Dir']).toBeUndefined();
+    expect(env['GIT_INDEX_FILE']).toBeUndefined();
+    expect(Object.keys(env).filter((name) => name.toUpperCase().startsWith('GIT_'))).toEqual([]);
+    expect(env['PATH']).toBe('/bin');
+  });
+
+  it('as variáveis GIT_* que vêm das extras também caem', () => {
+    const env = ghEnvironment({}, { GIT_DIR: '/outro/.git' });
+
+    expect(env['GIT_DIR']).toBeUndefined();
+  });
+
   it('as variáveis extras (do gh falso) entram, mas GH_REPO delas também cai', () => {
     const env = ghEnvironment({}, { ELECTRON_RUN_AS_NODE: '1', GH_REPO: 'x/y' });
 

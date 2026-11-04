@@ -24,12 +24,19 @@ const BODY_PREFIX = '--body=';
 
 /**
  * Variáveis que mudariam o alvo do `gh`. `GH_REPO` faria `pr merge` agir em outro repositório, e `GH_HOST` em
- * outro servidor: o `gh` deve olhar sempre o `remote` da pasta (`cwd`). As duas últimas forçariam cores e
- * formato de terminal na saída, que o adaptador lê como JSON.
+ * outro servidor: o `gh` deve olhar sempre o `remote` da pasta (`cwd`). `GIT_DIR`, `GIT_WORK_TREE`,
+ * `GIT_COMMON_DIR` e `GIT_INDEX_FILE` herdadas fariam o `git` que o `gh` chama olhar outro repositório que o
+ * da pasta (as mesmas quatro que o adaptador do Git remove), e a checagem de origem (ADR 0011) não valeria
+ * para o alvo real. `CLICOLOR_FORCE` e `GH_FORCE_TTY` forçariam cores e formato de terminal na saída, que o
+ * adaptador lê como JSON.
  */
 const REMOVED_VARIABLES: ReadonlySet<string> = new Set([
   'GH_REPO',
   'GH_HOST',
+  'GIT_DIR',
+  'GIT_WORK_TREE',
+  'GIT_COMMON_DIR',
+  'GIT_INDEX_FILE',
   'CLICOLOR_FORCE',
   'GH_FORCE_TTY',
 ]);
