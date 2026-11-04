@@ -51,7 +51,7 @@ Hoje, para olhar um arquivo, ver o que mudou, fazer commit, achar uma conversa a
 - **Alternar**: botão na barra superior (ao lado do da lateral esquerda) e **Ctrl+Alt+B** **[decisão minha]**, que, como Ctrl+K e Ctrl+B, não vale dentro do `.terminal-view`. Entra na paleta de comandos ("Mostrar/Esconder painel direito"). Recolhido, o painel fica `inert`, e o foco volta ao botão.
 - **Projeto**: o da aba ativa (`/workspaces/:projectId`). No Início e em qualquer rota sem projeto, o painel mostra um `EmptyState` ("Abra um projeto para ver os arquivos, o histórico e o código-fonte"). Na aba Sessões, o escopo "Todos" funciona mesmo assim.
 - Projeto sem Git: Código-fonte e Checks mostram "Esta pasta não é um repositório Git"; Arquivos e Sessões funcionam. Pasta ausente: o painel mostra "Pasta indisponível", como a lateral esquerda.
-- Componentes novos em `components/right-panel/` (um arquivo por aba mais o cabeçalho e os hooks de dados), estilos em `styles/right-panel.css`, ligado ao `index.html` e às guardas de `renderer-styles.test.ts` e `contrast.test.ts`.
+- Componentes novos em `components/right-panel/` (um arquivo por aba mais o cabeçalho e os hooks de dados), estilos em `styles/right-panel.css` e `styles/checks.css`, ligado ao `index.html` e às guardas de `renderer-styles.test.ts` e `contrast.test.ts`.
 
 ## Aba Arquivos
 
