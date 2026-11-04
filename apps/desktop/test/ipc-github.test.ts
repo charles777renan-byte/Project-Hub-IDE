@@ -311,23 +311,48 @@ describe('registerGithubHandlers: github:pr:v1', () => {
 });
 
 describe('registerGithubHandlers: github:comment:v1', () => {
-  it('comenta no PR da branch, com o texto sem as pontas', async () => {
-    const { fake, github } = setup();
+  it.each([
+    ['  Olá  ', '  Olá'],
+    ['    código\n', '    código'],
+    ['\n    bloco\n    de código \t\n', '\n    bloco\n    de código'],
+    ['Olá', 'Olá'],
+  ])(
+    'comenta no PR da branch: %j chega ao gh como %j (início preservado, só o final aparado)',
+    async (sent, received) => {
+      const { fake, github } = setup();
 
-    const result = await fake.call(CHANNELS.githubComment, {
-      projectId: 'p1',
-      prNumber: 37,
-      body: '  Olá  ',
-    });
+      const result = await fake.call(CHANNELS.githubComment, {
+        projectId: 'p1',
+        prNumber: 37,
+        body: sent,
+      });
 
-    expect(result).toEqual({ ok: true, data: undefined });
-    expect(application.addPullRequestComment).toHaveBeenCalledWith(expect.anything(), {
-      projectId: 'p1',
-      prNumber: 37,
-      body: 'Olá',
-    });
-    expect(github.addComment).toHaveBeenCalledWith(PROJECT.path, 37, 'Olá');
-  });
+      expect(result).toEqual({ ok: true, data: undefined });
+      expect(application.addPullRequestComment).toHaveBeenCalledWith(expect.anything(), {
+        projectId: 'p1',
+        prNumber: 37,
+        body: received,
+      });
+      expect(github.addComment).toHaveBeenCalledWith(PROJECT.path, 37, received);
+    },
+  );
+
+  it.each([['   '], [' \n\t '], ['']])(
+    'o comentário %j é recusado como VALIDATION_FAILED, sem escrever',
+    async (body) => {
+      const { fake, github } = setup();
+
+      const result = await fake.call(CHANNELS.githubComment, {
+        projectId: 'p1',
+        prNumber: 37,
+        body,
+      });
+
+      expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+      expect(application.addPullRequestComment).not.toHaveBeenCalled();
+      expect(github.addComment).not.toHaveBeenCalled();
+    },
+  );
 
   it('PR de outra branch: GH_PR_NOT_FOUND, e nada é escrito', async () => {
     const { fake, github } = setup();
@@ -417,6 +442,21 @@ describe('registerGithubHandlers: github:open-url:v1', () => {
     expect(openExternal).toHaveBeenCalledTimes(1);
     // O que abre é o endereço conferido e normalizado, não o texto cru.
     expect(openExternal).toHaveBeenCalledWith(new URL(url).href);
+  });
+
+  it.each([
+    ['  https://github.com/a\n', 'https://github.com/a'],
+    ['https://github.com:443/a', 'https://github.com/a'],
+    ['https://GitHub.com/a', 'https://github.com/a'],
+    ['https://github.com', 'https://github.com/'],
+  ])('%j abre exatamente %j (o endereço normalizado que foi conferido)', async (url, opened) => {
+    const { fake, openExternal } = setup();
+
+    const result = await fake.call(CHANNELS.githubOpenUrl, { url });
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(openExternal).toHaveBeenCalledTimes(1);
+    expect(openExternal).toHaveBeenCalledWith(opened);
   });
 
   const REFUSED: Array<[string, string]> = [

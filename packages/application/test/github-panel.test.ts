@@ -240,14 +240,14 @@ describe('getPullRequestPanel', () => {
 describe('addPullRequestComment', () => {
   const input = { projectId: 'p1', prNumber: 37, body: 'Olá' };
 
-  it('lê o PR e depois comenta, com o texto sem as pontas', async () => {
+  it('lê o PR e depois comenta, com o início preservado e o final aparado', async () => {
     const { deps, github } = setup();
 
     const result = await addPullRequestComment(deps, { ...input, body: '  Olá\n' });
 
     expect(result).toEqual({ ok: true, data: undefined });
     expect(github.pullRequest).toHaveBeenCalledWith(PATH, 37);
-    expect(github.addComment).toHaveBeenCalledWith(PATH, 37, 'Olá');
+    expect(github.addComment).toHaveBeenCalledWith(PATH, 37, '  Olá');
     const readOrder = github.pullRequest.mock.invocationCallOrder[0] ?? 0;
     const writeOrder = github.addComment.mock.invocationCallOrder[0] ?? 0;
     expect(readOrder).toBeLessThan(writeOrder);

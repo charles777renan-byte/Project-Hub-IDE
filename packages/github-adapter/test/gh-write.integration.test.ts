@@ -46,10 +46,10 @@ describe('addComment', () => {
     expect(readCalls(workspace)[0]?.argv).toEqual(['pr', 'comment', '12', `--body=${body}`]);
   });
 
-  it('o corpo sai sem espaços nas pontas, como o contrato o normaliza', async () => {
-    await addComment(workspace.repo, 12, '  oi  \n', { env: env() });
+  it('o corpo sai sem o espaço do final e com a indentação do início, como o contrato o normaliza', async () => {
+    await addComment(workspace.repo, 12, '    oi  \n', { env: env() });
 
-    expect(readCalls(workspace)[0]?.argv[3]).toBe('--body=oi');
+    expect(readCalls(workspace)[0]?.argv[3]).toBe('--body=    oi');
   });
 
   it.each([

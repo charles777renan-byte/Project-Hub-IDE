@@ -28,12 +28,20 @@ export type PrNumber = z.infer<typeof prNumberSchema>;
 export const githubProjectInputSchema = z.object({ projectId: projectIdSchema });
 export type GithubProjectInput = z.infer<typeof githubProjectInputSchema>;
 
-/** Corpo do comentário: sem espaços nas pontas, de 1 a 65 536 caracteres. Só espaços vale como vazio. */
+/**
+ * Corpo do comentário: de 1 a 65 536 caracteres. Só espaços vale como vazio. O início é preservado (um bloco de
+ * código com quatro espaços de indentação precisa chegar assim ao GitHub) e só o final é aparado. O limite
+ * vale para o texto que vai ser enviado.
+ */
 export const githubCommentBodySchema = z
   .string()
-  .trim()
-  .min(1, 'Escreva o comentário.')
-  .max(COMMENT_BODY_MAX, 'O comentário passa de 65 536 caracteres.');
+  .transform((body) => body.trimEnd())
+  .pipe(
+    z
+      .string()
+      .min(1, 'Escreva o comentário.')
+      .max(COMMENT_BODY_MAX, 'O comentário passa de 65 536 caracteres.'),
+  );
 
 /** Entrada de `github:comment:v1`. */
 export const githubCommentInputSchema = z.object({
