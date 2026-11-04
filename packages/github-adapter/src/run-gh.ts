@@ -24,22 +24,26 @@ const BODY_PREFIX = '--body=';
 
 /**
  * Variáveis que mudariam o alvo do `gh`. `GH_REPO` faria `pr merge` agir em outro repositório, e `GH_HOST` em
- * outro servidor: o `gh` deve olhar sempre o `remote` da pasta (`cwd`). `GIT_DIR`, `GIT_WORK_TREE`,
- * `GIT_COMMON_DIR` e `GIT_INDEX_FILE` herdadas fariam o `git` que o `gh` chama olhar outro repositório que o
- * da pasta (as mesmas quatro que o adaptador do Git remove), e a checagem de origem (ADR 0011) não valeria
- * para o alvo real. `CLICOLOR_FORCE` e `GH_FORCE_TTY` forçariam cores e formato de terminal na saída, que o
- * adaptador lê como JSON.
+ * outro servidor: o `gh` deve olhar sempre o `remote` da pasta (`cwd`). `CLICOLOR_FORCE` e `GH_FORCE_TTY`
+ * forçariam cores e formato de terminal na saída, que o adaptador lê como JSON. Toda variável `GIT_*` também
+ * cai (ver `REMOVED_PREFIX`).
  */
 const REMOVED_VARIABLES: ReadonlySet<string> = new Set([
   'GH_REPO',
   'GH_HOST',
-  'GIT_DIR',
-  'GIT_WORK_TREE',
-  'GIT_COMMON_DIR',
-  'GIT_INDEX_FILE',
   'CLICOLOR_FORCE',
   'GH_FORCE_TTY',
 ]);
+
+/**
+ * Prefixo das variáveis do `git` que o `gh` herdaria pelo processo que ele chama. Não só `GIT_DIR`,
+ * `GIT_WORK_TREE`, `GIT_COMMON_DIR` e `GIT_INDEX_FILE`: `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_<n>`/
+ * `GIT_CONFIG_VALUE_<n>`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_GLOBAL` e `GIT_CONFIG_SYSTEM` podem criar um
+ * remoto `upstream` (que o `gh` prefere ao `origin`) ou trocar o `remote.origin.url`, e a checagem de origem
+ * (ADR 0011) só lê o `origin` da pasta. Como `GH_CONFIG_DIR` e `GH_TOKEN` não começam com `GIT_`, o login
+ * segue valendo.
+ */
+const REMOVED_PREFIX = 'GIT_';
 
 export const GH_NOT_AVAILABLE_MESSAGE =
   'GitHub CLI não encontrado. Instale o gh (https://cli.github.com) e reinicie o Project Hub.';
@@ -219,7 +223,7 @@ export function resolveGhCommand(
 
 /**
  * Ambiente do processo: sem pergunta no terminal, sem cor, sem aviso de atualização e sem as variáveis que
- * mudam o alvo do `gh` (`REMOVED_VARIABLES`). O resto (`GH_TOKEN`, `GH_CONFIG_DIR`, o PATH) segue como está.
+ * mudam o alvo do `gh` (`REMOVED_VARIABLES` e toda `GIT_*`). O resto (`GH_TOKEN`, `GH_CONFIG_DIR`, o PATH) segue como está.
  */
 export function ghEnvironment(
   source: NodeJS.ProcessEnv,
@@ -235,7 +239,8 @@ export function ghEnvironment(
   };
   // No Windows os nomes de variável não diferenciam maiúsculas: `gh_repo` valeria como `GH_REPO`.
   for (const name of Object.keys(env)) {
-    if (REMOVED_VARIABLES.has(name.toUpperCase())) delete env[name];
+    const upper = name.toUpperCase();
+    if (REMOVED_VARIABLES.has(upper) || upper.startsWith(REMOVED_PREFIX)) delete env[name];
   }
   return env;
 }
