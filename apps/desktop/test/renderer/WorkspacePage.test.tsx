@@ -938,19 +938,38 @@ describe('aba do projeto: visões', () => {
       // O mesmo nó (o xterm não é refeito), ainda no DOM, só escondido.
       expect(screen.getByTestId('terminal-view', { exact: true })).toBe(terminal);
       expect(terminal.closest('[hidden]')).not.toBeNull();
-      expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+      // A barra com o "Abrir terminal" fica; só a grade some.
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeVisible();
       expect(api.workspaces.open).toHaveBeenCalledTimes(1);
     });
 
-    it('a faixa fica acima do workspace, dentro do painel Terminais', async () => {
+    it('a faixa fica na barra do workspace, ao lado do botão Abrir terminal', async () => {
       await comTerminal();
 
       act(() => openFile('p1', 'a.ts'));
 
       const faixa = await screen.findByRole('tablist', { name: 'Arquivos abertos' });
-      const painel = document.getElementById('project-panel-terminais');
-      expect(painel).toContainElement(faixa);
-      expect(painel?.firstElementChild).toContainElement(faixa);
+      const barra = screen
+        .getByRole('button', { name: 'Abrir terminal' })
+        .closest('.workspace__toolbar');
+      expect(barra).not.toBeNull();
+      expect(barra).toContainElement(faixa);
+    });
+
+    it('escolher um programa em Abrir terminal, com um arquivo ativo, volta à grade', async () => {
+      const terminal = await comTerminal();
+      act(() => openFile('p1', 'a.ts'));
+      await screen.findByRole('tablist', { name: 'Arquivos abertos' });
+      expect(terminal.closest('[hidden]')).not.toBeNull();
+
+      await abrirPrograma(/PowerShell/);
+
+      expect(terminal.closest('[hidden]')).toBeNull();
+      expect(
+        within(screen.getByRole('tablist', { name: 'Arquivos abertos' })).getByRole('tab', {
+          name: 'Terminais',
+        }),
+      ).toHaveAttribute('aria-selected', 'true');
     });
 
     it('a aba Terminais volta a mostrar o workspace sem fechar o arquivo', async () => {

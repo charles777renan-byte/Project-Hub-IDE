@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ProviderIcon } from '../components/ProviderIcon';
@@ -53,6 +53,7 @@ export function WorkspaceToolbar({
   canSolo = false,
   onToggleSolo,
   onOpen,
+  trailing,
 }: {
   providers: readonly ProviderInfo[];
   busy: boolean;
@@ -68,6 +69,8 @@ export function WorkspaceToolbar({
   canSolo?: boolean;
   onToggleSolo?(): void;
   onOpen(provider: ProviderId): void;
+  /** O que ocupa o espaço livre à direita da barra (a faixa dos arquivos abertos). */
+  trailing?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -328,6 +331,9 @@ export function WorkspaceToolbar({
           </p>
         </div>
       ) : null}
+      {trailing === undefined ? null : (
+        <div className="workspace__toolbar-trailing">{trailing}</div>
+      )}
     </div>
   );
 }
