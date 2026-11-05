@@ -424,18 +424,17 @@
 }
 
 /*
- * A faixa de arquivos abertos (components/project/FileTabs.tsx), acima do workspace da visão Terminais. A aba ativa
+ * A faixa de arquivos abertos (components/project/FileTabs.tsx), no espaço livre da barra do workspace (Terminais). A aba ativa
  * usa --fill e, além da cor, um contorno de --field-line; o ponto de "não salvo" é uma forma (e o texto escondido o
  * diz), não só cor. O anel de foco vem de app.css, por dentro, porque a faixa rola e cortaria o de fora.
  */
 .file-tabs {
   display: flex;
-  flex: none;
+  flex: 1;
   gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 .file-tabs__item {
@@ -779,10 +778,15 @@
   white-space: pre-wrap;
 }
 
-/* A pergunta ao fechar uma aba com alterações não salvas (FileTabs), colada à faixa de abas. */
+/* A pergunta ao fechar uma aba com alterações não salvas (FileTabs), logo abaixo da barra do workspace. */
 .file-tabs-ask {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  left: 0;
+  z-index: 5;
   display: flex;
-  flex: none;
+  border-radius: var(--radius-card);
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);

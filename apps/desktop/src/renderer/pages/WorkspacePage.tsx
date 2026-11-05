@@ -16,7 +16,7 @@ import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
-import { useOpenFiles } from '../open-files';
+import { setActive, TERMINALS_TAB, useOpenFiles } from '../open-files';
 import { MissionPage } from './MissionPage';
 import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
@@ -104,13 +104,15 @@ export function WorkspacePage() {
         </p>
       ) : null}
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
-        <FileTabs projectId={projectId} />
-        <div className="project-tab__terminals" hidden={activeFile !== undefined}>
+        <div
+          className={`project-tab__terminals${activeFile === undefined ? '' : ' project-tab__terminals--file'}`}
+        >
           <WorkspaceBody
             key={projectId}
             projectId={projectId}
             projectName={project?.name ?? ''}
             visible={view === 'terminais' && activeFile === undefined}
+            filesActive={activeFile !== undefined}
             {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
           />
         </div>
@@ -195,12 +197,15 @@ function WorkspaceBody({
   projectId,
   projectName,
   visible,
+  filesActive,
   unavailableReason,
 }: {
   projectId: string;
   projectName: string;
   /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
   visible: boolean;
+  /** Há um arquivo ativo no lugar da grade: a barra (com a faixa dos arquivos) fica, e a grade fica escondida. */
+  filesActive: boolean;
   /** A pasta do projeto sumiu: a barra não abre terminal e a dica mostra este motivo. */
   unavailableReason?: string;
 }) {
@@ -320,7 +325,15 @@ function WorkspaceBody({
     setSoloOn(true);
     workspace.activateWithFocus(leafId);
   };
-  const toggleSolo = () => setSoloOn(soloLeaf === undefined);
+  /** Com um arquivo no lugar da grade, abrir terminal ou ligar as abas volta primeiro aos terminais. */
+  const backToTerminals = () => {
+    if (filesActive) setActive(projectId, TERMINALS_TAB);
+  };
+  const toggleSolo = () => {
+    // Vindo de um arquivo, o clique só volta à grade (ou ao painel mostrado): não desliga o modo que já estava ligado.
+    if (filesActive) backToTerminals();
+    else setSoloOn(soloLeaf === undefined);
+  };
 
   const run = async (leafId: string, action: (id: string) => Promise<string | null>) => {
     setBusy((previous) => new Set(previous).add(leafId));
@@ -343,6 +356,7 @@ function WorkspaceBody({
 
   const openPane = async (provider: ProviderId) => {
     if (openingRef.current) return;
+    backToTerminals();
     openingRef.current = true;
     setOpening(true);
     try {
@@ -489,8 +503,9 @@ function WorkspaceBody({
         canSolo={shownLeaves.length > 0}
         onToggleSolo={toggleSolo}
         onOpen={(provider) => void openPane(provider)}
+        trailing={<FileTabs projectId={projectId} />}
       />
-      <div className="workspace__area">
+      <div className="workspace__area" hidden={filesActive}>
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">
             <PaneTabs
