@@ -21,10 +21,17 @@ export {
   createTranscriptUsageTracker,
   type TranscriptUsageTracker,
 } from './claude-code/transcript-usage';
-export { localDayOf, type DayUsage, type SessionActivity } from './activity-types';
+export {
+  localDayOf,
+  type DayUsage,
+  type SessionActivity,
+  type SessionDetail,
+  type SessionTurn,
+} from './activity-types';
 export {
   listClaudeTranscripts,
   readClaudeTranscriptActivity,
+  transcriptCwd,
 } from './claude-code/transcript-activity';
 export {
   codexHomeOf,

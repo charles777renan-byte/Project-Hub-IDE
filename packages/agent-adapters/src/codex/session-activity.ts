@@ -2,7 +2,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { zstdDecompressSync } from 'node:zlib';
-import { localDayOf, type DayUsage, type SessionActivity } from '../activity-types';
+import {
+  localDayOf,
+  type DayUsage,
+  type SessionActivity,
+  type SessionDetail,
+  type SessionTurn,
+} from '../activity-types';
+import { DETAIL_LIMITS, cutText } from '../session-text';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -23,16 +30,34 @@ function cumulativeTokens(payload: Record<string, unknown>): number | undefined 
   return Math.max(0, input - cached) + count(total['output_tokens']);
 }
 
+/** O texto de um item do Codex: os blocos `text` do `content`, juntos. Item sem texto devolve `undefined`. */
+function itemText(item: Record<string, unknown>): string | undefined {
+  const content = item['content'];
+  if (!Array.isArray(content)) return undefined;
+  const parts = content
+    .filter((block): block is Record<string, unknown> => isRecord(block))
+    .map((block) => block['text'])
+    .filter((text): text is string => typeof text === 'string' && text.trim() !== '');
+  return parts.length === 0 ? undefined : parts.join('\n');
+}
+
 /**
- * Lê o conteúdo de uma sessão do Codex (`rollout-*.jsonl`) e devolve o uso por dia local. A pasta e o
- * início vêm da linha `session_meta`; sem ela não há como ligar a sessão a um terminal, então devolve
- * `undefined`. Mensagem é um `UserMessage` concluído. O Codex grava os tokens como total acumulado da
- * sessão; cada dia recebe a diferença para o valor anterior (a primeira linha conta inteira, e uma
- * diferença negativa conta zero). O cache fica fora do número. Linha que não é JSON é ignorada.
+ * Lê o conteúdo de uma sessão do Codex (`rollout-*.jsonl`) e devolve a sessão: o id e a pasta vêm da linha
+ * `session_meta`; sem ela não há como ligar a sessão a um terminal nem retomá-la, então devolve `undefined`.
+ * Mensagem é um `UserMessage` concluído. O Codex grava os tokens como total acumulado da sessão; cada dia
+ * recebe a diferença para o valor anterior (a primeira linha conta inteira, e uma diferença negativa conta
+ * zero). O cache fica fora do número. O detalhe vem dos itens concluídos e do `turn_context` (o modelo). O
+ * O formato não grava subagentes, então `subagents` é zero, como manda o spec. Linha que não é JSON é ignorada.
  */
 export function readCodexSessionActivity(text: string): SessionActivity | undefined {
+  let id: string | undefined;
   let cwd: string | undefined;
   let startedAt: string | undefined;
+  let lastActivityAt: string | undefined;
+  let model: string | undefined;
+  let firstPrompt: string | undefined;
+  let lastAgentText: string | undefined;
+  const turns: SessionTurn[] = [];
   const messagesByDay = new Map<string, number>();
   const tokensByDay = new Map<string, number>();
   let previous = 0;
@@ -54,21 +79,39 @@ export function readCodexSessionActivity(text: string): SessionActivity | undefi
       if (cwd !== undefined) continue;
       const folder = payload['cwd'];
       const started = payload['timestamp'] ?? timestamp;
+      const sessionId = payload['id'] ?? payload['session_id'];
       if (typeof folder !== 'string' || folder === '') continue;
       if (typeof started !== 'string' || localDayOf(started) === undefined) continue;
+      if (typeof sessionId !== 'string' || sessionId === '') continue;
       cwd = folder;
       startedAt = started;
+      id = sessionId;
+      continue;
+    }
+
+    if (record['type'] === 'turn_context') {
+      if (typeof payload['model'] === 'string' && payload['model'] !== '') model = payload['model'];
       continue;
     }
 
     if (record['type'] !== 'event_msg' || typeof timestamp !== 'string') continue;
     const date = localDayOf(timestamp);
     if (date === undefined) continue;
+    lastActivityAt = timestamp;
 
     if (payload['type'] === 'item_completed') {
       const item = payload['item'];
-      if (isRecord(item) && item['type'] === 'UserMessage') {
+      if (!isRecord(item)) continue;
+      const text = itemText(item);
+      if (item['type'] === 'UserMessage') {
         messagesByDay.set(date, (messagesByDay.get(date) ?? 0) + 1);
+        if (text !== undefined) {
+          firstPrompt ??= text;
+          turns.push({ role: 'user', text });
+        }
+      } else if (item['type'] === 'AgentMessage' && text !== undefined) {
+        lastAgentText = text;
+        turns.push({ role: 'agent', text });
       }
     } else if (payload['type'] === 'token_count') {
       const current = cumulativeTokens(payload);
@@ -79,7 +122,8 @@ export function readCodexSessionActivity(text: string): SessionActivity | undefi
     }
   }
 
-  if (cwd === undefined || startedAt === undefined) return undefined;
+  if (id === undefined || cwd === undefined || startedAt === undefined) return undefined;
+  if (lastActivityAt === undefined) lastActivityAt = startedAt;
 
   const dates = [...new Set([...messagesByDay.keys(), ...tokensByDay.keys()])].sort();
   const days: DayUsage[] = dates.map((date) => ({
@@ -87,7 +131,25 @@ export function readCodexSessionActivity(text: string): SessionActivity | undefi
     messages: messagesByDay.get(date) ?? 0,
     tokens: tokensByDay.get(date) ?? 0,
   }));
-  return { agent: 'codex', cwd, startedAt, days };
+
+  const detail: SessionDetail = {
+    title:
+      firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt),
+    firstPrompt: firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.firstPrompt),
+    lastAgentText:
+      lastAgentText === undefined ? null : cutText(lastAgentText, DETAIL_LIMITS.lastAgentText),
+    lastTurns:
+      turns.length === 0
+        ? null
+        : turns.slice(-DETAIL_LIMITS.lastTurns).map((turn) => ({
+            role: turn.role,
+            text: cutText(turn.text, DETAIL_LIMITS.turn),
+          })),
+    model: model ?? null,
+    subagents: 0,
+    messages: [...messagesByDay.values()].reduce((sum, count) => sum + count, 0),
+  };
+  return { id, agent: 'codex', cwd, startedAt, lastActivityAt, days, detail };
 }
 
 function numberedFolders(parent: string, pattern: RegExp): string[] {

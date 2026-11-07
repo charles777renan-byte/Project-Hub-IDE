@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   listClaudeTranscripts,
   readClaudeTranscriptActivity,
+  transcriptCwd,
 } from '../../src/claude-code/transcript-activity';
 
 const CWD = String.raw`C:\proj\x`;
@@ -13,8 +14,16 @@ function at(year: number, month: number, day: number, hour = 12, minute = 0): st
   return new Date(year, month - 1, day, hour, minute).toISOString();
 }
 
+const SESSION_ID = '5f0c2a7e-8d1b-4c3a-9e2f-1a2b3c4d5e6f';
+
 function userLine(timestamp: string, content: unknown, extra: Record<string, unknown> = {}): string {
-  return JSON.stringify({ type: 'user', timestamp, message: { role: 'user', content }, ...extra });
+  return JSON.stringify({
+    type: 'user',
+    timestamp,
+    sessionId: SESSION_ID,
+    message: { role: 'user', content },
+    ...extra,
+  });
 }
 
 function assistantLine(
@@ -26,6 +35,7 @@ function assistantLine(
   return JSON.stringify({
     type: 'assistant',
     timestamp,
+    sessionId: SESSION_ID,
     message: {
       id,
       role: 'assistant',
@@ -48,7 +58,8 @@ describe('readClaudeTranscriptActivity', () => {
       userLine(at(2026, 10, 31, 10), 'terceira'),
     );
     const activity = readClaudeTranscriptActivity(text, CWD);
-    expect(activity).toEqual({
+    expect(activity).toMatchObject({
+      id: SESSION_ID,
       agent: 'claude',
       cwd: CWD,
       startedAt: at(2026, 10, 30, 9),
@@ -105,6 +116,21 @@ describe('readClaudeTranscriptActivity', () => {
     expect(
       readClaudeTranscriptActivity(JSON.stringify({ type: 'user', message: { content: 'x' } }), CWD),
     ).toBeUndefined();
+  });
+});
+
+describe('transcriptCwd', () => {
+  it('devolve o cwd da primeira linha que o traz', () => {
+    const text = transcript(
+      JSON.stringify({ type: 'summary' }),
+      JSON.stringify({ type: 'user', cwd: CWD, timestamp: at(2026, 10, 30, 9), message: { content: 'oi' } }),
+      JSON.stringify({ type: 'user', cwd: 'C:\\outro', timestamp: at(2026, 10, 30, 10), message: { content: 'x' } }),
+    );
+    expect(transcriptCwd(text)).toBe(CWD);
+  });
+
+  it('devolve undefined quando nenhuma linha traz cwd, e ignora linha que não é JSON', () => {
+    expect(transcriptCwd(transcript('lixo', JSON.stringify({ type: 'summary' })))).toBeUndefined();
   });
 });
 

@@ -23,7 +23,7 @@ function meta(timestamp: string, cwd = String.raw`C:\proj\x`): string {
   return JSON.stringify({
     timestamp,
     type: 'session_meta',
-    payload: { timestamp, cwd, originator: 'codex-tui' },
+    payload: { id: 'sessao-de-teste', timestamp, cwd, originator: 'codex-tui' },
   });
 }
 
@@ -63,7 +63,8 @@ describe('readCodexSessionActivity', () => {
   it('lê a fixture de uma sessão do CLI: pasta, início, mensagens e tokens do dia', () => {
     // Tokens por linha: (entrada - cache) + saída, em valor acumulado: 3358, 6794, 10360, 10995.
     // A diferença entre elas soma 10995; a linha repetida e a de `info: null` não contam de novo.
-    expect(readCodexSessionActivity(FIXTURE)).toEqual({
+    expect(readCodexSessionActivity(FIXTURE)).toMatchObject({
+      id: 'sessao',
       agent: 'codex',
       cwd: String.raw`C:\proj\x`,
       startedAt: '2026-10-30T12:00:00.000Z',

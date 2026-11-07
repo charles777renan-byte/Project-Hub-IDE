@@ -1,6 +1,13 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { localDayOf, type DayUsage, type SessionActivity } from '../activity-types';
+import {
+  localDayOf,
+  type DayUsage,
+  type SessionActivity,
+  type SessionDetail,
+  type SessionTurn,
+} from '../activity-types';
+import { DETAIL_LIMITS, cutText } from '../session-text';
 import { readUsageLine } from './transcript-usage';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -22,6 +29,16 @@ function typedText(content: unknown): string | undefined {
   return text;
 }
 
+/** O texto de uma resposta do agente: os blocos de texto, juntos. Resposta só de ferramenta devolve `undefined`. */
+function replyText(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const parts = content
+    .filter((item): item is Record<string, unknown> => isRecord(item) && item['type'] === 'text')
+    .map((item) => item['text'])
+    .filter((text): text is string => typeof text === 'string' && text.trim() !== '');
+  return parts.length === 0 ? undefined : parts.join('\n');
+}
+
 function isUserMessage(record: Record<string, unknown>): boolean {
   if (record['type'] !== 'user' || record['isMeta'] === true) return false;
   const message = record['message'];
@@ -34,15 +51,27 @@ function isUserMessage(record: Record<string, unknown>): boolean {
 }
 
 /**
- * Lê o conteúdo de um transcript do Claude Code e devolve o uso por dia local. Mensagem é um texto
- * digitado pela pessoa; tokens são entrada nova mais saída (o cache fica fora), com o último uso visto
- * de cada resposta, no dia da linha que fixou esse valor. Linha que não é JSON é ignorada.
+ * Lê o conteúdo de um transcript do Claude Code e devolve a sessão: o id (o `sessionId` das linhas, que é o
+ * que `claude --resume` usa), o uso por dia local e o detalhe da aba Sessões. Mensagem é um texto digitado
+ * pela pessoa; tokens são entrada nova mais saída (o cache fica fora), com o último uso visto de cada
+ * resposta, no dia da linha que fixou esse valor. O detalhe usa só o canal principal da conversa (o que a
+ * pessoa e o agente trocaram); as linhas laterais são dos subagentes, e contam só para o número deles. Sem
+ * `sessionId` a sessão não tem como ser retomada, então devolve `undefined`. Linha que não é JSON é ignorada.
  */
 export function readClaudeTranscriptActivity(
   text: string,
   cwd: string,
 ): SessionActivity | undefined {
+  let id: string | undefined;
   let startedAt: string | undefined;
+  let lastActivityAt: string | undefined;
+  let aiTitle: string | undefined;
+  let firstPrompt: string | undefined;
+  let model: string | undefined;
+  let lastAgentText: string | undefined;
+  let lastAssistantId: string | undefined;
+  const turns: SessionTurn[] = [];
+  const subagentIds = new Set<string>();
   const messagesByDay = new Map<string, number>();
   const responses = new Map<string, { date: string; tokens: number }>();
 
@@ -59,8 +88,39 @@ export function readClaudeTranscriptActivity(
     const date = typeof timestamp === 'string' ? localDayOf(timestamp) : undefined;
     if (typeof timestamp !== 'string' || date === undefined) continue;
     startedAt ??= timestamp;
+    lastActivityAt = timestamp;
+    const sessionId = record['sessionId'];
+    if (id === undefined && typeof sessionId === 'string' && sessionId !== '') id = sessionId;
 
-    if (isUserMessage(record)) messagesByDay.set(date, (messagesByDay.get(date) ?? 0) + 1);
+    const sidechain = record['isSidechain'] === true;
+    if (sidechain && typeof record['agentId'] === 'string') subagentIds.add(record['agentId']);
+    if (record['type'] === 'ai-title' && typeof record['aiTitle'] === 'string') {
+      aiTitle = record['aiTitle'];
+    }
+
+    if (isUserMessage(record)) {
+      messagesByDay.set(date, (messagesByDay.get(date) ?? 0) + 1);
+      const typed = typedText((record['message'] as Record<string, unknown>)['content']);
+      if (!sidechain && typed !== undefined) {
+        firstPrompt ??= typed;
+        turns.push({ role: 'user', text: typed });
+      }
+    }
+
+    if (record['type'] === 'assistant' && !sidechain && isRecord(record['message'])) {
+      const message = record['message'];
+      if (typeof message['model'] === 'string' && message['model'] !== '') model = message['model'];
+      const reply = replyText(message['content']);
+      if (reply !== undefined) {
+        lastAgentText = reply;
+        // Uma resposta gravada em várias linhas (uma por bloco) vira um turno só.
+        const sameReply = typeof message['id'] === 'string' && message['id'] === lastAssistantId;
+        const last = turns[turns.length - 1];
+        if (sameReply && last?.role === 'agent') last.text = reply;
+        else turns.push({ role: 'agent', text: reply });
+        lastAssistantId = typeof message['id'] === 'string' ? message['id'] : undefined;
+      }
+    }
 
     const parsed = readUsageLine(line);
     if (parsed !== undefined) {
@@ -72,7 +132,7 @@ export function readClaudeTranscriptActivity(
     }
   }
 
-  if (startedAt === undefined) return undefined;
+  if (id === undefined || startedAt === undefined || lastActivityAt === undefined) return undefined;
 
   const tokensByDay = new Map<string, number>();
   for (const { date, tokens } of responses.values()) {
@@ -84,7 +144,54 @@ export function readClaudeTranscriptActivity(
     messages: messagesByDay.get(date) ?? 0,
     tokens: tokensByDay.get(date) ?? 0,
   }));
-  return { agent: 'claude', cwd, startedAt, days };
+
+  const detail: SessionDetail = {
+    title: detailTitle(aiTitle, firstPrompt),
+    firstPrompt: firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.firstPrompt),
+    lastAgentText:
+      lastAgentText === undefined ? null : cutText(lastAgentText, DETAIL_LIMITS.lastAgentText),
+    lastTurns:
+      turns.length === 0
+        ? null
+        : turns.slice(-DETAIL_LIMITS.lastTurns).map((turn) => ({
+            role: turn.role,
+            text: cutText(turn.text, DETAIL_LIMITS.turn),
+          })),
+    model: model ?? null,
+    // O Claude grava o subagente nas linhas laterais; sem elas, zero é o número certo.
+    subagents: subagentIds.size,
+    messages: [...messagesByDay.values()].reduce((sum, count) => sum + count, 0),
+  };
+  return { id, agent: 'claude', cwd, startedAt, lastActivityAt, days, detail };
+}
+
+/**
+ * A pasta de trabalho gravada no transcript: o `cwd` da primeira linha que o traz. É a pasta real da sessão, sem
+ * a codificação do nome da pasta do transcript (que troca caracteres e não se desfaz). Sem nenhum `cwd`, `undefined`.
+ */
+export function transcriptCwd(text: string): string | undefined {
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    let record: unknown;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (isRecord(record) && typeof record['cwd'] === 'string' && record['cwd'] !== '') {
+      return record['cwd'];
+    }
+  }
+  return undefined;
+}
+
+/** O título do ai-title; sem ele, o primeiro prompt cortado em 80. Sem nada, `null`. */
+export function detailTitle(aiTitle: string | undefined, firstPrompt: string | undefined): string | null {
+  if (aiTitle !== undefined && aiTitle.trim() !== '') return cutText(aiTitle, DETAIL_LIMITS.title);
+  if (firstPrompt !== undefined && firstPrompt.trim() !== '') {
+    return cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt);
+  }
+  return null;
 }
 
 /**
