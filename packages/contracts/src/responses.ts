@@ -21,6 +21,7 @@ import {
 import { githubPanelSchema } from './github';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
+import { sessionsListResultSchema } from './sessions';
 import { systemUsageDtoSchema } from './system';
 import { projectSummarySchema, repositoryInitPreviewSchema } from './project';
 import {
@@ -135,4 +136,6 @@ export const responseSchemas = {
   [CHANNELS.githubComment]: appResultSchema(z.undefined()),
   [CHANNELS.githubMerge]: appResultSchema(z.undefined()),
   [CHANNELS.githubOpenUrl]: appResultSchema(z.undefined()),
+  [CHANNELS.sessionsList]: appResultSchema(sessionsListResultSchema),
+  [CHANNELS.sessionsResume]: appResultSchema(workspaceDtoSchema),
 } as const;
