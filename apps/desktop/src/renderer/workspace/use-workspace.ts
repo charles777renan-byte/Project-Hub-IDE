@@ -9,7 +9,11 @@ import type {
   WorkspaceDto,
 } from '@project-hub/contracts';
 import { notify } from '../notify';
-import { WORKSPACES_CHANGED_EVENT } from '../workspaces-events';
+import {
+  RESUME_SESSION_REQUEST_EVENT,
+  WORKSPACES_CHANGED_EVENT,
+  type ResumeSessionRequest,
+} from '../workspaces-events';
 import {
   firstFreeLeaf,
   findLeaf,
@@ -47,6 +51,8 @@ export type UseWorkspace = {
   startSession(leafId: string): Promise<string | null>;
   /** Abre um painel novo do provedor. `null` = ok; texto = erro. O servidor decide a organização: o layout devolvido vale inteiro. */
   addPane(provider: ProviderId): Promise<string | null>;
+  /** Retoma uma sessão do histórico como painel novo deste workspace. `null` = ok; texto = erro. */
+  resumeSession(sessionId: string): Promise<string | null>;
   /** Fecha o painel. `null` = ok; texto = erro. Se a folha ativa saiu, ativa a primeira restante. */
   removePane(leafId: string): Promise<string | null>;
   activeLeafId: string | null;
@@ -340,18 +346,42 @@ export function useWorkspace(projectId: string): UseWorkspace {
     [adopt, saveNow, scheduleSave, setSaveError],
   );
 
+  /** Depois de um painel novo: a folha que não existia antes fica ativa, com foco. */
+  const focusCreatedLeaf = useCallback(
+    (previous: LayoutNode | null, next: WorkspaceDto) => {
+      const known = new Set(leavesOf(previous).map((leaf) => leaf.id));
+      const created = leavesOf(next.layout).find((leaf) => !known.has(leaf.id));
+      if (created !== undefined) setActive(created.id, true);
+    },
+    [setActive],
+  );
+
   const addPane = useCallback(
     (provider: ProviderId) =>
-      changePanes(
-        (id) => window.projectHub.workspaces.addPane(id, provider),
-        (previous, next) => {
-          const known = new Set(leavesOf(previous).map((leaf) => leaf.id));
-          const created = leavesOf(next.layout).find((leaf) => !known.has(leaf.id));
-          if (created !== undefined) setActive(created.id, true);
-        },
-      ),
-    [changePanes, setActive],
+      changePanes((id) => window.projectHub.workspaces.addPane(id, provider), focusCreatedLeaf),
+    [changePanes, focusCreatedLeaf],
   );
+
+  /** O servidor confere a sessão e a pasta; aqui só entra o painel novo que ele devolve. */
+  const resumeSession = useCallback(
+    (sessionId: string) =>
+      changePanes(
+        (id) => window.projectHub.sessions.resume({ workspaceId: id, sessionId }),
+        focusCreatedLeaf,
+      ),
+    [changePanes, focusCreatedLeaf],
+  );
+
+  // A ponte da retomada: só o workspace do projeto desta tela responde ao pedido da aba Sessões.
+  useEffect(() => {
+    function onResumeRequest(event: Event) {
+      const request = (event as CustomEvent<ResumeSessionRequest>).detail;
+      if (request.projectId !== projectId) return;
+      request.answer = resumeSession(request.sessionId);
+    }
+    window.addEventListener(RESUME_SESSION_REQUEST_EVENT, onResumeRequest);
+    return () => window.removeEventListener(RESUME_SESSION_REQUEST_EVENT, onResumeRequest);
+  }, [projectId, resumeSession]);
 
   const removePane = useCallback(
     (leafId: string) =>
@@ -380,6 +410,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
     detach,
     startSession,
     addPane,
+    resumeSession,
     removePane,
     activeLeafId,
     focusLeafId,
