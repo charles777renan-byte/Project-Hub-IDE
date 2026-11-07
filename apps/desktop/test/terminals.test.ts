@@ -286,6 +286,22 @@ describe('serviço de terminais do app', () => {
     expect(h.opened[0]?.env).not.toHaveProperty('ANTHROPIC_API_KEY');
   });
 
+  it('com pasta e argumentos dados, abre nessa pasta e põe os argumentos depois do comando (a retomada)', async () => {
+    const h = setup();
+
+    const result = await h.service.openSession('p1', 'shell', {
+      cwd: 'C:/dev/outro',
+      args: ['--resume', 'sessao'],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(h.opened[0]).toMatchObject({
+      cwd: 'C:/dev/outro',
+      command: 'shell.exe',
+      args: ['-NoLogo', '--resume', 'sessao'],
+    });
+  });
+
   it('abre a sessão do provedor na pasta do projeto, grava no banco e usa o ambiente filtrado', async () => {
     const h = setup();
 

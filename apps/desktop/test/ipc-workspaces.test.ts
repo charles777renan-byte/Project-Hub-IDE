@@ -61,6 +61,7 @@ function setup() {
     startSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     endSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     addPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
+    resumeSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     removePane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     reorder: vi.fn(() => Promise.resolve(ok)),
   };
