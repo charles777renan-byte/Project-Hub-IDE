@@ -108,7 +108,10 @@ async function resizeAreaTo(
     .toBeLessThanOrEqual(2);
 }
 
-/** Quantos painéis a grade comporta numa área, pela regra do desenho (a mesma de `gridFit`). */
+/**
+ * Quantos painéis a grade comporta numa área, pela regra do desenho. Espelha `gridFit` em
+ * `src/renderer/workspace/layout-fit.ts`: se a regra mudar lá, muda aqui.
+ */
 function capacityOf(width: number, height: number): number {
   const maxColumns = width >= 1100 ? 3 : width >= NARROW_BELOW ? 2 : 0;
   if (maxColumns === 0) return 1;

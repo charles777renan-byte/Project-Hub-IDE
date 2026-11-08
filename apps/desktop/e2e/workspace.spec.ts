@@ -800,46 +800,99 @@ test('se o contexto WebGL se perde, o terminal volta ao DOM, ajusta as colunas �
   await endShell(page);
 });
 
-test('abrir muitos painéis em sequência não gera o aviso "Too many active WebGL contexts" do Chromium', async ({
+test('abrir muitos painéis e trocá-los pelas fichas não gera o aviso "Too many active WebGL contexts" do Chromium', async ({
   launchApp,
   gitRepo,
 }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(420_000);
   const projectName = basename(gitRepo.path);
   const { page } = await launchApp({ dialogPath: gitRepo.path });
-  await skipWithoutWebgl2(page);
   const messages: string[] = [];
   page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  // O teste guarda cada contexto WebGL que a página cria, para provar que as montagens passaram do limite de 16 do
+  // Chromium (a grade responsiva só mostra ~4 terminais por vez, então abrir painéis sozinho não chega lá).
+  await page.addInitScript(() => {
+    const contexts = new Set<WebGL2RenderingContext>();
+    Object.assign(window, { webglContexts: contexts });
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: Parameters<typeof original>
+    ) {
+      const context = original.apply(this, args);
+      if (args[0] === 'webgl2' && context !== null) contexts.add(context as WebGL2RenderingContext);
+      return context;
+    } as typeof original;
+  });
+  await page.reload();
+  await expect(homeTab(page)).toBeVisible();
+  await skipWithoutWebgl2(page);
+  /** Contextos WebGL criados pela página e quantos deles seguem vivos (não perdidos). */
+  const contexts = () =>
+    page.evaluate(() => {
+      const all = [
+        ...(window as unknown as { webglContexts: Set<WebGL2RenderingContext> }).webglContexts,
+      ];
+      return { created: all.length, alive: all.filter((gl) => !gl.isContextLost()).length };
+    });
   await addProjectAndOpenWorkspace(page, projectName);
-  // Cada painel aberto remonta os anteriores que seguem na grade. Sem soltar os contextos, ao abrir o décimo estariam
-  // vivos os antigos e os novos (mais que o limite de 16 do Chromium), sem nenhum teste segurando referência: o GC
-  // natural não recolhe os antigos dentro da mesma remontagem. A grade responsiva só mostra o que cabe (ao menos 340 x
-  // 260 px por terminal); os outros ficam como fichas em "Fora da grade", sem terminal montado. Cada abertura remonta
-  // só os mostrados, e as trocas de quem aparece (a ficha vira painel, outro vira ficha) também soltam contextos.
+
+  // A grade responsiva só mostra o que cabe (ao menos 340 x 260 px por terminal); os outros ficam como fichas em
+  // "Fora da grade", sem terminal montado. Abrir os 10 já remonta os mostrados a cada abertura.
   const total = 10;
   const onGrid = shellPanes(page);
-  const offGrid = page
+  const chips = page
     .getByRole('group', { name: 'Terminais fora da grade' })
     .locator('.off-grid__chip');
   for (let index = 0; index < total; index += 1) {
     await page.getByRole('button', { name: 'Abrir terminal' }).click();
     await page.getByRole('menuitem', { name: /PowerShell/ }).click();
     await expect
-      .poll(async () => (await onGrid.count()) + (await offGrid.count()), { timeout: 30_000 })
+      .poll(async () => (await onGrid.count()) + (await chips.count()), { timeout: 30_000 })
       .toBe(index + 1);
     await expectOpenSessions(page, index + 1);
   }
   const views = page.locator('.terminal-view');
   const shown = await onGrid.count();
   expect(shown, 'a grade mostra alguns painéis e deixa os outros como fichas').toBeLessThan(total);
-  expect(await offGrid.count()).toBe(total - shown);
+  expect(await chips.count()).toBe(total - shown);
   await expect(views).toHaveCount(shown);
+  await expectWebglCanvas(views);
+
+  // O que protege este teste: o contexto WebGL de um terminal precisa ser solto quando o painel sai da grade (vira
+  // ficha) e o do painel que uma ficha traz de volta é um contexto novo. Cada troca desmonta um terminal e monta
+  // outro. Com 20 trocas as montagens passam folgadas de 16: se o app deixasse os contextos descartados vivos, o
+  // Chromium avisaria ("Too many active WebGL contexts") e perderia o mais antigo, e as asserções abaixo pegariam.
+  const swaps = 20;
+  const before = (await contexts()).created;
+  for (let round = 0; round < swaps; round += 1) {
+    const chip = chips.first();
+    const label = (await chip.locator('.off-grid__chip-label').textContent()) ?? '';
+    await chip.click();
+    // A troca assentou: a ficha trazida saiu da faixa, o total de painéis não mudou e a grade tem os mesmos terminais.
+    await expect(
+      page
+        .getByRole('group', { name: 'Terminais fora da grade' })
+        .locator('.off-grid__chip-label')
+        .getByText(label, { exact: true }),
+    ).toHaveCount(0);
+    await expect(onGrid).toHaveCount(shown);
+    await expect(chips).toHaveCount(total - shown);
+    await expect(views).toHaveCount(shown);
+  }
+  const after = await contexts();
+  console.log(
+    `[medida] contextos WebGL: ${before} antes das trocas, ${JSON.stringify(after)} depois`,
+  );
+  // A guarda de que o teste montou o que disse: as trocas sozinhas criaram mais contextos que o limite do Chromium.
+  expect(after.created - before, 'contextos criados pelas trocas').toBeGreaterThan(16);
+  // Só os terminais da grade têm contexto vivo: os de todas as montagens anteriores foram liberados pelo app.
+  expect.soft(after.alive, 'contextos WebGL vivos com a grade cheia').toBeLessThanOrEqual(shown);
   await expectWebglCanvas(views);
   // Um contexto perdido só devolve o painel ao DOM depois de o xterm esperar 3 s por uma restauração.
   await page.waitForTimeout(4_000);
 
-  // Guarda extra: nenhum painel caiu para o DOM. Ela passa também sem a correção (os contextos
-  // perdidos eram os de painéis já descartados), então não é ela que reprova o teste.
+  // Guarda extra: nenhum painel caiu para o DOM (perda de contexto).
   for (let index = 0; index < shown; index += 1) {
     const view = views.nth(index);
     await expect(view.locator('canvas').first()).toBeAttached();
@@ -847,7 +900,9 @@ test('abrir muitos painéis em sequência não gera o aviso "Too many active Web
   }
   // A asserção que reprova sem a correção: o Chromium avisa quando passa de 16 contextos vivos.
   const loss = messages.filter((text) => WEBGL_LOSS.test(text));
-  console.log(`[medida] ${total} painéis, ${shown} na grade, avisos de contexto: ${loss.length}`);
+  console.log(
+    `[medida] ${total} painéis, ${shown} na grade, ${swaps} trocas, avisos de contexto: ${loss.length}`,
+  );
   expect(loss, 'avisos de contexto WebGL perdido ou em excesso').toEqual([]);
   // Fechar um painel traz a primeira ficha para a grade: o laço fecha o primeiro painel até não sobrar sessão.
   for (let left = total; left > 0; left -= 1) {
