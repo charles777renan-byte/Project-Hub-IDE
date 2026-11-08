@@ -9,6 +9,7 @@ import {
   E2E_HOOK_KEY,
   expectTerminalToContain,
   expectWebglCanvas,
+  fecharPainel,
   terminalForeground,
   skipWithoutWebgl2,
   terminalRowBox,
@@ -59,11 +60,11 @@ async function runHello(page: Page): Promise<void> {
   await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
 }
 
-/** Fecha o painel de índice `index` pelo botão "Fechar painel", sem confirmação; o painel some da tela. */
+/** Fecha o painel de índice `index` pelo menu ⋯ (shell comum: sem confirmação); o painel some da tela. */
 async function closePane(page: Page, index: number): Promise<void> {
   const panes = shellPanes(page);
   const before = await panes.count();
-  await panes.nth(index).getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await fecharPainel(page, 'PowerShell', { indice: index });
   await expect(panes).toHaveCount(before - 1, { timeout: 15_000 });
   await expectOpenSessions(page, before - 1);
 }
@@ -353,9 +354,9 @@ test('os painéis e a divisória da raiz voltam iguais depois de fechar e reabri
   expect(Math.abs(after.first / after.total - movedShare)).toBeLessThan(0.01);
 
   // Fechar um painel sem sessão não pede confirmação; o último deixa o estado vazio.
-  await second.page.getByRole('button', { name: 'Fechar painel', exact: true }).first().click();
+  await fecharPainel(second.page, 'PowerShell');
   await expect(shellPanes(second.page)).toHaveCount(1);
-  await second.page.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await fecharPainel(second.page, 'PowerShell');
   await expect(second.page.getByText('Nenhum terminal aberto')).toBeVisible();
 });
 

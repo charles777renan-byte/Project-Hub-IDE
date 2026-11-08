@@ -4,6 +4,32 @@ import { describe, expect, it, vi } from 'vitest';
 import { MenuAcoes } from '../../src/renderer/components/MenuAcoes';
 
 describe('MenuAcoes', () => {
+  it('com ícone, o gatilho mostra o ícone e usa o rótulo só como nome acessível', async () => {
+    const user = userEvent.setup();
+    render(
+      <MenuAcoes
+        rotulo="Mais ações do painel"
+        icone={<svg data-testid="icone" aria-hidden="true" />}
+        acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]}
+      />,
+    );
+    const gatilho = screen.getByRole('button', { name: 'Mais ações do painel' });
+    expect(gatilho).toHaveAttribute('aria-label', 'Mais ações do painel');
+    expect(gatilho).toContainElement(screen.getByTestId('icone'));
+    expect(gatilho).toHaveTextContent('');
+    expect(screen.queryByText('Mais ações do painel')).toBeNull();
+
+    await user.click(gatilho);
+    expect(screen.getByRole('menuitem', { name: 'Pausar' })).toBeVisible();
+  });
+
+  it('sem ícone, o gatilho segue sendo o texto do rótulo, sem aria-label', () => {
+    render(<MenuAcoes rotulo="Mais ações" acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]} />);
+    const gatilho = screen.getByRole('button', { name: 'Mais ações' });
+    expect(gatilho).toHaveTextContent('Mais ações');
+    expect(gatilho).not.toHaveAttribute('aria-label');
+  });
+
   it('abre com o clique e mostra as ações', async () => {
     const user = userEvent.setup();
     render(<MenuAcoes rotulo="Mais ações" acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]} />);

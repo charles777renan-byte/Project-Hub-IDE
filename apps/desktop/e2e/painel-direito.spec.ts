@@ -4,7 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test, type LaunchedApp, type LaunchOptions } from './fixtures';
 import { expectNoViolations, watchCsp } from './git-fixtures';
 import { addGitProject, filesTree, openFileFromPanel, openProject } from './missions';
-import { expectOpenSessions, expectTerminalToContain } from './terminals';
+import { expectOpenSessions, expectTerminalToContain, fecharPainel } from './terminals';
 
 // O painel direito e a edição de arquivos na janela real do Electron construído: as quatro abas do painel, abrir
 // um arquivo pelo teclado, editar, salvar no disco (lido com `fs`, não pela tela), fim de linha CRLF preservado,
@@ -282,7 +282,7 @@ test('o terminal montado antes segue montado ao abrir e fechar arquivos', async 
     await expectTerminalToContain(view, 'PS ');
     await expectNoViolations(page, consoleCsp, { allowXterm: true });
   } finally {
-    await panes.first().getByRole('button', { name: 'Fechar painel', exact: true }).click();
+    await fecharPainel(page, 'PowerShell');
     await expectOpenSessions(page, 0);
     await expect(page.getByText('Nenhum terminal aberto')).toBeVisible({ timeout: 15_000 });
   }

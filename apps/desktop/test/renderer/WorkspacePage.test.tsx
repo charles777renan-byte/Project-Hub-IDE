@@ -41,6 +41,22 @@ const leaf = (
   terminalId: string | null = null,
 ) => ({ type: 'leaf', id, provider, terminalId }) as const;
 
+/**
+ * Abre o menu ⋯ do painel pelo teclado. Com mais de um painel, o clique do mouse não serve no jsdom: a
+ * biblioteca das divisórias mede tudo em zero ali, trata todo clique como se fosse na divisória e o cancela, e
+ * o Radix só abre o menu no pointerdown que ninguém cancelou. No navegador de verdade o clique funciona (E2E).
+ */
+async function abrirMenuDoPainel(pane: HTMLElement): Promise<void> {
+  within(pane).getByRole('button', { name: 'Mais ações do painel' }).focus();
+  await userEvent.keyboard('{Enter}');
+}
+
+/** Fecha o painel de uma sessão viva: abre o menu ⋯ e escolhe o item que fecha sem perguntar (shell comum). */
+async function fecharPeloMenu(pane: HTMLElement): Promise<void> {
+  await abrirMenuDoPainel(pane);
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Fechar painel' }));
+}
+
 function padrao(shellTerminal: string | null = null): LayoutNode {
   return {
     type: 'split',
@@ -232,8 +248,39 @@ describe('WorkspacePage', () => {
     api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
+  });
+
+  it('fechar um agente avulso vivo pergunta antes; "Voltar" mantém o painel e confirmar chama removePane', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: [{ ...shellTerminal, provider: 'claude', title: 'Claude Code' }],
+    });
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    renderAt();
+    await screen.findAllByRole('region', { name: 'Painel Claude Code' });
+    // Dois painéis levam o nome do Claude Code: o lançador da folha `a` e a sessão avulsa da folha `c`.
+    const pane = screen
+      .getAllByRole('region', { name: 'Painel Claude Code' })
+      .find(
+        (item) => within(item).queryByRole('button', { name: 'Mais ações do painel' }) !== null,
+      );
+    if (pane === undefined) throw new Error('sem o painel da sessão avulsa');
+    await abrirMenuDoPainel(pane);
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Fechar painel e encerrar…' }),
+    );
+    await userEvent.click(within(pane).getByRole('button', { name: 'Voltar' }));
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    await abrirMenuDoPainel(pane);
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Fechar painel e encerrar…' }),
+    );
+    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar e encerrar' }));
+    await waitFor(() => expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c'));
+    expect(api.workspaces.removePane).toHaveBeenCalledTimes(1);
   });
 
   it('o painel some na hora, sem esperar o processo principal responder', async () => {
@@ -246,7 +293,7 @@ describe('WorkspacePage', () => {
     api.workspaces.removePane.mockReturnValue(new Promise((resolve) => (finish = resolve)));
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     expect(screen.queryByRole('region', { name: 'Painel PowerShell' })).not.toBeInTheDocument();
     expect(screen.getByText('Nenhum terminal aberto')).toBeInTheDocument();
     await act(async () => finish({ ok: true, data: { ...dto(padrao()), layout: null } }));
@@ -266,7 +313,7 @@ describe('WorkspacePage', () => {
     const sidebar = renderHook(() => useTerminals());
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
     await waitFor(() => expect(sidebar.result.current.terminals).toHaveLength(1));
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     // O processo principal ainda não respondeu, e a lista já não traz o terminal.
     expect(sidebar.result.current.terminals).toHaveLength(0);
     await act(async () =>
@@ -284,7 +331,7 @@ describe('WorkspacePage', () => {
     });
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     const back = await screen.findByRole('region', { name: 'Painel PowerShell' });
     expect(await within(back).findByRole('alert')).toHaveTextContent(
       'Não foi possível fechar o painel',
@@ -466,7 +513,7 @@ describe('WorkspacePage', () => {
   });
 
   it('location.state.showTerminal põe o terminal no painel ativo uma vez e limpa o estado', async () => {
-    // Sessão de missão: é a única que ainda tem "Tirar do painel".
+    // Sessão de missão: é a única que tem "Tirar do painel" (item do menu ⋯).
     api.terminals.list.mockResolvedValue({
       ok: true,
       data: [{ ...shellTerminal, missionId: 'm1' }],
@@ -483,7 +530,8 @@ describe('WorkspacePage', () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     });
     // Depois de consumido, tirar o terminal do painel não o devolve em um novo render da mesma rota.
-    await userEvent.click(screen.getByRole('button', { name: 'Tirar do painel' }));
+    await abrirMenuDoPainel(active!);
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Tirar do painel' }));
     view.rerender(<MemoryRouter initialEntries={['/ignorado']}>{tree()}</MemoryRouter>);
     await act(async () => {});
     expect(screen.queryByTestId('terminal-view')).not.toBeInTheDocument();
@@ -692,11 +740,11 @@ describe('animação ao abrir e fechar painéis', () => {
     api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     expect(leafOf(pane)).toHaveAttribute('data-motion', 'leaving');
     expect(api.workspaces.removePane).not.toHaveBeenCalled();
     // A animação de algo de dentro do painel não conta.
-    animationEnd(within(pane).getByRole('button', { name: 'Fechar painel' }), 'pane-out');
+    animationEnd(within(pane).getByRole('button', { name: 'Mais ações do painel' }), 'pane-out');
     expect(screen.getByRole('region', { name: 'Painel PowerShell' })).toBe(pane);
     expect(leafOf(pane)).toHaveAttribute('data-motion', 'leaving');
     // O fim da saída tira o painel da tela no mesmo instante, sem esperar o prazo.
@@ -712,7 +760,7 @@ describe('animação ao abrir e fechar painéis', () => {
     api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     await waitFor(() => expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c'));
     expect(api.workspaces.removePane).toHaveBeenCalledTimes(1);
   });
@@ -724,7 +772,7 @@ describe('animação ao abrir e fechar painéis', () => {
     api.workspaces.removePane.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
     renderAt();
     const pane = await screen.findByRole('region', { name: 'Painel PowerShell' });
-    await userEvent.click(within(pane).getByRole('button', { name: 'Fechar painel' }));
+    await fecharPeloMenu(pane);
     expect(api.workspaces.removePane).toHaveBeenCalledWith('w1', 'c');
   });
 });
@@ -831,9 +879,7 @@ describe('modo "um painel por vez"', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
     await userEvent.click(screen.getByRole('tab', { name: /PowerShell/ }));
 
-    await userEvent.click(
-      within(pane('PowerShell') as HTMLElement).getByRole('button', { name: 'Fechar painel' }),
-    );
+    await fecharPeloMenu(pane('PowerShell') as HTMLElement);
 
     await waitFor(() => expect(pane('Codex')).toBeInTheDocument());
     expect(pane('PowerShell')).not.toBeInTheDocument();

@@ -2,7 +2,12 @@ import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { addGitProject, createMission, openProject, orchestrate, viewTab } from './missions';
-import { expectOpenSessions, expectTerminalToContain, terminalSize } from './terminals';
+import {
+  expectOpenSessions,
+  expectTerminalToContain,
+  fecharPainel,
+  terminalSize,
+} from './terminals';
 
 // As transições das abas na janela real (styles/motion.css). O jsdom não anima, então aqui se prova que a animação
 // toca (o evento `animationstart` chega com o nome esperado), que ela some com "reduzir movimento" e que o terminal
@@ -226,11 +231,9 @@ test('o terminal montado por baixo não muda de tamanho enquanto a visão Termin
     expect(depois?.cols).toBe(antes?.cols);
     expect(depois?.rows).toBe(antes?.rows);
   } finally {
-    const closeButton = page
-      .getByRole('region', { name: 'Painel PowerShell' })
-      .getByRole('button', { name: 'Fechar painel', exact: true });
-    if ((await closeButton.count()) === 0) await viewTab(page, 'Terminais').click();
-    await closeButton.click();
+    const panes = page.getByRole('region', { name: 'Painel PowerShell' });
+    if ((await panes.count()) === 0) await viewTab(page, 'Terminais').click();
+    await fecharPainel(page, 'PowerShell');
     await expect(page.getByRole('region', { name: 'Painel PowerShell' })).toHaveCount(0);
     await expectOpenSessions(page, 0);
   }
@@ -258,7 +261,7 @@ test('abrir um terminal faz o painel crescer e aparecer; fechar o encolhe antes 
   await page.evaluate(() => {
     window.__animacoes = [];
   });
-  await pane.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await fecharPainel(page, 'PowerShell');
   await expect.poll(() => animacoesDesdeAAnotacao(page)).toContain('pane-out');
   await expect(pane).toHaveCount(0);
   await expectOpenSessions(page, 0);
