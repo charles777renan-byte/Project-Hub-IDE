@@ -2193,6 +2193,69 @@ describe('fechar todos os terminais', () => {
     expect(faixa()).toBeNull();
   });
 
+  it('sair do projeto com a faixa aberta descarta o pedido: ao voltar, não há faixa', async () => {
+    comSessoes(2, (i) => shell(i));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    const primeira = renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 2 painéis/ });
+
+    primeira.unmount();
+    expect(pedido.result.current).toBe(false);
+
+    renderAt();
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
+    expect(faixa()).toBeNull();
+    expect(screen.queryByRole('group', { name: /Fechar os/ })).not.toBeInTheDocument();
+  });
+
+  it('a faixa só aparece com a lista de terminais carregada, para não subestimar as sessões', async () => {
+    comSessoes(2, (i) => shell(i));
+    let responder: (valor: unknown) => void = () => {};
+    api.terminals.list.mockReturnValue(new Promise((resolve) => (responder = resolve)));
+    renderAt();
+    await pedir();
+
+    expect(faixa()).toBeNull();
+
+    await act(async () => {
+      responder({ ok: true, data: [shell(0), shell(1)] });
+    });
+
+    expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toHaveTextContent(
+      '2 sessões serão encerradas',
+    );
+  });
+
+  it('a faixa flutua sobre a área da grade: abrir a pergunta não muda a área medida, os painéis nem as fichas', async () => {
+    // 12 painéis numa área com altura para uma linha: o limite em que perder altura perderia a linha.
+    areaSize = { width: 1000, height: 270 };
+    comSessoes(12, (i) => shell(i));
+    renderAt();
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
+    const area = document.querySelector('.workspace__area') as HTMLElement;
+    const mostrados = regioes().length;
+    const fichasAntes = screen
+      .queryAllByRole('group', { name: 'Terminais fora da grade' })
+      .map((item) => item.textContent);
+    expect(mostrados).toBeLessThan(12);
+
+    act(() => requestCloseAll('p1'));
+    const grupo = await screen.findByRole('group', { name: /Fechar os 12 painéis/ });
+
+    // A faixa mora dentro da área (posicionada por cima, fora do fluxo), não ao lado dela: não tira altura da medida.
+    expect(area.contains(grupo)).toBe(true);
+    expect(document.querySelector('.workspace__area')).toBe(area);
+    expect(regioes()).toHaveLength(mostrados);
+    expect(
+      screen
+        .queryAllByRole('group', { name: 'Terminais fora da grade' })
+        .map((item) => item.textContent),
+    ).toEqual(fichasAntes);
+  });
+
   describe('pelo cabeçalho', () => {
     /** Abre Mais ações pelo teclado (como em "aba do projeto: visões") e escolhe "Fechar todos os terminais…". */
     async function escolherFecharTodos() {

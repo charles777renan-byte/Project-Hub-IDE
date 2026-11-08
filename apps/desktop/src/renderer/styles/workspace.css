@@ -1644,11 +1644,17 @@
 }
 
 /*
- * A pergunta de "Fechar todos os terminais…" (workspace/WorkspacePage.tsx): uma faixa acima da grade, com o mesmo
- * visual da .pane__confirm (cartão --surface com contorno de 1px), que quebra linha e nunca encolhe.
+ * A pergunta de "Fechar todos os terminais…" (workspace/WorkspacePage.tsx): uma faixa que flutua sobre o topo da área
+ * da grade, com o visual da .pane__confirm (cartão --surface com contorno de 1px), que quebra linha. Fica fora do fluxo
+ * (position: absolute dentro da .workspace__area, que é o contêiner posicionado): abrir a pergunta não tira altura da
+ * área medida, então a grade não perde linha, ninguém vai para "Fora da grade" e os terminais não são redimensionados.
  */
 .workspace__confirm {
-  flex: none;
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  left: var(--space-2);
+  z-index: 10;
   padding: var(--space-2);
   border-radius: var(--radius-card);
   background: var(--surface);
@@ -1831,6 +1837,8 @@
 }
 
 .workspace__area {
+  /* Contêiner da faixa de "Fechar todos" (.workspace__confirm), que flutua sobre ele sem tirar altura. */
+  position: relative;
   display: flex;
   flex: 1;
   min-width: 0;
