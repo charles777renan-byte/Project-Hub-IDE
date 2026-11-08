@@ -168,15 +168,23 @@ export function TabsOverflow({
   items: readonly TabsOverflowItem[];
   onSelect: (id: string) => void;
 }) {
+  // Escolher uma aba leva o foco a ela (quem usa o faz em `onSelect`): o menu não o devolve ao botão.
+  const chose = useRef(false);
   if (items.length === 0) return null;
   return (
     <span className="tabs-overflow">
       <MenuAcoes
         rotulo="Abas fora de vista"
         icone={<ChevronDown {...ICON_PROPS} />}
+        aoFecharDevolverFoco={(event) => {
+          if (!chose.current) return;
+          chose.current = false;
+          event.preventDefault();
+        }}
         acoes={items.map((item) => ({
           rotulo: item.label,
           onSelecionar: () => {
+            chose.current = true;
             onSelect(item.id);
             scrollTabIntoView(item.id);
           },

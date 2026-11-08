@@ -54,6 +54,11 @@ test('arrastar e Alt com as setas ordenam as abas, e a ordem volta igual depois 
   await addProjects(first.page, dataDir);
   await openWorkspaces(first.page);
   await expect(tabs(first.page)).toHaveText(NAMES);
+  // Com poucas abas, tudo cabe: não há botão "Abas fora de vista" nem esmaecimento.
+  await expect(first.page.getByRole('button', { name: 'Abas fora de vista' })).toHaveCount(0);
+  await expect(
+    first.page.getByRole('navigation', { name: 'Workspaces abertos' }),
+  ).not.toHaveAttribute('data-fade-end');
 
   // Arrasta a última aba para antes da primeira.
   await tabs(first.page)
@@ -113,4 +118,6 @@ test('com a janela estreita e muitas abas, o botão "Abas fora de vista" lista a
     return box.left >= area.left - 1 && box.right <= area.right + 1;
   }, targetName);
   expect(inside).toBe(true);
+  // O foco vai para o link da aba escolhida (o botão pode sumir com a escolha).
+  await expect(strip.getByRole('link', { name: targetName, exact: true })).toBeFocused();
 });

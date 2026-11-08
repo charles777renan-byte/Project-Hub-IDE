@@ -29,11 +29,17 @@ export function MenuAcoes({
   rotulo,
   icone,
   acoes,
+  aoFecharDevolverFoco,
 }: {
   rotulo: string;
   /** Gatilho só de ícone: o `rotulo` deixa de aparecer e vira o `aria-label`. */
   icone?: ReactNode;
   acoes: AcaoMenu[];
+  /**
+   * Ao fechar, o Radix devolve o foco ao botão. Quem leva o foco para outro lugar ao escolher um item chama
+   * `event.preventDefault()` aqui, e o foco fica onde ele o pôs.
+   */
+  aoFecharDevolverFoco?: (event: Event) => void;
 }) {
   return (
     <DropdownMenu.Root modal={false}>
@@ -53,10 +59,12 @@ export function MenuAcoes({
           align="end"
           sideOffset={6}
           collisionPadding={8}
+          onCloseAutoFocus={aoFecharDevolverFoco}
         >
-          {acoes.map((acao) => (
+          {acoes.map((acao, index) => (
+            // O índice entra na chave: dois itens podem ter o mesmo rótulo.
             <DropdownMenu.Item
-              key={acao.rotulo}
+              key={`${index}-${acao.rotulo}`}
               className={
                 acao.perigosa === true
                   ? 'menu-acoes__item menu-acoes__item--perigo'

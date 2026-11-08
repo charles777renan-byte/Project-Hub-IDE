@@ -69,9 +69,17 @@ export function FileTabs({ projectId }: { projectId: string }) {
   }
 
   const asking = files.find((file) => file.path === closing && file.dirty);
-  const hiddenTabs = keys
-    .filter((key) => overflow.hidden.includes(key))
-    .map((key) => ({ id: key, label: key === TREE_TAB ? TEXT.tree : fileName(key) }));
+  // No menu "⌄" só entram as escondidas; dois arquivos de mesmo nome ali ganham o caminho, para a pessoa os distinguir.
+  const hiddenKeys = keys.filter((key) => overflow.hidden.includes(key));
+  const nameOfKey = (key: string) => (key === TREE_TAB ? TEXT.tree : fileName(key));
+  const hiddenTabs = hiddenKeys.map((key) => ({
+    id: key,
+    label:
+      key !== TREE_TAB &&
+      hiddenKeys.filter((other) => nameOfKey(other) === nameOfKey(key)).length > 1
+        ? key
+        : nameOfKey(key),
+  }));
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const at = keys.indexOf(active);
@@ -160,7 +168,7 @@ export function FileTabs({ projectId }: { projectId: string }) {
             );
           })}
         </div>
-        <TabsOverflow items={hiddenTabs} onSelect={(key) => setActive(projectId, key)} />
+        <TabsOverflow items={hiddenTabs} onSelect={select} />
       </div>
       {asking === undefined ? null : (
         <CloseAsk

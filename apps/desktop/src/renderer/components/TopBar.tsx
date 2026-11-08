@@ -441,7 +441,13 @@ export function TopBar({
           .map((workspace) => ({ id: workspace.id, label: nameOf(workspace) }))}
         onSelect={(id) => {
           const workspace = workspaces.find((item) => item.id === id);
-          if (workspace !== undefined) void navigate(workspacePath(workspace.projectId));
+          if (workspace === undefined) return;
+          void navigate(workspacePath(workspace.projectId));
+          // O botão "⌄" pode sumir com a escolha (era a última escondida): o foco vai para o link da aba.
+          requestAnimationFrame(() => {
+            const link = tabs.current?.querySelector(`[data-workspace-id="${CSS.escape(id)}"]`);
+            if (link instanceof HTMLElement) link.focus();
+          });
         }}
       />
       <OpenWorkspaceMenu
