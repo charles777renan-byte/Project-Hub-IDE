@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import type { AppResult, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectSettings } from '../../src/renderer/components/project/ProjectSettings';
+import { askBeforeClosing, setAskBeforeClosing } from '../../src/renderer/close-confirm';
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 
 const project: ProjectSummary = {
@@ -43,6 +44,64 @@ function renderSettings(shown: ProjectSummary = project) {
 
 afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
+  window.localStorage.clear();
+});
+
+describe('ProjectSettings: terminais', () => {
+  const askBox = () =>
+    screen.getByRole('checkbox', {
+      name: 'Perguntar antes de fechar um terminal com agente rodando',
+    });
+
+  it('mostra a seção Terminais com a caixa marcada por padrão e a nota de alcance', () => {
+    installApi();
+    renderSettings();
+
+    expect(screen.getByText('Terminais')).toBeInTheDocument();
+    expect(askBox()).toBeChecked();
+    expect(screen.getByText('Vale para todos os projetos.')).toBeInTheDocument();
+  });
+
+  it('a nota de alcance descreve a caixa (aria-describedby), para quem usa leitor de tela', () => {
+    installApi();
+    renderSettings();
+
+    const nota = screen.getByText('Vale para todos os projetos.');
+    expect(nota.id).not.toBe('');
+    expect(askBox()).toHaveAccessibleDescription('Vale para todos os projetos.');
+    expect(askBox()).toHaveAttribute('aria-describedby', nota.id);
+  });
+
+  it('desmarcar a caixa desliga a pergunta; marcar de novo a religa', async () => {
+    installApi();
+    renderSettings();
+
+    await userEvent.click(askBox());
+    expect(askBeforeClosing()).toBe(false);
+    expect(askBox()).not.toBeChecked();
+
+    await userEvent.click(askBox());
+    expect(askBeforeClosing()).toBe(true);
+    expect(askBox()).toBeChecked();
+  });
+
+  it('a caixa acompanha a preferência quando ela muda de fora (a caixa da pergunta no painel)', () => {
+    installApi();
+    renderSettings();
+
+    act(() => setAskBeforeClosing(false));
+    expect(askBox()).not.toBeChecked();
+    act(() => setAskBeforeClosing(true));
+    expect(askBox()).toBeChecked();
+  });
+
+  it('com a pergunta já desligada ao abrir, a caixa nasce desmarcada', () => {
+    setAskBeforeClosing(false);
+    installApi();
+    renderSettings();
+
+    expect(askBox()).not.toBeChecked();
+  });
 });
 
 describe('ProjectSettings: pasta, tipo e branch', () => {

@@ -239,6 +239,54 @@ describe('árvore de painéis e painel', () => {
     expect(strip.get('border-bottom')).toBe('1px solid var(--line)');
   });
 
+  it('a pergunta do fechamento quebra linha num painel estreito, sem cortar com reticências', () => {
+    const strip = rule('.pane__confirm');
+    expect(strip.get('white-space')).toBe('normal');
+    expect(strip.get('overflow-wrap')).toBe('anywhere');
+    expect(strip.has('text-overflow')).toBe(false);
+    // O grupo e a pergunta dentro dela também quebram: nada de nowrap nem reticências herdados. Cada regra tem de
+    // existir (um seletor que não casa com nada deixaria as verificações passarem vazias).
+    for (const selector of [
+      '.pane__confirm .confirm-inline',
+      '.pane__confirm .confirm-inline > span:first-child',
+      '.workspace__confirm .confirm-inline',
+      '.workspace__confirm .confirm-inline > span:first-child',
+    ]) {
+      const declarations = rule(selector);
+      expect(declarations.size, `${selector} existe`).toBeGreaterThan(0);
+      expect(declarations.get('text-overflow'), `${selector} text-overflow`).not.toBe('ellipsis');
+      expect(declarations.get('white-space'), `${selector} white-space`).not.toBe('nowrap');
+    }
+    // O grupo ocupa a faixa toda (e não só a largura do conteúdo) e a pergunta pode encolher.
+    expect(rule('.pane__confirm .confirm-inline').get('display')).toBe('flex');
+    expect(rule('.pane__confirm .confirm-inline > span:first-child').get('flex')).toBe('1 1 12rem');
+    expect(rule('.pane__confirm .confirm-inline > span:first-child').get('min-width')).toBe('0');
+  });
+
+  it('a faixa de fechar todos flutua sobre o topo da área, fora do fluxo, sem tirar altura da grade', () => {
+    // A área é o contêiner posicionado; a faixa não é `flex: none` em fluxo (isso encolheria a área medida).
+    expect(rule('.workspace__area').get('position')).toBe('relative');
+    const strip = rule('.workspace__confirm');
+    expect(strip.get('position')).toBe('absolute');
+    expect(strip.get('top')).toBe('var(--space-2)');
+    expect(strip.get('left')).toBe('var(--space-2)');
+    expect(strip.get('right')).toBe('var(--space-2)');
+    expect(Number(strip.get('z-index'))).toBeGreaterThan(0);
+    expect(strip.has('flex')).toBe(false);
+  });
+
+  it('a faixa de confirmação do workspace tem o visual da pergunta do painel, só com tokens neutros', () => {
+    const strip = rule('.workspace__confirm');
+    expect(strip.get('background')).toBe('var(--surface)');
+    expect(strip.get('box-shadow')).toBe('inset 0 0 0 1px var(--line)');
+    expect(strip.get('border-radius')).toBe('var(--radius-card)');
+    expect(strip.get('padding')).toBe('var(--space-2)');
+    expect(strip.get('color')).toBe('var(--text)');
+    expect(strip.get('white-space')).toBe('normal');
+    expect(strip.get('overflow-wrap')).toBe('anywhere');
+    expect(strip.has('text-overflow')).toBe(false);
+  });
+
   it('o aviso da sessão encerrada é flex e as ações não encolhem (Limpar painel não é cortado)', () => {
     expect(rule('.pane__notice').get('display')).toBe('flex');
     expect(rule('.pane__notice > span:first-child').get('min-width')).toBe('0');
@@ -285,5 +333,35 @@ describe('árvore de painéis e painel', () => {
       for (const value of rule(selector).values())
         expect(value).not.toMatch(/--accent|#[0-9a-f]{3,6}/i);
     }
+  });
+
+  it('a lista de abas do modo Abas esmaece a borda como as abas dos arquivos, e o aviso de janela estreita é --muted', () => {
+    const fileFade = ruleDeclarations(css, '.file-tabs[data-fade-end]').get('mask-image');
+    expect(fileFade).toBeDefined();
+    expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-end]').get('mask-image')).toBe(
+      fileFade,
+    );
+    expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-start]').get('mask-image')).toBe(
+      ruleDeclarations(css, '.file-tabs[data-fade-start]').get('mask-image'),
+    );
+    expect(
+      ruleDeclarations(css, '.pane-tabs__list[data-fade-start][data-fade-end]').get('mask-image'),
+    ).toBe(ruleDeclarations(css, '.file-tabs[data-fade-start][data-fade-end]').get('mask-image'));
+    const note = ruleDeclarations(css, '.pane-tabs__auto');
+    expect(note.get('color')).toBe('var(--muted)');
+    expect(note.get('flex')).toBe('none');
+  });
+
+  it('o "⌄" com uma aba aguardando você fica em --warn, na app.css (o chrome do workspace só leva cores neutras)', () => {
+    const app = readCss('app.css');
+    expect(ruleDeclarations(app, '.tabs-overflow--attention').get('color')).toBe('var(--warn)');
+    // O gatilho herda essa cor, com uma classe a mais para vencer o --muted do workspace.css.
+    expect(
+      ruleDeclarations(
+        app,
+        '.tabs-overflow.tabs-overflow--attention .menu-acoes__gatilho--icone',
+      ).get('color'),
+    ).toBe('inherit');
+    expect(css).not.toContain('tabs-overflow--attention');
   });
 });

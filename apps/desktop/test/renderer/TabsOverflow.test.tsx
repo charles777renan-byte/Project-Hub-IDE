@@ -183,3 +183,42 @@ describe('useTabsOverflow e TabsOverflow', () => {
     expect(screen.getByRole('tablist', { name: 'Faixa' })).not.toHaveAttribute('data-fade-end');
   });
 });
+
+describe('TabsOverflow: atenção', () => {
+  const items = [{ id: 'x', label: 'Aba x' }];
+
+  it('com attention, o invólucro do botão leva a classe de atenção e o nome acessível diz que uma aba aguarda', () => {
+    const { container } = render(
+      <TabsOverflow items={items} onSelect={() => undefined} attention />,
+    );
+
+    expect(container.querySelector('.tabs-overflow')).toHaveClass('tabs-overflow--attention');
+    expect(
+      screen.getByRole('button', { name: 'Abas fora de vista, uma aguarda você' }),
+    ).toBeInTheDocument();
+  });
+
+  it('com attention, o botão também desenha o ◐ (a cor nunca é a única pista), escondido dos leitores de tela', () => {
+    render(<TabsOverflow items={items} onSelect={() => undefined} attention />);
+
+    const glyph = within(
+      screen.getByRole('button', { name: 'Abas fora de vista, uma aguarda você' }),
+    ).getByText('◐');
+    expect(glyph).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('sem attention, o botão não desenha o ◐', () => {
+    render(<TabsOverflow items={items} onSelect={() => undefined} />);
+
+    expect(
+      within(screen.getByRole('button', { name: 'Abas fora de vista' })).queryByText('◐'),
+    ).toBeNull();
+  });
+
+  it('sem attention, igual a hoje', () => {
+    const { container } = render(<TabsOverflow items={items} onSelect={() => undefined} />);
+
+    expect(container.querySelector('.tabs-overflow')).not.toHaveClass('tabs-overflow--attention');
+    expect(screen.getByRole('button', { name: 'Abas fora de vista' })).toBeInTheDocument();
+  });
+});

@@ -73,3 +73,38 @@ export function arrangeLeaves(leaves: LayoutLeaf[], newId: () => string): Layout
   }
   return equilibrar(linhas, 'column', newId);
 }
+
+/** Quantas colunas o `arrangeLeaves` usa para `n` folhas (1 com 1; 2 com 2 e com 3; `ceil(sqrt(n))` de 4 em diante). */
+function colunasDaArrumacao(n: number): number {
+  if (n <= 1) return 1;
+  if (n <= 3) return 2;
+  return Math.ceil(Math.sqrt(n));
+}
+
+/**
+ * Como `arrangeLeaves`, mas com no máximo `maxColumns` colunas (menos de 1 vale 1), para janelas estreitas.
+ * Se a arrumação normal já cabe, devolve exatamente ela; senão monta linhas de `maxColumns` folhas, na ordem
+ * da lista, empilhadas de cima para baixo (com uma coluna, só divisões `column`). Sem folhas, `null`.
+ */
+export function arrangeLeavesCapped(
+  leaves: LayoutLeaf[],
+  maxColumns: number,
+  newId: () => string,
+): LayoutNode | null {
+  const colunas = Math.max(1, Math.floor(maxColumns));
+  if (colunasDaArrumacao(leaves.length) <= colunas) return arrangeLeaves(leaves, newId);
+
+  const linhas: { no: LayoutNode; peso: number }[] = [];
+  for (let i = 0; i < leaves.length; i += colunas) {
+    const grupo = leaves.slice(i, i + colunas);
+    linhas.push({
+      no: equilibrar(
+        grupo.map((no) => ({ no, peso: 1 })),
+        'row',
+        newId,
+      ),
+      peso: grupo.length,
+    });
+  }
+  return equilibrar(linhas, 'column', newId);
+}

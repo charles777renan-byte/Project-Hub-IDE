@@ -3,6 +3,9 @@ import userEvent from '@testing-library/user-event';
 import type { ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { PaneTabs } from '../../src/renderer/workspace/PaneTabs';
+import { show, useFakeIntersectionObserver } from './fake-intersection-observer';
+
+useFakeIntersectionObserver();
 
 const leaf = (
   id: string,
@@ -30,10 +33,11 @@ const terminal = (id: string, provider: 'claude' | 'codex' | 'shell'): TerminalS
 function setup(
   leaves: Parameters<typeof PaneTabs>[0]['leaves'],
   terminals: readonly TerminalSummary[] = [],
+  auto = false,
 ) {
   const onSelect = vi.fn();
   const onGrid = vi.fn();
-  render(
+  const { unmount } = render(
     <PaneTabs
       leaves={leaves}
       activeId={leaves[0]?.id ?? ''}
@@ -41,9 +45,10 @@ function setup(
       providers={providers}
       onSelect={onSelect}
       onGrid={onGrid}
+      auto={auto}
     />,
   );
-  return { onSelect, onGrid };
+  return { onSelect, onGrid, unmount };
 }
 
 /** Os rótulos de cada aba, na ordem da faixa (sem o número de posição). */
@@ -119,5 +124,99 @@ describe('PaneTabs: rótulos repetidos', () => {
     expect(tabs).toHaveLength(2);
     expect(tabs[0]).toHaveTextContent('Claude Code 1');
     expect(tabs[1]).toHaveTextContent('Claude Code 2');
+  });
+});
+
+describe('PaneTabs: abas que rolam (esmaecimento e "⌄")', () => {
+  const quatro = [leaf('a', 'claude'), leaf('b', 'codex'), leaf('c', 'shell'), leaf('d', 'claude')];
+  const trigger = () => screen.queryByRole('button', { name: /Abas fora de vista/ });
+
+  it('cada aba leva o id do painel em data-tab-id', () => {
+    setup(quatro);
+
+    const ids = screen.getAllByRole('tab').map((tab) => tab.getAttribute('data-tab-id'));
+    expect(ids).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('a lista continua sendo o tablist e esmaece o fim quando a última aba sai de vista', () => {
+    setup(quatro);
+    show('a', 'b', 'c');
+
+    const list = screen.getByRole('tablist', { name: 'Painéis abertos' });
+    expect(list).toHaveAttribute('data-fade-end', 'true');
+    expect(list).not.toHaveAttribute('data-fade-start');
+  });
+
+  it('com todas as abas à vista, não há esmaecimento nem "⌄"', () => {
+    setup(quatro);
+    show('a', 'b', 'c', 'd');
+
+    const list = screen.getByRole('tablist', { name: 'Painéis abertos' });
+    expect(list).not.toHaveAttribute('data-fade-end');
+    expect(list).not.toHaveAttribute('data-fade-start');
+    expect(trigger()).toBeNull();
+  });
+
+  it('o "⌄" lista só as abas escondidas, com o rótulo numerado, e escolher uma chama onSelect', async () => {
+    const { onSelect } = setup(quatro);
+    show('a', 'b');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'PowerShell',
+      'Claude Code 2',
+    ]);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Claude Code 2' }));
+
+    expect(onSelect).toHaveBeenCalledWith('d');
+  });
+
+  it('com uma aba escondida aguardando você, o "⌄" pede atenção; sem espera, não', () => {
+    const ligados = [
+      leaf('a', 'claude', 't1'),
+      leaf('b', 'codex', 't2'),
+      leaf('c', 'shell', 't3'),
+      leaf('d', 'claude', 't4'),
+    ];
+    const sessoes = [
+      terminal('t1', 'claude'),
+      terminal('t2', 'codex'),
+      terminal('t3', 'shell'),
+      { ...terminal('t4', 'claude'), state: 'waiting' as const },
+    ];
+    const { unmount } = setup(ligados, sessoes);
+    show('a', 'b');
+    expect(screen.getByRole('button', { name: 'Abas fora de vista, uma aguarda você' })).toBeInTheDocument();
+    unmount();
+
+    // A que aguarda está à vista: o "⌄" lista só abas calmas e não pede atenção.
+    setup(ligados, sessoes);
+    show('a', 'd');
+    expect(screen.getByRole('button', { name: 'Abas fora de vista' })).toBeInTheDocument();
+  });
+});
+
+describe('PaneTabs: janela estreita (modo ligado pela largura)', () => {
+  const dois = [leaf('a', 'claude'), leaf('b', 'shell')];
+
+  it('sem auto, o botão "Grade" segue como hoje e chama onGrid', async () => {
+    const { onGrid } = setup(dois);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
+
+    expect(onGrid).toHaveBeenCalledOnce();
+    expect(screen.queryByText('Janela estreita')).toBeNull();
+  });
+
+  it('com auto, não há botão "Grade": há o aviso "Janela estreita" com a dica, que não é botão', () => {
+    setup(dois, [], true);
+
+    expect(screen.queryByRole('button', { name: 'Grade' })).toBeNull();
+    const note = screen.getByText('Janela estreita');
+    expect(note.closest('[title]')).toHaveAttribute(
+      'title',
+      'Volta para a grade quando a janela passar de 720 px',
+    );
+    expect(note.closest('button')).toBeNull();
   });
 });

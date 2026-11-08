@@ -338,4 +338,41 @@ describe('WorkspaceToolbar', () => {
     expect(screen.getByRole('button', { name: 'Abrir terminal' })).toBeDisabled();
     expect(onOpen).not.toHaveBeenCalled();
   });
+
+  describe('grade responsiva', () => {
+    it('`dock` aparece no fim da barra, depois de "Abas"', () => {
+      const { container } = setup({
+        canSolo: true,
+        onToggleSolo: vi.fn(),
+        dock: <div data-testid="dock">fora da grade</div>,
+      });
+      const barra = container.querySelector('.workspace__toolbar') as HTMLElement;
+      expect(barra.lastElementChild).toBe(screen.getByTestId('dock'));
+      expect(
+        screen
+          .getByRole('button', { name: 'Abas' })
+          .compareDocumentPosition(screen.getByTestId('dock')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('`soloAuto` deixa "Abas" apertado e a dica diz que a janela está estreita', async () => {
+      setup({ canSolo: true, onToggleSolo: vi.fn(), soloAuto: true });
+      const abas = screen.getByRole('button', { name: 'Abas' });
+      expect(abas).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.hover(abas);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Janela estreita: um painel por vez',
+      );
+    });
+
+    it('sem `soloAuto` nem `soloMode`, "Abas" fica solto e com a dica de sempre', async () => {
+      setup({ canSolo: true, onToggleSolo: vi.fn() });
+      const abas = screen.getByRole('button', { name: 'Abas' });
+      expect(abas).toHaveAttribute('aria-pressed', 'false');
+      await userEvent.hover(abas);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Mostra um painel por vez, com uma aba para cada um',
+      );
+    });
+  });
 });

@@ -30,6 +30,26 @@ describe('MenuAcoes', () => {
     expect(gatilho).not.toHaveAttribute('aria-label');
   });
 
+  it('a dica da ação vira o title do item, para explicar por que está desabilitado', async () => {
+    const user = userEvent.setup();
+    render(
+      <MenuAcoes
+        rotulo="Mais ações"
+        acoes={[
+          { rotulo: 'Pausar', onSelecionar: vi.fn() },
+          { rotulo: 'Fechar', onSelecionar: vi.fn(), desabilitada: true, dica: 'Nada aberto' },
+        ]}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+
+    expect(screen.getByRole('menuitem', { name: 'Fechar' })).toHaveAttribute(
+      'title',
+      'Nada aberto',
+    );
+    expect(screen.getByRole('menuitem', { name: 'Pausar' })).not.toHaveAttribute('title');
+  });
+
   it('abre com o clique e mostra as ações', async () => {
     const user = userEvent.setup();
     render(<MenuAcoes rotulo="Mais ações" acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]} />);

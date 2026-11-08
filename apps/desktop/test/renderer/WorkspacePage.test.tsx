@@ -18,6 +18,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import { Toaster } from '../../src/renderer/components/Toaster';
+import { FakeResizeObserver } from './fake-resize-observer';
 import {
   PROJECT_NO_GIT_NOTICE_ID,
   PROJECT_UNAVAILABLE_NOTICE_ID,
@@ -25,6 +26,12 @@ import {
 import { useTerminals } from '../../src/renderer/terminals-data';
 import { notify } from '../../src/renderer/notify';
 import { openFile, resetOpenFilesForTests } from '../../src/renderer/open-files';
+import {
+  requestCloseAll,
+  resetCloseAllForTests,
+  useCloseAllRequest,
+  usePaneCount,
+} from '../../src/renderer/workspace/close-all';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
@@ -34,6 +41,50 @@ vi.mock('../../src/renderer/components/terminals/TerminalView', () => ({
     <div data-testid="terminal-view">{terminalId}</div>
   ),
 }));
+
+/**
+ * A medida que o observador falso dá à área da grade (`.workspace__area`) quando começa a observá-la; `null` é "ainda
+ * sem medida". Todo outro elemento mede 1000 × 800, para a biblioteca das divisórias calcular o layout.
+ */
+let areaSize: { width: number; height: number } | null = { width: 1000, height: 800 };
+class ObservadorDaArea extends FakeResizeObserver {
+  override observe(target: Element) {
+    super.observe(target);
+    const size = target.classList.contains('workspace__area')
+      ? areaSize
+      : { width: 1000, height: 800 };
+    if (size !== null) this.report(target, size.width, size.height);
+  }
+}
+
+/** Avisa que a área da grade passou a medir `width` × `height`, como o navegador ao mudar o tamanho da janela. */
+function medirArea(width: number, height: number) {
+  const area = document.querySelector('.workspace__area');
+  if (area === null) throw new Error('A área da grade não está na tela.');
+  const observadores = FakeResizeObserver.instances.filter((item) => item.observed.has(area));
+  if (observadores.length === 0) throw new Error('Ninguém observa a área da grade.');
+  act(() => observadores.forEach((item) => item.report(area, width, height)));
+}
+
+// Um espião sobre `setRatio`, para ver se arrastar uma divisória chega ao hook (o resto do hook é o de verdade).
+const setRatioChamado = vi.hoisted(() => vi.fn());
+vi.mock('../../src/renderer/workspace/use-workspace', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../../src/renderer/workspace/use-workspace')>();
+  return {
+    ...original,
+    useWorkspace: (projectId: string) => {
+      const workspace = original.useWorkspace(projectId);
+      return {
+        ...workspace,
+        setRatio: (splitId: string, ratio: number) => {
+          setRatioChamado(splitId, ratio);
+          workspace.setRatio(splitId, ratio);
+        },
+      };
+    },
+  };
+});
 
 const leaf = (
   id: string,
@@ -154,21 +205,10 @@ function renderAt(state?: unknown, projectId = 'p1', search = '') {
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1000);
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(800);
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        const box = [{ inlineSize: 1000, blockSize: 800 }];
-        this.callback(
-          [{ target, borderBoxSize: box, contentBoxSize: box } as unknown as ResizeObserverEntry],
-          this as unknown as ResizeObserver,
-        );
-      }
-      unobserve() {}
-      disconnect() {}
-    },
-  );
+  areaSize = { width: 1000, height: 800 };
+  setRatioChamado.mockClear();
+  FakeResizeObserver.instances = [];
+  vi.stubGlobal('ResizeObserver', ObservadorDaArea);
   api.workspaces.list.mockResolvedValue({ ok: true, data: [] });
   api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao()) });
   api.workspaces.saveLayout.mockReset().mockResolvedValue({ ok: true, data: undefined });
@@ -196,6 +236,7 @@ beforeEach(() => {
   );
   window.localStorage.clear();
   resetOpenFilesForTests();
+  resetCloseAllForTests();
   window.projectHub = api as unknown as typeof window.projectHub;
 });
 
@@ -886,6 +927,292 @@ describe('modo "um painel por vez"', () => {
     expect(
       within(screen.getByRole('tablist', { name: 'Painéis abertos' })).getAllByRole('tab'),
     ).toHaveLength(2);
+  });
+});
+
+describe('grade responsiva', () => {
+  const regioes = () => screen.queryAllByRole('region', { name: /^Painel / });
+  const dock = () => screen.queryByRole('group', { name: 'Terminais fora da grade' });
+  const fichas = () =>
+    dock() === null ? [] : within(dock() as HTMLElement).getAllByRole('button');
+  const nomeDaFicha = (ficha: HTMLElement) =>
+    ficha.querySelector('.off-grid__chip-label')?.textContent ?? '';
+  const idsDosGrupos = () =>
+    Array.from(document.querySelectorAll('.pane-tree__group')).map((grupo) => grupo.id);
+
+  /** `n` painéis de Claude Code sem sessão, arrumados como o servidor arruma. */
+  function guardado(n: number): LayoutNode {
+    const folhas = Array.from({ length: n }, (_, i) => leaf(`g${i + 1}`, 'claude'));
+    return arrangeLeaves(folhas, () => crypto.randomUUID()) as LayoutNode;
+  }
+  const abrirCom = (layout: LayoutNode) =>
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(layout) });
+
+  it('sem a primeira medida, mostra a árvore guardada: sem fichas, sem abas', async () => {
+    areaSize = null;
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    expect(regioes()).toHaveLength(6);
+    expect(dock()).toBeNull();
+    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
+  });
+
+  it('1200 × 600 com 6 painéis guardados em 3 × 2: a árvore guardada fica intacta, sem fichas', async () => {
+    areaSize = null; // o que vale antes da medida é a árvore guardada: é com ela que se compara
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    const antes = idsDosGrupos();
+    medirArea(1200, 600);
+    expect(regioes()).toHaveLength(6);
+    expect(dock()).toBeNull();
+    expect(idsDosGrupos()).toEqual(antes);
+    expect(antes).toHaveLength(5);
+    expect(antes.every((id) => !id.startsWith('fit:'))).toBe(true);
+  });
+
+  it('1000 × 600 com 6 painéis: 4 na grade em 2 colunas e 2 fichas, com o ativo na grade', async () => {
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1000, 600);
+    expect(regioes()).toHaveLength(4);
+    expect(fichas().map(nomeDaFicha)).toEqual(['Claude Code 5', 'Claude Code 6']);
+    // A árvore é derivada: os ids de divisão não existem no layout guardado.
+    expect(idsDosGrupos()).toHaveLength(3);
+    expect(idsDosGrupos().every((id) => id.startsWith('fit:'))).toBe(true);
+    // O primeiro painel é o ativo e está entre os mostrados.
+    expect(document.querySelector('.pane[data-active="true"]')).not.toBeNull();
+  });
+
+  it('clicar numa ficha traz o painel para a grade, e o último mostrado que não é o ativo vira ficha', async () => {
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1000, 600);
+
+    await userEvent.click(fichas()[0] as HTMLElement); // "Claude Code 5"
+
+    expect(regioes()).toHaveLength(4);
+    expect(fichas().map(nomeDaFicha)).toEqual(['Claude Code 4', 'Claude Code 6']);
+    // O painel trazido é o ativo (e recebe o foco do teclado).
+    expect(document.querySelectorAll('.pane[data-active="true"]')).toHaveLength(1);
+  });
+
+  it('a ficha de uma sessão aguardando vem antes das outras', async () => {
+    const layout = arrangeLeaves(
+      Array.from({ length: 6 }, (_, i) => leaf(`g${i + 1}`, 'shell', `t${i + 1}`)),
+      () => crypto.randomUUID(),
+    ) as LayoutNode;
+    abrirCom(layout);
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: Array.from({ length: 6 }, (_, i) => ({
+        ...shellTerminal,
+        id: `t${i + 1}`,
+        state: i === 5 ? ('waiting' as const) : ('running' as const),
+      })),
+    });
+    renderAt();
+    await screen.findAllByRole('region', { name: 'Painel PowerShell' });
+    medirArea(1000, 600);
+    expect(fichas().map(nomeDaFicha)).toEqual(['PowerShell 6', 'PowerShell 5']);
+    expect(fichas()[0]).toHaveAttribute('title', 'Aguardando · traz para a grade');
+  });
+
+  it('com "Abas" ligado à mão numa janela larga não há "Fora da grade"; ao sair do modo a faixa volta com o ativo na grade', async () => {
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1000, 600);
+    expect(fichas()).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+    expect(dock()).toBeNull();
+
+    // Escolhe a aba do 6º painel (que estava fora da grade) e volta à grade: ele entra, e o ativo é um dos mostrados.
+    await userEvent.click(
+      within(screen.getByRole('tablist', { name: 'Painéis abertos' })).getAllByRole(
+        'tab',
+      )[5] as HTMLElement,
+    );
+    expect(dock()).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
+    expect(regioes()).toHaveLength(4);
+    expect(fichas()).toHaveLength(2);
+    expect(fichas().map(nomeDaFicha)).not.toContain('Claude Code 6');
+    expect(document.querySelector('.pane[data-active="true"]')).not.toBeNull();
+  });
+
+  describe('janela estreita (modo Abas automático)', () => {
+    it('abaixo de 720 px entra a faixa de abas com o aviso, sem o botão "Grade", e "Abas" fica apertado', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(700, 600);
+      expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+      expect(screen.getByText('Janela estreita')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Grade' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'true');
+      expect(regioes()).toHaveLength(1);
+    });
+
+    it('voltar a 1000 × 600 restaura a grade', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(700, 600);
+      medirArea(1000, 600);
+      expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
+      expect(regioes()).toHaveLength(3);
+      expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('se a pessoa ligou "Abas" à mão antes, o modo continua ao alargar a janela', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+      medirArea(700, 600);
+      expect(screen.getByText('Janela estreita')).toBeInTheDocument();
+      medirArea(1000, 600);
+      expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+      expect(screen.queryByText('Janela estreita')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Grade' })).toBeInTheDocument();
+    });
+
+    it('trocar de aba na janela estreita não liga o modo à mão: ao alargar, volta a grade', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(700, 600);
+      await userEvent.click(screen.getByRole('tab', { name: /Codex/ }));
+      expect(regioes()).toHaveLength(1);
+      medirArea(1000, 600);
+      expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
+      expect(regioes()).toHaveLength(3);
+    });
+
+    it('"Abas" na janela estreita não parece morto: o clique vale quando a janela alargar', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(700, 600);
+      await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+      expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'true');
+      medirArea(1000, 600);
+      expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+    });
+
+    it('Ctrl+Alt com as setas troca de aba no modo automático', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(700, 600);
+      screen.getByRole('tab', { name: /Claude Code/ }).focus();
+      await userEvent.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}');
+      expect(screen.getByRole('region', { name: 'Painel Codex' })).toBeInTheDocument();
+      expect(screen.getByText('Janela estreita')).toBeInTheDocument();
+    });
+
+    it('o painel mostrado não tem o botão de maximizar (não haveria para onde voltar)', async () => {
+      renderAt();
+      await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(700, 600);
+      expect(screen.queryByRole('button', { name: 'Voltar à grade' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Maximizar painel' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('janela arrastada em rajada (1000 → 1010 → 1020 × 600) não remonta a árvore', async () => {
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1000, 600);
+    const grupo = document.querySelector('.pane-tree__group');
+    expect(grupo).not.toBeNull();
+    medirArea(1010, 600);
+    medirArea(1020, 600);
+    expect(document.querySelector('.pane-tree__group')).toBe(grupo);
+    expect(regioes()).toHaveLength(4);
+  });
+
+  it('uma medida zerada (a visão do projeto escondida) mantém a grade como estava', async () => {
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1000, 600);
+    const grupo = document.querySelector('.pane-tree__group');
+    medirArea(0, 0);
+    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
+    expect(regioes()).toHaveLength(4);
+    expect(fichas()).toHaveLength(2);
+    expect(document.querySelector('.pane-tree__group')).toBe(grupo);
+  });
+
+  it('3 colunas e 1 linha (1400 × 400) com 3 painéis: tudo numa linha só', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1400, 400);
+    expect(regioes()).toHaveLength(3);
+    expect(dock()).toBeNull();
+    const divisorias = screen.getAllByRole('separator');
+    expect(divisorias).toHaveLength(2);
+    for (const divisoria of divisorias)
+      expect(divisoria).toHaveAttribute('aria-orientation', 'vertical');
+  });
+
+  describe('divisórias', () => {
+    const mexerNaPrimeira = () => {
+      const [primeira] = screen.getAllByRole('separator') as [HTMLElement];
+      // A divisória vertical anda com as setas laterais; a horizontal, com as de cima e de baixo.
+      const key =
+        primeira.getAttribute('aria-orientation') === 'horizontal' ? 'ArrowDown' : 'ArrowRight';
+      act(() => primeira.focus());
+      fireEvent.keyDown(primeira, { key });
+    };
+
+    it('na árvore guardada, arrastar grava como sempre', async () => {
+      abrirCom(guardado(6));
+      renderAt();
+      await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(1200, 600);
+      mexerNaPrimeira();
+      expect(setRatioChamado).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(api.workspaces.saveLayout).toHaveBeenCalled(), { timeout: 2000 });
+    });
+
+    it('na árvore derivada, arrastar não chama setRatio nem grava nada', async () => {
+      abrirCom(guardado(6));
+      renderAt();
+      await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+      medirArea(1000, 600);
+      mexerNaPrimeira();
+      expect(setRatioChamado).not.toHaveBeenCalled();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+      expect(api.workspaces.saveLayout).not.toHaveBeenCalled();
+    });
+  });
+
+  it('fechar um painel mostrado com fichas: a primeira ficha entra na grade', async () => {
+    const layout = arrangeLeaves(
+      Array.from({ length: 5 }, (_, i) => leaf(`g${i + 1}`, 'shell', `t${i + 1}`)),
+      () => crypto.randomUUID(),
+    ) as LayoutNode;
+    abrirCom(layout);
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: Array.from({ length: 5 }, (_, i) => ({ ...shellTerminal, id: `t${i + 1}` })),
+    });
+    api.workspaces.removePane.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await screen.findAllByRole('region', { name: 'Painel PowerShell' });
+    medirArea(1000, 600);
+    expect(regioes()).toHaveLength(4);
+    expect(fichas()).toHaveLength(1);
+
+    await fecharPeloMenu(regioes()[1] as HTMLElement);
+
+    expect(regioes()).toHaveLength(4);
+    expect(dock()).toBeNull();
   });
 });
 
@@ -1649,5 +1976,328 @@ describe('projeto sem Git', () => {
 
     expect(await screen.findByRole('button', { name: 'Nova missão' })).toBeEnabled();
     expect(document.getElementById(PROJECT_NO_GIT_NOTICE_ID)).toBeNull();
+  });
+});
+
+describe('fechar todos os terminais', () => {
+  const FAIXA = '.workspace__confirm';
+  const faixa = () => document.querySelector(FAIXA);
+  const vazio = () => ({ ...dto(padrao()), layout: null });
+
+  /** `n` painéis de shell, `g1`..`gn`, arrumados como o servidor arruma; cada um com a sessão `t1`..`tn`. */
+  function comSessoes(n: number, terminaisDe: (i: number) => TerminalSummary | null) {
+    const layout = arrangeLeaves(
+      Array.from({ length: n }, (_, i) =>
+        leaf(`g${i + 1}`, 'shell', terminaisDe(i) === null ? null : `t${i + 1}`),
+      ),
+      () => crypto.randomUUID(),
+    ) as LayoutNode;
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(layout) });
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: Array.from({ length: n }, (_, i) => terminaisDe(i)).filter(
+        (item): item is TerminalSummary => item !== null,
+      ),
+    });
+  }
+  const shell = (i: number, extra: Partial<TerminalSummary> = {}): TerminalSummary => ({
+    ...shellTerminal,
+    id: `t${i + 1}`,
+    ...extra,
+  });
+  const regioes = () => screen.queryAllByRole('region', { name: /^Painel / });
+
+  /** Deixa o workspace pronto (os painéis na tela) e faz o pedido de fechar todos, como o cabeçalho faz. */
+  async function pedir(projectId = 'p1') {
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
+    act(() => requestCloseAll(projectId));
+  }
+
+  it('publica quantos painéis o projeto tem, e 0 ao desmontar', async () => {
+    comSessoes(3, (i) => shell(i));
+    const contagem = renderHook(() => usePaneCount('p1'));
+    const { unmount } = renderAt();
+    await waitFor(() => expect(contagem.result.current).toBe(3));
+    unmount();
+    expect(contagem.result.current).toBe(0);
+  });
+
+  it('12 painéis com 11 sessões e uma missão: pergunta com os números, e "Voltar" nasce focado', async () => {
+    comSessoes(12, (i) => (i === 11 ? shell(i, { missionId: 'm1' }) : shell(i)));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar os 12 painéis/ })).toHaveTextContent(
+      'Fechar os 12 painéis? 11 sessões serão encerradas; as missões continuam.',
+    );
+    const faixaEl = faixa() as HTMLElement;
+    expect(faixaEl).not.toBeNull();
+    expect(within(faixaEl).getByRole('button', { name: 'Fechar todos' })).toBeInTheDocument();
+    expect(within(faixaEl).getByRole('button', { name: 'Voltar' })).toHaveFocus();
+  });
+
+  it('um painel com uma sessão viva: frases no singular', async () => {
+    comSessoes(1, (i) => shell(i));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar o painel/ })).toHaveTextContent(
+      'Fechar o painel? 1 sessão será encerrada.',
+    );
+  });
+
+  it('só missões: não fala de sessões', async () => {
+    comSessoes(2, (i) => shell(i, { missionId: 'm1' }));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toHaveTextContent(
+      'Fechar os 2 painéis? As missões continuam.',
+    );
+  });
+
+  it('só shells sem sessão viva (sem terminal ou já encerrado): só a pergunta', async () => {
+    comSessoes(3, (i) => (i === 0 ? shell(i, { state: 'exited' }) : null));
+    renderAt();
+    await pedir();
+
+    const grupo = await screen.findByRole('group', { name: /Fechar os 3 painéis/ });
+    expect(grupo).toHaveAccessibleName('Fechar os 3 painéis?');
+  });
+
+  it('"Voltar" fecha a faixa e limpa o pedido, sem fechar nada', async () => {
+    comSessoes(2, (i) => shell(i));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 2 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(faixa()).toBeNull();
+    expect(pedido.result.current).toBe(false);
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    expect(regioes()).toHaveLength(2);
+  });
+
+  it('Esc faz o mesmo que "Voltar"', async () => {
+    comSessoes(2, (i) => shell(i));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 2 painéis/ });
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(faixa()).toBeNull();
+    expect(pedido.result.current).toBe(false);
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    expect(regioes()).toHaveLength(2);
+  });
+
+  it('"Fechar todos" tira todos os painéis da tela na hora, fecha um a um, limpa o pedido e leva o foco a "Abrir terminal"', async () => {
+    comSessoes(3, (i) => (i === 2 ? shell(i, { missionId: 'm1' }) : shell(i)));
+    // O processo principal ainda não respondeu: o que sai da tela é só a tela.
+    api.workspaces.removePane.mockReturnValue(new Promise(() => {}));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    const lateral = renderHook(() => useTerminals());
+    renderAt();
+    await pedir();
+    await waitFor(() => expect(lateral.result.current.terminals).toHaveLength(3));
+    await screen.findByRole('group', { name: /Fechar os 3 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    expect(regioes()).toHaveLength(0);
+    expect(faixa()).toBeNull();
+    expect(pedido.result.current).toBe(false);
+    expect(api.workspaces.removePane.mock.calls).toEqual([
+      ['w1', 'g1'],
+      ['w1', 'g2'],
+      ['w1', 'g3'],
+    ]);
+    // As sessões avulsas somem da barra lateral na hora; a de missão segue na lista.
+    expect(lateral.result.current.terminals.map((item) => item.id)).toEqual(['t3']);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveFocus(),
+    );
+  });
+
+  it('com 12 painéis, o foco chega a "Abrir terminal" quando o último sai', async () => {
+    comSessoes(12, (i) => shell(i));
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: vazio() });
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 12 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    await waitFor(() => expect(api.workspaces.removePane).toHaveBeenCalledTimes(12));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveFocus(),
+    );
+    expect(regioes()).toHaveLength(0);
+  });
+
+  it('um removePane que falha deixa só aquele painel de volta, com o erro; os outros saem', async () => {
+    comSessoes(3, (i) => shell(i));
+    api.workspaces.removePane.mockImplementation((_workspaceId: string, leafId: string) =>
+      Promise.resolve(
+        leafId === 'g2'
+          ? { ok: false, error: { code: 'x', message: 'Não foi possível fechar o painel' } }
+          : { ok: true, data: dto(leaf('g2', 'shell', 't2')) },
+      ),
+    );
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 3 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    const volta = await screen.findAllByRole('region', { name: 'Painel PowerShell' });
+    expect(volta).toHaveLength(1);
+    expect(await within(volta[0] as HTMLElement).findByRole('alert')).toHaveTextContent(
+      'Não foi possível fechar o painel',
+    );
+    expect(api.workspaces.removePane).toHaveBeenCalledTimes(3);
+  });
+
+  it('a faixa aparece mesmo com a preferência "perguntar ao fechar" desligada', async () => {
+    window.localStorage.setItem('project-hub:perguntar-ao-fechar-terminal', 'false');
+    comSessoes(2, (i) => shell(i));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toBeInTheDocument();
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+  });
+
+  it('o pedido de outro projeto não abre a faixa deste', async () => {
+    comSessoes(2, (i) => shell(i));
+    renderAt();
+    await pedir('p2');
+
+    expect(faixa()).toBeNull();
+    expect(screen.queryByRole('group', { name: /Fechar os/ })).not.toBeInTheDocument();
+  });
+
+  it('um pedido sem painéis é descartado, sem faixa', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    renderAt();
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    act(() => requestCloseAll('p1'));
+
+    await waitFor(() => expect(pedido.result.current).toBe(false));
+    expect(faixa()).toBeNull();
+  });
+
+  it('sair do projeto com a faixa aberta descarta o pedido: ao voltar, não há faixa', async () => {
+    comSessoes(2, (i) => shell(i));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    const primeira = renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 2 painéis/ });
+
+    primeira.unmount();
+    expect(pedido.result.current).toBe(false);
+
+    renderAt();
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
+    expect(faixa()).toBeNull();
+    expect(screen.queryByRole('group', { name: /Fechar os/ })).not.toBeInTheDocument();
+  });
+
+  it('a faixa só aparece com a lista de terminais carregada, para não subestimar as sessões', async () => {
+    comSessoes(2, (i) => shell(i));
+    let responder: (valor: unknown) => void = () => {};
+    api.terminals.list.mockReturnValue(new Promise((resolve) => (responder = resolve)));
+    renderAt();
+    await pedir();
+
+    expect(faixa()).toBeNull();
+
+    await act(async () => {
+      responder({ ok: true, data: [shell(0), shell(1)] });
+    });
+
+    expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toHaveTextContent(
+      '2 sessões serão encerradas',
+    );
+  });
+
+  it('a faixa flutua sobre a área da grade: abrir a pergunta não muda a área medida, os painéis nem as fichas', async () => {
+    // 12 painéis numa área com altura para uma linha: o limite em que perder altura perderia a linha.
+    areaSize = { width: 1000, height: 270 };
+    comSessoes(12, (i) => shell(i));
+    renderAt();
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
+    const area = document.querySelector('.workspace__area') as HTMLElement;
+    const mostrados = regioes().length;
+    const fichasAntes = screen
+      .queryAllByRole('group', { name: 'Terminais fora da grade' })
+      .map((item) => item.textContent);
+    expect(mostrados).toBeLessThan(12);
+
+    act(() => requestCloseAll('p1'));
+    const grupo = await screen.findByRole('group', { name: /Fechar os 12 painéis/ });
+
+    // A faixa mora dentro da área (posicionada por cima, fora do fluxo), não ao lado dela: não tira altura da medida.
+    expect(area.contains(grupo)).toBe(true);
+    expect(document.querySelector('.workspace__area')).toBe(area);
+    expect(regioes()).toHaveLength(mostrados);
+    expect(
+      screen
+        .queryAllByRole('group', { name: 'Terminais fora da grade' })
+        .map((item) => item.textContent),
+    ).toEqual(fichasAntes);
+  });
+
+  describe('pelo cabeçalho', () => {
+    /** Abre Mais ações pelo teclado (como em "aba do projeto: visões") e escolhe "Fechar todos os terminais…". */
+    async function escolherFecharTodos() {
+      act(() => screen.getByRole('button', { name: 'Mais ações' }).focus());
+      await userEvent.keyboard('{Enter}');
+      await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' });
+      await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    }
+
+    it('feito de outra visão, abre Terminais e a pergunta aparece uma vez só', async () => {
+      comSessoes(2, (i) => shell(i));
+      renderAt(undefined, 'p1', '?visao=missoes');
+      // A contagem só chega depois de o workspace carregar.
+      await waitFor(() => expect(document.querySelectorAll('.pane').length).toBeGreaterThan(0));
+
+      await escolherFecharTodos();
+
+      expect(screen.getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+      act(() => screen.getByRole('tab', { name: 'Missões' }).focus());
+      act(() => screen.getByRole('tab', { name: 'Terminais' }).focus());
+
+      expect(faixa()).toBeNull();
+      expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    });
+
+    it('sem painéis, o item está desabilitado', async () => {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+      renderAt();
+      await screen.findByRole('button', { name: 'Abrir terminal' });
+      act(() => screen.getByRole('button', { name: 'Mais ações' }).focus());
+      await userEvent.keyboard('{Enter}');
+
+      expect(
+        await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' }),
+      ).toHaveAttribute('aria-disabled', 'true');
+    });
   });
 });

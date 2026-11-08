@@ -276,6 +276,35 @@ button:disabled {
 }
 
 /*
+ * O "⌄" das abas escondidas (components/TabsOverflow.tsx) com uma aba aguardando a pessoa: cor de aviso e o ◐, como o estado
+ * "aguardando". Fica aqui, e não em workspace.css, porque a seção de chrome de lá só leva cores neutras
+ * (contrast.test.ts). O workspace.css carrega depois e pinta o gatilho de --muted; a regra do gatilho tem uma classe a
+ * mais para vencer essa cor sem depender da ordem (o hover e o menu aberto seguem com a cor deles, que vem depois).
+ */
+.tabs-overflow--attention {
+  color: var(--warn);
+}
+
+.tabs-overflow.tabs-overflow--attention .menu-acoes__gatilho--icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: auto;
+  min-width: 24px;
+  padding: 0 4px;
+  color: inherit;
+}
+
+/* O ◐ de "aguardando" ao lado do "⌄": a cor nunca é a única pista (state-mark.ts). */
+.tabs-overflow__mark {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+/*
  * Gasto de tokens do painel de terminal (workspace/PaneUsage.tsx): a pílula muda de cor com o uso, numa rampa neon
  * do frio ao quente (`data-level`, de 0 a 5; os limites estão em terminal-usage.ts). O texto é a cor do nível, o
  * fundo é a mesma cor a 14% sobre --surface (o contrast.test.ts mede cada par) e o brilho vem de currentcolor, então

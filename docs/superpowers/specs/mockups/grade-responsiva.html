@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grade responsiva</title>
+<link rel="stylesheet" href="../../../../apps/desktop/src/renderer/styles/fonts.css">
+<link rel="stylesheet" href="../../../../apps/desktop/src/renderer/styles/tokens.css">
+<style>
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; padding: 32px 28px 56px; background: var(--bg) var(--glow-app) no-repeat; color: var(--text); font-family: var(--font-sans); font-size: var(--text-sm); line-height: 1.45; }
+::selection { background: color-mix(in srgb, var(--brand) 40%, transparent); color: var(--text); }
+.doc { max-width: 1100px; margin: 0 auto; }
+.doc h1 { margin: 0 0 6px; font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; }
+.doc > p { margin: 0 0 28px; max-width: 68ch; color: var(--muted); }
+.scene { margin: 0 0 40px; }
+.scene h2 { margin: 0 0 4px; font-size: var(--text-md); font-weight: 600; }
+.scene > p { margin: 0 0 12px; max-width: 72ch; color: var(--muted); }
+.scene > p b { color: var(--text); font-weight: 600; }
+.ruler { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.ruler::before, .ruler::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+.shell { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-card); background: var(--bg); box-shadow: 0 0 0 1px var(--line); }
+
+.toolbar { display: flex; align-items: center; gap: var(--space-2); min-height: 34px; padding: var(--space-1) var(--space-2); border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tb-btn { display: inline-flex; align-items: center; gap: var(--space-1); height: 24px; padding: 0 var(--space-2); border: 1px solid var(--field-line); border-radius: var(--radius); background: transparent; color: var(--text); font: inherit; font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
+.tb-btn:hover { border-color: var(--muted); }
+.tb-btn[aria-pressed='true'] { background: var(--fill); }
+.tb-btn svg { flex: none; }
+
+.dock { display: flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto; padding-left: var(--space-2); }
+.dock__label { flex: none; display: inline-flex; align-items: center; gap: 6px; padding-right: 4px; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
+.dock__label .n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--fill); color: var(--text); font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.dock__sep { width: 1px; height: 16px; margin: 0 4px 0 2px; background: var(--line); }
+
+.chip { --tone: var(--muted); display: inline-flex; align-items: center; gap: 6px; height: 24px; max-width: 11rem; padding: 0 8px 0 6px; border: 0; border-radius: var(--radius); background: transparent; color: var(--muted); font: inherit; font-size: var(--text-xs); font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.chip:hover, .chip.is-hover { background: var(--line); color: var(--text); }
+.chip:focus-visible, .chip.is-focus { outline: 2px solid var(--focus); outline-offset: -2px; color: var(--text); }
+.chip__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chip__mark { flex: none; color: var(--tone); font-family: var(--font-mono); font-size: 11px; line-height: 1; }
+.chip--active { --tone: var(--accent); }
+.chip--waiting { --tone: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--surface)); color: var(--warn); }
+.chip--waiting:hover, .chip--waiting.is-hover { background: color-mix(in srgb, var(--warn) 20%, var(--surface)); color: var(--warn); }
+.chip--error { --tone: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: color-mix(in srgb, var(--danger) 55%, var(--text)); }
+.chip--more { color: var(--text); box-shadow: inset 0 0 0 1px var(--field-line); }
+.chip--more .chip__mark { color: var(--muted); }
+.chip.is-arriving { animation: chip-in 420ms var(--ease) both; }
+@keyframes chip-in { 0% { background: color-mix(in srgb, var(--text) 18%, var(--surface)); } 100% { background: transparent; } }
+
+.area { position: relative; display: grid; gap: 8px; }
+.pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.pane.is-active { box-shadow: inset 0 0 0 1px var(--muted); }
+.pane.is-focus::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 2px var(--focus); pointer-events: none; }
+.pane.is-arriving { animation: pane-arrive 260ms var(--ease) both; }
+@keyframes pane-arrive { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: none; } }
+.ph { position: relative; display: flex; align-items: center; gap: var(--space-2); height: 28px; padding: 0 var(--space-2); border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
+.pane.is-focus .ph { background: color-mix(in srgb, var(--lime) 7%, var(--surface)); }
+.ph__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.pane.is-active .ph__title { color: var(--text); font-weight: 600; }
+.ph__mark { flex: none; font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.ph__mark.w { color: var(--warn); }
+.pill { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--cyan) 12%, var(--surface)); color: var(--cyan); font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ph__actions { display: flex; gap: 2px; }
+.ph__actions span { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: var(--radius); color: var(--muted); }
+.ctx { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; }
+.ctx i { display: block; height: 100%; background: var(--muted); }
+.pb { flex: 1; min-height: 0; margin: 0 4px 4px; padding: 6px 8px; overflow: hidden; border-radius: var(--radius); background: var(--bg); color: var(--muted); font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
+.pb .p { color: var(--text); }
+.pb .ok { color: var(--lime); }
+.pb .w { color: var(--warn); }
+
+.tabs { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tabs__list { display: flex; gap: 2px; min-width: 0; flex: 1; overflow: hidden; mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
+.tabs__more { flex: none; display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 6px; border-radius: var(--radius); color: var(--warn); font-size: var(--text-xs); font-weight: 600; box-shadow: inset 0 0 0 1px var(--field-line); }
+.tab { display: inline-flex; flex: none; align-items: center; gap: var(--space-2); height: 28px; padding: 0 var(--space-2); border-radius: var(--radius); color: var(--muted); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
+.tab[aria-selected='true'] { background: var(--bg); box-shadow: inset 0 -2px 0 var(--text); color: var(--text); font-weight: 700; }
+.tab .num { color: var(--muted); font-weight: 600; }
+.tab .m { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.tab .m.w { color: var(--warn); }
+.auto-note { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 var(--space-2); color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
+
+.menu { position: absolute; z-index: 2; min-width: 220px; padding: 4px; border-radius: var(--radius); background: var(--surface-2); box-shadow: var(--shadow-pop); }
+.menu__title { padding: 6px 8px 4px; color: var(--muted); font-size: 11px; }
+.menu__item { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: var(--radius-sm); color: var(--text); font-size: var(--text-xs); font-weight: 500; }
+.menu__item.is-hover { background: var(--line); }
+.menu__item .chip__mark { margin-left: auto; }
+
+.sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.cell { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.cell .chip { align-self: flex-start; }
+.cell small { color: var(--muted); font-size: var(--text-xs); }
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 28px; margin: 0; padding: 0; list-style: none; }
+.notes li { padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); }
+.notes li b { display: block; margin-bottom: 2px; color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="claude" viewBox="0 0 24 24"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></symbol>
+  <symbol id="term" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 11 2-2-2-2M11 13h4"/></g></symbol>
+  <symbol id="grid" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></g></symbol>
+  <symbol id="max" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></g></symbol>
+  <symbol id="dots" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></g></symbol>
+  <symbol id="zap" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
+  <symbol id="down" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="stack" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="13" rx="2"/><path d="M8 3h11a2 2 0 0 1 2 2v11"/></g></symbol>
+  <symbol id="narrow" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v16M16 4v16M3 12h3M18 12h3M5 10l-2 2 2 2M19 10l2 2-2 2"/></g></symbol>
+</svg>
+
+<main class="doc">
+  <h1>Grade responsiva dos terminais</h1>
+  <p>Nenhuma faixa nova. Os terminais que não cabem descem para a barra que já existe no topo do workspace, com a mesma linguagem das abas. Quem aguarda você vem primeiro e na cor de atenção do app.</p>
+
+  <section class="scene">
+    <h2>Área média, seis terminais</h2>
+    <p>Cabem 2 colunas por 2 linhas. Os outros dois vão para <b>Fora da grade</b>, na direita da barra. O Claude Code 5 aguarda uma decisão, então aparece primeiro, em amarelo.</p>
+    <div class="ruler">1000 × 600 px · 2 colunas · 2 linhas · 4 de 6 na grade</div>
+    <div class="shell" style="width:1000px;height:600px">
+      <div class="toolbar">
+        <button class="tb-btn" type="button"><svg width="14" height="14"><use href="#term"/></svg>Abrir terminal<svg width="12" height="12"><use href="#down"/></svg></button>
+        <button class="tb-btn" type="button" aria-pressed="false"><svg width="14" height="14"><use href="#stack"/></svg>Abas</button>
+        <div class="dock" role="group" aria-label="Terminais fora da grade">
+          <span class="dock__label">Fora da grade <span class="n">2</span></span>
+          <button class="chip chip--waiting" type="button" title="Aguardando · traz para a grade"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Claude Code 5</span><span class="chip__mark" aria-hidden="true">◐</span></button>
+          <button class="chip chip--active" type="button" title="Ativo · traz para a grade"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Claude Code 6</span><span class="chip__mark" aria-hidden="true">●</span></button>
+        </div>
+      </div>
+      <div class="area" style="flex:1;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr))">
+        <div class="pane"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Corrigir login</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>12,3k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span><span class="ctx"><i style="width:38%"></i></span></div><div class="pb"><span class="p">❯</span> rode os testes do login<br>  ⎿ vitest run test/auth<br><span class="ok">  ✓ 42 passaram</span></div></div>
+        <div class="pane is-active is-focus"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Idle Financial · análise</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>4,6k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span><span class="ctx"><i style="width:6%"></i></span></div><div class="pb"><span class="p">❯</span> faça uma breve análise da pasta<br>  App dentro de StrictMode.<br>  src/simulador-financeiro.jsx: ~3.000 linhas.</div></div>
+        <div class="pane"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Refatorar rotas</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>31k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span><span class="ctx"><i style="width:57%"></i></span></div><div class="pb"><span class="p">❯</span> separe as rotas por módulo<br>  ⎿ Editando src/routes/index.ts</div></div>
+        <div class="pane is-arriving"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Docs da API</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>8,1k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span><span class="ctx"><i style="width:21%"></i></span></div><div class="pb"><span class="p">❯</span> gere a documentação dos endpoints<br>  ⎿ Lendo openapi.yaml</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Muitos terminais fora da grade</h2>
+    <p>Quando as fichas não cabem na barra, as que sobram entram num <b>⌄</b> com a contagem, o mesmo menu das abas que rolam. Quem aguarda nunca vai para o menu.</p>
+    <div class="ruler">barra com 9 fora da grade</div>
+    <div class="shell" style="width:1000px;position:relative">
+      <div class="toolbar">
+        <button class="tb-btn" type="button"><svg width="14" height="14"><use href="#term"/></svg>Abrir terminal<svg width="12" height="12"><use href="#down"/></svg></button>
+        <button class="tb-btn" type="button" aria-pressed="false"><svg width="14" height="14"><use href="#stack"/></svg>Abas</button>
+        <div class="dock">
+          <span class="dock__label">Fora da grade <span class="n">9</span></span>
+          <button class="chip chip--waiting" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Revisar PR 53</span><span class="chip__mark">◐</span></button>
+          <button class="chip chip--error" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Migração do banco</span><span class="chip__mark">✕</span></button>
+          <button class="chip chip--active" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Testes E2E</span><span class="chip__mark">●</span></button>
+          <span class="dock__sep"></span>
+          <button class="chip chip--more is-hover" type="button" aria-expanded="true">+6<svg width="12" height="12"><use href="#down"/></svg></button>
+        </div>
+      </div>
+      <div class="menu" style="right:8px;top:44px">
+        <div class="menu__title">Mais 6 fora da grade</div>
+        <div class="menu__item is-hover"><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 7<span class="chip__mark" style="color:var(--accent)">●</span></div>
+        <div class="menu__item"><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 8<span class="chip__mark" style="color:var(--accent)">●</span></div>
+        <div class="menu__item"><svg width="14" height="14"><use href="#term"/></svg>PowerShell<span class="chip__mark" style="color:var(--muted)">○</span></div>
+        <div class="menu__item"><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 10<span class="chip__mark" style="color:var(--accent)">●</span></div>
+        <div class="menu__item"><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 11<span class="chip__mark" style="color:var(--accent)">●</span></div>
+        <div class="menu__item"><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 12<span class="chip__mark" style="color:var(--accent)">●</span></div>
+      </div>
+      <div class="area" style="grid-template-columns:repeat(3,minmax(0,1fr));padding-top:4px"><div class="pane" style="height:96px"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Corrigir login</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>12,3k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span></div><div class="pb"><span class="p">❯</span> …</div></div><div class="pane" style="height:96px"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Idle Financial · análise</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>4,6k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span></div><div class="pb"><span class="p">❯</span> …</div></div><div class="pane" style="height:96px"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Refatorar rotas</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>31k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span></div><div class="pb"><span class="p">❯</span> …</div></div></div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Janela estreita: um por vez, sozinho</h2>
+    <p>Abaixo de 720 px o modo Abas entra sem a pessoa pedir. No lugar do botão Grade, um aviso discreto diz por quê; não há botão desabilitado. As abas que rolam ganham o esmaecimento e o <b>⌄</b>, que acusa em amarelo quem aguarda fora de vista. Ao alargar a janela, a grade volta.</p>
+    <div class="ruler">680 × 460 px · modo Abas automático</div>
+    <div class="shell" style="width:680px;height:460px">
+      <div class="tabs">
+        <div class="tabs__list" role="tablist">
+          <span class="tab"><span class="num">1</span><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 1<span class="m">●</span></span>
+          <span class="tab" aria-selected="true"><span class="num">2</span><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 2<span class="m">●</span></span>
+          <span class="tab"><span class="num">3</span><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 3<span class="m">●</span></span>
+          <span class="tab"><span class="num">5</span><svg width="14" height="14"><use href="#claude"/></svg>Claude Code 5<span class="m w">◐</span></span>
+        </div>
+        <span class="tabs__more" title="Abas fora de vista: 1 aguarda você">+1 <span style="font-family:var(--font-mono);font-size:11px">◐</span><svg width="12" height="12"><use href="#down"/></svg></span>
+        <span class="auto-note" title="Volta para a grade quando a janela passar de 720 px"><svg width="14" height="14"><use href="#narrow"/></svg>Janela estreita</span>
+      </div>
+      <div class="pane is-active is-focus" style="flex:1"><div class="ph"><svg width="16" height="16"><use href="#claude"/></svg><span class="ph__title">Idle Financial · análise</span><span class="ph__mark">●</span><span class="pill"><svg width="11" height="11"><use href="#zap"/></svg>4,6k tokens</span><span class="ph__actions"><span><svg width="14" height="14"><use href="#max"/></svg></span><span><svg width="14" height="14"><use href="#dots"/></svg></span></span><span class="ctx"><i style="width:6%"></i></span></div><div class="pb"><span class="p">❯</span> faça uma breve análise da pasta desse projeto<br>  App dentro de StrictMode.<br>  - src/simulador-financeiro.jsx: quase todo o jogo, com cerca de 3.000 linhas.<br>  - .gitignore: ignora node_modules, dist e .DS_Store.</div></div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Estados da ficha</h2>
+    <div class="sheet">
+      <div class="cell"><small>Ativo, em repouso</small><button class="chip chip--active" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Testes E2E</span><span class="chip__mark">●</span></button></div>
+      <div class="cell"><small>Passar o mouse</small><button class="chip chip--active is-hover" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Testes E2E</span><span class="chip__mark">●</span></button></div>
+      <div class="cell"><small>Foco do teclado</small><button class="chip chip--active is-focus" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Testes E2E</span><span class="chip__mark">●</span></button></div>
+      <div class="cell"><small>Aguarda você</small><button class="chip chip--waiting" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Revisar PR 53</span><span class="chip__mark">◐</span></button></div>
+      <div class="cell"><small>Falhou</small><button class="chip chip--error" type="button"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Migração do banco</span><span class="chip__mark">✕</span></button></div>
+      <div class="cell"><small>Acabou de sair da grade</small><button class="chip chip--active is-arriving" type="button" style="animation-iteration-count:infinite;animation-duration:1.6s"><svg width="14" height="14"><use href="#claude"/></svg><span class="chip__label">Refatorar rotas</span><span class="chip__mark">●</span></button></div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Comportamento</h2>
+    <ul class="notes">
+      <li><b>Sem faixa nova</b>As fichas moram na barra do workspace, à direita do "Abrir terminal" e do "Abas". A grade não perde altura.</li>
+      <li><b>Mesma linguagem das abas</b>Ícone do programa, nome numerado quando repete ("Claude Code 5") e a marca de estado só com a forma; o rótulo vai na dica e no leitor de tela.</li>
+      <li><b>Quem precisa de você vem primeiro</b>Aguardando e com falha ficam à esquerda e tingidos (amarelo e vermelho do app). Os outros seguem a ordem do layout.</li>
+      <li><b>Trazer de volta</b>Clicar na ficha dá o teclado ao terminal: ele entra na grade com o anel lima e a mesma entrada dos painéis (motion.css), e o terminal que sai vira ficha com um brilho curto, para o olho ver para onde foi.</li>
+      <li><b>Excesso</b>Fichas que não cabem na barra vão para "+N ⌄", o menu das abas que rolam. Aguardando e falha nunca entram no menu.</li>
+      <li><b>Janela estreita</b>Abaixo de 720 px o modo Abas liga sozinho, com "Janela estreita" no lugar de "Grade". Nada desabilitado; ao alargar, volta o que a pessoa tinha.</li>
+      <li><b>Reduzir movimento</b>Com prefers-reduced-motion, a entrada e o brilho somem; a troca acontece na hora.</li>
+      <li><b>Teclado</b>Cada ficha é um botão na ordem do Tab, depois de "Abas". Ctrl+Alt e as setas, no modo Abas, continuam como hoje.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
