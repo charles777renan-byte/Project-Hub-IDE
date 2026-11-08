@@ -9,12 +9,43 @@ import { readCss, ruleDeclarations } from './css-rules';
  * Cabeça de 28px no lançador e na sessão terminada; a sessão viva tem cabeçalho de duas linhas e não tem rodapé. As regras ficam numa seção própria no fim de workspace.css.
  */
 
+/** O bloco `@container <consulta> { ... }` inteiro (com as chaves de dentro), ou texto vazio se não existir. */
+function containerBlock(source: string, query: string): string {
+  const start = source.indexOf(`@container ${query}`);
+  if (start < 0) return '';
+  let depth = 0;
+  for (let index = source.indexOf('{', start); index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') depth -= 1;
+    if (depth === 0) return source.slice(start, index + 1);
+  }
+  return '';
+}
+
+/**
+ * O CSS sem os blocos `@container`. O `ruleDeclarations` só deixa de fora o `@media`: sem isto, as regras de dentro
+ * do `@container` entrariam como regras base e a última venceria.
+ */
+function withoutContainers(source: string): string {
+  let result = source;
+  for (let start = result.indexOf('@container'); start >= 0; start = result.indexOf('@container')) {
+    const block = containerBlock(
+      result.slice(start),
+      result.slice(start + '@container '.length).split('{')[0] ?? '',
+    );
+    if (block === '') break;
+    result = result.slice(0, start) + result.slice(start + block.length);
+  }
+  return result;
+}
+
 describe('árvore de painéis e painel', () => {
   const css = readCss('workspace.css');
   // Os comentários saem na leitura: a seção começa na regra da página do workspace.
   const marker = css.indexOf('.app-main:has(.pane-tree) {');
   const section = marker >= 0 ? css.slice(marker) : '';
-  const rule = (selector: string): Map<string, string> => ruleDeclarations(section, selector);
+  const base = withoutContainers(section);
+  const rule = (selector: string): Map<string, string> => ruleDeclarations(base, selector);
 
   it('a seção da árvore de painéis existe no fim do arquivo', () => {
     expect(marker).toBeGreaterThan(0);
@@ -58,6 +89,28 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__context').get('flex')).toBe('none');
     // A barra fica à direita da linha 2.
     expect(rule('.pane__context').get('margin-left')).toBe('auto');
+  });
+
+  it('a barra de contexto se adapta ao painel estreito sem nunca pintar sobre os botões', () => {
+    // O contêiner é a área das duas linhas; a consulta é dele, e não da janela.
+    expect(rule('.pane__lines').get('container-type')).toBe('inline-size');
+    expect(rule('.pane__lines').get('container-name')).toBe('pane-lines');
+    // Sem `position: relative`, a barra não pinta por cima das ações (e as ações ficam por cima de qualquer sobra).
+    expect(rule('.pane__context').has('position')).toBe(false);
+    expect(rule('.pane__head--live .pane__actions').get('position')).toBe('relative');
+    // Primeiro limite: some o rótulo (a porcentagem fica) e a barra encurta.
+    const compact = containerBlock(section, 'pane-lines (max-width: 300px)');
+    expect(compact).not.toBe('');
+    expect(ruleDeclarations(compact, '.pane__context small').get('display')).toBe('none');
+    expect(ruleDeclarations(compact, '.pane__context-bar').get('width')).toBe('40px');
+    expect(ruleDeclarations(compact, '.pane__context b').has('display')).toBe(false);
+    // Segundo limite: a linha 2 quebra e a barra desce, sem sumir.
+    const wrap = containerBlock(section, 'pane-lines (max-width: 215px)');
+    expect(wrap).not.toBe('');
+    expect(ruleDeclarations(wrap, '.pane__line2').get('flex-wrap')).toBe('wrap');
+    // Fora dos limites a linha 2 não quebra e o rótulo aparece.
+    expect(rule('.pane__line2').has('flex-wrap')).toBe(false);
+    expect(rule('.pane__context small').has('display')).toBe(false);
   });
 
   it('a barra de contexto: 56px x 5px, fundo --line, preenchimento --muted e --brand no nível alto', () => {
