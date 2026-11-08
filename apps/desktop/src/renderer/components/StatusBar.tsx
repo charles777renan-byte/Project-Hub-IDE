@@ -7,9 +7,12 @@ import { StopAll } from './StopAll';
 import { SystemUsage } from './SystemUsage';
 import { EXIT_HINT } from './terminals/exit-hint';
 
-/** O texto da parte "Foco": o título entra como texto e a dica de sair vem junto, já que é a barra que a diz. */
-function focusText(title: string): string {
-  return `Foco: ${title} · ${EXIT_HINT}`;
+/**
+ * O texto da parte "Foco": o título entra como texto. A dica de sair vem junto só com o teclado dentro do terminal
+ * (é a barra que a diz): com o foco no cartão ou num botão do cabeçalho, a pessoa já saiu e a dica seria velha.
+ */
+function focusText(title: string, inTerminal: boolean): string {
+  return inTerminal ? `Foco: ${title} · ${EXIT_HINT}` : `Foco: ${title}`;
 }
 
 /**
@@ -39,8 +42,11 @@ export function StatusBar() {
         </p>
       )}
       {workspaceMatch === null || terminalFocus === null ? null : (
-        <p className="statusbar__focus" title={focusText(terminalFocus.title)}>
-          {focusText(terminalFocus.title)}
+        <p
+          className="statusbar__focus"
+          title={focusText(terminalFocus.title, terminalFocus.inTerminal)}
+        >
+          {focusText(terminalFocus.title, terminalFocus.inTerminal)}
         </p>
       )}
       <OverviewCounters />

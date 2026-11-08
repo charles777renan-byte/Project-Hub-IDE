@@ -130,7 +130,7 @@ describe('StatusBar', () => {
 
     it('com o foco num terminal, na rota do workspace, diz qual e como sair', async () => {
       installApi([project('p1', 'TESTE', 'master')]);
-      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto' });
+      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto', inTerminal: true });
       renderBar('/workspaces/p1');
       const focus = await screen.findByText(FOCO);
       expect(focus.tagName).toBe('P');
@@ -138,6 +138,19 @@ describe('StatusBar', () => {
       // Truncado com reticências, o texto inteiro continua na dica.
       expect(focus).toHaveAttribute('title', FOCO);
       expect(await screen.findByText('TESTE · master')).toBeInTheDocument();
+    });
+
+    it('com o foco só no cartão do painel (fora do terminal), diz qual e não repete como sair', async () => {
+      installApi([project('p1', 'TESTE', 'master')]);
+      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto', inTerminal: false });
+      renderBar('/workspaces/p1');
+      const focus = await screen.findByText('Foco: Claude · Meu Projeto');
+      expect(focus).toHaveClass('statusbar__focus');
+      expect(focus).toHaveAttribute('title', 'Foco: Claude · Meu Projeto');
+      expect(screen.queryByText(/Ctrl+Shift+Tab/)).toBeNull();
+      // O foco que entra no terminal acrescenta a dica de sair.
+      act(() => setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto', inTerminal: true }));
+      expect(screen.getByText(FOCO)).toBeInTheDocument();
     });
 
     it('sem foco, não mostra a parte Foco', async () => {
@@ -150,7 +163,7 @@ describe('StatusBar', () => {
 
     it('fora da rota do workspace não mostra, mesmo com foco definido', async () => {
       installApi([project('p1', 'TESTE', 'master')]);
-      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto' });
+      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto', inTerminal: true });
       renderBar('/');
       await screen.findByRole('link', { name: '0 executando' });
       expect(screen.queryByText(/Foco:/)).toBeNull();
@@ -160,9 +173,9 @@ describe('StatusBar', () => {
       installApi([project('p1', 'TESTE', 'master')]);
       renderBar('/workspaces/p1');
       await screen.findByText('TESTE · master');
-      act(() => setTerminalFocus({ key: 'a', title: 'Claude' }));
+      act(() => setTerminalFocus({ key: 'a', title: 'Claude', inTerminal: true }));
       expect(screen.getByText(/^Foco: Claude · /)).toBeInTheDocument();
-      act(() => setTerminalFocus({ key: 'b', title: 'Codex' }));
+      act(() => setTerminalFocus({ key: 'b', title: 'Codex', inTerminal: true }));
       expect(screen.queryByText(/^Foco: Claude/)).toBeNull();
       expect(screen.getByText(/^Foco: Codex · /)).toBeInTheDocument();
       act(() => resetTerminalFocusForTests());
@@ -171,7 +184,7 @@ describe('StatusBar', () => {
 
     it('mostra o título como texto, nunca como marcação', async () => {
       installApi([project('p1', 'TESTE', 'master')]);
-      setTerminalFocus({ key: 'a', title: '<b>x</b>' });
+      setTerminalFocus({ key: 'a', title: '<b>x</b>', inTerminal: true });
       renderBar('/workspaces/p1');
       const focus = await screen.findByText(/^Foco: <b>x<\/b> · /);
       expect(focus.querySelector('b')).toBeNull();
