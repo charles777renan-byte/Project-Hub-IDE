@@ -811,27 +811,48 @@ test('abrir muitos painéis em sequência não gera o aviso "Too many active Web
   const messages: string[] = [];
   page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
   await addProjectAndOpenWorkspace(page, projectName);
-  // Cada painel aberto remonta todos os anteriores. Sem soltar os contextos, ao abrir o décimo estão vivos os nove
-  // antigos e os dez novos (19, mais que o limite de 16 do Chromium), sem nenhum teste segurando referência: o GC
-  // natural não recolhe os antigos dentro da mesma remontagem.
+  // Cada painel aberto remonta os anteriores que seguem na grade. Sem soltar os contextos, ao abrir o décimo estariam
+  // vivos os antigos e os novos (mais que o limite de 16 do Chromium), sem nenhum teste segurando referência: o GC
+  // natural não recolhe os antigos dentro da mesma remontagem. A grade responsiva só mostra o que cabe (ao menos 340 x
+  // 260 px por terminal); os outros ficam como fichas em "Fora da grade", sem terminal montado. Cada abertura remonta
+  // só os mostrados, e as trocas de quem aparece (a ficha vira painel, outro vira ficha) também soltam contextos.
   const total = 10;
-  for (let index = 0; index < total; index += 1) await openShell(page);
+  const onGrid = shellPanes(page);
+  const offGrid = page
+    .getByRole('group', { name: 'Terminais fora da grade' })
+    .locator('.off-grid__chip');
+  for (let index = 0; index < total; index += 1) {
+    await page.getByRole('button', { name: 'Abrir terminal' }).click();
+    await page.getByRole('menuitem', { name: /PowerShell/ }).click();
+    await expect
+      .poll(async () => (await onGrid.count()) + (await offGrid.count()), { timeout: 30_000 })
+      .toBe(index + 1);
+    await expectOpenSessions(page, index + 1);
+  }
   const views = page.locator('.terminal-view');
-  await expect(views).toHaveCount(total);
+  const shown = await onGrid.count();
+  expect(shown, 'a grade mostra alguns painéis e deixa os outros como fichas').toBeLessThan(total);
+  expect(await offGrid.count()).toBe(total - shown);
+  await expect(views).toHaveCount(shown);
   await expectWebglCanvas(views);
   // Um contexto perdido só devolve o painel ao DOM depois de o xterm esperar 3 s por uma restauração.
   await page.waitForTimeout(4_000);
 
-  // Guarda extra: nenhum painel caiu para o DOM. Com dez painéis ela passa também sem a correção (os contextos
+  // Guarda extra: nenhum painel caiu para o DOM. Ela passa também sem a correção (os contextos
   // perdidos eram os de painéis já descartados), então não é ela que reprova o teste.
-  for (let index = 0; index < total; index += 1) {
+  for (let index = 0; index < shown; index += 1) {
     const view = views.nth(index);
     await expect(view.locator('canvas').first()).toBeAttached();
     expect(await view.locator('.xterm-rows').count(), `painel ${index} caiu para o DOM`).toBe(0);
   }
   // A asserção que reprova sem a correção: o Chromium avisa quando passa de 16 contextos vivos.
   const loss = messages.filter((text) => WEBGL_LOSS.test(text));
-  console.log(`[medida] ${total} painéis, avisos de contexto: ${loss.length}`);
+  console.log(`[medida] ${total} painéis, ${shown} na grade, avisos de contexto: ${loss.length}`);
   expect(loss, 'avisos de contexto WebGL perdido ou em excesso').toEqual([]);
-  await endShell(page);
+  // Fechar um painel traz a primeira ficha para a grade: o laço fecha o primeiro painel até não sobrar sessão.
+  for (let left = total; left > 0; left -= 1) {
+    await fecharPainel(page, 'PowerShell');
+    await expectOpenSessions(page, left - 1);
+  }
+  await expect(page.getByText('Nenhum terminal aberto')).toBeVisible({ timeout: 15_000 });
 });

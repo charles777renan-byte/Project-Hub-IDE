@@ -136,7 +136,17 @@ export type LaunchOptions = {
    * ao teste que prova que nada fica exposto sem ele.
    */
   terminalHook?: boolean;
+  /**
+   * Tamanho da janela logo depois de abrir (`launchApp`). O padrão é `WINDOW_SIZE`, grande o bastante para a
+   * grade responsiva caber com a barra lateral e o painel direito abertos: na janela padrão do app (1200 x 800)
+   * a área do workspace fica abaixo de 720 px e o modo Abas liga sozinho. `false` deixa a janela como o app a abre;
+   * os testes que dimensionam a janela por conta própria (capturas, janela estreita) continuam fazendo isso depois.
+   */
+  windowSize?: { width: number; height: number } | false;
 };
+
+/** Tamanho da janela dos testes: mede-se `.workspace__area` com as laterais abertas, e ela passa de 720 px com folga. */
+export const WINDOW_SIZE = { width: 1600, height: 900 } as const;
 
 type Fixtures = {
   /** Interno: falhas de fechamento que o teste não viu e que reprovam o teste na limpeza. */
@@ -301,6 +311,12 @@ export const test = base.extend<Fixtures>({
       const launched = await launchProcess(options);
       try {
         const page = await launched.app.firstWindow();
+        const size = options.windowSize ?? WINDOW_SIZE;
+        if (size !== false) {
+          await launched.app.evaluate(({ BrowserWindow }, wanted) => {
+            BrowserWindow.getAllWindows()[0]?.setSize(wanted.width, wanted.height);
+          }, size);
+        }
         // A janela pode ter carregado antes do script de inicialização do contexto valer: o gancho
         // também entra na página que já está aberta (só cria se ainda não existir). Nenhum terminal monta
         // antes da interface ficar pronta, então nenhum fica de fora.
