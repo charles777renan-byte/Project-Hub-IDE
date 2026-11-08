@@ -168,4 +168,30 @@ describe('MenuAcoes', () => {
     expect(document.body).not.toHaveAttribute('data-scroll-locked');
     expect(document.body.style.pointerEvents).not.toBe('none');
   });
+
+  it('aceita dois itens com o mesmo rótulo, sem aviso de chave repetida, e cada um chama a sua ação', async () => {
+    const user = userEvent.setup();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const primeira = vi.fn();
+    const segunda = vi.fn();
+    render(
+      <MenuAcoes
+        rotulo="Mais ações"
+        acoes={[
+          { rotulo: 'index.ts', onSelecionar: primeira },
+          { rotulo: 'index.ts', onSelecionar: segunda },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    const itens = screen.getAllByRole('menuitem', { name: 'index.ts' });
+    expect(itens).toHaveLength(2);
+    await user.click(itens[1] as HTMLElement);
+
+    expect(segunda).toHaveBeenCalledTimes(1);
+    expect(primeira).not.toHaveBeenCalled();
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key|unique "key"/);
+    errors.mockRestore();
+  });
 });

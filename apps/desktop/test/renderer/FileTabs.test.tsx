@@ -13,6 +13,7 @@ import {
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
+import { show, useFakeIntersectionObserver } from './fake-intersection-observer';
 
 /** A faixa de abas dos arquivos abertos, no topo da aba Arquivos do painel direito: a Árvore e uma aba por arquivo. */
 
@@ -58,7 +59,14 @@ function strip(): HTMLElement {
   return screen.getByRole('tablist', { name: 'Arquivos abertos' });
 }
 
-function tab(name: string | RegExp): HTMLElement {
+function tab(name: string | RegExp, path?: string): HTMLElement {
+  if (path !== undefined) {
+    const found = within(strip())
+      .getAllByRole('tab', { name })
+      .find((item) => item.getAttribute('title') === path);
+    if (found === undefined) throw new Error(`Sem aba para ${path}.`);
+    return found;
+  }
   return within(strip()).getByRole('tab', { name });
 }
 
@@ -384,5 +392,72 @@ describe('FileTabs: fechar com alterações não salvas', () => {
     expect(await within(ask()).findByRole('alert')).toHaveTextContent('O arquivo não existe mais.');
     expect(write).not.toHaveBeenCalled();
     expect(tab(/a\.ts/)).toBeInTheDocument();
+  });
+});
+
+describe('abas fora de vista (botão ⌄)', () => {
+  useFakeIntersectionObserver();
+
+  /** Quatro abas: a Árvore, dois `index.ts` de pastas diferentes e `x.ts`. A Árvore e `x.ts` estão à vista. */
+  async function openWithSameName() {
+    render(<Harness />);
+    act(() => {
+      openFile('p1', 'src/a/index.ts');
+      openFile('p1', 'src/b/index.ts');
+      openFile('p1', 'x.ts');
+    });
+    await screen.findByRole('tab', { name: 'x.ts' });
+    show(TREE_TAB, 'x.ts');
+  }
+
+  it('abas escondidas com o mesmo nome ganham rótulos distintos, sem aviso de chave repetida', async () => {
+    const user = userEvent.setup();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await openWithSameName();
+
+    await user.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'src/a/index.ts',
+      'src/b/index.ts',
+    ]);
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key|unique "key"/);
+    errors.mockRestore();
+  });
+
+  it('escolher cada uma ativa o arquivo certo e leva o foco para a aba dele', async () => {
+    const user = userEvent.setup();
+    await openWithSameName();
+
+    await user.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    await user.click(screen.getByRole('menuitem', { name: 'src/b/index.ts' }));
+
+    expect(screen.getByTestId('ativa')).toHaveTextContent('src/b/index.ts');
+    await waitFor(() => expect(document.activeElement).toBe(tab('index.ts', 'src/b/index.ts')));
+
+    await user.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    await user.click(screen.getByRole('menuitem', { name: 'src/a/index.ts' }));
+
+    expect(screen.getByTestId('ativa')).toHaveTextContent('src/a/index.ts');
+    await waitFor(() => expect(document.activeElement).toBe(tab('index.ts', 'src/a/index.ts')));
+  });
+
+  it('escolher a última escondida, que faz o botão sumir, deixa o foco na aba escolhida', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    act(() => {
+      openFile('p1', 'src/a.ts');
+      openFile('p1', 'docs/b.md');
+    });
+    await screen.findByRole('tab', { name: 'b.md' });
+    show(TREE_TAB, 'src/a.ts');
+
+    await user.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    await user.click(screen.getByRole('menuitem', { name: 'b.md' }));
+    // A aba rolou para a vista: o navegador avisa e o botão desmonta.
+    show(TREE_TAB, 'src/a.ts', 'docs/b.md');
+
+    expect(screen.queryByRole('button', { name: 'Abas fora de vista' })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(tab('b.md')));
   });
 });

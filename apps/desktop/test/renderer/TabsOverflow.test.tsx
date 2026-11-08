@@ -1,95 +1,12 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRef, useState } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TabsOverflow, useTabsOverflow } from '../../src/renderer/components/TabsOverflow';
-
-/**
- * O jsdom não tem IntersectionObserver nem layout. Este falso guarda o que cada instância observa e deixa o teste
- * dizer, por aba, se ela está inteira à vista (`show`): é o que o navegador faria ao medir a faixa.
- */
-class FakeIntersectionObserver {
-  static instances: FakeIntersectionObserver[] = [];
-  readonly observed = new Set<Element>();
-  disconnected = false;
-
-  constructor(
-    private readonly callback: IntersectionObserverCallback,
-    readonly options?: IntersectionObserverInit,
-  ) {
-    FakeIntersectionObserver.instances.push(this);
-  }
-
-  observe(target: Element) {
-    this.observed.add(target);
-  }
-
-  unobserve(target: Element) {
-    this.observed.delete(target);
-  }
-
-  disconnect() {
-    this.observed.clear();
-    this.disconnected = true;
-  }
-
-  takeRecords(): IntersectionObserverEntry[] {
-    return [];
-  }
-
-  /** Avisa só das abas dadas, como o navegador: quem não mudou não vem na lista. */
-  report(changes: ReadonlyMap<Element, boolean>) {
-    const entries = [...changes].map(
-      ([target, visible]) =>
-        ({
-          target,
-          isIntersecting: visible,
-          intersectionRatio: visible ? 1 : 0,
-        }) as unknown as IntersectionObserverEntry,
-    );
-    this.callback(entries, this as unknown as IntersectionObserver);
-  }
-}
-
-/** A instância viva (a mais recente que ainda observa algo). */
-function live(): FakeIntersectionObserver {
-  const found = FakeIntersectionObserver.instances.filter((item) => !item.disconnected).at(-1);
-  if (found === undefined) throw new Error('Nenhum IntersectionObserver vivo.');
-  return found;
-}
-
-function tabEl(id: string): Element {
-  const found = [...live().observed].find((item) => item.getAttribute('data-tab-id') === id);
-  if (found === undefined) throw new Error(`A aba ${id} não está sendo observada.`);
-  return found;
-}
-
-/** Diz ao observador vivo quais abas estão à vista (as outras ficam fora). */
-function show(...visibleIds: string[]) {
-  const changes = new Map<Element, boolean>();
-  for (const element of live().observed) {
-    changes.set(element, visibleIds.includes(element.getAttribute('data-tab-id') ?? ''));
-  }
-  act(() => live().report(changes));
-}
+import { live, show, tabEl, useFakeIntersectionObserver } from './fake-intersection-observer';
 
 const IDS = ['a', 'b', 'c', 'd'];
-let scrollIntoView: ReturnType<typeof vi.fn>;
-let original: typeof globalThis.IntersectionObserver | undefined;
-
-beforeEach(() => {
-  FakeIntersectionObserver.instances = [];
-  original = globalThis.IntersectionObserver;
-  vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
-  scrollIntoView = vi.fn();
-  Element.prototype.scrollIntoView =
-    scrollIntoView as unknown as typeof Element.prototype.scrollIntoView;
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  if (original !== undefined) globalThis.IntersectionObserver = original;
-});
+const fake = useFakeIntersectionObserver();
 
 /** Uma faixa de abas de teste: a lista de ids muda por `setIds`, e o menu leva só as escondidas. */
 let setIdsFromOutside: (ids: string[]) => void = () => undefined;
@@ -195,8 +112,8 @@ describe('useTabsOverflow e TabsOverflow', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Aba d' }));
 
     expect(selected).toEqual(['d']);
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView.mock.contexts[0]).toBe(tabEl('d'));
+    expect(fake.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(fake.scrollIntoView.mock.contexts[0]).toBe(tabEl('d'));
   });
 
   it('o botão se opera pelo teclado e some quando as abas voltam à vista', async () => {
