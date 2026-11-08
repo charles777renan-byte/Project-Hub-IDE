@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Group,
@@ -9,6 +9,7 @@ import {
   type LayoutChangedMeta,
 } from 'react-resizable-panels';
 import type { LayoutLeaf, LayoutNode, LayoutSplit } from '@project-hub/contracts';
+import { useLeafHosts, type LeafHosts } from './leaf-hosts';
 import { minExtent } from './layout-fit';
 import { leavesOf } from './layout-model';
 import { PANE_IN, PANE_OUT, type PaneMotion } from './pane-motion';
@@ -31,6 +32,12 @@ type PaneTreeProps = {
   renderLeaf(leaf: LayoutLeaf): ReactNode;
   /** Folhas entrando e saindo, para a animação (pane-motion.ts). Sem ele, nada anima. */
   motion?: PaneMotion | undefined;
+  /**
+   * Os nós do conteúdo das folhas, de quem chama (WorkspacePage), que também os mostra fora da grade (modo Abas). Com
+   * eles, quem chama renderiza o conteúdo por portal e cuida dos nós; a árvore só os põe no lugar. Sem eles, a árvore
+   * cuida de tudo.
+   */
+  hosts?: LeafHosts | undefined;
 };
 
 /**
@@ -46,64 +53,36 @@ export function PaneTree({
   minHeight,
   renderLeaf,
   motion,
+  hosts,
 }: PaneTreeProps) {
-  const hosts = useRef(new Map<string, HTMLDivElement>());
-  // O último elemento focado dentro da grade: mover um nó tira o foco dele, e o foco volta depois da mudança.
-  const lastFocus = useRef<HTMLElement | null>(null);
+  const own = useLeafHosts();
+  const leafHosts = hosts ?? own;
   const leaves = leavesOf(layout);
   const ids = leaves.map((leaf) => leaf.id).join(' ');
+  const { prune } = own;
 
-  const hostOf = useCallback((leafId: string) => {
-    let host = hosts.current.get(leafId);
-    if (host === undefined) {
-      host = document.createElement('div');
-      host.className = 'pane-tree__content';
-      hosts.current.set(leafId, host);
-    }
-    return host;
-  }, []);
-
-  const attach = useCallback(
-    (leafId: string, slot: HTMLDivElement | null) => {
-      if (slot === null) return;
-      const host = hostOf(leafId);
-      if (host.parentElement === slot) return;
-      slot.append(host);
-      const focused = lastFocus.current;
-      const lost = document.activeElement === null || document.activeElement === document.body;
-      if (lost && focused !== null && host.contains(focused))
-        focused.focus({ preventScroll: true });
-    },
-    [hostOf],
-  );
-
-  // Folha que saiu do layout: o nó dela sai do mapa (o portal já desmontou o conteúdo).
   useEffect(() => {
-    const kept = new Set(ids.split(' '));
-    for (const id of hosts.current.keys()) if (!kept.has(id)) hosts.current.delete(id);
-  }, [ids]);
+    if (hosts === undefined) prune(new Set(ids.split(' ')));
+  }, [hosts, ids, prune]);
 
   return (
-    <div
-      className="pane-tree"
-      onFocus={(event) => {
-        if (event.target instanceof HTMLElement) lastFocus.current = event.target;
-      }}
-    >
+    <div className="pane-tree" onFocus={leafHosts.rememberFocus}>
       <Node
         node={layout}
         onRatio={onRatio}
         minWidth={minWidth}
         minHeight={minHeight}
         motion={motion}
-        attach={attach}
+        attach={leafHosts.attach}
       />
-      {leaves.map((leaf) => createPortal(renderLeaf(leaf), hostOf(leaf.id), leaf.id))}
+      {hosts === undefined
+        ? leaves.map((leaf) => createPortal(renderLeaf(leaf), own.hostOf(leaf.id), leaf.id))
+        : null}
     </div>
   );
 }
 
-type NodeProps = Omit<PaneTreeProps, 'layout' | 'renderLeaf'> & {
+type NodeProps = Omit<PaneTreeProps, 'layout' | 'renderLeaf' | 'hosts'> & {
   node: LayoutNode;
   /** Põe o nó do conteúdo da folha dentro do lugar dela na árvore. */
   attach(leafId: string, slot: HTMLDivElement | null): void;

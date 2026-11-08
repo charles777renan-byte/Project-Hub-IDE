@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves, arrangeLeavesCapped } from '@project-hub/contracts/layout-arrange';
@@ -39,6 +48,7 @@ import {
   pickVisible,
   rowsOf,
 } from '../workspace/layout-fit';
+import { useLeafHosts } from '../workspace/leaf-hosts';
 import { leavesOf } from '../workspace/layout-model';
 import { OffGridDock, type OffGridItem } from '../workspace/OffGridDock';
 import {
@@ -57,6 +67,11 @@ const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.'
 const UNAVAILABLE_NOTICE =
   'A pasta deste projeto não está disponível. Ela pode ter sido movida ou apagada.';
 const UNAVAILABLE_REASON = 'A pasta do projeto não está disponível.';
+/**
+ * Quantos painéis o modo Abas guarda montados quando a grade ainda não foi vista (a janela já abriu estreita). Com a
+ * grade vista, vale o que cabia nela: os mesmos terminais, nem mais nem menos contextos WebGL.
+ */
+const TABS_KEEP_DEFAULT = 4;
 
 /** Lê o id da sessão que a barra lateral pediu para mostrar, se o estado da rota traz um. */
 function requestedTerminal(state: unknown): string | null {
@@ -239,6 +254,25 @@ function WorkspaceBody({
   const openingRef = useRef(false);
   // Modo "um painel por vez": só na tela, não muda o layout guardado (a arrumação automática segue valendo na grade).
   const [soloOn, setSoloOn] = useState(false);
+  // Os nós do conteúdo de cada painel (leaf-hosts.ts): a grade e o modo Abas mostram os mesmos, sem recriar o terminal.
+  const hosts = useLeafHosts();
+  // Onde ficam, escondidos e montados, os painéis que o modo Abas guarda sem mostrar.
+  const parkingRef = useRef<HTMLDivElement>(null);
+  // Os painéis montados na última pintura e quantos o modo Abas guarda (o que cabia na grade da última vez).
+  const mountedIds = useRef<readonly string[]>([]);
+  const keptInTabs = useRef(TABS_KEEP_DEFAULT);
+  // Depois de cada pintura: quem saiu da lista de montados perde o nó; quem está montado sem lugar na tela (no modo
+  // Abas, os que não são a aba à vista) vai para o estacionamento escondido.
+  useLayoutEffect(() => {
+    const keep = new Set(mountedIds.current);
+    hosts.prune(keep);
+    const parking = parkingRef.current;
+    if (parking === null) return;
+    for (const id of keep) {
+      const host = hosts.hostOf(id);
+      if (!host.isConnected) parking.append(host);
+    }
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -437,6 +471,24 @@ function WorkspaceBody({
   const soloLeaf = soloEffective
     ? (shownLeaves.find((leaf) => leaf.id === workspace.activeLeafId) ?? shownLeaves[0])
     : undefined;
+
+  // Os painéis montados. Na grade, os da árvore da tela. No modo Abas, a aba à vista e os que já estavam montados (até
+  // o que cabia na grade), escondidos: trocar de aba, maximizar e voltar à grade só mudam o nó de lugar, e o terminal
+  // não é recriado nem repete a saída guardada.
+  let mountedLeaves: LayoutLeaf[];
+  if (soloLeaf === undefined) {
+    mountedLeaves = gridTree === null ? [] : leavesOf(gridTree);
+    if (columns !== null && rows !== null) keptInTabs.current = columns * rows;
+  } else {
+    const kept = pickVisible(
+      shownLeaves.map((leaf) => leaf.id),
+      mountedIds.current,
+      soloLeaf.id,
+      keptInTabs.current,
+    ).shown;
+    mountedLeaves = shownLeaves.filter((leaf) => kept.includes(leaf.id));
+  }
+  mountedIds.current = mountedLeaves.map((leaf) => leaf.id);
 
   /**
    * Mostra o painel `leafId`, que vira o ativo, com o foco no terminal dele. Fora do modo automático, liga o modo
@@ -702,8 +754,14 @@ function WorkspaceBody({
               role="tabpanel"
               aria-labelledby={paneTabId(soloLeaf.id)}
               className="workspace__solo-pane"
+              onFocus={hosts.rememberFocus}
             >
-              {renderLeaf(soloLeaf)}
+              {/* Um lugar por aba (a chave): o nó da aba anterior sai junto com o lugar dela e vai para o estacionamento. */}
+              <div
+                key={soloLeaf.id}
+                ref={(slot) => hosts.attach(soloLeaf.id, slot)}
+                className="workspace__solo-slot"
+              />
             </div>
           </div>
         ) : gridTree === null ? (
@@ -729,8 +787,11 @@ function WorkspaceBody({
             minHeight={PANE_MIN_HEIGHT}
             renderLeaf={renderLeaf}
             motion={motion}
+            hosts={hosts}
           />
         )}
+        <div ref={parkingRef} className="workspace__parking" hidden />
+        {mountedLeaves.map((leaf) => createPortal(renderLeaf(leaf), hosts.hostOf(leaf.id), leaf.id))}
       </div>
     </div>
   );

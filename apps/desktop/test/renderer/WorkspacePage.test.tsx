@@ -35,12 +35,20 @@ import {
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
-// O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador.
-vi.mock('../../src/renderer/components/terminals/TerminalView', () => ({
-  TerminalView: ({ terminalId }: { terminalId: string }) => (
-    <div data-testid="terminal-view">{terminalId}</div>
-  ),
-}));
+// O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador, que conta as montagens: cada
+// uma, no app, cria o xterm e o WebGL de novo e repete a saída guardada.
+const montagensDoTerminal = vi.hoisted(() => ({ ids: [] as string[] }));
+vi.mock('../../src/renderer/components/terminals/TerminalView', async () => {
+  const { useEffect } = await import('react');
+  return {
+    TerminalView: ({ terminalId }: { terminalId: string }) => {
+      useEffect(() => {
+        montagensDoTerminal.ids.push(terminalId);
+      }, [terminalId]);
+      return <div data-testid="terminal-view">{terminalId}</div>;
+    },
+  };
+});
 
 /**
  * A medida que o observador falso dá à área da grade (`.workspace__area`) quando começa a observá-la; `null` é "ainda
@@ -203,6 +211,7 @@ function renderAt(state?: unknown, projectId = 'p1', search = '') {
 }
 
 beforeEach(() => {
+  montagensDoTerminal.ids.length = 0;
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1000);
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(800);
   areaSize = { width: 1000, height: 800 };
@@ -844,6 +853,26 @@ describe('modo "um painel por vez"', () => {
     expect(pane('Claude Code')).toBeInTheDocument();
     expect(pane('Codex')).toBeInTheDocument();
     expect(pane('PowerShell')).toBeInTheDocument();
+  });
+
+  it('entrar e sair do modo Abas e trocar de aba não recriam o terminal', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(padrao('t1')) });
+    api.terminals.list.mockResolvedValue({ ok: true, data: [shellTerminal] });
+    renderAt();
+    await screen.findByRole('region', { name: 'Painel PowerShell' });
+    await waitFor(() => expect(montagensDoTerminal.ids).toEqual(['t1']));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(pane('PowerShell')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: /PowerShell/ }));
+    expect(pane('PowerShell')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: /Codex/ }));
+    await userEvent.click(screen.getByRole('tab', { name: /PowerShell/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
+
+    expect(pane('PowerShell')).toBeInTheDocument();
+    expect(screen.getAllByTestId('terminal-view')).toHaveLength(1);
+    expect(montagensDoTerminal.ids).toEqual(['t1']);
   });
 
   it('Maximizar painel mostra só aquele painel, e o mesmo botão volta à grade', async () => {
