@@ -2,7 +2,12 @@ import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
-import { summarizeUsage, type MessageUsage, type UsageSummary } from '@project-hub/domain';
+import {
+  contextTokensOf,
+  summarizeUsage,
+  type MessageUsage,
+  type UsageSummary,
+} from '@project-hub/domain';
 
 /**
  * A pasta de dados do Claude Code que o terminal vai usar: `CLAUDE_CONFIG_DIR` do ambiente do terminal
@@ -49,10 +54,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Lê o uso de uma linha de resposta do transcript. Só os números saem daqui: o texto da resposta não é
- * copiado. Linha que não é resposta, ou fora do formato, devolve `undefined`; a mensagem de erro do
- * `JSON.parse` é descartada, porque pode trazer um pedaço da linha.
+ * copiado. `at` é o `timestamp` da linha em milissegundos, só quando for uma data válida. Linha que não
+ * é resposta, ou fora do formato, devolve `undefined`; a mensagem de erro do `JSON.parse` é descartada,
+ * porque pode trazer um pedaço da linha.
  */
-export function readUsageLine(line: string): { id: string; usage: MessageUsage } | undefined {
+export function readUsageLine(
+  line: string,
+): { id: string; usage: MessageUsage; at?: number } | undefined {
   // Filtro barato antes do parse: a maioria das linhas é anexo ou pedido, e nenhuma delas tem uso.
   if (!line.includes('"assistant"') || !line.includes('"usage"')) return undefined;
   let record: unknown;
@@ -87,7 +95,10 @@ export function readUsageLine(line: string): { id: string; usage: MessageUsage }
   };
   if (typeof usage['speed'] === 'string') parsed.speed = usage['speed'];
   if (typeof usage['inference_geo'] === 'string') parsed.inferenceGeo = usage['inference_geo'];
-  return { id: message['id'], usage: parsed };
+  const at = typeof record['timestamp'] === 'string' ? Date.parse(record['timestamp']) : Number.NaN;
+  return Number.isFinite(at)
+    ? { id: message['id'], usage: parsed, at }
+    : { id: message['id'], usage: parsed };
 }
 
 /**
@@ -150,12 +161,19 @@ export type TranscriptUsageTracker = {
   addSession(transcriptPath: string, sessionId: string): void;
   /** Lê o que chegou nos transcripts. Devolve o total da execução quando ele mudou desde a última vez. */
   poll(): Promise<UsageSummary | undefined>;
+  /**
+   * O contexto da última resposta da conversa principal: o modelo e os tokens que ela leu. É a resposta
+   * principal mais recente entre todas as sessões lidas (um `/clear` abre outra); resposta de subagente
+   * nunca conta. Sem nenhuma resposta com uso, `undefined`.
+   */
+  latestContext(): { model: string; usedTokens: number } | undefined;
 };
 
 /**
  * Soma o uso de uma execução a partir dos transcripts do Claude Code: o principal de cada sessão (um
  * `/clear` abre outra) e os dos subagentes, que ficam em arquivos próprios. Cada arquivo é lido só no
- * trecho novo, e a chave da soma é o `message.id`, comum a todos os arquivos da execução.
+ * trecho novo, e a chave da soma é o `message.id`, comum a todos os arquivos da execução. Só as
+ * respostas dos transcripts principais disputam o contexto mais recente.
  */
 export function createTranscriptUsageTracker(options: {
   /** Pasta de dados do Claude Code (`CLAUDE_CONFIG_DIR`, ou `~/.claude`). */
@@ -166,6 +184,8 @@ export function createTranscriptUsageTracker(options: {
   const offsets = new Map<string, number>();
   const messages = new Map<string, MessageUsage>();
   let lastEmitted = '';
+  /** A resposta principal mais recente. Sem `timestamp` em um dos lados, vale a ordem de leitura. */
+  let latest: { id: string; at: number | undefined; usage: MessageUsage } | undefined;
 
   function verify(session: Session): void {
     if (session.state !== 'pending' || !existsSync(session.path)) return;
@@ -205,7 +225,23 @@ export function createTranscriptUsageTracker(options: {
     return files;
   }
 
-  async function readNew(file: string): Promise<void> {
+  /** Atualiza a resposta principal mais recente com uma linha lida de um transcript principal. */
+  function trackLatest(parsed: { id: string; usage: MessageUsage; at?: number }): void {
+    // Resposta sintética (tudo zero) não é contexto: não cria nem derruba o anterior.
+    if (contextTokensOf(parsed.usage) === 0) return;
+    if (latest?.id === parsed.id) {
+      latest = { ...latest, usage: mergeUsage(latest.usage, parsed.usage) };
+      return;
+    }
+    const newer =
+      latest === undefined ||
+      latest.at === undefined ||
+      parsed.at === undefined ||
+      parsed.at > latest.at;
+    if (newer) latest = { id: parsed.id, at: parsed.at, usage: parsed.usage };
+  }
+
+  async function readNew(file: string, isMain: boolean): Promise<void> {
     let handle;
     try {
       handle = await open(file, 'r');
@@ -226,6 +262,7 @@ export function createTranscriptUsageTracker(options: {
         const parsed = readUsageLine(line);
         if (parsed !== undefined) {
           messages.set(parsed.id, mergeUsage(messages.get(parsed.id), parsed.usage));
+          if (isMain) trackLatest(parsed);
         }
       }
     } finally {
@@ -252,8 +289,8 @@ export function createTranscriptUsageTracker(options: {
       for (const session of sessions.values()) {
         verify(session);
         if (session.state !== 'ok') continue;
-        await readNew(session.path);
-        for (const file of subagentFiles(session.path)) await readNew(file);
+        await readNew(session.path, true);
+        for (const file of subagentFiles(session.path)) await readNew(file, false);
       }
       if (messages.size === 0) return undefined;
       const summary = summarizeUsage(messages.values());
@@ -261,6 +298,12 @@ export function createTranscriptUsageTracker(options: {
       if (key === lastEmitted) return undefined;
       lastEmitted = key;
       return summary;
+    },
+
+    latestContext() {
+      return latest === undefined
+        ? undefined
+        : { model: latest.usage.model, usedTokens: contextTokensOf(latest.usage) };
     },
   };
 }

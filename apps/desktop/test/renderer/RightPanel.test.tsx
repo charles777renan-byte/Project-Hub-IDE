@@ -11,8 +11,12 @@ import {
   saveRightTab,
 } from '../../src/renderer/components/right-panel/right-panel-state';
 
-// O store dos arquivos abertos tem teste próprio: aqui só importa que o painel o chame.
-vi.mock('../../src/renderer/open-files', () => ({ openFile: vi.fn() }));
+// O store dos arquivos abertos tem teste próprio: aqui só importa que o painel o chame (o resto segue real, porque a
+// aba Arquivos mostra a faixa e o editor).
+vi.mock('../../src/renderer/open-files', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/renderer/open-files')>()),
+  openFile: vi.fn(),
+}));
 
 const STORAGE_KEY = 'project-hub:right-panel-tab';
 
@@ -23,7 +27,7 @@ function Probe() {
   return null;
 }
 
-/** O painel dentro de um roteador: abrir um arquivo leva a rota para a visão Terminais. */
+/** O painel dentro de um roteador: o roteador mostra a rota, que o painel não deve mudar ao abrir um arquivo. */
 function renderPanel(
   props: Parameters<typeof RightPanel>[0],
   at = '/workspaces/p1?visao=terminais',
@@ -254,41 +258,24 @@ describe('RightPanel: abrir arquivo', () => {
     expect(openFile).toHaveBeenCalledWith('p1', 'README.md');
   });
 
-  it('fora da visão Terminais, leva a rota para ela com replace, mantendo o projeto', async () => {
+  it('a rota não muda ao abrir um arquivo, de nenhuma visão: o editor mora no painel', async () => {
     const user = userEvent.setup();
     renderPanel({ projectId: 'p1' }, '/workspaces/p1?visao=missoes');
 
     await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
 
-    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+    expect(openFile).toHaveBeenCalledWith('p1', 'README.md');
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=missoes' });
   });
 
-  it('de uma página que não é do projeto (o Início), leva a rota para os Terminais dele', async () => {
+  it('de uma página que não é do projeto (o Início), também não leva a rota a lugar nenhum', async () => {
     const user = userEvent.setup();
     renderPanel({ projectId: 'p1' }, '/');
 
     await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
 
-    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
-  });
-
-  it('já na visão Terminais, a rota não muda', async () => {
-    const user = userEvent.setup();
-    renderPanel({ projectId: 'p1' });
-
-    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
-
-    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
     expect(openFile).toHaveBeenCalledWith('p1', 'README.md');
-  });
-
-  it('sem ?visao= (a visão padrão, Terminais), a rota também não muda', async () => {
-    const user = userEvent.setup();
-    renderPanel({ projectId: 'p1' }, '/workspaces/p1');
-
-    await user.click(await screen.findByRole('treeitem', { name: /README\.md/ }));
-
-    expect(location).toEqual({ pathname: '/workspaces/p1', search: '' });
+    expect(location).toEqual({ pathname: '/', search: '' });
   });
 
   it('com onOpenFile injetado, só o espião é chamado: nem openFile nem a rota', async () => {
@@ -335,7 +322,7 @@ describe('RightPanel: abrir pela aba Código-fonte', () => {
     } as unknown as ProjectHubApi;
   });
 
-  it('o clique no nome de um arquivo alterado abre a aba em Alterações e leva a rota para os Terminais', async () => {
+  it('o clique no nome de um arquivo alterado abre o arquivo em Alterações na aba Arquivos, sem trocar de visão', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(STORAGE_KEY, 'codigo');
     renderPanel({ projectId: 'p1' }, '/workspaces/p1?visao=missoes');
@@ -343,7 +330,11 @@ describe('RightPanel: abrir pela aba Código-fonte', () => {
     await user.click(await screen.findByRole('button', { name: 'Ver alterações de src/a.ts' }));
 
     expect(openFile).toHaveBeenCalledWith('p1', 'src/a.ts', { mode: 'alteracoes' });
-    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+    // O editor mora na aba Arquivos: o painel vai para ela, e a escolha fica guardada.
+    expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
+    expect(readRightTab()).toBe('arquivos');
+    // A rota não muda: o arquivo fica no painel, não numa visão do projeto.
+    expect(location).toEqual({ pathname: '/workspaces/p1', search: '?visao=missoes' });
   });
 });
 

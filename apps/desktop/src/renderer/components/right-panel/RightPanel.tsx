@@ -1,9 +1,6 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
 import { openFile, type FileMode } from '../../open-files';
-import { projectViewFromParams } from '../../project-views';
-import { projectViewPath, workspacePath } from '../../routes';
 import { useGithubPanel } from '../../use-github-panel';
 import { EmptyState } from '../EmptyState';
 import { Hint } from '../Hint';
@@ -38,10 +35,9 @@ const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(RIGHT_TABS);
  * O painel direito do corpo da janela: uma barra de abas só de ícones (Arquivos, Sessões, Código-fonte e Checks, num
  * `tablist` do Radix) e o conteúdo da aba escolhida. As quatro são abas de verdade, e a escolhida é lembrada. Sem
  * projeto (o Início, por exemplo), Sessões mostra só o escopo Todos e as outras abas mostram o aviso para abrir um.
- * A aba Checks leva um ponto de estado na barra
- * (`checksDot`) quando o PR tem checks. Um arquivo que a aba Arquivos pede para abrir
- * entra nos arquivos abertos do projeto (`openFile`) e a rota vai para a visão Terminais dele, onde as abas moram,
- * se já não estiver lá. `onOpenFile` só existe para os testes injetarem um espião no lugar disso.
+ * A aba Checks leva um ponto de estado na barra (`checksDot`) quando o PR tem checks. Um arquivo aberto, pela aba
+ * Arquivos ou pela aba Código-fonte, entra nos arquivos abertos do projeto (`openFile`), e o painel mostra a aba
+ * Arquivos com ele (o editor). `onOpenFile` só existe para os testes injetarem um espião no lugar disso.
  */
 export function RightPanel({
   projectId,
@@ -51,19 +47,20 @@ export function RightPanel({
   onOpenFile?: (path: string, mode?: FileMode) => void;
 }) {
   const [tab, setTab] = useState<RightTab>(readRightTab);
-  const location = useLocation();
-  const navigate = useNavigate();
   // O PR é dado do painel, não da aba: o ponto de estado da barra precisa dele com a aba fechada. É chamado uma
   // vez, aqui; a aba Checks lê o retorno (e o ponto da barra, depois). A releitura de 30 s só vale com a aba visível.
   const github = useGithubPanel(projectId, tab === 'checks');
 
+  /**
+   * Abre o arquivo no painel direito: ele entra nos arquivos abertos do projeto e a aba Arquivos fica escolhida (e
+   * lembrada). A rota não muda: o editor mora no painel, não numa visão. Quem pede é de dentro do painel, então ele
+   * já está aberto.
+   */
   function open(project: string, path: string, mode?: FileMode) {
     if (mode === undefined) openFile(project, path);
     else openFile(project, path, { mode });
-    const here =
-      location.pathname === workspacePath(project) &&
-      projectViewFromParams(new URLSearchParams(location.search)) === 'terminais';
-    if (!here) navigate(projectViewPath(project, 'terminais'), { replace: true });
+    setTab('arquivos');
+    saveRightTab('arquivos');
   }
 
   function choose(value: string) {

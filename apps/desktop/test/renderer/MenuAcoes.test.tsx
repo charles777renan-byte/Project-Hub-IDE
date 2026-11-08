@@ -4,6 +4,32 @@ import { describe, expect, it, vi } from 'vitest';
 import { MenuAcoes } from '../../src/renderer/components/MenuAcoes';
 
 describe('MenuAcoes', () => {
+  it('com ícone, o gatilho mostra o ícone e usa o rótulo só como nome acessível', async () => {
+    const user = userEvent.setup();
+    render(
+      <MenuAcoes
+        rotulo="Mais ações do painel"
+        icone={<svg data-testid="icone" aria-hidden="true" />}
+        acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]}
+      />,
+    );
+    const gatilho = screen.getByRole('button', { name: 'Mais ações do painel' });
+    expect(gatilho).toHaveAttribute('aria-label', 'Mais ações do painel');
+    expect(gatilho).toContainElement(screen.getByTestId('icone'));
+    expect(gatilho).toHaveTextContent('');
+    expect(screen.queryByText('Mais ações do painel')).toBeNull();
+
+    await user.click(gatilho);
+    expect(screen.getByRole('menuitem', { name: 'Pausar' })).toBeVisible();
+  });
+
+  it('sem ícone, o gatilho segue sendo o texto do rótulo, sem aria-label', () => {
+    render(<MenuAcoes rotulo="Mais ações" acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]} />);
+    const gatilho = screen.getByRole('button', { name: 'Mais ações' });
+    expect(gatilho).toHaveTextContent('Mais ações');
+    expect(gatilho).not.toHaveAttribute('aria-label');
+  });
+
   it('abre com o clique e mostra as ações', async () => {
     const user = userEvent.setup();
     render(<MenuAcoes rotulo="Mais ações" acoes={[{ rotulo: 'Pausar', onSelecionar: vi.fn() }]} />);
@@ -141,5 +167,31 @@ describe('MenuAcoes', () => {
     expect(screen.getByText('Resto da página')).toBeVisible();
     expect(document.body).not.toHaveAttribute('data-scroll-locked');
     expect(document.body.style.pointerEvents).not.toBe('none');
+  });
+
+  it('aceita dois itens com o mesmo rótulo, sem aviso de chave repetida, e cada um chama a sua ação', async () => {
+    const user = userEvent.setup();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const primeira = vi.fn();
+    const segunda = vi.fn();
+    render(
+      <MenuAcoes
+        rotulo="Mais ações"
+        acoes={[
+          { rotulo: 'index.ts', onSelecionar: primeira },
+          { rotulo: 'index.ts', onSelecionar: segunda },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    const itens = screen.getAllByRole('menuitem', { name: 'index.ts' });
+    expect(itens).toHaveLength(2);
+    await user.click(itens[1] as HTMLElement);
+
+    expect(segunda).toHaveBeenCalledTimes(1);
+    expect(primeira).not.toHaveBeenCalled();
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key|unique "key"/);
+    errors.mockRestore();
   });
 });

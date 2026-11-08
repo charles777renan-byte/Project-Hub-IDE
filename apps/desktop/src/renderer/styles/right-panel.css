@@ -127,6 +127,30 @@
 }
 
 /*
+ * A aba Arquivos com a faixa de arquivos abertos no topo (FilesTab.tsx): a faixa fica parada e a árvore ou o editor
+ * ocupam o resto. Quem sai de vista leva `hidden`, e o `display` das partes não pode vencer esse atributo.
+ */
+.files-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.files-panel__tree,
+.files-panel__file {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.files-panel__tree[hidden],
+.files-panel__file[hidden] {
+  display: none;
+}
+
+/*
  * Aba Arquivos (FilesTab, FileTree, FileSearch). Linhas de 28px; o recuo de cada nível é o padding-left que o React
  * escreve no elemento pelo CSSOM. Seleção em --fill e texto esmaecido em --muted (que sustenta 4,5:1), nunca por
  * opacidade. O anel de foco lima vem do app.css, por dentro da linha.
@@ -423,8 +447,18 @@
   flex: none;
 }
 
+/* A faixa de abas e o botão "⌄" das escondidas (a CSS do esmaecimento e do botão está em workspace.css). */
+.file-tabs-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-width: 0;
+  padding-right: var(--space-2);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
 /*
- * A faixa de arquivos abertos (components/project/FileTabs.tsx), no espaço livre da barra do workspace (Terminais). A aba ativa
+ * A faixa de arquivos abertos (components/project/FileTabs.tsx), no topo da aba Arquivos do painel direito. A aba ativa
  * usa --fill e, além da cor, um contorno de --field-line; o ponto de "não salvo" é uma forma (e o texto escondido o
  * diz), não só cor. O anel de foco vem de app.css, por dentro, porque a faixa rola e cortaria o de fora.
  */
@@ -433,6 +467,7 @@
   flex: 1;
   gap: var(--space-1);
   min-width: 0;
+  padding: var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -778,14 +813,10 @@
   white-space: pre-wrap;
 }
 
-/* A pergunta ao fechar uma aba com alterações não salvas (FileTabs), logo abaixo da barra do workspace. */
+/* A pergunta ao fechar uma aba com alterações não salvas (FileTabs), logo abaixo da faixa de abas, na mesma coluna. */
 .file-tabs-ask {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
-  left: 0;
-  z-index: 5;
   display: flex;
+  flex: none;
   border-radius: var(--radius-card);
   flex-wrap: wrap;
   align-items: center;

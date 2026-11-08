@@ -397,6 +397,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           const folder = projects.get(record.projectId);
           const changedFiles = await changedFilesOf(folder?.path);
           const tokens = provider.data === 'claude' ? await usageOfClaude(record.id) : undefined;
+          // Lido junto do gasto, na mesma passada: só existe depois de `usageOfClaude` e sem ler de novo.
+          const context = provider.data === 'claude' ? usage.contextOf(record.id) : undefined;
           out.push({
             id: record.id,
             kind: 'shell',
@@ -410,6 +412,12 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             ...(outputBytes === undefined ? {} : { outputBytes }),
             ...(changedFiles === undefined ? {} : { changedFiles }),
             ...(tokens === undefined ? {} : { usage: tokens }),
+            ...(context === undefined
+              ? {}
+              : {
+                  model: context.model,
+                  context: { usedTokens: context.usedTokens, windowTokens: context.windowTokens },
+                }),
           });
         }
         return { ok: true, data: out };

@@ -218,6 +218,37 @@ export async function expectOpenSessions(page: Page, count: number): Promise<voi
     .toBe(count);
 }
 
+/**
+ * Fecha o painel do programa `nomeDoPainel` (o `aria-label` da região é `Painel <nome>`; `indice` escolhe entre
+ * vários com o mesmo nome). A sessão viva fecha pelo menu ⋯ do cabeçalho: um agente avulso rodando pergunta
+ * antes ("Fechar painel e encerrar…"), e o helper confirma; o shell comum e a sessão de missão fecham direto. O
+ * lançador e a sessão que terminou não têm o menu e seguem com o botão "Fechar painel" solto. Não espera o painel
+ * sumir: quem chama confere a contagem de painéis e `expectOpenSessions`.
+ */
+export async function fecharPainel(
+  page: Page,
+  nomeDoPainel: string,
+  opcoes: { indice?: number } = {},
+): Promise<void> {
+  const painel = page
+    .getByRole('region', { name: `Painel ${nomeDoPainel}`, exact: true })
+    .nth(opcoes.indice ?? 0);
+  const menu = painel.getByRole('button', { name: 'Mais ações do painel', exact: true });
+  if ((await menu.count()) === 0) {
+    await painel.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+    return;
+  }
+  await menu.click();
+  await page.getByRole('menu').waitFor();
+  const encerrar = page.getByRole('menuitem', { name: 'Fechar painel e encerrar…', exact: true });
+  if ((await encerrar.count()) > 0) {
+    await encerrar.click();
+    await painel.getByRole('button', { name: 'Fechar e encerrar', exact: true }).click();
+    return;
+  }
+  await page.getByRole('menuitem', { name: /^Fechar painel/ }).click();
+}
+
 /** Tamanho do terminal da área em células (o que o xterm acha que cabe) e a caixa da tela dele, em px de CSS. */
 export type TerminalSize = {
   cols: number;

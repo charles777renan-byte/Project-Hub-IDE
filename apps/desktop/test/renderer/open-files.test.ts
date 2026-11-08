@@ -9,6 +9,7 @@ import {
   resetOpenFilesForTests,
   setActive,
   setFileMode,
+  TREE_TAB,
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
@@ -50,7 +51,7 @@ describe('open-files', () => {
   it('sem arquivo aberto, a lista é vazia, a aba ativa é a dos terminais e nada está sujo', () => {
     const { result } = mount();
 
-    expect(result.current).toEqual({ files: [], active: 'terminals', anyDirty: false });
+    expect(result.current).toEqual({ files: [], active: TREE_TAB, anyDirty: false });
     expect(hasDirtyFiles()).toBe(false);
   });
 
@@ -235,14 +236,14 @@ describe('open-files', () => {
     expect(result.current.active).toBe('b.ts');
   });
 
-  it('fechar o último arquivo volta à aba Terminais', async () => {
+  it('fechar o último arquivo volta à Árvore', async () => {
     const { result } = mount();
     act(() => openFile('p1', 'a.ts'));
     await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
 
     act(() => closeFile('p1', 'a.ts'));
 
-    expect(result.current).toEqual({ files: [], active: 'terminals', anyDirty: false });
+    expect(result.current).toEqual({ files: [], active: TREE_TAB, anyDirty: false });
   });
 
   it('setActive troca para Terminais e para um arquivo aberto; um caminho desconhecido é ignorado', async () => {
@@ -250,8 +251,8 @@ describe('open-files', () => {
     act(() => openFile('p1', 'a.ts'));
     await waitFor(() => expect(result.current.files[0]?.load).toBe('ready'));
 
-    act(() => setActive('p1', 'terminals'));
-    expect(result.current.active).toBe('terminals');
+    act(() => setActive('p1', TREE_TAB));
+    expect(result.current.active).toBe(TREE_TAB);
     act(() => setActive('p1', 'a.ts'));
     expect(result.current.active).toBe('a.ts');
     act(() => setActive('p1', 'fantasma.ts'));
@@ -277,7 +278,7 @@ describe('open-files', () => {
     await waitFor(() => expect(first.result.current.files[0]?.load).toBe('ready'));
 
     expect(second.result.current.files).toEqual([]);
-    expect(second.result.current.active).toBe('terminals');
+    expect(second.result.current.active).toBe(TREE_TAB);
   });
 
   describe('falhas de leitura', () => {
@@ -378,7 +379,7 @@ describe('open-files', () => {
 
       const { result } = mount();
 
-      expect(result.current.active).toBe('terminals');
+      expect(result.current.active).toBe(TREE_TAB);
       expect(result.current.files).toHaveLength(1);
     });
 
@@ -403,15 +404,15 @@ describe('open-files', () => {
 
       const { result } = mount();
 
-      expect(result.current).toEqual({ files: [], active: 'terminals', anyDirty: false });
+      expect(result.current).toEqual({ files: [], active: TREE_TAB, anyDirty: false });
     });
 
-    it('uma aba ativa que não está na lista guardada vira Terminais', () => {
+    it('uma aba ativa que não está na lista guardada vira a Árvore', () => {
       window.localStorage.setItem(KEY('p1'), JSON.stringify({ files: ['a.ts'], active: 'x.ts' }));
 
       const { result } = mount();
 
-      expect(result.current.active).toBe('terminals');
+      expect(result.current.active).toBe(TREE_TAB);
     });
 
     it('sem localStorage, tudo funciona só em memória', async () => {

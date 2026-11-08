@@ -2,7 +2,10 @@ import { useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'reac
 import { CircleAlert, ICON_PROPS, Search } from '../Icon';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { getOverviewState, subscribeOverview } from '../../overview-data';
+import { useOpenFiles } from '../../open-files';
 import { useGitPanel } from '../../use-git-panel';
+import { FileEditorTab } from '../project/FileEditorTab';
+import { fileTabId, FileTabs, TREE_TAB_ID } from '../project/FileTabs';
 import { FileSearch, type SearchMode } from './FileSearch';
 import { FileTree } from './FileTree';
 import { useProjectFiles } from './use-project-files';
@@ -160,9 +163,12 @@ function FilesTabBody({
 }
 
 /**
- * A aba Arquivos do painel direito: cabeçalho com o nome do projeto e "Atualizar", a alternância Nomes | Conteúdo,
- * o campo "Encontrar arquivos" e, abaixo, a árvore (campo vazio) ou os resultados da busca. Trocar de projeto
- * recomeça tudo, campo e árvore: nada do projeto anterior sobra. `onOpenFile` recebe o caminho relativo, em POSIX.
+ * A aba Arquivos do painel direito. Sem arquivo aberto, é a árvore: cabeçalho com o nome do projeto e "Atualizar", a
+ * alternância Nomes | Conteúdo, o campo "Encontrar arquivos" e, abaixo, a árvore (campo vazio) ou os resultados da
+ * busca. Com arquivos abertos, a faixa (a Árvore e um arquivo por aba) fica no topo, e o editor do arquivo ativo toma
+ * o lugar da árvore. A árvore segue montada, escondida, então as pastas abertas continuam abertas quando ela volta.
+ * Trocar de projeto recomeça tudo, campo e árvore: nada do projeto anterior sobra. `onOpenFile` recebe o caminho
+ * relativo, em POSIX.
  */
 export function FilesTab({
   projectId,
@@ -171,5 +177,25 @@ export function FilesTab({
   projectId: string;
   onOpenFile: (path: string) => void;
 }) {
-  return <FilesTabBody key={projectId} projectId={projectId} onOpenFile={onOpenFile} />;
+  const { files: opened, active } = useOpenFiles(projectId);
+  const editing = opened.some((file) => file.path === active);
+  const tabbed = opened.length > 0;
+  return (
+    <div className="files-panel">
+      <FileTabs projectId={projectId} />
+      <div
+        role={tabbed ? 'tabpanel' : undefined}
+        aria-labelledby={tabbed ? TREE_TAB_ID : undefined}
+        className="files-panel__tree"
+        hidden={editing}
+      >
+        <FilesTabBody key={projectId} projectId={projectId} onOpenFile={onOpenFile} />
+      </div>
+      {editing ? (
+        <div role="tabpanel" aria-labelledby={fileTabId(active)} className="files-panel__file">
+          <FileEditorTab key={active} projectId={projectId} path={active} />
+        </div>
+      ) : null}
+    </div>
+  );
 }

@@ -169,7 +169,7 @@ export const missionPlanDtoSchema = z.object({
 });
 export type MissionPlanDto = z.infer<typeof missionPlanDtoSchema>;
 
-const tokenCount = z.number().int().nonnegative();
+export const tokenCount = z.number().int().nonnegative();
 
 /**
  * Tokens que o agente gastou numa tentativa. `inputTokens` é só a entrada nova; o cache vem à parte.

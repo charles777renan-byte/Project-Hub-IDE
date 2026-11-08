@@ -10,7 +10,12 @@ import {
   statusBarOf,
   viewTab,
 } from './missions';
-import { expectOpenSessions, expectTerminalToContain, terminalSize } from './terminals';
+import {
+  expectOpenSessions,
+  expectTerminalToContain,
+  fecharPainel,
+  terminalSize,
+} from './terminals';
 
 // A interface estilo IDE na janela real: a barra de status com os contadores que filtram o Início, e a visão
 // Terminais de uma aba aberta direto em outra visão (o terminal montado escondido tem de preencher a área
@@ -164,11 +169,9 @@ test('o terminal montado com a aba aberta em Missões preenche a área ao voltar
     await expectTerminalToContain(view, 'cheio-10');
   } finally {
     // Fechar o painel encerra a sessão; um shell vivo seguraria a pasta do projeto e o fechamento do app.
-    const closeButton = page
-      .getByRole('region', { name: 'Painel PowerShell' })
-      .getByRole('button', { name: 'Fechar painel', exact: true });
-    if ((await closeButton.count()) === 0) await viewTab(page, 'Terminais').click();
-    await closeButton.click();
+    const panes = page.getByRole('region', { name: 'Painel PowerShell' });
+    if ((await panes.count()) === 0) await viewTab(page, 'Terminais').click();
+    await fecharPainel(page, 'PowerShell');
     await expect(page.getByRole('region', { name: 'Painel PowerShell' })).toHaveCount(0);
     await expectOpenSessions(page, 0);
   }
