@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ProviderIcon } from '../components/ProviderIcon';
@@ -7,6 +7,7 @@ import { ChevronDown, ICON_PROPS, LayoutGrid, Plus, Search } from '../components
 import { providerShortcutKeys, providerShortcutLabel } from './provider-shortcuts';
 
 export const LIMIT_HINT = 'Limite de 12 painéis';
+const SOLO_AUTO_HINT = 'Janela estreita: um painel por vez';
 
 /** Linha de apoio de cada programa no menu, abaixo do nome (só a do item marcado aparece). */
 const DESCRIPTION: Record<ProviderId, string> = {
@@ -41,7 +42,8 @@ function rowStyle(index: number): CSSProperties {
  * painéis, o botão fica desabilitado com a dica do limite. Com `unavailableReason` (a pasta do projeto sumiu), o
  * botão também fica desabilitado, e a dica é o motivo. Um bloqueio que chega com o menu aberto fecha o menu.
  * `focusToken` novo leva o foco ao botão, como quando o
- * último painel é fechado.
+ * último painel é fechado. `dock` (os terminais "Fora da grade") vai no fim da barra, à direita; com `soloAuto` (a
+ * janela está estreita e o modo Abas valeu sozinho) "Abas" fica apertado e a dica diz isso.
  */
 export function WorkspaceToolbar({
   providers,
@@ -50,7 +52,9 @@ export function WorkspaceToolbar({
   unavailableReason,
   focusToken = 0,
   soloMode = false,
+  soloAuto = false,
   canSolo = false,
+  dock,
   onToggleSolo,
   onOpen,
 }: {
@@ -64,8 +68,12 @@ export function WorkspaceToolbar({
   focusToken?: number;
   /** O modo "um painel por vez" está ligado: o botão "Abas" fica apertado. */
   soloMode?: boolean;
+  /** O modo veio da largura da janela, não de um clique: "Abas" fica apertado e a dica avisa da janela estreita. */
+  soloAuto?: boolean;
   /** Há painel para mostrar sozinho; sem ele o botão fica desabilitado. */
   canSolo?: boolean;
+  /** O que vai no fim da barra, à direita (a faixa "Fora da grade"). */
+  dock?: ReactNode;
   onToggleSolo?(): void;
   onOpen(provider: ProviderId): void;
 }) {
@@ -210,11 +218,17 @@ export function WorkspaceToolbar({
         trigger
       )}
       {onToggleSolo === undefined ? null : (
-        <Hint label="Mostra um painel por vez, com uma aba para cada um (Ctrl+Alt+setas troca de aba)">
+        <Hint
+          label={
+            soloAuto
+              ? SOLO_AUTO_HINT
+              : 'Mostra um painel por vez, com uma aba para cada um (Ctrl+Alt+setas troca de aba)'
+          }
+        >
           <button
             type="button"
             className="btn-secondary workspace__open"
-            aria-pressed={soloMode}
+            aria-pressed={soloMode || soloAuto}
             disabled={!canSolo}
             onClick={onToggleSolo}
           >
@@ -223,6 +237,7 @@ export function WorkspaceToolbar({
           </button>
         </Hint>
       )}
+      {dock}
       {open ? (
         <div className="workspace__popup">
           <div className="workspace__menu-search" style={rowStyle(0)}>

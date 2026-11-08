@@ -84,6 +84,12 @@ describe('minExtent', () => {
     expect(minExtent(tree, 'width')).toBe(3 * 340 + 2 * 8);
     expect(minExtent(tree, 'height')).toBe(2 * 260 + 8);
   });
+
+  it('com o mínimo de folha dado, usa esse valor no lugar do padrão', () => {
+    const tree = arranged(6);
+    expect(minExtent(tree, 'width', 100)).toBe(3 * 100 + 2 * 8);
+    expect(minExtent(tree, 'height', 100)).toBe(2 * 100 + 8);
+  });
 });
 
 describe('pickVisible', () => {

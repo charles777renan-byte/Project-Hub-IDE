@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
-import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
-import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
+import { arrangeLeaves, arrangeLeavesCapped } from '@project-hub/contracts/layout-arrange';
+import type { LayoutLeaf, LayoutNode, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
@@ -19,10 +19,21 @@ import { projectPanelId, projectViewFromParams, type ProjectView } from '../proj
 import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { hideTerminal, unhideTerminal, useTerminals } from '../terminals-data';
-import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
+import { markOfTerminal } from '../state-mark';
+import { numerarRepetidos, PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
+import {
+  columnsOf,
+  dockOrder,
+  gridFit,
+  PANE_MIN_HEIGHT,
+  PANE_MIN_WIDTH,
+  pickVisible,
+  rowsOf,
+} from '../workspace/layout-fit';
 import { leavesOf } from '../workspace/layout-model';
+import { OffGridDock, type OffGridItem } from '../workspace/OffGridDock';
 import {
   LEAVE_FALLBACK_MS,
   paneMotionOff,
@@ -31,6 +42,7 @@ import {
 } from '../workspace/pane-motion';
 import { providerShortcutIndex } from '../workspace/provider-shortcuts';
 import { neighbourOf, stepSolo } from '../workspace/solo';
+import { useAreaSize } from '../workspace/use-area-size';
 import { useWorkspace } from '../workspace/use-workspace';
 import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
 
@@ -166,6 +178,22 @@ function ProjectPanel({
   );
 }
 
+/** Todas as folhas numa linha só (cada divisão leva `1/n` para a folha da esquerda); `newId` dá o id de cada divisão. */
+function singleRow(leaves: readonly LayoutLeaf[], newId: () => string): LayoutNode | null {
+  const [first, ...rest] = leaves;
+  if (first === undefined) return null;
+  const second = singleRow(rest, newId);
+  if (second === null) return first;
+  return {
+    type: 'split',
+    id: newId(),
+    direction: 'row',
+    first,
+    second,
+    ratio: 1 / leaves.length,
+  };
+}
+
 function WorkspaceBody({
   projectId,
   visible,
@@ -230,6 +258,82 @@ function WorkspaceBody({
   const currentLayout =
     workspace.state.status === 'ready' ? workspace.state.workspace.layout : undefined;
   const { entering, settle } = useEnteringLeaves(currentLayout);
+
+  // A área da grade, medida por `ResizeObserver`. O `ref` é um objeto novo a cada elemento: a área só existe depois do
+  // carregamento (antes dele a página mostra só o aviso), e o efeito do `useAreaSize` precisa rodar de novo quando ela
+  // chega. Medida zerada (a visão do projeto escondida, `display: none`) não vale: a grade fica como estava.
+  const [areaElement, setAreaElement] = useState<HTMLDivElement | null>(null);
+  const areaRef = useMemo(() => ({ current: areaElement }), [areaElement]);
+  const measured = useAreaSize(areaRef);
+  const lastSize = useRef<{ width: number; height: number } | null>(null);
+  if (measured !== null && measured.width > 0 && measured.height > 0) lastSize.current = measured;
+  const size = lastSize.current;
+  // Sem medida ainda, nada é decidido: vale a árvore guardada, nunca o modo Abas nem fichas.
+  const fit = size === null ? null : gridFit(size.width, size.height);
+  const soloAuto = fit?.mode === 'solo';
+  // O modo Abas da tela: o que a pessoa ligou ou o que a largura da janela pede. O `soloOn` dela não é tocado pelo
+  // automático, então alargar a janela devolve o que ela tinha.
+  const soloEffective = soloOn || soloAuto;
+  const columns = fit?.mode === 'grid' ? fit.columns : null;
+  const rows = fit?.mode === 'grid' ? fit.rows : null;
+
+  // O arranjo inteiro, sem os painéis que estão fechando: o mesmo que o servidor vai devolver (arrangeLeaves). Os ids
+  // de divisão novos ficam guardados no `useMemo`, para não mudarem a cada renderização.
+  const shown = useMemo(
+    () =>
+      closing.size === 0 || !currentLayout
+        ? (currentLayout ?? null)
+        : arrangeLeaves(
+            leavesOf(currentLayout).filter((leaf) => !closing.has(leaf.id)),
+            () => crypto.randomUUID(),
+          ),
+    [currentLayout, closing],
+  );
+  const shownLeaves = useMemo(() => leavesOf(shown), [shown]);
+
+  // Quem fica na grade quando nem todos cabem. A memória do que já estava mostrado é do `pickVisible`: o conjunto só
+  // muda quando mudam os painéis, o ativo ou a capacidade. Em modo Abas ou sem medida a memória não é tocada.
+  const pickedBefore = useRef<string[]>([]);
+  const activeLeafId = workspace.activeLeafId;
+  const picked = useMemo(() => {
+    if (columns === null || rows === null) return null;
+    const result = pickVisible(
+      shownLeaves.map((leaf) => leaf.id),
+      pickedBefore.current,
+      activeLeafId,
+      columns * rows,
+    );
+    pickedBefore.current = result.shown;
+    return result;
+  }, [shownLeaves, activeLeafId, columns, rows]);
+  const gridLeaves = useMemo(
+    () => (picked === null ? [] : shownLeaves.filter((leaf) => picked.shown.includes(leaf.id))),
+    [shownLeaves, picked],
+  );
+
+  // A árvore da tela. Se cabe tudo e o arranjo de hoje respeita colunas e linhas, vale ele (o guardado, com os ajustes
+  // da pessoa). Senão, uma árvore derivada só da tela, com ids de divisão determinísticos: o mesmo conjunto mostrado
+  // dá os mesmos ids, e a árvore não é remontada a cada pixel da janela. Nunca é gravada.
+  const gridTree = useMemo<LayoutNode | null>(() => {
+    if (picked === null || columns === null || rows === null) return shown;
+    if (
+      shown !== null &&
+      picked.hidden.length === 0 &&
+      columnsOf(shown) <= columns &&
+      rowsOf(shown) <= rows
+    )
+      return shown;
+    const prefix = `fit:${columns}:${gridLeaves.map((leaf) => leaf.id).join(',')}`;
+    let count = 0;
+    const newId = () => `${prefix}:${count++}`;
+    const tree = arrangeLeavesCapped([...gridLeaves], columns, newId);
+    // Com 3 colunas e 1 linha, "um + dois empilhados" pede duas linhas: tudo numa linha só.
+    if (tree !== null && rowsOf(tree) > rows) {
+      count = 0;
+      return singleRow(gridLeaves, newId);
+    }
+    return tree;
+  }, [picked, gridLeaves, shown, columns, rows]);
   // Ao ficar sem painéis (o último foi fechado), o foco não pode cair no body: vai para a barra.
   useEffect(() => {
     if (currentLayout === undefined) return;
@@ -272,28 +376,46 @@ function WorkspaceBody({
   }
 
   const layout = workspace.state.workspace.layout;
-  // O arranjo sem os painéis que estão fechando: o mesmo que o servidor vai devolver (arrangeLeaves).
-  const shown =
-    closing.size === 0 || layout === null
-      ? layout
-      : arrangeLeaves(
-          leavesOf(layout).filter((leaf) => !closing.has(leaf.id)),
-          () => crypto.randomUUID(),
-        );
 
   // O painel mostrado sozinho é sempre o ativo (assim um painel novo, o pedido da barra lateral e o fechamento
   // seguem o que o hook já decide); sem o ativo na lista, vale o primeiro. `undefined` na grade.
-  const shownLeaves = leavesOf(shown);
-  const soloLeaf = soloOn
+  const soloLeaf = soloEffective
     ? (shownLeaves.find((leaf) => leaf.id === workspace.activeLeafId) ?? shownLeaves[0])
     : undefined;
 
-  /** Liga o modo mostrando o painel `leafId`, que vira o ativo, com o foco no terminal dele. */
+  /**
+   * Mostra o painel `leafId`, que vira o ativo, com o foco no terminal dele. Fora do modo automático, liga o modo
+   * Abas (é o que o "maximizar" do painel pede); no automático o `soloOn` da pessoa não muda.
+   */
   const showSolo = (leafId: string) => {
-    setSoloOn(true);
+    if (!soloAuto) setSoloOn(true);
     workspace.activateWithFocus(leafId);
   };
-  const toggleSolo = () => setSoloOn(soloLeaf === undefined);
+  // O clique em "Abas" é da pessoa: com a janela estreita ele vale quando a janela alargar.
+  const toggleSolo = () => setSoloOn(!soloOn);
+
+  // O nome e o estado de cada painel, como nas abas. O número de ordem dos repetidos vale para todos os painéis
+  // ("Claude Code 5" é o quinto Claude Code do layout, esteja ele na grade ou fora dela).
+  const sessionOf = (leaf: LayoutLeaf) =>
+    leaf.terminalId === null ? undefined : terminals.find((item) => item.id === leaf.terminalId);
+  const labelOf = (leaf: LayoutLeaf) => {
+    const providerId = sessionOf(leaf)?.provider ?? leaf.provider;
+    return providers.find((item) => item.id === providerId)?.label ?? providerId;
+  };
+  const numbered = numerarRepetidos(shownLeaves.map(labelOf));
+  const hiddenIds = new Set(picked?.hidden ?? []);
+  const offGrid: OffGridItem[] = shownLeaves.flatMap((leaf, index) => {
+    if (!hiddenIds.has(leaf.id)) return [];
+    const session = sessionOf(leaf);
+    return [
+      {
+        id: leaf.id,
+        label: numbered[index] ?? labelOf(leaf),
+        provider: session?.provider ?? leaf.provider,
+        mark: session === undefined ? 'disconnected' : markOfTerminal(session.state),
+      },
+    ];
+  });
 
   const run = async (leafId: string, action: (id: string) => Promise<string | null>) => {
     setBusy((previous) => new Set(previous).add(leafId));
@@ -444,7 +566,12 @@ function WorkspaceBody({
         onDetach={() => workspace.detach(leaf.id)}
         onClose={() => void closePane(leaf.id)}
         maximized={soloLeaf?.id === leaf.id}
-        onMaximize={() => (soloLeaf?.id === leaf.id ? setSoloOn(false) : showSolo(leaf.id))}
+        // Com a janela estreita o modo Abas não é escolha da pessoa: não há "maximizar" nem "voltar à grade".
+        {...(soloAuto
+          ? {}
+          : {
+              onMaximize: () => (soloLeaf?.id === leaf.id ? setSoloOn(false) : showSolo(leaf.id)),
+            })}
       />
     );
   };
@@ -458,11 +585,18 @@ function WorkspaceBody({
         {...(unavailableReason === undefined ? {} : { unavailableReason })}
         focusToken={toolbarFocus}
         soloMode={soloLeaf !== undefined}
+        soloAuto={soloAuto}
         canSolo={shownLeaves.length > 0}
         onToggleSolo={toggleSolo}
+        dock={
+          <OffGridDock
+            items={dockOrder(offGrid)}
+            onBring={(leafId) => workspace.activateWithFocus(leafId)}
+          />
+        }
         onOpen={(provider) => void openPane(provider)}
       />
-      <div className="workspace__area">
+      <div className="workspace__area" ref={setAreaElement}>
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">
             <PaneTabs
@@ -472,6 +606,7 @@ function WorkspaceBody({
               providers={providers}
               onSelect={showSolo}
               onGrid={() => setSoloOn(false)}
+              auto={soloAuto}
             />
             <div
               role="tabpanel"
@@ -481,7 +616,7 @@ function WorkspaceBody({
               {renderLeaf(soloLeaf)}
             </div>
           </div>
-        ) : shown === null ? (
+        ) : gridTree === null ? (
           <div className="workspace__empty">
             {visible ? <TopographicBackground /> : null}
             <EmptyState
@@ -496,8 +631,12 @@ function WorkspaceBody({
           </div>
         ) : (
           <PaneTree
-            layout={shown}
-            onRatio={workspace.setRatio}
+            layout={gridTree}
+            // A árvore derivada só existe na tela: os ids das divisões não estão no layout guardado, então arrastar
+            // uma divisória vale enquanto ela vive e não grava.
+            {...(gridTree === shown ? { onRatio: workspace.setRatio } : {})}
+            minWidth={PANE_MIN_WIDTH}
+            minHeight={PANE_MIN_HEIGHT}
             renderLeaf={renderLeaf}
             motion={motion}
           />

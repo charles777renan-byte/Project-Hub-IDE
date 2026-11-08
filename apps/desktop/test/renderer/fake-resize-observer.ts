@@ -26,7 +26,14 @@ export class FakeResizeObserver {
 
   /** Avisa uma medida do alvo, como o navegador faria ao mudar o tamanho da caixa. */
   report(target: Element, width: number, height: number) {
-    const entry = { target, contentRect: { width, height } } as unknown as ResizeObserverEntry;
+    // Além do `contentRect`, as caixas que a biblioteca das divisórias lê (`inlineSize` e `blockSize`).
+    const box = [{ inlineSize: width, blockSize: height }];
+    const entry = {
+      target,
+      contentRect: { width, height },
+      borderBoxSize: box,
+      contentBoxSize: box,
+    } as unknown as ResizeObserverEntry;
     this.callback([entry], this as unknown as ResizeObserver);
   }
 }

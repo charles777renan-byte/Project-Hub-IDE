@@ -13,7 +13,7 @@ export const paneTabId = (leafId: string) => `pane-tab-${leafId}`;
  * Rótulos com número de ordem quando se repetem: se dois ou mais painéis mostram o mesmo programa, cada um leva o
  * número entre os do seu grupo, na ordem da faixa ("Claude Code 1", "Claude Code 2"). Um rótulo único fica como está.
  */
-function numerarRepetidos(rotulos: readonly string[]): string[] {
+export function numerarRepetidos(rotulos: readonly string[]): string[] {
   const quantos = new Map<string, number>();
   for (const rotulo of rotulos) quantos.set(rotulo, (quantos.get(rotulo) ?? 0) + 1);
   const vistos = new Map<string, number>();
@@ -121,7 +121,9 @@ export function PaneTabs({
               className="pane-tabs__tab"
               onClick={() => onSelect(leaf.id)}
             >
-              <span aria-hidden="true" className="pane-tabs__number">{index + 1}</span>
+              <span aria-hidden="true" className="pane-tabs__number">
+                {index + 1}
+              </span>
               <ProviderIcon provider={providerId} />
               <span className="pane-tabs__label">{rotulos[index]}</span>
               {terminal !== undefined && terminal.state !== 'exited' ? (
@@ -137,7 +139,10 @@ export function PaneTabs({
         onSelect={select}
       />
       {auto ? (
-        <span className="pane-tabs__auto" title="Volta para a grade quando a janela passar de 720 px">
+        <span
+          className="pane-tabs__auto"
+          title="Volta para a grade quando a janela passar de 720 px"
+        >
           <NarrowIcon />
           Janela estreita
         </span>
