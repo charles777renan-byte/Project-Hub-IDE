@@ -112,22 +112,25 @@
 }
 
 /*
- * Faixa que rola de lado (barra de abas do workspace e abas dos arquivos abertos): a borda do lado que tem aba escondida
+ * Faixa que rola de lado (barra de abas do workspace, abas dos arquivos abertos e abas do modo um painel por vez): a borda do lado que tem aba escondida
  * esmaece (`data-fade-start` / `data-fade-end`, postos por `useTabsOverflow`), sem animação. O esmaecimento é só a pista; o
  * botão "⌄" (`.tabs-overflow`) lista as abas escondidas e é a saída que não depende de ver o esmaecimento.
  */
 .topbar__tabs[data-fade-start],
-.file-tabs[data-fade-start] {
+.file-tabs[data-fade-start],
+.pane-tabs__list[data-fade-start] {
   mask-image: linear-gradient(to right, transparent, var(--text) var(--space-5));
 }
 
 .topbar__tabs[data-fade-end],
-.file-tabs[data-fade-end] {
+.file-tabs[data-fade-end],
+.pane-tabs__list[data-fade-end] {
   mask-image: linear-gradient(to left, transparent, var(--text) var(--space-5));
 }
 
 .topbar__tabs[data-fade-start][data-fade-end],
-.file-tabs[data-fade-start][data-fade-end] {
+.file-tabs[data-fade-start][data-fade-end],
+.pane-tabs__list[data-fade-start][data-fade-end] {
   mask-image: linear-gradient(
     to right,
     transparent,
@@ -167,6 +170,15 @@
 .tabs-overflow .menu-acoes__gatilho--icone svg {
   display: block;
   flex: none;
+}
+
+/* Uma aba escondida aguarda a pessoa: o "⌄" ganha a cor de aviso (o nome acessível também o diz). */
+.tabs-overflow--attention {
+  color: var(--warn);
+}
+
+.tabs-overflow--attention .menu-acoes__gatilho--icone {
+  color: inherit;
 }
 
 .topbar__tab-list {
@@ -1889,6 +1901,23 @@
 }
 
 .pane-tabs__grid svg {
+  display: block;
+  flex: none;
+}
+
+/* Aviso, não botão: o modo foi ligado pela largura da janela e volta sozinho para a grade. */
+.pane-tabs__auto {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.pane-tabs__auto svg {
   display: block;
   flex: none;
 }

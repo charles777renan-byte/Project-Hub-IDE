@@ -159,22 +159,25 @@ function scrollTabIntoView(id: string) {
 
 /**
  * O botão "⌄" ao lado de uma faixa de abas que rola: lista as abas fora de vista (`items`, só elas) e, ao escolher
- * uma, chama `onSelect(id)` e a traz para a vista. Sem abas escondidas, não aparece.
+ * uma, chama `onSelect(id)` e a traz para a vista. Sem abas escondidas, não aparece. Com `attention`, o botão pede a
+ * atenção (cor de aviso, e o nome acessível diz que uma aba escondida aguarda a pessoa).
  */
 export function TabsOverflow({
   items,
   onSelect,
+  attention = false,
 }: {
   items: readonly TabsOverflowItem[];
   onSelect: (id: string) => void;
+  attention?: boolean;
 }) {
   // Escolher uma aba leva o foco a ela (quem usa o faz em `onSelect`): o menu não o devolve ao botão.
   const chose = useRef(false);
   if (items.length === 0) return null;
   return (
-    <span className="tabs-overflow">
+    <span className={attention ? 'tabs-overflow tabs-overflow--attention' : 'tabs-overflow'}>
       <MenuAcoes
-        rotulo="Abas fora de vista"
+        rotulo={attention ? 'Abas fora de vista, uma aguarda você' : 'Abas fora de vista'}
         icone={<ChevronDown {...ICON_PROPS} />}
         aoFecharDevolverFoco={(event) => {
           if (!chose.current) return;
