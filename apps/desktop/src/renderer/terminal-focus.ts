@@ -28,8 +28,12 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** Publica o painel que ganhou o foco. */
+/**
+ * Publica o painel que ganhou o foco. Publicar de novo a mesma chave e o mesmo título não faz nada: os eventos de foco
+ * se repetem (cada elemento do painel que o recebe publica), e sem isto cada um refaria a tela de quem lê.
+ */
 export function setTerminalFocus(next: TerminalFocus): void {
+  if (focus?.key === next.key && focus.title === next.title) return;
   focus = { key: next.key, title: next.title };
   notifyAll();
 }

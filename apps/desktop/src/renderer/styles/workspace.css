@@ -1336,6 +1336,15 @@
   box-shadow: inset 0 0 0 2px var(--focus);
 }
 
+/*
+ * O painel com o teclado dentro também tinge o cabeçalho de duas linhas de lima a 7% sobre o cartão: o anel diz "aqui",
+ * a tinta repete na cabeça, onde o olho está. O lançador e a sessão terminada (cabeça de uma linha) não mudam. Os
+ * pares de contraste do texto sobre esse fundo estão em contrast.test.ts.
+ */
+.pane:focus-within .pane__head--live {
+  background: color-mix(in srgb, var(--lime) 7%, var(--surface));
+}
+
 .pane__head {
   display: flex;
   flex: none;

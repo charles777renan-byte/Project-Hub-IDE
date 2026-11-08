@@ -1,8 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import type { AppResult, MissionDto, ProjectHubApi, ProjectSummary } from '@project-hub/contracts';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StatusBar } from '../../src/renderer/components/StatusBar';
+import { setTerminalFocus, resetTerminalFocusForTests } from '../../src/renderer/terminal-focus';
 
 // Barra de status (rodapé da janela): projeto e branch da aba ativa, os contadores da visão geral como links
 // para o Início filtrado, o uso do computador e "Parar todos". A API do preload é falsa.
@@ -66,6 +67,7 @@ function renderBar(route = '/') {
 
 afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
+  resetTerminalFocusForTests();
 });
 
 describe('StatusBar', () => {
@@ -121,6 +123,59 @@ describe('StatusBar', () => {
     renderBar('/workspaces/p1');
     const text = await screen.findByText('<b>x</b> · master');
     expect(text.querySelector('b')).toBeNull();
+  });
+
+  describe('foco do teclado no terminal', () => {
+    const FOCO = 'Foco: Claude · Meu Projeto · Ctrl+Shift+Tab sai do terminal';
+
+    it('com o foco num terminal, na rota do workspace, diz qual e como sair', async () => {
+      installApi([project('p1', 'TESTE', 'master')]);
+      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto' });
+      renderBar('/workspaces/p1');
+      const focus = await screen.findByText(FOCO);
+      expect(focus.tagName).toBe('P');
+      expect(focus).toHaveClass('statusbar__focus');
+      // Truncado com reticências, o texto inteiro continua na dica.
+      expect(focus).toHaveAttribute('title', FOCO);
+      expect(await screen.findByText('TESTE · master')).toBeInTheDocument();
+    });
+
+    it('sem foco, não mostra a parte Foco', async () => {
+      installApi([project('p1', 'TESTE', 'master')]);
+      renderBar('/workspaces/p1');
+      await screen.findByText('TESTE · master');
+      expect(screen.queryByText(/Foco:/)).toBeNull();
+      expect(document.querySelector('.statusbar__focus')).toBeNull();
+    });
+
+    it('fora da rota do workspace não mostra, mesmo com foco definido', async () => {
+      installApi([project('p1', 'TESTE', 'master')]);
+      setTerminalFocus({ key: 'a', title: 'Claude · Meu Projeto' });
+      renderBar('/');
+      await screen.findByRole('link', { name: '0 executando' });
+      expect(screen.queryByText(/Foco:/)).toBeNull();
+    });
+
+    it('trocar de painel troca o título e perder o foco tira a parte Foco', async () => {
+      installApi([project('p1', 'TESTE', 'master')]);
+      renderBar('/workspaces/p1');
+      await screen.findByText('TESTE · master');
+      act(() => setTerminalFocus({ key: 'a', title: 'Claude' }));
+      expect(screen.getByText(/^Foco: Claude · /)).toBeInTheDocument();
+      act(() => setTerminalFocus({ key: 'b', title: 'Codex' }));
+      expect(screen.queryByText(/^Foco: Claude/)).toBeNull();
+      expect(screen.getByText(/^Foco: Codex · /)).toBeInTheDocument();
+      act(() => resetTerminalFocusForTests());
+      expect(screen.queryByText(/Foco:/)).toBeNull();
+    });
+
+    it('mostra o título como texto, nunca como marcação', async () => {
+      installApi([project('p1', 'TESTE', 'master')]);
+      setTerminalFocus({ key: 'a', title: '<b>x</b>' });
+      renderBar('/workspaces/p1');
+      const focus = await screen.findByText(/^Foco: <b>x<\/b> · /);
+      expect(focus.querySelector('b')).toBeNull();
+    });
   });
 
   it('tem o uso do computador e o botão "Parar todos" quando há missão em execução', async () => {

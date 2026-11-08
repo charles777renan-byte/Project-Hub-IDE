@@ -278,6 +278,18 @@ describe('cabeçalho do painel de terminal', () => {
   const focusFill = (): string =>
     mixOver(tokens.get('--accent') ?? '', tokens.get('--surface') ?? '', FOCUS_TINT);
 
+  it('o par da tinta corresponde à regra real de workspace.css (lima a 7% sobre --surface)', () => {
+    const css = readFileSync(
+      resolve(import.meta.dirname, '../../src/renderer/styles/workspace.css'),
+      'utf8',
+    ).replaceAll(/\s+/g, ' ');
+    expect(css).toContain(
+      `.pane:focus-within .pane__head--live { background: color-mix(in srgb, var(--lime) ${Math.round(FOCUS_TINT * 100)}%, var(--surface));`,
+    );
+    // O lima do teste (--accent) é o mesmo token que a regra usa.
+    expect(tokens.get('--accent')).toBe(tokens.get('--lime'));
+  });
+
   it('o fundo tingido do foco difere do cartão', () => {
     expect(focusFill()).not.toBe(tokens.get('--surface'));
   });
@@ -367,6 +379,11 @@ describe('cores do chrome do workspace', () => {
   const NOT_COLOR =
     /^--(?:space|font|text|radius|ease|dur)(?:-|$)|^--(?:shadow-card|shadow-pop|glow-app)$/;
 
+  // A única exceção ao "sem cor de destaque": a tinta de lima a 7% do cabeçalho do painel com o teclado dentro (a regra
+  // é conferida à parte, e o par de contraste dela está em "cabeçalho do painel de terminal").
+  const TINT_RULE = /\.pane:focus-within \.pane__head--live\s*\{[^{}]*\}/;
+  const chromeCss = workspaceCss.replace(TINT_RULE, '');
+
   /** Variáveis derivadas, definidas em workspace.css: `--nome: color-mix(...)`. */
   const derived = new Map(
     [...workspaceCss.matchAll(/(--[\w-]+)\s*:\s*([^;{}]+);/g)].map(
@@ -375,7 +392,7 @@ describe('cores do chrome do workspace', () => {
   );
 
   it('só usa var() das cores neutras, de espaçamento, de fonte ou de uma derivada local', () => {
-    const used = [...workspaceCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
+    const used = [...chromeCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
     // --brand (violeta): só a barra de contexto do cabeçalho do painel, a partir de 80% (pares medidos acima).
     const foreign = used.filter(
@@ -393,8 +410,15 @@ describe('cores do chrome do workspace', () => {
     expect(workspaceCss).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     expect(workspaceCss).not.toMatch(/\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(/i);
     for (const accent of ACCENTS) {
-      expect(workspaceCss, accent).not.toContain(`var(${accent})`);
+      expect(chromeCss, accent).not.toContain(`var(${accent})`);
     }
+  });
+
+  it('o lima só entra no chrome pela tinta do cabeçalho do painel com o teclado, em color-mix sobre --surface', () => {
+    const tint = TINT_RULE.exec(workspaceCss)?.[0] ?? '';
+    expect(tint).not.toBe('');
+    expect(tint).toMatch(/background:\s*color-mix\(in srgb, var\(--lime\) 7%, var\(--surface\)\);/);
+    expect(workspaceCss.match(/var\(--lime\)/g)).toHaveLength(1);
   });
 
   it('a aba ativa sobre --bg tem texto --text legível, e o anel --muted passa de 3:1', () => {

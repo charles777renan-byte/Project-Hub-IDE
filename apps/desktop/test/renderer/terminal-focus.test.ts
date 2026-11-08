@@ -54,6 +54,25 @@ describe('terminal-focus', () => {
     expect(seen.length).toBe(renders);
   });
 
+  it('publicar de novo a mesma chave e o mesmo título não avisa ninguém nem troca o objeto', () => {
+    const seen: unknown[] = [];
+    const { result } = renderHook(() => {
+      const focus = useTerminalFocus();
+      seen.push(focus);
+      return focus;
+    });
+    act(() => setTerminalFocus({ key: 'a', title: 'Claude' }));
+    const published = result.current;
+    const renders = seen.length;
+    act(() => setTerminalFocus({ key: 'a', title: 'Claude' }));
+    expect(seen.length).toBe(renders);
+    expect(result.current).toBe(published);
+    // Título novo na mesma chave é uma mudança de verdade.
+    act(() => setTerminalFocus({ key: 'a', title: 'Outro' }));
+    expect(result.current).toEqual({ key: 'a', title: 'Outro' });
+    expect(seen.length).toBe(renders + 1);
+  });
+
   it('resetTerminalFocusForTests zera o foco', () => {
     const { result } = renderHook(() => useTerminalFocus());
     act(() => setTerminalFocus({ key: 'a', title: 'Claude' }));
