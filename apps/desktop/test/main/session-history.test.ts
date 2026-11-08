@@ -182,7 +182,9 @@ describe('createSessionHistory', () => {
 
     const result = await history.list({ scope: 'all' });
     expect(result.sessions.map((session) => session.id)).toEqual([ID_A]);
-    expect(result.indexing).toEqual([{ provider: 'claude', read: 1, total: 2, unreadable: 1 }]);
+    expect(result.indexing).toEqual([
+      { provider: 'claude', read: 1, total: 2, unreadable: 1, sessions: 1 },
+    ]);
   });
 
   it('a lista varre os arquivos novos sem pedir refresh: sessão criada depois aparece', async () => {
@@ -209,7 +211,30 @@ describe('createSessionHistory', () => {
 
     const result = await history.list({ scope: 'all' });
     expect(result.sessions.map((session) => session.id)).toEqual([ID_A]);
-    expect(result.indexing).toEqual([{ provider: 'claude', read: 1, total: 1, unreadable: 1 }]);
+    expect(result.indexing).toEqual([
+      { provider: 'claude', read: 1, total: 1, unreadable: 1, sessions: 1 },
+    ]);
+  });
+
+  it('a faixa conta sessões e não arquivos, e a contagem é da casa inteira, não do escopo', async () => {
+    // Um arquivo pode trazer mais de uma sessão (o histórico do Antigravity), e a faixa mostra tudo o que está lido.
+    const OUTRO = String.raw`C:\outro\y`;
+    const files = {
+      a: {
+        mtimeMs: 1,
+        size: 1,
+        sessions: [activity(ID_A, PROJECT_PATH), activity(ID_B, OUTRO)],
+      },
+      b: { mtimeMs: 1, size: 1, sessions: [] },
+    };
+    const history = makeHistory(indexFile, [fakeReader('claude', files, [])]);
+    await history.refresh();
+
+    const result = await history.list({ scope: 'workspace', projectId: 'p1' });
+    expect(result.sessions.map((session) => session.id)).toEqual([ID_A]);
+    expect(result.indexing).toEqual([
+      { provider: 'claude', read: 2, total: 2, unreadable: 0, sessions: 2 },
+    ]);
   });
 
   it('escopo workspace pega a pasta do projeto e o que está dentro, sem diferenciar barra nem caixa', async () => {

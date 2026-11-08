@@ -135,14 +135,16 @@ describe('pageOf', () => {
 describe('indexingTotals', () => {
   it('soma lidos, totais e ilegíveis dos programas', () => {
     const totals = indexingTotals([
-      { provider: 'claude', read: 3, total: 4, unreadable: 1 },
-      { provider: 'codex', read: 2, total: 2, unreadable: 0 },
+      { provider: 'claude', read: 3, total: 4, unreadable: 1, sessions: 2 },
+      { provider: 'codex', read: 2, total: 2, unreadable: 0, sessions: 2 },
     ]);
-    expect(totals).toEqual({ read: 5, total: 6, unreadable: 1, done: true });
+    expect(totals).toEqual({ read: 5, total: 6, unreadable: 1, sessions: 4, done: true });
   });
 
   it('não está pronto enquanto algum arquivo falta ser lido ou marcado', () => {
-    const totals = indexingTotals([{ provider: 'claude', read: 1, total: 3, unreadable: 1 }]);
+    const totals = indexingTotals([
+      { provider: 'claude', read: 1, total: 3, unreadable: 1, sessions: 1 },
+    ]);
     expect(totals.done).toBe(false);
   });
 });

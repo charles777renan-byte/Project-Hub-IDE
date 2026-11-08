@@ -85,6 +85,7 @@ export function indexingTotals(indexing: readonly IndexingEntry[]): {
   read: number;
   total: number;
   unreadable: number;
+  sessions: number;
   done: boolean;
 } {
   const sums = indexing.reduce(
@@ -92,8 +93,9 @@ export function indexingTotals(indexing: readonly IndexingEntry[]): {
       read: sum.read + entry.read,
       total: sum.total + entry.total,
       unreadable: sum.unreadable + entry.unreadable,
+      sessions: sum.sessions + entry.sessions,
     }),
-    { read: 0, total: 0, unreadable: 0 },
+    { read: 0, total: 0, unreadable: 0, sessions: 0 },
   );
   // Terminado quando cada programa já tem todos os arquivos lidos ou marcados como ilegíveis.
   const done = indexing.every((entry) => entry.read + entry.unreadable >= entry.total);

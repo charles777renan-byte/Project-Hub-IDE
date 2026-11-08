@@ -270,20 +270,12 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
         : projects.find((project) => project.id === input.projectId);
     const targetCandidates = target === undefined ? [] : candidatesOf(target);
     const dropped = new Map<SessionProvider, number>();
+    const valid = new Map<SessionProvider, number>();
     const rows: SessionSummary[] = [];
 
     for (const file of Object.values(snapshot.files)) {
       if (file.sessions === null) continue;
       for (const activity of file.sessions) {
-        // Projeto desconhecido não casa com nenhuma pasta: a lista sai vazia, sem erro.
-        if (input.scope !== 'all') {
-          const inWorkspace = target !== undefined && isInside(activity.cwd, target.path);
-          const inProject =
-            inWorkspace ||
-            (input.scope === 'project' &&
-              targetCandidates.some((candidate) => isInside(activity.cwd, candidate.path)));
-          if (!inProject) continue;
-        }
         const owner = ownerOf(activity.cwd, candidates);
         const resume = deps.resumeState({
           id: activity.id,
@@ -312,10 +304,21 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
           resumable: resume.resumable,
           resumeBlockedReason: resume.resumeBlockedReason,
         });
+        // A faixa conta as sessões válidas da casa inteira. Linha fora do schema fica de fora e conta como ilegível,
+        // sem derrubar a lista.
         if (!parsed.success) {
-          // Linha fora do schema fica de fora e conta como ilegível, sem derrubar a lista.
           dropped.set(file.provider, (dropped.get(file.provider) ?? 0) + 1);
           continue;
+        }
+        valid.set(file.provider, (valid.get(file.provider) ?? 0) + 1);
+        // Projeto desconhecido não casa com nenhuma pasta: a lista sai vazia, sem erro.
+        if (input.scope !== 'all') {
+          const inWorkspace = target !== undefined && isInside(activity.cwd, target.path);
+          const inProject =
+            inWorkspace ||
+            (input.scope === 'project' &&
+              targetCandidates.some((candidate) => isInside(activity.cwd, candidate.path)));
+          if (!inProject) continue;
         }
         rows.push(parsed.data);
       }
@@ -328,6 +331,7 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
         read: counts.read,
         total: counts.total,
         unreadable: counts.unreadable + (dropped.get(reader.provider) ?? 0),
+        sessions: valid.get(reader.provider) ?? 0,
       };
     });
     return { sessions: rows.sort(byMostRecent), indexing };
