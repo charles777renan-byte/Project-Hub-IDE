@@ -62,4 +62,37 @@ describe('contratos de terminal', () => {
     expect(terminalSummarySchema.safeParse({ ...ok, provider: 'bash' }).success).toBe(false);
     expect(terminalSummarySchema.safeParse({ ...ok, origin: 'resumed' }).success).toBe(false);
   });
+
+  it('o resumo aceita modelo e contexto, e continua valendo sem eles', () => {
+    const base = {
+      id: 't',
+      kind: 'shell',
+      title: 'Claude',
+      projectId: 'p1',
+      projectName: 'app',
+      state: 'running',
+      provider: 'claude',
+      origin: 'new',
+    };
+    const context = { usedTokens: 42_000, windowTokens: 1_000_000 };
+    const withContext = terminalSummarySchema.parse({
+      ...base,
+      model: 'claude-sonnet-5-5',
+      context,
+    });
+    expect(withContext.model).toBe('claude-sonnet-5-5');
+    expect(withContext.context).toEqual(context);
+    expect(terminalSummarySchema.safeParse(base).success).toBe(true);
+    expect(
+      terminalSummarySchema.safeParse({ ...base, context: { usedTokens: -1, windowTokens: 5 } })
+        .success,
+    ).toBe(false);
+    expect(
+      terminalSummarySchema.safeParse({ ...base, context: { usedTokens: 1.5, windowTokens: 5 } })
+        .success,
+    ).toBe(false);
+    expect(terminalSummarySchema.safeParse({ ...base, context: { usedTokens: 1 } }).success).toBe(
+      false,
+    );
+  });
 });
