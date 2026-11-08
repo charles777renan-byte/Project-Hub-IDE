@@ -30,6 +30,8 @@ export function OffGridDock({
   const strip = useRef<HTMLDivElement>(null);
   const { hidden } = useTabsOverflow(strip);
   const arriving = useArrivals(items);
+  // Trazer um painel leva o foco ao terminal (quem usa o faz em `onBring`): o menu não o devolve ao gatilho "+N".
+  const chose = useRef(false);
 
   if (items.length === 0) return null;
 
@@ -47,6 +49,9 @@ export function OffGridDock({
       >
         {items.map((item) => {
           const { glyph, label: state } = MARKS[item.mark];
+          // Ficha cortada pela faixa já está no "+N": sai do Tab e dos leitores, senão focá-la rolaria a faixa e
+          // empurraria para fora as fichas da frente (as que aguardam).
+          const cut = hidden.includes(item.id);
           return (
             <button
               key={item.id}
@@ -54,6 +59,8 @@ export function OffGridDock({
               className={`off-grid__chip off-grid__chip--${item.mark}`}
               title={`${state} · traz para a grade`}
               data-arriving={arriving.has(item.id) ? 'true' : undefined}
+              tabIndex={cut ? -1 : undefined}
+              aria-hidden={cut ? 'true' : undefined}
               {...{ [TAB_ID_ATTRIBUTE]: item.id }}
               onClick={() => onBring(item.id)}
               onAnimationEnd={() => arriving.done(item.id)}
@@ -78,9 +85,17 @@ export function OffGridDock({
                 <ChevronDown {...ICON_PROPS} size={12} />
               </>
             }
+            aoFecharDevolverFoco={(event) => {
+              if (!chose.current) return;
+              chose.current = false;
+              event.preventDefault();
+            }}
             acoes={overflow.map((item) => ({
               rotulo: `${item.label} · ${MARKS[item.mark].label}`,
-              onSelecionar: () => onBring(item.id),
+              onSelecionar: () => {
+                chose.current = true;
+                onBring(item.id);
+              },
             }))}
           />
         </span>

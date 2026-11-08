@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { OffGridDock, type OffGridItem } from '../../src/renderer/workspace/OffGridDock';
-import { show, useFakeIntersectionObserver } from './fake-intersection-observer';
+import { show, tabEl, useFakeIntersectionObserver } from './fake-intersection-observer';
 
 useFakeIntersectionObserver();
 
@@ -105,6 +105,44 @@ describe('OffGridDock', () => {
     await user.click(entries[1] as HTMLElement);
 
     expect(onBring).toHaveBeenCalledExactlyOnceWith('d');
+  });
+
+  it('trazer um painel pelo "+N" deixa o foco onde o onBring o pôs, e não o devolve ao gatilho', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <textarea aria-label="Terminal" />
+        <OffGridDock
+          items={FOUR}
+          // O foco do painel trazido chega depois da renderização (como em `activateWithFocus`), não na hora.
+          onBring={() => setTimeout(() => screen.getByLabelText('Terminal').focus(), 0)}
+        />
+      </>,
+    );
+    show('a', 'b');
+
+    const trigger = screen.getByRole('button', { name: 'Mais 2 fora da grade' });
+    await user.click(trigger);
+    await user.click(screen.getAllByRole('menuitem')[0] as HTMLElement);
+    // O Radix devolve o foco ao gatilho num instante depois de fechar: espera esse instante passar.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(screen.getByLabelText('Terminal')).toHaveFocus();
+    expect(trigger).not.toHaveFocus();
+  });
+
+  it('a ficha cortada pela faixa sai da ordem do Tab e dos leitores de tela; as à vista não', () => {
+    render(<OffGridDock items={FOUR} onBring={vi.fn()} />);
+    show('a', 'b');
+
+    for (const id of ['c', 'd']) {
+      expect(tabEl(id)).toHaveAttribute('tabindex', '-1');
+      expect(tabEl(id)).toHaveAttribute('aria-hidden', 'true');
+    }
+    for (const id of ['a', 'b']) {
+      expect(tabEl(id)).not.toHaveAttribute('tabindex');
+      expect(tabEl(id)).not.toHaveAttribute('aria-hidden');
+    }
   });
 
   it('a ficha que acabou de chegar ganha data-arriving, que sai no animationend', () => {
