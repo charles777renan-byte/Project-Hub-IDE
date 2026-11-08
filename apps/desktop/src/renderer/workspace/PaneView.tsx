@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
+import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
-import { ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
+import { Ellipsis, ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
+import { MenuAcoes, type AcaoMenu } from '../components/MenuAcoes';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHeader';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { TerminalView } from '../components/terminals/TerminalView';
@@ -38,6 +40,15 @@ export type PaneViewProps = {
   onMaximize?(): void;
   maximized?: boolean;
 };
+
+/**
+ * Fechar o painel mata um processo de verdade só no terminal avulso de um agente (Claude, Codex...) que está
+ * rodando: o shell comum e a sessão que terminou fecham sem perguntar, e o terminal de missão só sai do painel
+ * (a missão continua).
+ */
+export function needsCloseConfirmation(terminal: TerminalSummary): boolean {
+  return terminal.kind === 'shell' && terminal.provider !== 'shell' && terminal.state === 'running';
+}
 
 /** Botão só de ícone que maximiza o painel ou o devolve à grade; o nome acessível diz o efeito. */
 function MaximizeButton({ maximized, onClick }: { maximized: boolean; onClick(): void }) {
@@ -97,6 +108,10 @@ export function PaneView(props: PaneViewProps) {
     props.onMaximize === undefined ? null : (
       <MaximizeButton maximized={props.maximized === true} onClick={props.onMaximize} />
     );
+
+  // Pergunta de "Fechar painel e encerrar…": guarda o id do terminal perguntado, e não um sim ou não, então ela
+  // some sozinha se a sessão terminar (ou o painel mudar de sessão) enquanto está aberta.
+  const [askingId, setAskingId] = useState<string | null>(null);
 
   // Sem terminal para receber o foco (lançador), o foco pedido vai para o próprio painel.
   const section = useRef<HTMLElement>(null);
@@ -189,6 +204,30 @@ export function PaneView(props: PaneViewProps) {
       terminal.origin === 'recovered' ? `${markLabel} · sessão recuperada` : markLabel;
     // Sem modelo conhecido (terminal de missão, outro programa, id que a tabela não reconhece): o nome do programa.
     const model = (terminal.model === undefined ? undefined : modelLabel(terminal.model)) ?? label;
+    // O menu ⋯ guarda o que fecha o painel. Ocupado (um pedido em curso), os itens ficam desabilitados.
+    const askToClose = needsCloseConfirmation(terminal);
+    const actions: AcaoMenu[] =
+      terminal.missionId !== undefined
+        ? [
+            { rotulo: 'Tirar do painel', onSelecionar: props.onDetach, desabilitada: busy },
+            {
+              rotulo: 'Fechar painel (a missão continua)',
+              onSelecionar: props.onClose,
+              desabilitada: busy,
+            },
+          ]
+        : askToClose
+          ? [
+              {
+                rotulo: 'Fechar painel e encerrar…',
+                // O menu fecha e desmonta ao escolher: a pergunta vive aqui, fora dele.
+                onSelecionar: () => setAskingId(terminal.id),
+                perigosa: true,
+                desabilitada: busy,
+              },
+            ]
+          : [{ rotulo: 'Fechar painel', onSelecionar: props.onClose, desabilitada: busy }];
+    const asking = askToClose && askingId === terminal.id;
     content = (
       <>
         <div className="pane__head pane__head--live">
@@ -218,28 +257,32 @@ export function PaneView(props: PaneViewProps) {
           </span>
           <span className="pane__actions">
             {maximize}
-            {terminal.missionId === undefined ? (
-              <CloseButton
-                disabled={busy}
-                onClick={props.onClose}
-                hint="Fecha o painel e finaliza o processo"
-              />
-            ) : (
-              <>
-                <Hint label="Tira o terminal do painel sem encerrar o processo">
-                  <button type="button" onClick={props.onDetach}>
-                    Tirar do painel
-                  </button>
-                </Hint>
-                <CloseButton
-                  disabled={busy}
-                  onClick={props.onClose}
-                  hint="Fecha o painel; a missão continua"
-                />
-              </>
-            )}
+            <MenuAcoes
+              rotulo="Mais ações do painel"
+              icone={<Ellipsis {...ICON_PROPS} />}
+              acoes={actions}
+            />
           </span>
         </div>
+        {asking && (
+          <div className="pane__confirm">
+            <ConfirmInline
+              question={`Encerrar o ${label} e fechar o painel? O processo para.`}
+              confirmLabel="Fechar e encerrar"
+              disabled={busy}
+              focusBack
+              onConfirm={() => {
+                setAskingId(null);
+                props.onClose();
+              }}
+              onCancel={() => {
+                setAskingId(null);
+                // O item do menu já sumiu: o foco volta ao menu ⋯ em vez de se perder no corpo da página.
+                section.current?.querySelector<HTMLElement>('.menu-acoes__gatilho')?.focus();
+              }}
+            />
+          </div>
+        )}
         {error !== undefined && <p role="alert">{error}</p>}
         <div className="pane__body">
           <TerminalView terminalId={terminal.id} active={focusTerminal} />
@@ -255,7 +298,12 @@ export function PaneView(props: PaneViewProps) {
       aria-label={`Painel ${label}`}
       data-active={active ? 'true' : 'false'}
       tabIndex={-1}
-      onPointerDown={props.onPointerActivate ?? props.onActivate}
+      onPointerDown={(event) => {
+        // O menu ⋯ é um portal, mas os eventos do React sobem por ele até aqui: um clique num item não é um clique
+        // no painel (pedir o foco do terminal tiraria o foco do menu e o fecharia antes de o item ser escolhido).
+        if (!event.currentTarget.contains(event.target as Node)) return;
+        (props.onPointerActivate ?? props.onActivate)();
+      }}
       onFocus={props.onActivate}
       onDoubleClick={(event) => {
         // Duplo clique no cabeçalho (fora dos botões) maximiza, ou devolve à grade.

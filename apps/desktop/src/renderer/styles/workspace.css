@@ -1549,9 +1549,13 @@
   align-items: center;
 }
 
-/* Fechar e maximizar o painel são botões só de ícone: a área é de 24px e o passe do mouse só clareia o fundo. */
+/*
+ * Maximizar, o menu ⋯ e o fechar do lançador são botões só de ícone: a área é de 24px (o mínimo para acertar o
+ * clique) e o passe do mouse só clareia o fundo.
+ */
 .pane__actions .pane__close,
-.pane__actions .pane__maximize {
+.pane__actions .pane__maximize,
+.pane__actions .menu-acoes__gatilho--icone {
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -1565,13 +1569,16 @@
 }
 
 .pane__actions .pane__close:hover:not(:disabled),
-.pane__actions .pane__maximize:hover:not(:disabled) {
+.pane__actions .pane__maximize:hover:not(:disabled),
+.pane__actions .menu-acoes__gatilho--icone:hover:not(:disabled),
+.pane__actions .menu-acoes__gatilho--icone[data-state='open'] {
   background: var(--line);
   color: var(--text);
 }
 
 .pane__close svg,
-.pane__maximize svg {
+.pane__maximize svg,
+.menu-acoes__gatilho--icone svg {
   display: block;
   flex: none;
 }
@@ -1603,6 +1610,19 @@
  * eixo em relação ao antigo padding de 4px do .xterm: a última coluna não encosta mais na borda). O respiro fica aqui: o terminal
  * mede o próprio clientWidth/clientHeight e não pode ter padding.
  */
+/*
+ * A pergunta de "Fechar painel e encerrar…" (só a sessão viva): uma faixa abaixo do cabeçalho, com a pergunta e os
+ * dois botões. A pergunta quebra de linha no painel estreito, e a faixa nunca encolhe.
+ */
+.pane__confirm {
+  flex: none;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: normal;
+}
+
 .pane__body {
   flex: 1;
   min-height: 0;

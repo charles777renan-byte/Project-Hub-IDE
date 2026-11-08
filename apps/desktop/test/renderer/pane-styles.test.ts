@@ -250,6 +250,25 @@ describe('árvore de painéis e painel', () => {
     ).toEqual([]);
   });
 
+  it('os botões do cabeçalho (maximizar, menu ⋯ e o fechar do lançador) têm área de 24x24 px', () => {
+    for (const selector of [
+      '.pane__actions .pane__maximize',
+      '.pane__actions .pane__close',
+      '.pane__actions .menu-acoes__gatilho--icone',
+    ]) {
+      const declarations = rule(selector);
+      expect(declarations.get('width'), `${selector} width`).toBe('24px');
+      expect(declarations.get('height'), `${selector} height`).toBe('24px');
+      expect(declarations.get('padding'), `${selector} padding`).toBe('0');
+    }
+  });
+
+  it('a pergunta do fechamento fica numa faixa abaixo do cabeçalho, que nunca encolhe', () => {
+    const strip = rule('.pane__confirm');
+    expect(strip.get('flex')).toBe('none');
+    expect(strip.get('border-bottom')).toBe('1px solid var(--line)');
+  });
+
   it('o aviso da sessão encerrada é flex e as ações não encolhem (Limpar painel não é cortado)', () => {
     expect(rule('.pane__notice').get('display')).toBe('flex');
     expect(rule('.pane__notice > span:first-child').get('min-width')).toBe('0');

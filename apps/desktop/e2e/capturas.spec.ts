@@ -11,7 +11,7 @@ import {
   statusBarOf,
   viewTab,
 } from './missions';
-import { expectTerminalToContain } from './terminals';
+import { expectTerminalToContain, fecharPainel } from './terminals';
 
 // Capturas de tela das telas principais, para a pessoa que revisa o visual. Não é teste de comportamento: só
 // roda com `E2E_CAPTURAS=1` (a pasta de saída vem de `E2E_CAPTURAS_DIR`, e o padrão é `out/capturas`). Sem a
@@ -59,7 +59,7 @@ test('capturas: Início, Terminais, Missões, Nova missão, missão planejada e 
   await expect(pane).toHaveCount(1);
   await expectTerminalToContain(pane.locator('.terminal-view'), 'PS ', { timeout: 30_000 });
   await shoot(page, '2-projeto-terminais');
-  await pane.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await fecharPainel(page, 'PowerShell');
   await expect(pane).toHaveCount(0);
 
   // Missões vazia e o formulário Nova missão aberto.

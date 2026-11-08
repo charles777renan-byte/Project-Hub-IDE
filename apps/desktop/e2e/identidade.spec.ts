@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { addGitProject, openProject, orchestrate, viewTab, type ProjectViewName } from './missions';
-import { expectOpenSessions, expectTerminalToContain } from './terminals';
+import { expectOpenSessions, expectTerminalToContain, fecharPainel } from './terminals';
 
 // Identidade visual (Tarefa 10), na janela real do Electron construído: em cada tela principal não há
 // violação de CSP (fora o <style> do xterm, coberto por regras em app.css) e o teclado percorre os
@@ -161,11 +161,11 @@ async function openShell(page: Page): Promise<void> {
   });
 }
 
-/** Fecha todos os painéis (cada um encerra a sessão dele, sem confirmação) e espera o estado vazio. */
+/** Fecha todos os painéis pelo menu ⋯ (cada um encerra a sessão dele; o shell comum não pergunta) e espera o estado vazio. */
 async function endShell(page: Page): Promise<void> {
   const panes = page.getByRole('region', { name: 'Painel PowerShell' });
   for (let left = await panes.count(); left > 0; left -= 1) {
-    await panes.first().getByRole('button', { name: 'Fechar painel', exact: true }).click();
+    await fecharPainel(page, 'PowerShell');
     await expect(panes).toHaveCount(left - 1, { timeout: 15_000 });
     await expectOpenSessions(page, left - 1);
   }
