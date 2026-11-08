@@ -402,6 +402,14 @@ test('a barra de status diz qual terminal tem o teclado e a parte Foco some ao f
   const background = () => head.evaluate((element) => getComputedStyle(element).backgroundColor);
   const tinted = await background();
 
+  // Ctrl+Shift+Tab sai do terminal para o cartão: o painel segue com o teclado (Foco e tinta ficam), mas a dica de
+  // sair some, já que a pessoa acabou de sair.
+  const title = (await shellPanes(page).first().locator('.pane__title').textContent()) ?? '';
+  await page.keyboard.press('Control+Shift+Tab');
+  await expect(status.getByText(`Foco: ${title}`, { exact: true })).toBeVisible();
+  await expect(focus).toHaveCount(0);
+  expect(await background()).toBe(tinted);
+
   // Focar a barra lateral tira o teclado do terminal: a parte Foco some, e a tinta também.
   await projectLink(page, projectName).focus();
   await expect(focus).toHaveCount(0);

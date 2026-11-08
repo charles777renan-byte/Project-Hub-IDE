@@ -125,24 +125,28 @@ export function PaneView(props: PaneViewProps) {
   // cartão, e só na sessão viva. É daqui que a barra de status sabe que terminal está recebendo as teclas.
   const isLive = leaf.terminalId !== null && terminal !== undefined && terminal.state !== 'exited';
   const liveTitle = isLive ? terminal.title : null;
-  const [keyboardInside, setKeyboardInside] = useState(false);
+  // Onde o teclado está dentro do cartão: no terminal, ou em outro ponto (um botão do cabeçalho, o próprio cartão).
+  const [keyboardAt, setKeyboardAt] = useState<'none' | 'card' | 'terminal'>('none');
   // Sem sessão viva (lançador, sessão que terminou) o painel não tem terminal com o teclado: o que sobrou de um foco
   // anterior é esquecido, para não reaparecer quando uma sessão nova começar sem um foco novo.
-  if (!isLive && keyboardInside) setKeyboardInside(false);
+  if (!isLive && keyboardAt !== 'none') setKeyboardAt('none');
   useEffect(() => {
     // O navegador nem sempre avisa (`blur`) quando o elemento focado sai do DOM (um terminal que troca, como ao passar
     // de aba no modo "um painel por vez"): o foco real é o que o documento diz, e o estado se acerta por ele.
-    if (keyboardInside && section.current?.contains(document.activeElement) === false) {
-      setKeyboardInside(false);
+    const active = document.activeElement;
+    if (keyboardAt !== 'none' && section.current?.contains(active) === false) {
+      setKeyboardAt('none');
       return;
     }
-    if (liveTitle !== null && keyboardInside) {
-      // Também segue o título: se a sessão for renomeada com o painel focado, a barra de status acompanha.
-      setTerminalFocus({ key: leaf.id, title: liveTitle });
+    if (liveTitle !== null && keyboardAt !== 'none') {
+      // Também segue o título: se a sessão for renomeada com o painel focado, a barra de status acompanha. O lugar do
+      // foco se relê do documento (o mesmo critério dos eventos), então o modo "um painel por vez" também o acerta.
+      const inTerminal = active instanceof Element && active.closest('.terminal-view') !== null;
+      setTerminalFocus({ key: leaf.id, title: liveTitle, inTerminal });
     } else {
       clearTerminalFocus(leaf.id);
     }
-  }, [leaf.id, liveTitle, keyboardInside]);
+  }, [leaf.id, liveTitle, keyboardAt]);
   // Painel que sai da tela (ou muda de folha) com o foco não deixa a barra de status apontando para ele.
   useEffect(() => () => clearTerminalFocus(leaf.id), [leaf.id]);
 
@@ -334,7 +338,11 @@ export function PaneView(props: PaneViewProps) {
         props.onActivate();
         // O menu ⋯ é um portal, mas o foco do React sobe por ele até aqui: o foco que cai no menu não é o terminal
         // com o teclado. Só o foco dentro do DOM do cartão conta.
-        if (event.currentTarget.contains(event.target as Node)) setKeyboardInside(true);
+        if (event.currentTarget.contains(event.target as Node)) {
+          setKeyboardAt(
+            (event.target as Element).closest('.terminal-view') === null ? 'card' : 'terminal',
+          );
+        }
       }}
       onBlur={(event) => {
         // O blur de um item do menu (portal) não diz nada sobre o cartão.
@@ -343,7 +351,7 @@ export function PaneView(props: PaneViewProps) {
         // no portal, tira.
         const next = event.relatedTarget;
         if (next instanceof Node && event.currentTarget.contains(next)) return;
-        setKeyboardInside(false);
+        setKeyboardAt('none');
       }}
       onDoubleClick={(event) => {
         // Duplo clique no cabeçalho (fora dos botões) maximiza, ou devolve à grade.

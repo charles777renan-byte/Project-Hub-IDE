@@ -17,8 +17,9 @@ import {
 // O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador.
 vi.mock('../../src/renderer/components/terminals/TerminalView', () => ({
   TerminalView: ({ terminalId, active }: { terminalId: string; active?: boolean }) => (
-    <div data-testid="terminal-view" data-active={String(active)}>
+    <div className="terminal-view" data-testid="terminal-view" data-active={String(active)}>
       {terminalId}
+      <textarea aria-label="Entrada do terminal" />
     </div>
   ),
 }));
@@ -707,7 +708,25 @@ describe('foco do teclado publicado para a barra de status', () => {
     setup();
     expect(focus.result.current).toBeNull();
     focusOn(menuButton());
-    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
+  });
+
+  it('foco no terminal publica inTerminal: true; no próprio cartão ou num botão do cabeçalho, false', () => {
+    const focus = reader();
+    const view = setup({ onMaximize: vi.fn() });
+    const card = screen.getByRole('region', { name: 'Painel Claude Code' });
+    // Ctrl+Shift+Tab leva o foco ao próprio cartão: o painel segue com o teclado, mas o terminal não.
+    focusOn(card);
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
+    focusOn(screen.getByLabelText('Entrada do terminal'));
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: true });
+    // De volta ao cartão (a saída do terminal) e a um botão do cabeçalho (Tab): sem a dica de sair.
+    focusOn(card);
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
+    focusOn(screen.getByLabelText('Entrada do terminal'));
+    focusOn(screen.getByRole('button', { name: 'Maximizar painel' }));
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
+    view.unmount();
   });
 
   it('tirar o foco para fora do painel limpa', () => {
@@ -724,7 +743,7 @@ describe('foco do teclado publicado para a barra de status', () => {
     focusOn(screen.getByRole('button', { name: 'Maximizar painel' }));
     expect(focus.result.current).not.toBeNull();
     focusOn(menuButton());
-    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
   });
 
   it('desmontar o painel com o foco limpa', () => {
@@ -739,9 +758,9 @@ describe('foco do teclado publicado para a barra de status', () => {
   it('desmontar um painel sem o foco não apaga o foco de outro painel', () => {
     const focus = reader();
     const view = setup();
-    act(() => setTerminalFocus({ key: 'outro', title: 'Codex' }));
+    act(() => setTerminalFocus({ key: 'outro', title: 'Codex', inTerminal: true }));
     view.unmount();
-    expect(focus.result.current).toEqual({ key: 'outro', title: 'Codex' });
+    expect(focus.result.current).toEqual({ key: 'outro', title: 'Codex', inTerminal: true });
   });
 
   it('o lançador nunca define foco', () => {
@@ -772,19 +791,27 @@ describe('foco do teclado publicado para a barra de status', () => {
     expect(focus.result.current).toBeNull();
   });
 
+  it('o título que muda com o foco no terminal atualiza o publicado e mantém inTerminal', () => {
+    const focus = reader();
+    const view = setup();
+    focusOn(screen.getByLabelText('Entrada do terminal'));
+    view.rerender(<PaneView {...view.props} terminal={{ ...session, title: 'Outro título' }} />);
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Outro título', inTerminal: true });
+  });
+
   it('o título que muda com o painel focado atualiza o publicado', () => {
     const focus = reader();
     const view = setup();
     focusOn(menuButton());
     view.rerender(<PaneView {...view.props} terminal={{ ...session, title: 'Outro título' }} />);
-    expect(focus.result.current).toEqual({ key: 'a', title: 'Outro título' });
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Outro título', inTerminal: false });
   });
 
   it('o elemento focado que some sem blur (troca de aba) não deixa o painel novo como focado', () => {
     const focus = reader();
     const view = setup({ onMaximize: vi.fn() });
     focusOn(screen.getByRole('button', { name: 'Maximizar painel' }));
-    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
     // Modo "um painel por vez": a mesma instância recebe outra folha, e o botão focado sai do DOM sem blur.
     const other: LayoutLeaf = { ...leaf, id: 'b', terminalId: 't2' };
     const { onMaximize: _removed, ...rest } = view.props;
@@ -826,9 +853,9 @@ describe('foco do teclado publicado para a barra de status', () => {
     );
     const [first, other] = screen.getAllByRole('button', { name: 'Mais ações do painel' });
     focusOn(first as HTMLElement);
-    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
     focusOn(other as HTMLElement);
-    expect(focus.result.current).toEqual({ key: 'b', title: 'Segundo' });
+    expect(focus.result.current).toEqual({ key: 'b', title: 'Segundo', inTerminal: false });
     focusOn(outside);
     expect(focus.result.current).toBeNull();
   });
@@ -851,6 +878,6 @@ describe('foco do teclado publicado para a barra de status', () => {
     // Fechar o menu devolve o foco ao botão ⋯, que está dentro do painel: o teclado voltou.
     await userEvent.keyboard('{Escape}');
     expect(menuButton()).toHaveFocus();
-    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
   });
 });
