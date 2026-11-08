@@ -447,6 +447,16 @@
   flex: none;
 }
 
+/* A faixa de abas e o botão "⌄" das escondidas (a CSS do esmaecimento e do botão está em workspace.css). */
+.file-tabs-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-width: 0;
+  padding-right: var(--space-2);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
 /*
  * A faixa de arquivos abertos (components/project/FileTabs.tsx), no topo da aba Arquivos do painel direito. A aba ativa
  * usa --fill e, além da cor, um contorno de --field-line; o ponto de "não salvo" é uma forma (e o texto escondido o
@@ -454,13 +464,12 @@
  */
 .file-tabs {
   display: flex;
-  flex: none;
+  flex: 1;
   gap: var(--space-1);
   min-width: 0;
   padding: var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
-  box-shadow: inset 0 -1px 0 var(--line);
 }
 
 .file-tabs__item {
