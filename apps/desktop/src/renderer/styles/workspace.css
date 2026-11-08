@@ -1369,12 +1369,23 @@
   margin-top: 1px;
 }
 
+/* As ações pintam por cima de qualquer sobra das linhas (vêm depois no DOM), então o clique chega nos botões. */
+.pane__head--live .pane__actions {
+  position: relative;
+}
+
+/*
+ * As duas linhas são um contêiner de tamanho (`container-type: inline-size`): a barra de contexto se adapta à
+ * largura que sobra para a linha 2 (regras `@container pane-lines` logo depois da barra), e não à da janela.
+ */
 .pane__lines {
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: 5px;
   min-width: 0;
+  container-name: pane-lines;
+  container-type: inline-size;
 }
 
 .pane__line1,
@@ -1387,11 +1398,6 @@
 
 .pane__line2 {
   white-space: nowrap;
-}
-
-/* Na linha 1 o selo fica logo depois do título: o título só cresce até o que o texto pede. */
-.pane__line1 .pane__title {
-  flex: 0 1 auto;
 }
 
 /*
@@ -1420,7 +1426,6 @@
  * `data-level`; nunca vermelho. A largura do preenchimento vai no `style` (CSSOM).
  */
 .pane__context {
-  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -1462,6 +1467,30 @@
 }
 
 /*
+ * Painel estreito: a barra se adapta e nunca pinta sobre os botões. Abaixo de 300px de largura da área das
+ * duas linhas (a pílula de 111px, a barra inteira de 138px e os vãos não cabem com o modelo), some o rótulo
+ * `contexto` (já é só visual: o leitor de tela lê o detalhe) e a barra encurta para 40px; a porcentagem
+ * nunca some. Abaixo de 215px nem isso cabe ao lado da pílula, e a linha 2 quebra: a barra desce para uma
+ * terceira linha, à direita (`margin-left: auto`).
+ */
+@container pane-lines (max-width: 300px) {
+  .pane__context small {
+    display: none;
+  }
+
+  .pane__context-bar {
+    width: 40px;
+  }
+}
+
+@container pane-lines (max-width: 215px) {
+  .pane__line2 {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+}
+
+/*
  * Título do painel. No lançador cresce e ocupa a linha; na sessão viva (`.pane__line1`) só pede o que o texto
  * ocupa, e é cortado com reticências quando falta espaço.
  */
@@ -1476,6 +1505,11 @@
 .pane[data-active='true'] .pane__title {
   color: var(--text);
   font-weight: 600;
+}
+
+/* Na linha 1 o selo fica logo depois do título: o título só cresce até o que o texto pede. */
+.pane__line1 .pane__title {
+  flex: 0 1 auto;
 }
 
 .pane__usage {

@@ -33,7 +33,6 @@ function setup(over: Partial<PaneViewProps> = {}) {
     leaf,
     terminal: session,
     provider,
-    projectName: 'app',
     active: false,
     busy: false,
     onActivate: vi.fn(),

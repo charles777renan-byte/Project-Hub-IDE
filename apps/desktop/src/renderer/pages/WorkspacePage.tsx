@@ -100,7 +100,6 @@ export function WorkspacePage() {
           <WorkspaceBody
             key={projectId}
             projectId={projectId}
-            projectName={project?.name ?? ''}
             visible={view === 'terminais'}
             {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
           />
@@ -169,12 +168,10 @@ function ProjectPanel({
 
 function WorkspaceBody({
   projectId,
-  projectName,
   visible,
   unavailableReason,
 }: {
   projectId: string;
-  projectName: string;
   /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
   visible: boolean;
   /** A pasta do projeto sumiu: a barra não abre terminal e a dica mostra este motivo. */
@@ -436,7 +433,6 @@ function WorkspaceBody({
         leaf={leaf}
         terminal={terminal}
         provider={providers.find((item) => item.id === providerId)}
-        projectName={projectName}
         active={workspace.activeLeafId === leaf.id}
         focusTerminal={workspace.focusLeafId === leaf.id}
         busy={busy.has(leaf.id)}

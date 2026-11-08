@@ -16,7 +16,6 @@ export type PaneViewProps = {
   /** O item de `terminals.list` com o id da folha; indefinido se a sessão sumiu da lista. */
   terminal: TerminalSummary | undefined;
   provider: ProviderInfo | undefined;
-  projectName: string;
   active: boolean;
   /** Pede o foco do terminal: só depois de um gesto do usuário neste painel ou na barra lateral. */
   focusTerminal?: boolean;
