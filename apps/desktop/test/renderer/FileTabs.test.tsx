@@ -9,11 +9,12 @@ import {
   openFile,
   resetOpenFilesForTests,
   setActive,
+  TREE_TAB,
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
 
-/** A faixa de abas dos arquivos abertos, acima do workspace da visão Terminais. */
+/** A faixa de abas dos arquivos abertos, no topo da aba Arquivos do painel direito: a Árvore e uma aba por arquivo. */
 
 function content(text: string): FileContentDto {
   return {
@@ -42,13 +43,13 @@ beforeEach(() => {
   } as unknown as typeof window.projectHub;
 });
 
-/** A faixa mais o estado ativo, como a página os usa: quem fecha a faixa é quem lê o store. */
+/** A faixa mais o estado ativo, como a aba os usa: quem fecha a faixa é quem lê o store. A Árvore aparece como `arvore`. */
 function Harness() {
   const { active } = useOpenFiles('p1');
   return (
     <>
       <FileTabs projectId="p1" />
-      <output data-testid="ativa">{active}</output>
+      <output data-testid="ativa">{active === TREE_TAB ? 'arvore' : active}</output>
     </>
   );
 }
@@ -77,11 +78,11 @@ describe('FileTabs', () => {
     expect(screen.queryByRole('tablist', { name: 'Arquivos abertos' })).not.toBeInTheDocument();
   });
 
-  it('com arquivo aberto mostra a aba fixa Terminais e uma aba por arquivo, com o nome e o caminho no title', async () => {
+  it('com arquivo aberto mostra a aba fixa Árvore e uma aba por arquivo, com o nome e o caminho no title', async () => {
     await openTwo();
 
     const tabs = within(strip()).getAllByRole('tab');
-    expect(tabs.map((item) => item.textContent)).toEqual(['Terminais', 'a.ts', 'b.md']);
+    expect(tabs.map((item) => item.textContent)).toEqual(['Árvore', 'a.ts', 'b.md']);
     expect(tab('a.ts')).toHaveAttribute('title', 'src/a.ts');
     expect(tab('b.md')).toHaveAttribute('title', 'docs/b.md');
   });
@@ -93,16 +94,16 @@ describe('FileTabs', () => {
     expect(tab('b.md')).toHaveAttribute('tabindex', '0');
     expect(tab('a.ts')).toHaveAttribute('aria-selected', 'false');
     expect(tab('a.ts')).toHaveAttribute('tabindex', '-1');
-    expect(tab('Terminais')).toHaveAttribute('aria-selected', 'false');
-    expect(tab('Terminais')).toHaveAttribute('tabindex', '-1');
+    expect(tab('Árvore')).toHaveAttribute('aria-selected', 'false');
+    expect(tab('Árvore')).toHaveAttribute('tabindex', '-1');
   });
 
-  it('clicar numa aba a ativa, inclusive a de Terminais', async () => {
+  it('clicar numa aba a ativa, inclusive a de Árvore', async () => {
     const user = userEvent.setup();
     await openTwo();
 
-    await user.click(tab('Terminais'));
-    expect(screen.getByTestId('ativa')).toHaveTextContent('terminals');
+    await user.click(tab('Árvore'));
+    expect(screen.getByTestId('ativa')).toHaveTextContent('arvore');
     await user.click(tab('a.ts'));
     expect(screen.getByTestId('ativa')).toHaveTextContent('src/a.ts');
   });
@@ -117,7 +118,7 @@ describe('FileTabs', () => {
 
     await user.click(screen.getByRole('button', { name: 'Fechar b.md' }));
     expect(screen.queryByRole('tablist', { name: 'Arquivos abertos' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('ativa')).toHaveTextContent('terminals');
+    expect(screen.getByTestId('ativa')).toHaveTextContent('arvore');
   });
 
   it('o botão Fechar não é uma parada de Tab e tem dica com o nome', async () => {
@@ -147,8 +148,8 @@ describe('FileTabs', () => {
   it('as setas andam pelas abas com a volta nas pontas, e Home e End vão às pontas', async () => {
     const user = userEvent.setup();
     await openTwo();
-    act(() => setActive('p1', 'terminals'));
-    await user.click(tab('Terminais'));
+    act(() => setActive('p1', TREE_TAB));
+    await user.click(tab('Árvore'));
 
     await user.keyboard('{ArrowRight}');
     expect(tab('a.ts')).toHaveAttribute('aria-selected', 'true');
@@ -159,14 +160,14 @@ describe('FileTabs', () => {
     await waitFor(() => expect(tab('b.md')).toHaveFocus());
 
     await user.keyboard('{ArrowRight}');
-    expect(tab('Terminais')).toHaveAttribute('aria-selected', 'true');
-    await waitFor(() => expect(tab('Terminais')).toHaveFocus());
+    expect(tab('Árvore')).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(tab('Árvore')).toHaveFocus());
 
     await user.keyboard('{ArrowLeft}');
     expect(tab('b.md')).toHaveAttribute('aria-selected', 'true');
 
     await user.keyboard('{Home}');
-    expect(tab('Terminais')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Árvore')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('Ctrl+W fecha a aba ativa e passa o foco à vizinha', async () => {
@@ -181,10 +182,10 @@ describe('FileTabs', () => {
     await waitFor(() => expect(tab('b.md')).toHaveFocus());
   });
 
-  it('Ctrl+W na aba Terminais não fecha nada', async () => {
+  it('Ctrl+W na aba Árvore não fecha nada', async () => {
     const user = userEvent.setup();
     await openTwo();
-    await user.click(tab('Terminais'));
+    await user.click(tab('Árvore'));
 
     await user.keyboard('{Control>}w{/Control}');
 

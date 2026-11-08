@@ -862,10 +862,10 @@ export const RIGHT_PANEL_TEXT = {
       expected: 'Esperado',
     },
   },
-  /** Os arquivos abertos como abas ao lado dos terminais. */
+  /** Os arquivos abertos: a faixa de abas no topo da aba Arquivos do painel direito, com a Árvore como primeira aba. */
   openFiles: {
     tabs: 'Arquivos abertos',
-    terminals: 'Terminais',
+    tree: 'Árvore',
     unsaved: 'alterações não salvas',
     close: (name: string) => `Fechar ${name}`,
     loading: 'Carregando…',

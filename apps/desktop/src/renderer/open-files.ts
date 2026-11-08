@@ -3,11 +3,11 @@ import type { FileContentDto, FileVersionDto } from '@project-hub/contracts';
 import { RIGHT_PANEL_TEXT } from './mission-text';
 
 /*
- * Os arquivos abertos de cada projeto: as abas que ficam ao lado dos Terminais. Um store do renderer no estilo
- * de `terminals-data.ts`: o módulo guarda o estado e os ouvintes (lidos por `useSyncExternalStore`), então a
- * árvore de arquivos (que abre) e a página do projeto (que mostra) falam pelo mesmo lugar. O texto de cada
- * arquivo mora só aqui, em memória: trocar de visão desmonta a tela, mas não o buffer. O que vai para o
- * `localStorage` é só a lista de caminhos e a aba ativa de cada projeto, nunca o texto.
+ * Os arquivos abertos de cada projeto: as abas da faixa no topo da aba Arquivos do painel direito, com a Árvore
+ * como primeira aba. Um store do renderer no estilo de `terminals-data.ts`: o módulo guarda o estado e os ouvintes
+ * (lidos por `useSyncExternalStore`), então a árvore (que abre) e a faixa e o editor (que mostram) falam pelo mesmo
+ * lugar. O texto de cada arquivo mora só aqui, em memória: trocar de aba ou de visão desmonta a tela, mas não o
+ * buffer. O que vai para o `localStorage` é só a lista de caminhos e a aba ativa de cada projeto, nunca o texto.
  */
 
 const TEXT = RIGHT_PANEL_TEXT.openFiles;
@@ -16,8 +16,11 @@ const EDITOR_TEXT = RIGHT_PANEL_TEXT.editor;
 /** Quanto tempo o aviso "Atualizado: o arquivo mudou no disco" fica na tela. */
 const RELOADED_NOTICE_MS = 5_000;
 
-/** A aba fixa dos terminais. Um caminho de arquivo nunca é este valor, mas a chave é do mesmo tipo (texto). */
-export const TERMINALS_TAB = 'terminals';
+/**
+ * A aba da árvore: nenhum arquivo ativo, e a aba Arquivos mostra a árvore. Um caminho de arquivo nunca é vazio, então
+ * a chave não colide com nenhum arquivo.
+ */
+export const TREE_TAB = '';
 
 /** O que a aba de um arquivo mostra: o editor (`arquivo`) ou o diff contra o HEAD, só leitura (`alteracoes`). */
 export type FileMode = 'arquivo' | 'alteracoes';
@@ -46,15 +49,15 @@ export type OpenFileBuffer = {
 
 export type OpenFilesView = {
   files: OpenFileBuffer[];
-  /** `'terminals'` ou o caminho do arquivo ativo. */
-  active: 'terminals' | string;
+  /** `TREE_TAB` (a árvore, sem arquivo ativo) ou o caminho do arquivo ativo. */
+  active: string;
   /** Algum arquivo deste projeto tem alterações não salvas. */
   anyDirty: boolean;
 };
 
 const STORAGE_PREFIX = 'project-hub:open-files:v1:';
 
-const EMPTY: OpenFilesView = { files: [], active: TERMINALS_TAB, anyDirty: false };
+const EMPTY: OpenFilesView = { files: [], active: TREE_TAB, anyDirty: false };
 
 // O estado de cada projeto é imutável: cada mudança cria um novo, e é ele que a tela lê.
 const states = new Map<string, OpenFilesView>();
@@ -98,20 +101,20 @@ function subscribe(listener: () => void): () => void {
 function readStored(projectId: string): { files: string[]; active: string } {
   try {
     const raw = window.localStorage.getItem(STORAGE_PREFIX + projectId);
-    if (raw === null) return { files: [], active: TERMINALS_TAB };
+    if (raw === null) return { files: [], active: TREE_TAB };
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== 'object' || value === null) return { files: [], active: TERMINALS_TAB };
+    if (typeof value !== 'object' || value === null) return { files: [], active: TREE_TAB };
     const { files, active } = value as { files?: unknown; active?: unknown };
     if (!Array.isArray(files) || !files.every((item) => typeof item === 'string' && item !== '')) {
-      return { files: [], active: TERMINALS_TAB };
+      return { files: [], active: TREE_TAB };
     }
     const unique = [...new Set(files as string[])];
     return {
       files: unique,
-      active: typeof active === 'string' && unique.includes(active) ? active : TERMINALS_TAB,
+      active: typeof active === 'string' && unique.includes(active) ? active : TREE_TAB,
     };
   } catch {
-    return { files: [], active: TERMINALS_TAB };
+    return { files: [], active: TREE_TAB };
   }
 }
 
@@ -249,20 +252,20 @@ export function closeFile(projectId: string, path: string): void {
   const active =
     state.active !== path
       ? state.active
-      : (files[at]?.path ?? files[at - 1]?.path ?? TERMINALS_TAB);
+      : (files[at]?.path ?? files[at - 1]?.path ?? TREE_TAB);
   clearReloadedTimer(projectId, path);
   commit(projectId, build(files, active), true);
-  if (active !== state.active && active !== TERMINALS_TAB) void checkFileOnDisk(projectId, active);
+  if (active !== state.active && active !== TREE_TAB) void checkFileOnDisk(projectId, active);
 }
 
 /** Ativa a aba dos terminais ou a de um arquivo aberto; qualquer outra chave é ignorada. */
-export function setActive(projectId: string, key: 'terminals' | string): void {
+export function setActive(projectId: string, key: string): void {
   const state = stateOf(projectId);
   if (state.active === key) return;
-  if (key !== TERMINALS_TAB && !state.files.some((file) => file.path === key)) return;
+  if (key !== TREE_TAB && !state.files.some((file) => file.path === key)) return;
   commit(projectId, build(state.files, key), true);
   // Ativar a aba é um bom momento para ver se um agente mexeu no arquivo enquanto ela estava de lado.
-  if (key !== TERMINALS_TAB) void checkFileOnDisk(projectId, key);
+  if (key !== TREE_TAB) void checkFileOnDisk(projectId, key);
 }
 
 /** Troca o modo da aba do arquivo. O texto do editor não muda: ele mora no buffer, não na tela. */

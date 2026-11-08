@@ -5,7 +5,7 @@ import {
   isFileDirty,
   saveFile,
   setActive,
-  TERMINALS_TAB,
+  TREE_TAB,
   useOpenFiles,
 } from '../../open-files';
 import { Hint } from '../Hint';
@@ -21,15 +21,15 @@ export function fileName(path: string): string {
 /** Id da aba de um arquivo aberto: o painel dele aponta para ela (`aria-labelledby`). Sem espaço, que separa ids. */
 export const fileTabId = (path: string) => `file-tab-${encodeURIComponent(path)}`;
 
-const TERMINALS_TAB_ID = 'file-tab-terminals';
+export const TREE_TAB_ID = 'file-tab-tree';
 
 /**
- * A faixa de abas dos arquivos abertos, acima do workspace da visão Terminais: a aba fixa "Terminais" e uma aba por
- * arquivo, com o nome, o caminho na dica nativa (`title`), o ponto de "não salvo" (o texto escondido o diz para
- * leitor de tela) e o botão de fechar. Setas, Home e End percorrem as abas (a ativa é a única parada de Tab), e
- * Ctrl+W fecha a ativa; o botão de fechar fica fora do Tab, e o teclado fecha por Ctrl+W. Fechar uma aba com
- * alterações não salvas pergunta antes, numa faixa logo abaixo das abas (Salvar, Descartar, Voltar), sem diálogo do
- * sistema. Só aparece quando há arquivo aberto.
+ * A faixa de abas dos arquivos abertos, no topo da aba Arquivos do painel direito: a aba fixa "Árvore" (a própria
+ * árvore, sem arquivo ativo) e uma aba por arquivo, com o nome, o caminho na dica nativa (`title`), o ponto de
+ * "não salvo" (o texto escondido o diz para leitor de tela) e o botão de fechar. Setas, Home e End percorrem as abas
+ * (a ativa é a única parada de Tab), e Ctrl+W fecha a ativa; o botão de fechar fica fora do Tab, e o teclado fecha
+ * por Ctrl+W. Fechar uma aba com alterações não salvas pergunta antes, numa faixa logo abaixo das abas (Salvar,
+ * Descartar, Voltar), sem diálogo do sistema. Só aparece quando há arquivo aberto.
  */
 export function FileTabs({ projectId }: { projectId: string }) {
   const { files, active } = useOpenFiles(projectId);
@@ -37,9 +37,9 @@ export function FileTabs({ projectId }: { projectId: string }) {
   const [closing, setClosing] = useState<string | null>(null);
   if (files.length === 0) return null;
 
-  // As chaves das abas, na ordem da faixa: Terminais primeiro.
-  const keys = [TERMINALS_TAB, ...files.map((file) => file.path)];
-  const idOf = (key: string) => (key === TERMINALS_TAB ? TERMINALS_TAB_ID : fileTabId(key));
+  // As chaves das abas, na ordem da faixa: a Árvore primeiro.
+  const keys = [TREE_TAB, ...files.map((file) => file.path)];
+  const idOf = (key: string) => (key === TREE_TAB ? TREE_TAB_ID : fileTabId(key));
 
   function select(key: string) {
     setActive(projectId, key);
@@ -70,7 +70,7 @@ export function FileTabs({ projectId }: { projectId: string }) {
     const at = keys.indexOf(active);
     if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'w') {
       event.preventDefault();
-      if (active === TERMINALS_TAB) return;
+      if (active === TREE_TAB) return;
       requestClose(active, true);
       return;
     }
@@ -89,15 +89,15 @@ export function FileTabs({ projectId }: { projectId: string }) {
     <>
       <div role="tablist" aria-label={TEXT.tabs} className="file-tabs" onKeyDown={onKeyDown}>
         <button
-          id={TERMINALS_TAB_ID}
+          id={TREE_TAB_ID}
           type="button"
           role="tab"
-          aria-selected={active === TERMINALS_TAB}
-          tabIndex={active === TERMINALS_TAB ? 0 : -1}
+          aria-selected={active === TREE_TAB}
+          tabIndex={active === TREE_TAB ? 0 : -1}
           className="file-tabs__tab"
-          onClick={() => setActive(projectId, TERMINALS_TAB)}
+          onClick={() => setActive(projectId, TREE_TAB)}
         >
-          {TEXT.terminals}
+          {TEXT.tree}
         </button>
         {files.map((file) => {
           const selected = file.path === active;
@@ -164,8 +164,9 @@ export function FileTabs({ projectId }: { projectId: string }) {
 
 /**
  * A pergunta ao fechar uma aba com alterações não salvas, logo abaixo da faixa de abas. "Salvar" grava e fecha (se a
- * gravação falha, ou se a pessoa digitou durante ela, a aba e a pergunta ficam, e a falha mostra a mensagem do processo principal aqui), "Descartar" fecha sem gravar e
- * "Voltar" (ou Esc) deixa tudo como estava. O foco começa em Salvar, a saída que não perde nada.
+ * gravação falha, ou se a pessoa digitou durante ela, a aba e a pergunta ficam, e a falha mostra a mensagem do processo
+ * principal aqui), "Descartar" fecha sem gravar e "Voltar" (ou Esc) deixa tudo como estava. O foco começa em Salvar,
+ * a saída que não perde nada.
  */
 function CloseAsk({
   projectId,
