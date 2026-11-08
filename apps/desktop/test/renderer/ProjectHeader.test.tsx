@@ -16,6 +16,11 @@ import {
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
+import {
+  resetCloseAllForTests,
+  setPaneCount,
+  useCloseAllRequest,
+} from '../../src/renderer/workspace/close-all';
 
 const project: ProjectSummary = {
   id: 'p1',
@@ -92,7 +97,13 @@ function renderAt(
 
 afterEach(() => {
   Reflect.deleteProperty(window, 'projectHub');
+  resetCloseAllForTests();
 });
+
+/** Mostra se o pedido de fechar todos está de pé para o projeto, como o workspace o veria. */
+function RequestProbe({ projectId }: { projectId: string }) {
+  return <output data-testid="pedido">{String(useCloseAllRequest(projectId))}</output>;
+}
 
 describe('ProjectHeader: uma linha', () => {
   it('mostra só o nome do projeto, sem o tipo do repositório nem etiquetas de branch e grupo', () => {
@@ -457,5 +468,116 @@ describe('ProjectHeader: com uma missão aberta', () => {
 
     expect(current.key).toBe(before);
     expect(current.search).toBe('?visao=missoes');
+  });
+});
+
+describe('ProjectHeader: Fechar todos os terminais', () => {
+  async function openMenu(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+  }
+
+  it('o item vem depois de Arquivar e Remover, em vermelho', async () => {
+    installApi();
+    setPaneCount('p1', 2);
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await openMenu(user);
+    const items = await screen.findAllByRole('menuitem');
+
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Arquivar projeto',
+      'Remover da lista',
+      'Fechar todos os terminais…',
+    ]);
+    expect(items[2]).toHaveClass('menu-acoes__item--perigo');
+  });
+
+  it('sem painéis no workspace, o item fica desabilitado com a dica "Nenhum terminal aberto"', async () => {
+    installApi();
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await openMenu(user);
+    const item = await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' });
+
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveAttribute('title', 'Nenhum terminal aberto');
+  });
+
+  it('com painéis, o item fica habilitado e sem dica', async () => {
+    installApi();
+    setPaneCount('p1', 1);
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await openMenu(user);
+    const item = await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' });
+
+    expect(item).not.toHaveAttribute('aria-disabled', 'true');
+    expect(item).not.toHaveAttribute('title');
+  });
+
+  it('a contagem é do projeto: painéis de outro projeto não habilitam o item', async () => {
+    installApi();
+    setPaneCount('p2', 4);
+    const user = userEvent.setup();
+    renderAt('/workspaces/p1');
+
+    await openMenu(user);
+
+    expect(
+      await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('escolher leva à visão Terminais e faz o pedido do projeto', async () => {
+    installApi();
+    setPaneCount('p1', 2);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/workspaces/p1?visao=progresso']}>
+        <Probe />
+        <RequestProbe projectId="p1" />
+        <Routes>
+          <Route
+            path={ROUTE_PATHS.workspace}
+            element={<ProjectHeader project={project} onNewMission={() => undefined} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('pedido')).toHaveTextContent('false');
+
+    await openMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' }));
+
+    expect(current).toMatchObject({ pathname: '/workspaces/p1', search: '?visao=terminais' });
+    expect(screen.getByTestId('pedido')).toHaveTextContent('true');
+  });
+
+  it('já na visão Terminais, só faz o pedido, sem navegar', async () => {
+    installApi();
+    setPaneCount('p1', 2);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/workspaces/p1']}>
+        <Probe />
+        <RequestProbe projectId="p1" />
+        <Routes>
+          <Route
+            path={ROUTE_PATHS.workspace}
+            element={<ProjectHeader project={project} onNewMission={() => undefined} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const key = current.key;
+
+    await openMenu(user);
+    await user.click(await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' }));
+
+    expect(current.key).toBe(key);
+    expect(screen.getByTestId('pedido')).toHaveTextContent('true');
   });
 });

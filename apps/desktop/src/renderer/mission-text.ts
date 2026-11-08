@@ -599,6 +599,8 @@ export const PROJECT_TEXT = {
   remove: 'Remover da lista',
   removeQuestion: 'Tirar o projeto da lista? A pasta, o Git e as missões ficam como estão.',
   removeConfirm: 'Remover',
+  closeAllTerminals: 'Fechar todos os terminais…',
+  noTerminalOpen: 'Nenhum terminal aberto',
   notFound: 'O projeto não foi encontrado.',
   backHome: 'Voltar ao Início',
   genericError: 'Não foi possível concluir a ação. Tente de novo.',
