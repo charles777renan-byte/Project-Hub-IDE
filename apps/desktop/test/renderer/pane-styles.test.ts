@@ -6,7 +6,7 @@ import { readCss, ruleDeclarations } from './css-rules';
  * (--surface, raio de cartão, contorno de 1px por sombra interna) com 8px de vão entre os cartões; as
  * divisórias são vãos transparentes de 8px, com um traço no meio ao passar o mouse, arrastar ou focar;
  * o xterm fica num fundo opaco --bg (#080614), com margem de 4px, sem o brilho da casca sob o texto.
- * Cabeça de 28px e rodapé de 22px. As regras ficam numa seção própria no fim de workspace.css.
+ * Cabeça de 28px no lançador e na sessão terminada; a sessão viva tem cabeçalho de duas linhas e não tem rodapé. As regras ficam numa seção própria no fim de workspace.css.
  */
 
 describe('árvore de painéis e painel', () => {
@@ -20,12 +20,62 @@ describe('árvore de painéis e painel', () => {
     expect(marker).toBeGreaterThan(0);
   });
 
-  it('a cabeça tem 28px e o rodapé 22px, ambos fixos e de uma linha', () => {
+  it('o lançador e a sessão terminada mantêm a cabeça de 28px; o rodapé deixou de existir', () => {
     expect(rule('.pane__head').get('height')).toBe('28px');
     expect(rule('.pane__head').get('flex')).toBe('none');
-    expect(rule('.pane__foot').get('height')).toBe('22px');
-    expect(rule('.pane__foot').get('flex')).toBe('none');
-    expect(rule('.pane__foot').get('white-space')).toBe('nowrap');
+    expect(section).not.toContain('.pane__foot');
+  });
+
+  it('o cabeçalho da sessão viva tem duas linhas: altura automática, sem encolher, linhas que não quebram', () => {
+    const live = rule('.pane__head--live');
+    expect(live.get('height')).toBe('auto');
+    expect(live.get('align-items')).toBe('flex-start');
+    // `flex: none` vem da regra base `.pane__head`, que a variante não desfaz.
+    expect(live.has('flex')).toBe(false);
+    expect(rule('.pane__lines').get('display')).toBe('flex');
+    expect(rule('.pane__lines').get('flex-direction')).toBe('column');
+    expect(rule('.pane__lines').get('min-width')).toBe('0');
+    expect(rule('.pane__line1').get('min-width')).toBe('0');
+    expect(rule('.pane__line2').get('min-width')).toBe('0');
+    expect(rule('.pane__line2').get('white-space')).toBe('nowrap');
+  });
+
+  it('na linha 2 a worktree cede primeiro, depois o modelo; a pílula e a barra nunca somem', () => {
+    const worktree = rule('.pane__worktree');
+    expect(worktree.get('min-width')).toBe('0');
+    expect(worktree.get('overflow')).toBe('hidden');
+    expect(worktree.get('text-overflow')).toBe('ellipsis');
+    const model = rule('.pane__model');
+    expect(model.get('min-width')).toBe('0');
+    expect(model.get('overflow')).toBe('hidden');
+    expect(model.get('text-overflow')).toBe('ellipsis');
+    // Fator de encolhimento muito maior na worktree: o excesso vai quase todo para ela antes do modelo.
+    const shrink = (declarations: Map<string, string>): number =>
+      Number((declarations.get('flex') ?? '').split(/\s+/)[1]);
+    expect(shrink(worktree)).toBeGreaterThan(shrink(model));
+    expect(shrink(model)).toBeGreaterThan(0);
+    expect(rule('.pane__usage').get('flex')).toBe('none');
+    expect(rule('.pane__context').get('flex')).toBe('none');
+    // A barra fica à direita da linha 2.
+    expect(rule('.pane__context').get('margin-left')).toBe('auto');
+  });
+
+  it('a barra de contexto: 56px x 5px, fundo --line, preenchimento --muted e --brand no nível alto', () => {
+    const bar = rule('.pane__context-bar');
+    expect(bar.get('width')).toBe('56px');
+    expect(bar.get('height')).toBe('5px');
+    expect(bar.get('background')).toBe('var(--line)');
+    expect(bar.get('overflow')).toBe('hidden');
+    const fill = rule('.pane__context-fill');
+    expect(fill.get('height')).toBe('100%');
+    expect(fill.get('background')).toBe('var(--muted)');
+    expect(rule(".pane__context[data-level='high'] .pane__context-fill").get('background')).toBe(
+      'var(--brand)',
+    );
+    expect(rule(".pane__context[data-level='high'] b").get('color')).toBe('var(--brand)');
+    expect(rule('.pane__context b').get('color')).toBe('var(--text)');
+    // O detalhe para leitor de tela usa o mesmo esconder visual das outras marcas.
+    expect(ruleDeclarations(css, '.pane__context-sr').get('clip')).toBe('rect(0, 0, 0, 0)');
   });
 
   it('a divisória é um vão transparente de 8px, e o mouse segue a orientação', () => {
@@ -140,6 +190,7 @@ describe('árvore de painéis e painel', () => {
       '--muted',
       '--text',
       '--focus',
+      '--brand',
     ]);
     expect(
       used.filter((name) => !allowed.has(name) && !/^--(?:space|font|radius|text-)/.test(name)),
@@ -152,18 +203,16 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__actions').get('flex')).toBe('none');
   });
 
-  it('o gasto de tokens é mono pequeno, sem cor própria, colado à direita do cabeçalho', () => {
+  it('o gasto de tokens é mono pequeno, sem cor própria, na linha 2 do cabeçalho', () => {
     const usage = rule('.pane__usage');
     expect(usage.get('font-family')).toBe('var(--font-mono)');
     expect(usage.get('font-size')).toBe('var(--text-xs)');
     // Herda a cor do cabeçalho (--muted, mais apagada no painel inativo): nem lima nem cor nova.
     expect(usage.has('color')).toBe(false);
     expect(usage.has('background')).toBe(false);
-    // Não cresce, e o grupo (gasto e luz) é que vai para a direita: nada de espaço livre no meio do cabeçalho.
+    // Não cresce nem encolhe: some só se não houver dado, nunca por falta de espaço.
     expect(usage.get('flex')).toBe('none');
     expect(usage.has('margin-left')).toBe(false);
-    expect(rule('.pane__status').get('margin-left')).toBe('auto');
-    expect(rule('.pane__status + .pane__actions').get('margin-left')).toBe('0');
     expect(rule('.pane__provider').has('margin-right')).toBe(false);
     expect(rule('.pane__usage-value').get('white-space')).toBe('nowrap');
     // Dígitos de largura igual, para o número não balançar enquanto sobe; a cor, o fundo e o brilho seguem o nível (app.css).

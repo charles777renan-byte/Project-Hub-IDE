@@ -269,6 +269,41 @@ describe('selos de estado em pílula', () => {
 });
 
 /**
+ * Cabeçalho do painel de terminal (duas linhas): o título (--text), o texto secundário (--muted) e o contexto
+ * em nível alto (--brand) ficam sobre o cartão (--surface) e, no painel com o foco, sobre o fundo tingido da
+ * cabeça (lima a 7% sobre --surface, o mesmo `color-mix` da regra do foco). Cada par passa de 4,5:1.
+ */
+describe('cabeçalho do painel de terminal', () => {
+  const FOCUS_TINT = 0.07;
+  const focusFill = (): string =>
+    mixOver(tokens.get('--accent') ?? '', tokens.get('--surface') ?? '', FOCUS_TINT);
+
+  it('o fundo tingido do foco difere do cartão', () => {
+    expect(focusFill()).not.toBe(tokens.get('--surface'));
+  });
+
+  it.each(['--text', '--brand'] as const)('%s sobre o cartão passa de 4,5:1', (text) => {
+    const color = tokens.get(text) ?? '';
+    const surface = tokens.get('--surface') ?? '';
+    expect(
+      contrastRatio(color, surface),
+      `${text} (${color}) sobre ${surface}`,
+    ).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+
+  it.each(['--text', '--muted', '--brand'] as const)(
+    '%s sobre o fundo tingido do foco passa de 4,5:1',
+    (text) => {
+      const color = tokens.get(text) ?? '';
+      const fill = focusFill();
+      expect(contrastRatio(color, fill), `${text} (${color}) sobre ${fill}`).toBeGreaterThanOrEqual(
+        MIN_CONTRAST,
+      );
+    },
+  );
+});
+
+/**
  * Gasto de tokens do painel de terminal: a pílula do número vai do frio ao quente conforme o nível de uso
  * (`data-level` em app.css, limites em terminal-usage.ts). O texto é o acento do nível e o fundo é o mesmo acento a
  * 14% sobre --surface; cada par passa do mesmo limite de 4,5:1 dos outros selos.
@@ -342,9 +377,14 @@ describe('cores do chrome do workspace', () => {
   it('só usa var() das cores neutras, de espaçamento, de fonte ou de uma derivada local', () => {
     const used = [...workspaceCss.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
+    // --brand (violeta): só a barra de contexto do cabeçalho do painel, a partir de 80% (pares medidos acima).
     const foreign = used.filter(
       (name) =>
-        name !== '--accent' && !NEUTRAL.has(name) && !NOT_COLOR.test(name) && !derived.has(name),
+        name !== '--accent' &&
+        name !== '--brand' &&
+        !NEUTRAL.has(name) &&
+        !NOT_COLOR.test(name) &&
+        !derived.has(name),
     );
     expect(foreign).toEqual([]);
   });

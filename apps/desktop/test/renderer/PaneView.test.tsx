@@ -111,17 +111,21 @@ describe('PaneView', () => {
       active: true,
       focusTerminal: true,
     });
-    // O título da sessão não aparece escrito: vai na dica do símbolo e para o leitor de tela.
     const provider = container.querySelector('.pane__provider') as HTMLElement;
     expect(provider.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-    expect(provider).toHaveAttribute('title', 'Corrigir login');
-    expect(screen.getByText('Corrigir login')).toHaveClass('state-mark__sr');
-    // A luz é a marca do estado: sem rótulo visível, e a origem da sessão só na dica.
-    const light = container.querySelector('.pane__light') as HTMLElement;
-    expect(light).toHaveClass('pane__light--active');
-    expect(light).toHaveAttribute('title', 'Ativo · sessão recuperada');
-    expect(screen.getByText('Ativo')).toHaveClass('state-mark__sr');
+    // O título da sessão é texto visível na linha 1, e o nome do projeto vai na dica dele.
+    const title = screen.getByText('Corrigir login');
+    expect(title).toHaveClass('pane__title');
+    expect(title).not.toHaveClass('state-mark__sr');
+    expect(title).toHaveAttribute('title', 'app');
+    // O selo tem forma e rótulo visíveis; a origem da sessão só na dica.
+    const seal = container.querySelector('.pane__state') as HTMLElement;
+    expect(seal).toHaveClass('state-mark--active');
+    expect(seal).toHaveAttribute('title', 'Ativo · sessão recuperada');
+    expect(seal.querySelector('[aria-hidden="true"]')).toHaveTextContent('●');
+    expect(screen.getByText('Ativo')).not.toHaveClass('state-mark__sr');
     expect(screen.queryByText('recuperada')).not.toBeInTheDocument();
+    expect(container.querySelector('.pane__light')).toBeNull();
     expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
     // Tirar do painel só existe para sessão de missão (o processo dela não se encerra por aqui).
     expect(screen.queryByRole('button', { name: 'Tirar do painel' })).not.toBeInTheDocument();
@@ -133,12 +137,14 @@ describe('PaneView', () => {
   it('sessão nova não leva etiqueta de origem', () => {
     const { container } = setup();
     expect(screen.queryByText('nova')).not.toBeInTheDocument();
-    expect(container.querySelector('.pane__light')).toHaveAttribute('title', 'Ativo');
+    expect(container.querySelector('.pane__state')).toHaveAttribute('title', 'Ativo');
   });
 
-  it('sessão aguardando mostra Aguardando', () => {
-    setup({ terminal: { ...session, state: 'waiting' } });
+  it('sessão aguardando mostra Aguardando, com a forma ◐', () => {
+    const { container } = setup({ terminal: { ...session, state: 'waiting' } });
     expect(screen.getByText('Aguardando')).toBeInTheDocument();
+    expect(container.querySelector('.pane__state')).toHaveClass('state-mark--waiting');
+    expect(container.querySelector('.pane__state')).toHaveTextContent('◐');
   });
 
   it('sessão de missão não tem Encerrar, pode sair do painel e fecha sem confirmar o processo', async () => {
@@ -220,10 +226,9 @@ describe('PaneView', () => {
     expect(props.onActivate).toHaveBeenCalled();
   });
 
-  it('painel ativo sem gesto do usuário não pede o foco do terminal e mostra a dica de saída', () => {
+  it('painel ativo sem gesto do usuário não pede o foco do terminal', () => {
     setup({ active: true });
     expect(screen.getByTestId('terminal-view')).toHaveAttribute('data-active', 'false');
-    expect(screen.getByText(/Ctrl\+Shift\+Tab sai do terminal/)).toBeInTheDocument();
   });
 
   it('clique usa onPointerActivate quando existe', async () => {
@@ -255,16 +260,100 @@ describe('PaneView', () => {
   it('título com marcação aparece como texto', () => {
     setup({ terminal: { ...session, title: '<b>x</b>' } });
     const title = screen.getByText('<b>x</b>');
-    expect(title.closest('.pane__provider')).toHaveAttribute('title', '<b>x</b>');
+    expect(title).toHaveClass('pane__title');
     expect(title.querySelector('b')).toBeNull();
   });
 
-  it('o rodapé mostra programa e projeto, e a worktree quando há', () => {
-    const first = setup();
-    expect(screen.getByText('Claude Code · app')).toBeInTheDocument();
-    first.unmount();
-    setup({ terminal: { ...session, worktreeName: 'feat-x' } });
-    expect(screen.getByText(/Claude Code · app/)).toHaveTextContent('feat-x');
+  it('não há rodapé nem a dica de saída do terminal dentro do painel', () => {
+    const { container } = setup({ terminal: { ...session, worktreeName: 'feat-x' }, active: true });
+    expect(container.querySelector('.pane__foot')).toBeNull();
+    expect(screen.queryByText(/Ctrl\+Shift\+Tab sai do terminal/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Claude Code · app/)).not.toBeInTheDocument();
+  });
+
+  describe('cabeçalho de duas linhas da sessão viva', () => {
+    const line2 = (container: HTMLElement) =>
+      container.querySelector('.pane__line2') as HTMLElement;
+
+    it('a linha 1 leva título e selo; a linha 2, modelo e worktree; maximizar e fechar ao lado', () => {
+      const { container } = setup({
+        terminal: {
+          ...session,
+          title: 'Claude · app',
+          model: 'claude-opus-4-8',
+          worktreeName: 'feat/clima',
+        },
+        onMaximize: vi.fn(),
+      });
+      const head = container.querySelector('.pane__head') as HTMLElement;
+      expect(head).toHaveClass('pane__head--live');
+      expect([...head.children].map((child) => child.className)).toEqual([
+        'pane__provider',
+        'pane__lines',
+        'pane__actions',
+      ]);
+      const line1 = head.querySelector('.pane__line1') as HTMLElement;
+      expect([...line1.children].map((child) => child.className.split(' ')[0])).toEqual([
+        'pane__title',
+        'pane__state',
+      ]);
+      expect(within(head).getByRole('button', { name: 'Maximizar painel' })).toBeInTheDocument();
+      expect(within(head).getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
+      const second = line2(container);
+      expect(within(second).getByText('Opus')).toBeInTheDocument();
+      expect(within(second).getByText('feat/clima')).toHaveClass('pane__worktree');
+    });
+
+    it('o título do bloco leva o nome do projeto na dica', () => {
+      setup({ terminal: { ...session, title: 'Claude · app', projectName: 'meu-projeto' } });
+      expect(screen.getByText('Claude · app')).toHaveAttribute('title', 'meu-projeto');
+    });
+
+    it('sem modelo, a linha 2 mostra o nome do programa', () => {
+      const { container } = setup();
+      expect(container.querySelector('.pane__model')).toHaveTextContent('Claude Code');
+    });
+
+    it('modelo que a tabela não conhece cai no nome do programa', () => {
+      const { container } = setup({ terminal: { ...session, model: 'modelo-estranho' } });
+      expect(container.querySelector('.pane__model')).toHaveTextContent('Claude Code');
+    });
+
+    it('sem worktree, a linha 2 não tem o campo da worktree', () => {
+      const { container } = setup({ terminal: { ...session, model: 'claude-sonnet-4-6' } });
+      expect(container.querySelector('.pane__worktree')).toBeNull();
+      expect(container.querySelector('.pane__model')).toHaveTextContent('Sonnet');
+    });
+
+    it('terminal de missão mostra o nome do programa e nunca a barra de contexto', () => {
+      const { container } = setup({ terminal: { ...session, missionId: 'm1' } });
+      expect(container.querySelector('.pane__model')).toHaveTextContent('Claude Code');
+      expect(container.querySelector('.pane__context')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Tirar do painel' })).toBeInTheDocument();
+    });
+
+    it('com contexto, a barra fica à direita da linha 2, depois da pílula de tokens', () => {
+      const { container } = setup({
+        terminal: {
+          ...session,
+          usage: { inputTokens: 1, outputTokens: 1_000 },
+          context: { usedTokens: 76_000, windowTokens: 200_000 },
+        },
+      });
+      expect([...line2(container).children].map((child) => child.className.split(' ')[0])).toEqual([
+        'pane__model',
+        'pane__usage',
+        'pane__context',
+      ]);
+      expect(screen.getByText('38%')).toBeInTheDocument();
+    });
+
+    it('sem contexto não há barra, e sem usage não há pílula', () => {
+      const { container } = setup();
+      expect(container.querySelector('.pane__context')).toBeNull();
+      expect(container.querySelector('.pane__usage')).toBeNull();
+      expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    });
   });
 
   it('o aviso de sessão encerrada anuncia só o texto, não os botões', () => {
@@ -288,22 +377,20 @@ describe('PaneView', () => {
       `Custo estimado a preço de lista da API: USD${String.fromCharCode(0xa0)}1,50 (não é fatura)`;
     const indicator = (container: HTMLElement) => container.querySelector('.pane__usage');
 
-    it('mostra a saída no formato curto, entre o título e a marca de estado, com o detalhe na dica', () => {
+    it('mostra a saída no formato curto, na linha 2 do cabeçalho, com o detalhe na dica', () => {
       const { container } = setup({ terminal: { ...session, usage } });
       const head = container.querySelector('.pane__head') as HTMLElement;
       const element = indicator(container);
       expect(element).not.toBeNull();
       expect(element).toHaveAttribute('title', detail);
       expect(within(element as HTMLElement).getByText('12,3k tokens')).toBeInTheDocument();
-      // A ordem do cabeçalho: símbolo do programa, grupo de gasto e luz, e ações.
+      // A ordem do cabeçalho: símbolo do programa, o bloco das duas linhas e as ações.
       expect([...head.children].map((child) => child.className)).toEqual([
         'pane__provider',
-        'pane__status',
+        'pane__lines',
         'pane__actions',
       ]);
-      expect(
-        [...(head.querySelector('.pane__status')?.children ?? [])].map((child) => child.className),
-      ).toEqual(['pane__usage', 'pane__light pane__light--active']);
+      expect(element?.closest('.pane__line2')).not.toBeNull();
     });
 
     it('o leitor de tela lê o nome e o detalhe inteiro, não o número curto', () => {
@@ -334,6 +421,7 @@ describe('PaneView', () => {
       expect(indicator(container)).toBeNull();
       expect(screen.queryByText(/tokens/)).not.toBeInTheDocument();
       expect(container.querySelector('.pane__head')?.children).toHaveLength(3);
+      expect(container.querySelector('.pane__line2')).not.toBeNull();
     });
 
     it('provedor que não informa o gasto (Codex, shell) fica como hoje', () => {
