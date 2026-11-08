@@ -88,7 +88,7 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
   await addGitProject(page, projectName);
   await openProject(page, projectName, 'Terminais');
 
-  // O painel direito tem as quatro abas; Arquivos e Código-fonte estão habilitadas, e Arquivos é a escolhida.
+  // O painel direito tem as quatro abas, todas com conteúdo (nenhuma traz `aria-disabled`); Arquivos é a escolhida.
   const panel = rightPanel(page);
   await expect(panel).toBeVisible();
   const panelTabs = panel.getByRole('tablist', { name: 'Painéis laterais' });
@@ -97,14 +97,14 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
     'aria-selected',
     'true',
   );
-  // Arquivos, Código-fonte e Checks não trazem `aria-disabled="true"`: só Sessões segue desligada.
-  for (const name of ['Arquivos', 'Código-fonte', 'Checks']) {
+  for (const name of ['Arquivos', 'Sessões', 'Código-fonte', 'Checks']) {
     await expect(panelTabs.getByRole('tab', { name })).not.toHaveAttribute('aria-disabled', 'true');
   }
-  const disabled = panelTabs.getByRole('tab', { name: 'Sessões' });
-  await expect(disabled).toHaveAttribute('aria-disabled', 'true');
-  await disabled.click({ force: true });
-  await expect(disabled).toHaveAttribute('aria-selected', 'false');
+  // Sessões abre a aba; Arquivos volta a ser a escolhida para o resto do teste.
+  const sessoes = panelTabs.getByRole('tab', { name: 'Sessões' });
+  await sessoes.click();
+  await expect(sessoes).toHaveAttribute('aria-selected', 'true');
+  await panelTabs.getByRole('tab', { name: 'Arquivos' }).click();
   await expect(panelTabs.getByRole('tab', { name: 'Arquivos' })).toHaveAttribute(
     'aria-selected',
     'true',

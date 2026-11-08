@@ -257,6 +257,9 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
 
   async function list(input: SessionsListInput): Promise<SessionsListResult> {
     await loaded();
+    // A resposta sai depois da varredura (a que está em curso, ou uma nova), para a lista e a faixa mostrarem o que
+    // está no disco agora. A varredura é incremental: só relê o que mudou.
+    await startScan();
     const projects = deps.projects();
     await refreshWorktrees(projects);
     const snapshot = index ?? emptySessionIndex();
@@ -327,8 +330,6 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
         unreadable: counts.unreadable + (dropped.get(reader.provider) ?? 0),
       };
     });
-    // A varredura começa depois de montar a resposta, para a faixa não mostrar números pela metade.
-    void startScan();
     return { sessions: rows.sort(byMostRecent), indexing };
   }
 
