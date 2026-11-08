@@ -46,12 +46,17 @@ export const sessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 
-/** Progresso da leitura por programa: `unreadable` conta os arquivos que falharam, nunca vira zero em silêncio. */
+/**
+ * Progresso por programa: `read` e `total` são arquivos (o andamento da leitura); `sessions` são as sessões válidas
+ * que a casa tem desse programa, o número que a faixa mostra e que a lista conta; `unreadable` conta os arquivos que
+ * falharam e as linhas fora do formato, nunca vira zero em silêncio.
+ */
 export const sessionsIndexingSchema = z.object({
   provider: sessionProviderSchema,
   read: z.number().int().min(0),
   total: z.number().int().min(0),
   unreadable: z.number().int().min(0),
+  sessions: z.number().int().min(0),
 });
 
 export const sessionsListResultSchema = z.object({

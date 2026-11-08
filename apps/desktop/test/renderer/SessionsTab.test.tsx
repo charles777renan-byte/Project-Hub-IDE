@@ -55,7 +55,7 @@ const LIST: SessionsListResult = {
     summary('2', { title: 'Corrigir login', folder: 'C:\\trabalho\\auth' }),
     summary('3', { title: 'Outra conversa', folder: 'C:\\trabalho\\auth' }),
   ],
-  indexing: [{ provider: 'claude', read: 3, total: 3, unreadable: 0 }],
+  indexing: [{ provider: 'claude', read: 3, total: 3, unreadable: 0, sessions: 3 }],
 };
 
 function ok(data: SessionsListResult) {
@@ -125,28 +125,29 @@ describe('SessionsTab', () => {
     expect(container.querySelector('img')).toBeNull();
   });
 
-  it('a faixa mostra a verificação concluída por programa e os ilegíveis', async () => {
+  it('a faixa mostra a verificação concluída em sessões por programa, e os ilegíveis', async () => {
     installApi({
       sessions: [summary('1')],
       indexing: [
-        { provider: 'claude', read: 3, total: 3, unreadable: 0 },
-        { provider: 'codex', read: 1, total: 2, unreadable: 1 },
+        { provider: 'claude', read: 3, total: 3, unreadable: 0, sessions: 3 },
+        { provider: 'codex', read: 2, total: 2, unreadable: 1, sessions: 1 },
       ],
     });
     render(<SessionsTab projectId="p1" />);
-    await screen.findByText('Verificação concluída · 5 arquivos');
-    expect(screen.getByText('Claude Code · 3 de 3')).toBeInTheDocument();
-    expect(screen.getByText('Codex · 1 de 2')).toBeInTheDocument();
+    await screen.findByText('Verificação concluída · 4 sessões');
+    expect(screen.getByText('Claude Code · 3 sessões')).toBeInTheDocument();
+    expect(screen.getByText('Codex · 1 sessão')).toBeInTheDocument();
     expect(screen.getByText('1 ilegível')).toBeInTheDocument();
   });
 
   it('a faixa em andamento mostra quantos arquivos já foram lidos', async () => {
     installApi({
       sessions: [summary('1')],
-      indexing: [{ provider: 'claude', read: 1, total: 3, unreadable: 0 }],
+      indexing: [{ provider: 'claude', read: 1, total: 3, unreadable: 0, sessions: 1 }],
     });
     render(<SessionsTab projectId="p1" />);
-    await screen.findByText('Lendo sessões · 1 de 3');
+    await screen.findByText('Lendo arquivos · 1 de 3');
+    expect(screen.getByText('Claude Code · 1 sessão')).toBeInTheDocument();
   });
 
   it('a busca filtra e a contagem diz "N de M"', async () => {

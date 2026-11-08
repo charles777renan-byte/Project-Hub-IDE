@@ -209,6 +209,7 @@ describe('session-history com os leitores reais, em pastas temporárias', () => 
       read: 1,
       total: 2,
       unreadable: 1,
+      sessions: 1,
     });
   });
 

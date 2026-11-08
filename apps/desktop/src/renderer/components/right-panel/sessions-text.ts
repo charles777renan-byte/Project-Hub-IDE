@@ -26,9 +26,10 @@ export const SESSIONS_TEXT = {
   lastAgentText: 'Último texto do agente',
   messages: (count: number) => (count === 1 ? '1 mensagem' : `${count} mensagens`),
   subagents: (count: number) => (count === 1 ? '1 subagente' : `${count} subagentes`),
-  indexingReading: (read: number, total: number) => `Lendo sessões · ${read} de ${total}`,
-  indexingDone: (files: number) =>
-    `Verificação concluída · ${files} ${files === 1 ? 'arquivo' : 'arquivos'}`,
+  indexingReading: (read: number, total: number) => `Lendo arquivos · ${read} de ${total}`,
+  indexingDone: (sessions: number) =>
+    `Verificação concluída · ${sessions} ${sessions === 1 ? 'sessão' : 'sessões'}`,
+  providerSessions: (count: number) => `${count} ${count === 1 ? 'sessão' : 'sessões'}`,
   unreadable: (count: number) => `${count} ${count === 1 ? 'ilegível' : 'ilegíveis'}`,
   untitled: 'Sessão sem título',
 } as const;

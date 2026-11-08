@@ -28,15 +28,15 @@ test('aba Sessões: faixa dos três programas, busca, detalhe, retomada desligad
   await panel.getByRole('tab', { name: 'Sessões' }).click();
   const tab = panel.locator('.sessions-tab');
 
-  // A faixa: cinco arquivos lidos no total, por programa, e o ilegível do Codex.
-  await expect(tab.getByText('Verificação concluída · 5 arquivos')).toBeVisible({
+  // A faixa conta sessões, como a lista: Claude 2, Codex 1 (o outro arquivo é ilegível) e Antigravity 2 conversas.
+  await expect(tab.getByText('Verificação concluída · 5 sessões')).toBeVisible({
     timeout: 15_000,
   });
-  await expect(tab.getByText('Claude Code · 2 de 2')).toBeVisible();
-  await expect(tab.getByText('Codex · 1 de 2')).toBeVisible();
-  await expect(tab.getByText('Antigravity CLI · 1 de 1')).toBeVisible();
+  await expect(tab.getByText('Claude Code · 2 sessões')).toBeVisible();
+  await expect(tab.getByText('Codex · 1 sessão')).toBeVisible();
+  await expect(tab.getByText('Antigravity CLI · 2 sessões')).toBeVisible();
   await expect(tab.getByText('1 ilegível')).toBeVisible();
-  await expect(tab.getByText('5 sessões')).toBeVisible();
+  await expect(tab.getByText('5 sessões', { exact: true })).toBeVisible();
 
   // Busca: "login" acha só a sessão do Claude com o subagente, e o cartão conta o subagente.
   const busca = tab.getByRole('searchbox', { name: 'Buscar sessões' });
@@ -78,7 +78,7 @@ test('aba Sessões: faixa dos três programas, busca, detalhe, retomada desligad
   // Um texto com HTML: aparece como texto na lista, e nenhuma imagem nem script roda.
   await tab.getByRole('button', { name: 'Voltar à lista' }).click();
   await busca.fill('');
-  await expect(tab.getByText('5 sessões')).toBeVisible();
+  await expect(tab.getByText('5 sessões', { exact: true })).toBeVisible();
   await expect(tab.getByText(PAYLOAD, { exact: true })).toBeVisible();
   await expect(tab.locator('img')).toHaveCount(0);
   expect(

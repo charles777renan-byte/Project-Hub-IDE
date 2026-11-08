@@ -3,14 +3,14 @@ import { indexingTotals, SESSION_PROVIDER_LABEL, type IndexingEntry } from './se
 import { SESSIONS_TEXT } from './sessions-text';
 
 /**
- * A faixa de leitura do histórico: o andamento somado, o que cada programa já leu e os ilegíveis. Os ilegíveis
- * aparecem com o número e um ícone, nunca como zero silencioso.
+ * A faixa de leitura do histórico: o andamento da leitura em arquivos enquanto ela roda, depois o total de sessões, e
+ * as sessões de cada programa. Os ilegíveis aparecem com o número e um ícone, nunca como zero silencioso.
  */
 export function IndexingStrip({ indexing }: { indexing: readonly IndexingEntry[] }) {
   if (indexing.length === 0) return null;
   const totals = indexingTotals(indexing);
   const headline = totals.done
-    ? SESSIONS_TEXT.indexingDone(totals.total)
+    ? SESSIONS_TEXT.indexingDone(totals.sessions)
     : SESSIONS_TEXT.indexingReading(totals.read, totals.total);
   return (
     <div className="sessions-tab__indexing" role="status">
@@ -26,7 +26,7 @@ export function IndexingStrip({ indexing }: { indexing: readonly IndexingEntry[]
       <ul className="sessions-tab__indexing-providers">
         {indexing.map((entry) => (
           <li key={entry.provider}>
-            {`${SESSION_PROVIDER_LABEL[entry.provider]} · ${entry.read} de ${entry.total}`}
+            {`${SESSION_PROVIDER_LABEL[entry.provider]} · ${SESSIONS_TEXT.providerSessions(entry.sessions)}`}
           </li>
         ))}
       </ul>
