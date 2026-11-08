@@ -5,6 +5,7 @@ import {
   type TranscriptUsageTracker,
 } from '@project-hub/agent-adapters';
 import type { UsageSummaryDto } from '@project-hub/contracts';
+import { contextWindowOf } from '@project-hub/domain';
 
 /** Intervalo mínimo entre duas leituras do mesmo terminal, em ms. É o mesmo da missão. */
 export const TERMINAL_USAGE_INTERVAL_MS = 1500;
@@ -35,7 +36,11 @@ export type TerminalUsageService = {
   isTracked(terminalId: string): boolean;
   /** O total do terminal, lido de novo se a última leitura passou do intervalo. Sem número: `undefined`. */
   usageOf(terminalId: string): Promise<UsageSummaryDto | undefined>;
+  /** Modelo e contexto da resposta mais recente, como a última leitura deixou. Não lê de novo. Sem dado: `undefined`. */
+  contextOf(terminalId: string): TerminalContext | undefined;
 };
+
+export type TerminalContext = { model: string; usedTokens: number; windowTokens: number };
 
 type Entry = {
   tracker: TranscriptUsageTracker;
@@ -45,6 +50,8 @@ type Entry = {
   learned: boolean;
   /** Último total lido. O leitor só devolve o total quando ele muda, então o valor fica guardado aqui. */
   last: UsageSummaryDto | undefined;
+  /** Último contexto lido. Guardado à parte do total: o contexto muda (`/compact`) com a soma igual. */
+  context: TerminalContext | undefined;
   nextReadAt: number;
   reading: Promise<void> | undefined;
 };
@@ -91,6 +98,12 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
       if (!entry.learned) return;
       const summary = await entry.tracker.poll();
       if (summary !== undefined) entry.last = summary;
+      // O contexto vale mesmo quando o total não mudou: um /compact derruba o contexto e a soma segue igual.
+      const latest = entry.tracker.latestContext();
+      entry.context =
+        latest === undefined
+          ? undefined
+          : { ...latest, windowTokens: contextWindowOf(latest.model) };
     } catch (error) {
       // Leitura que falha não derruba a lista: o número fica como estava e tenta de novo no próximo intervalo.
       console.warn('Falha ao ler o gasto de tokens do terminal:', error);
@@ -105,6 +118,7 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
         seq: 0,
         learned: false,
         last: undefined,
+        context: undefined,
         nextReadAt: 0,
         reading: undefined,
       });
@@ -130,5 +144,7 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
       if (entry.reading !== undefined) await entry.reading;
       return entry.last;
     },
+
+    contextOf: (terminalId) => entries.get(terminalId)?.context,
   };
 }

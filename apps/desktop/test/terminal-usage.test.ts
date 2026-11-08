@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HookRecord } from '@project-hub/agent-adapters';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { contextWindowOf } from '@project-hub/domain';
 import { createTerminalUsageService } from '../src/main/terminal-usage';
 
 const SESSION = '11111111-2222-3333-4444-555555555555';
@@ -267,5 +268,94 @@ describe('gasto de tokens por terminal', () => {
 
     expect(await h.service.usageOf('t1')).toMatchObject({ outputTokens: 100 });
     expect(await h.service.usageOf('t2')).toMatchObject({ outputTokens: 5 });
+  });
+
+  it('contexto: depois da leitura traz modelo, tokens usados e a janela do modelo', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', sessionStart(SESSION));
+    answer(SESSION, 'msg_1', 10, 100);
+
+    expect(h.service.contextOf('t1')).toBeUndefined();
+    await h.service.usageOf('t1');
+
+    expect(h.service.contextOf('t1')).toEqual({
+      model: 'claude-sonnet-5-5',
+      usedTokens: 10,
+      windowTokens: contextWindowOf('claude-sonnet-5-5'),
+    });
+  });
+
+  it('contexto: terminal desconhecido, sem leitura ou esquecido não tem valor', async () => {
+    const h = setup();
+    expect(h.service.contextOf('t1')).toBeUndefined();
+
+    h.service.track('t1');
+    expect(h.service.contextOf('t1')).toBeUndefined();
+
+    h.log.push('t1', sessionStart(SESSION));
+    answer(SESSION, 'msg_1', 10, 100);
+    await h.service.usageOf('t1');
+    expect(h.service.contextOf('t1')).toBeDefined();
+
+    h.service.forget('t1');
+    expect(h.service.contextOf('t1')).toBeUndefined();
+  });
+
+  it('contexto: muda mesmo quando a soma de tokens não muda, e contextOf não lê de novo', async () => {
+    let context: { model: string; usedTokens: number } | undefined = {
+      model: 'claude-sonnet-5-5',
+      usedTokens: 500,
+    };
+    let latestCalls = 0;
+    let clock = 10_000;
+    const log = hookLog();
+    const service = createTerminalUsageService({
+      hooks: log.hooks,
+      configDir,
+      now: () => clock,
+      createTracker: () => ({
+        addSession: () => undefined,
+        poll: () => Promise.resolve(undefined),
+        latestContext: () => {
+          latestCalls += 1;
+          return context;
+        },
+      }),
+    });
+    service.track('t1');
+    log.push('t1', sessionStart(SESSION));
+    await service.usageOf('t1');
+    expect(service.contextOf('t1')).toMatchObject({ usedTokens: 500 });
+
+    const callsAfterRead = latestCalls;
+    expect(service.contextOf('t1')).toMatchObject({ usedTokens: 500 });
+    expect(latestCalls).toBe(callsAfterRead);
+
+    // /compact: o contexto cai e a soma segue igual (poll devolve undefined).
+    context = { model: 'claude-sonnet-5-5', usedTokens: 90 };
+    clock += 1500;
+    await service.usageOf('t1');
+    expect(service.contextOf('t1')).toMatchObject({ usedTokens: 90 });
+  });
+
+  it('contexto: leitura que falha mantém o último valor', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const h = setup();
+      h.service.track('t1');
+      h.log.push('t1', sessionStart(SESSION));
+      answer(SESSION, 'msg_1', 10, 100);
+      await h.service.usageOf('t1');
+      const before = h.service.contextOf('t1');
+
+      h.log.fail(true);
+      h.advance(1500);
+      await h.service.usageOf('t1');
+
+      expect(h.service.contextOf('t1')).toEqual(before);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

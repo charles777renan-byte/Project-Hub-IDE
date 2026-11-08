@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { usageSummaryDtoSchema } from './mission';
+import { tokenCount, usageSummaryDtoSchema } from './mission';
 import { providerIdSchema } from './workspace';
 
 /** Tipos de terminal dos terminais: o de um agente (uma missão) ou um shell comum de um projeto. */
@@ -34,6 +34,13 @@ export const terminalSummarySchema = z.object({
    * (não é zero). No terminal de agente de missão, vem da tentativa em curso.
    */
   usage: usageSummaryDtoSchema.optional(),
+  /** Modelo da resposta mais recente do Claude Code deste terminal. Só o Claude informa; sem resposta, não vem. */
+  model: z.string().optional(),
+  /**
+   * Quanto da janela de contexto a resposta mais recente ocupa (`usedTokens`) e o tamanho da janela do modelo
+   * (`windowTokens`). Só o painel avulso do Claude informa; sem resposta, não vem (não é zero).
+   */
+  context: z.object({ usedTokens: tokenCount, windowTokens: tokenCount }).optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 
