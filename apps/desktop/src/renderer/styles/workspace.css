@@ -1395,6 +1395,19 @@
 }
 
 /*
+ * A sombra interna do cartão pinta por baixo dos filhos: o cabeçalho (com fundo, e tingido no foco) a cobria e o
+ * anel sumia no topo e nas pontas. O mesmo anel, numa camada por cima de tudo e sem pegar o mouse, fecha o contorno.
+ */
+.pane:focus-within::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--focus);
+  content: '';
+  pointer-events: none;
+}
+
+/*
  * O painel com o teclado dentro também tinge o cabeçalho de duas linhas de lima a 7% sobre o cartão: o anel diz "aqui",
  * a tinta repete na cabeça, onde o olho está. O lançador e a sessão terminada (cabeça de uma linha) não mudam. Os
  * pares de contraste do texto sobre esse fundo estão em contrast.test.ts.
@@ -1421,96 +1434,41 @@
 }
 
 /*
- * Cabeçalho da sessão viva, de duas linhas (o lançador e a sessão terminada seguem na linha única de 28px). O
- * símbolo do programa fica à esquerda e as ações à direita, as duas linhas no meio: na 1, o título e o selo de
- * estado; na 2, o modelo, a worktree, a pílula de tokens e, à direita, a barra de contexto. A altura é a do
- * conteúdo (sem `height` fixo); `flex: none` vem de `.pane__head`, então o cabeçalho nunca encolhe.
+ * Cabeçalho da sessão viva, de uma linha (28px, como o do lançador): o símbolo do programa, o título, a marca de
+ * estado só com a forma (o rótulo vai na dica e no leitor de tela), a pílula de tokens e as ações. Modelo,
+ * worktree e contexto ficam na dica do título. Os filhos que cedem são o título (corta com reticências); a pílula
+ * e as ações nunca encolhem. `position: relative` ancora o fio de contexto na borda de baixo.
  */
 .pane__head--live {
-  align-items: flex-start;
-  height: auto;
-  padding: 6px var(--space-2) 7px;
-}
-
-.pane__head--live .pane__provider {
-  margin-top: 1px;
-}
-
-/* As ações pintam por cima de qualquer sobra das linhas (vêm depois no DOM), então o clique chega nos botões. */
-.pane__head--live .pane__actions {
   position: relative;
 }
 
-/*
- * As duas linhas são um contêiner de tamanho (`container-type: inline-size`): a barra de contexto se adapta à
- * largura que sobra para a linha 2 (regras `@container pane-lines` logo depois da barra), e não à da janela.
- */
-.pane__lines {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  container-name: pane-lines;
-  container-type: inline-size;
+.pane__head--live .pane__state {
+  padding: 0;
+  background: transparent;
 }
 
-.pane__line1,
-.pane__line2 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
+/* A pílula empurra a si e as ações para a direita; sem pílula, as ações é que vão (`margin-left: auto` delas). */
+.pane__head--live .pane__usage {
+  margin-left: auto;
 }
 
-.pane__line2 {
-  white-space: nowrap;
+.pane__head--live .pane__usage + .pane__actions {
+  margin-left: 0;
 }
 
 /*
- * Linha 2, da esquerda para a direita: a worktree cede primeiro (fator de encolhimento muito maior), depois o
- * modelo, os dois cortados com reticências. A pílula de tokens (`.pane__usage`) e a barra de contexto são
- * `flex: none` e nunca somem por falta de espaço.
- */
-.pane__model,
-.pane__worktree {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pane__model {
-  flex: 0 1 auto;
-}
-
-.pane__worktree {
-  flex: 0 100 auto;
-}
-
-/*
- * Contexto da última resposta: rótulo, barra de 56px por 5px e a porcentagem, sempre à direita da linha 2. A
- * barra é cinza (fundo --line, preenchimento --muted) e passa a violeta (--brand) no nível alto, que vem de
- * `data-level`; nunca vermelho. A largura do preenchimento vai no `style` (CSSOM).
+ * Contexto da última resposta: um fio de 2px sobre a borda de baixo do cabeçalho, do canto esquerdo até a
+ * porcentagem ocupada. Cinza (--muted) e violeta (--brand) no nível alto, que vem de `data-level`; nunca vermelho.
+ * Não recebe o mouse: a dica é a do título. A largura do preenchimento vai no `style` (CSSOM).
  */
 .pane__context {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  font-size: var(--text-xs);
-}
-
-.pane__context small {
-  font-size: inherit;
-}
-
-.pane__context-bar {
-  width: 56px;
-  height: 5px;
-  overflow: hidden;
-  border-radius: var(--radius-pill);
-  background: var(--line);
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  pointer-events: none;
 }
 
 .pane__context-fill {
@@ -1519,46 +1477,12 @@
   background: var(--muted);
 }
 
-.pane__context b {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
 .pane__context[data-level='high'] .pane__context-fill {
   background: var(--brand);
 }
 
-.pane__context[data-level='high'] b {
-  color: var(--brand);
-}
-
 /*
- * Painel estreito: a barra se adapta e nunca pinta sobre os botões. Abaixo de 300px de largura da área das
- * duas linhas (a pílula de 111px, a barra inteira de 138px e os vãos não cabem com o modelo), some o rótulo
- * `contexto` (já é só visual: o leitor de tela lê o detalhe) e a barra encurta para 40px; a porcentagem
- * nunca some. Abaixo de 215px nem isso cabe ao lado da pílula, e a linha 2 quebra: a barra desce para uma
- * terceira linha, à direita (`margin-left: auto`).
- */
-@container pane-lines (max-width: 300px) {
-  .pane__context small {
-    display: none;
-  }
-
-  .pane__context-bar {
-    width: 40px;
-  }
-}
-
-@container pane-lines (max-width: 215px) {
-  .pane__line2 {
-    flex-wrap: wrap;
-    row-gap: 4px;
-  }
-}
-
-/*
- * Título do painel. No lançador cresce e ocupa a linha; na sessão viva (`.pane__line1`) só pede o que o texto
+ * Título do painel. No lançador cresce e ocupa a linha; na sessão viva só pede o que o texto
  * ocupa, e é cortado com reticências quando falta espaço.
  */
 .pane__title {
@@ -1574,8 +1498,8 @@
   font-weight: 600;
 }
 
-/* Na linha 1 o selo fica logo depois do título: o título só cresce até o que o texto pede. */
-.pane__line1 .pane__title {
+/* Na sessão viva a marca de estado fica logo depois do título: o título só cresce até o que o texto pede. */
+.pane__head--live .pane__title {
   flex: 0 1 auto;
 }
 
