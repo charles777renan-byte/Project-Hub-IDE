@@ -37,7 +37,8 @@ describe('readAntigravityHistory', () => {
     );
 
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]).toEqual({
+    expect(sessions[0]).toMatchObject({
+      id: 'c1',
       agent: 'antigravity',
       cwd: WORKSPACE,
       startedAt: new Date(ms(2026, 10, 30, 12, 5)).toISOString(),

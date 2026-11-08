@@ -66,6 +66,14 @@ describe('runGit: só comandos de leitura', () => {
     // As formas fixas de worktree são de `runGitWorktree`; `runGit` só lê.
     [['worktree', 'add', '-b', 'ph/x', 'pasta', 'abc']],
     [['worktree', 'remove', 'pasta']],
+    [['worktree', 'prune']],
+    [['worktree', 'move', 'origem', 'destino']],
+    [['worktree', 'repair']],
+    [['worktree', 'lock', 'pasta']],
+    // A lista só existe na forma `worktree list --porcelain`, sem outra opção.
+    [['worktree', 'list']],
+    [['worktree', 'list', '-v']],
+    [['worktree', 'list', '--porcelain', '--expire=now']],
     [['branch']],
     [['branch', '--list']],
     [['branch', 'nome']],
@@ -326,6 +334,15 @@ describe('runGit: como o processo é criado', () => {
     );
     expect(repositoryNames).toEqual([]);
     expect(env).toMatchObject({ LC_ALL: 'C', PH_TESTE_VARIAVEL: 'mantida' });
+  });
+});
+
+describe('runGit: worktree list', () => {
+  it('a forma `worktree list --porcelain` passa e roda como as outras leituras', async () => {
+    await expect(runGit(['worktree', 'list', '--porcelain'], { cwd })).resolves.toEqual({
+      stdout: 'saida\n',
+    });
+    expect(call().args).toEqual([...FSMONITOR_OFF, 'worktree', 'list', '--porcelain']);
   });
 });
 

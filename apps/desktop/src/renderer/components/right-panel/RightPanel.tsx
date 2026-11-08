@@ -20,6 +20,7 @@ import { checksDot } from './checks-dot';
 import { ChecksTab } from './ChecksTab';
 import { FilesTab } from './FilesTab';
 import { GitTab } from './GitTab';
+import { SessionsTab } from './SessionsTab';
 import { RIGHT_TABS, readRightTab, saveRightTab, type RightTab } from './right-panel-state';
 
 /** Nome acessível, dica e ícone de cada aba: a barra é só de ícones, então o nome vai no `aria-label`. */
@@ -30,15 +31,14 @@ const TAB_INFO: Record<RightTab, { label: string; icon: LucideIcon }> = {
   checks: { label: 'Checks', icon: ListChecks },
 };
 
-/** As abas que já têm conteúdo. Sessões aparece na barra desligada, com a dica "Em breve". */
-const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(['arquivos', 'codigo', 'checks']);
+/** As abas que já têm conteúdo: as quatro. Uma aba que não tem conteúdo ainda ficaria desligada com "Em breve". */
+const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(RIGHT_TABS);
 
 /**
  * O painel direito do corpo da janela: uma barra de abas só de ícones (Arquivos, Sessões, Código-fonte e Checks, num
- * `tablist` do Radix) e o conteúdo da aba escolhida. Arquivos, Código-fonte e Checks são abas de verdade; Sessões
- * fica `aria-disabled` e não se seleciona, nem por clique nem pelas setas (o Radix ativa a aba que recebe o foco),
- * mas continua focável, para a dica "Em breve" aparecer também no teclado. A aba escolhida é lembrada. Sem
- * projeto (o Início, por exemplo), o conteúdo é o aviso para abrir um. A aba Checks leva um ponto de estado na barra
+ * `tablist` do Radix) e o conteúdo da aba escolhida. As quatro são abas de verdade, e a escolhida é lembrada. Sem
+ * projeto (o Início, por exemplo), Sessões mostra só o escopo Todos e as outras abas mostram o aviso para abrir um.
+ * A aba Checks leva um ponto de estado na barra
  * (`checksDot`) quando o PR tem checks. Um arquivo que a aba Arquivos pede para abrir
  * entra nos arquivos abertos do projeto (`openFile`) e a rota vai para a visão Terminais dele, onde as abas moram,
  * se já não estiver lá. `onOpenFile` só existe para os testes injetarem um espião no lugar disso.
@@ -117,6 +117,9 @@ export function RightPanel({
                         : onOpenFile(path, mode),
                   })}
             />
+          ) : tab === 'sessoes' ? (
+            // A chave por projeto zera a busca, o escopo e o detalhe aberto quando o projeto muda.
+            <SessionsTab key={projectId ?? 'sem-projeto'} projectId={projectId} />
           ) : projectId === null ? (
             <EmptyState icon={Folder} title="Abra um projeto para ver os arquivos" />
           ) : tab === 'arquivos' ? (
@@ -126,9 +129,7 @@ export function RightPanel({
             />
           ) : tab === 'checks' ? (
             <ChecksTab key={projectId} projectId={projectId} github={github} />
-          ) : (
-            <EmptyState icon={TAB_INFO[tab].icon} title="Em breve" />
-          )}
+          ) : null}
         </RadixTabs.Content>
       </aside>
     </RadixTabs.Root>

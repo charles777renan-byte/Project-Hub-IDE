@@ -50,6 +50,13 @@ function tab(name: string): HTMLElement {
   });
 }
 
+/** Um `sessions.list` que nunca responde: a aba fica em "Lendo as sessões…", o bastante para testar as abas. */
+function pendingSessions() {
+  const list = vi.fn(() => new Promise<never>(() => undefined));
+  window.projectHub = { sessions: { list, resume: vi.fn() } } as unknown as ProjectHubApi;
+  return list;
+}
+
 describe('RightPanel', () => {
   it('tem a lista de abas "Painéis laterais" com as quatro abas, só de ícone, pelo nome acessível', () => {
     renderPanel({ projectId: 'p1' });
@@ -77,24 +84,25 @@ describe('RightPanel', () => {
     expect(screen.getByRole('tabpanel')).toBeInTheDocument();
   });
 
-  it('só Sessões fica aria-disabled; Arquivos, Código-fonte e Checks não', () => {
+  it('nenhuma aba fica aria-disabled: as quatro estão disponíveis', () => {
     renderPanel({ projectId: 'p1' });
 
-    for (const name of ['Arquivos', 'Código-fonte', 'Checks']) {
+    for (const name of ['Arquivos', 'Sessões', 'Código-fonte', 'Checks']) {
       expect(tab(name)).not.toHaveAttribute('aria-disabled');
     }
-    expect(tab('Sessões')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('clicar numa aba desligada não a seleciona nem guarda', async () => {
+  it('clicar em Sessões a seleciona, guarda e mostra a lista, com a leitura em andamento', async () => {
     const user = userEvent.setup();
+    const list = pendingSessions();
     renderPanel({ projectId: 'p1' });
 
     await user.click(tab('Sessões'));
 
-    expect(tab('Sessões')).toHaveAttribute('aria-selected', 'false');
-    expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(tab('Sessões')).toHaveAttribute('aria-selected', 'true');
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('sessoes');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Lendo as sessões…');
+    expect(list).toHaveBeenCalledWith({ scope: 'workspace', projectId: 'p1' });
   });
 
   it('clicar em Código-fonte a seleciona, guarda e mostra o conteúdo dela', async () => {
@@ -136,26 +144,29 @@ describe('RightPanel', () => {
     expect(screen.getByText('Abra um projeto para ver os arquivos')).toBeInTheDocument();
   });
 
-  it('andar pelas abas com as setas foca as desligadas, mas não as seleciona', async () => {
+  it('andar pelas abas com as setas foca e seleciona a próxima, Sessões incluída', async () => {
     const user = userEvent.setup();
+    pendingSessions();
     renderPanel({ projectId: 'p1' });
 
     await user.click(tab('Arquivos'));
     await user.keyboard('{ArrowRight}');
 
     expect(tab('Sessões')).toHaveFocus();
-    expect(tab('Sessões')).toHaveAttribute('aria-selected', 'false');
-    expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Sessões')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'false');
   });
 
-  it('a dica das abas desligadas diz "Em breve"', async () => {
+  it('a dica de Sessões é o nome dela, e nenhuma dica diz "Em breve"', async () => {
     const user = userEvent.setup();
+    pendingSessions();
     renderPanel({ projectId: 'p1' });
 
     await user.tab();
     await user.keyboard('{ArrowRight}');
 
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Em breve');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Sessões');
+    expect(screen.queryByText('Em breve')).not.toBeInTheDocument();
   });
 
   it('a dica da aba Arquivos é o nome dela', async () => {
@@ -178,12 +189,27 @@ describe('RightPanel', () => {
 
   it('a aba guardada volta ao abrir', () => {
     window.localStorage.setItem(STORAGE_KEY, 'sessoes');
+    pendingSessions();
 
     renderPanel({ projectId: 'p1' });
 
     expect(tab('Sessões')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'false');
-    expect(screen.getByRole('tabpanel')).toHaveTextContent('Em breve');
+    expect(screen.getByRole('tabpanel')).toHaveTextContent('Lendo as sessões…');
+  });
+
+  it('Sessões sem projeto aberto: o escopo Todos carrega a lista mesmo assim', async () => {
+    window.localStorage.setItem(STORAGE_KEY, 'sessoes');
+    const list = vi.fn(() =>
+      Promise.resolve({ ok: true as const, data: { sessions: [], indexing: [] } }),
+    );
+    window.projectHub = { sessions: { list, resume: vi.fn() } } as unknown as ProjectHubApi;
+
+    renderPanel({ projectId: null });
+
+    expect(await screen.findByText('Nenhuma sessão ainda')).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ scope: 'all' });
+    expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('sem projeto, mostra o aviso para abrir um projeto e mantém as abas', () => {

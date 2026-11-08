@@ -93,6 +93,8 @@ export function writeAgentActivity(options: {
   const { projectPath, claudeConfigDir, codexHome, antigravityHistory, days } = options;
 
   const claudeRecords: unknown[] = [];
+  // O formato real grava o `sessionId` em toda linha; sem ele o leitor não tem como retomar a sessão e a descarta.
+  const claudeSessionId = randomUUID();
   const antigravityRecords: unknown[] = [];
   for (const day of days) {
     for (let index = 0; index < (day.claude ?? 0); index += 1) {
@@ -100,11 +102,13 @@ export function writeAgentActivity(options: {
       const answered = localAt(day.daysAgo, 9, index * 2 + 1);
       claudeRecords.push(
         {
+          sessionId: claudeSessionId,
           type: 'user',
           timestamp: asked.toISOString(),
           message: { role: 'user', content: 'texto' },
         },
         {
+          sessionId: claudeSessionId,
           type: 'assistant',
           timestamp: answered.toISOString(),
           message: {
@@ -132,7 +136,7 @@ export function writeAgentActivity(options: {
         {
           timestamp: start.toISOString(),
           type: 'session_meta',
-          payload: { cwd: projectPath, timestamp: start.toISOString() },
+          payload: { id: randomUUID(), cwd: projectPath, timestamp: start.toISOString() },
         },
       ];
       for (let index = 0; index < codexMessages; index += 1) {

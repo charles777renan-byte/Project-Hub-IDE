@@ -29,6 +29,7 @@ import type {
 } from './git-panel';
 import type { LimitsDto } from './limits';
 import type { ProfileDto } from './profile';
+import type { SessionsListInput, SessionsListResult, SessionsResumeInput } from './sessions';
 import type { SystemUsageDto } from './system';
 import type { AddProjectInput, ProjectSummary, RepositoryInitPreview } from './project';
 import type { AppResult } from './result';
@@ -178,6 +179,12 @@ export type ProjectHubApi = {
   providers: {
     /** Os programas que um painel abre, e os que faltam no computador com o motivo. */
     list(): Promise<AppResult<ProviderInfo[]>>;
+  };
+  sessions: {
+    /** O histórico das sessões dos programas. Escopo `workspace` e `project` pedem o projeto; `all` lista tudo. */
+    list(input: SessionsListInput): Promise<AppResult<SessionsListResult>>;
+    /** Abre um terminal na pasta da sessão, já retomando a conversa, e põe o painel no workspace. */
+    resume(input: SessionsResumeInput): Promise<AppResult<WorkspaceDto>>;
   };
   activity: {
     /** Mensagens e tokens por agente e por dia, do uso feito pelo app. Só leitura, sem parâmetro. */
