@@ -26,6 +26,12 @@ import {
 import { useTerminals } from '../../src/renderer/terminals-data';
 import { notify } from '../../src/renderer/notify';
 import { openFile, resetOpenFilesForTests } from '../../src/renderer/open-files';
+import {
+  requestCloseAll,
+  resetCloseAllForTests,
+  useCloseAllRequest,
+  usePaneCount,
+} from '../../src/renderer/workspace/close-all';
 import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
@@ -230,6 +236,7 @@ beforeEach(() => {
   );
   window.localStorage.clear();
   resetOpenFilesForTests();
+  resetCloseAllForTests();
   window.projectHub = api as unknown as typeof window.projectHub;
 });
 
@@ -1969,5 +1976,265 @@ describe('projeto sem Git', () => {
 
     expect(await screen.findByRole('button', { name: 'Nova missão' })).toBeEnabled();
     expect(document.getElementById(PROJECT_NO_GIT_NOTICE_ID)).toBeNull();
+  });
+});
+
+describe('fechar todos os terminais', () => {
+  const FAIXA = '.workspace__confirm';
+  const faixa = () => document.querySelector(FAIXA);
+  const vazio = () => ({ ...dto(padrao()), layout: null });
+
+  /** `n` painéis de shell, `g1`..`gn`, arrumados como o servidor arruma; cada um com a sessão `t1`..`tn`. */
+  function comSessoes(n: number, terminaisDe: (i: number) => TerminalSummary | null) {
+    const layout = arrangeLeaves(
+      Array.from({ length: n }, (_, i) =>
+        leaf(`g${i + 1}`, 'shell', terminaisDe(i) === null ? null : `t${i + 1}`),
+      ),
+      () => crypto.randomUUID(),
+    ) as LayoutNode;
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(layout) });
+    api.terminals.list.mockResolvedValue({
+      ok: true,
+      data: Array.from({ length: n }, (_, i) => terminaisDe(i)).filter(
+        (item): item is TerminalSummary => item !== null,
+      ),
+    });
+  }
+  const shell = (i: number, extra: Partial<TerminalSummary> = {}): TerminalSummary => ({
+    ...shellTerminal,
+    id: `t${i + 1}`,
+    ...extra,
+  });
+  const regioes = () => screen.queryAllByRole('region', { name: /^Painel / });
+
+  /** Deixa o workspace pronto (os painéis na tela) e faz o pedido de fechar todos, como o cabeçalho faz. */
+  async function pedir(projectId = 'p1') {
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
+    act(() => requestCloseAll(projectId));
+  }
+
+  it('publica quantos painéis o projeto tem, e 0 ao desmontar', async () => {
+    comSessoes(3, (i) => shell(i));
+    const contagem = renderHook(() => usePaneCount('p1'));
+    const { unmount } = renderAt();
+    await waitFor(() => expect(contagem.result.current).toBe(3));
+    unmount();
+    expect(contagem.result.current).toBe(0);
+  });
+
+  it('12 painéis com 11 sessões e uma missão: pergunta com os números, e "Voltar" nasce focado', async () => {
+    comSessoes(12, (i) => (i === 11 ? shell(i, { missionId: 'm1' }) : shell(i)));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar os 12 painéis/ })).toHaveTextContent(
+      'Fechar os 12 painéis? 11 sessões serão encerradas; as missões continuam.',
+    );
+    const faixaEl = faixa() as HTMLElement;
+    expect(faixaEl).not.toBeNull();
+    expect(within(faixaEl).getByRole('button', { name: 'Fechar todos' })).toBeInTheDocument();
+    expect(within(faixaEl).getByRole('button', { name: 'Voltar' })).toHaveFocus();
+  });
+
+  it('um painel com uma sessão viva: frases no singular', async () => {
+    comSessoes(1, (i) => shell(i));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar o painel/ })).toHaveTextContent(
+      'Fechar o painel? 1 sessão será encerrada.',
+    );
+  });
+
+  it('só missões: não fala de sessões', async () => {
+    comSessoes(2, (i) => shell(i, { missionId: 'm1' }));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toHaveTextContent(
+      'Fechar os 2 painéis? As missões continuam.',
+    );
+  });
+
+  it('só shells sem sessão viva (sem terminal ou já encerrado): só a pergunta', async () => {
+    comSessoes(3, (i) => (i === 0 ? shell(i, { state: 'exited' }) : null));
+    renderAt();
+    await pedir();
+
+    const grupo = await screen.findByRole('group', { name: /Fechar os 3 painéis/ });
+    expect(grupo).toHaveAccessibleName('Fechar os 3 painéis?');
+  });
+
+  it('"Voltar" fecha a faixa e limpa o pedido, sem fechar nada', async () => {
+    comSessoes(2, (i) => shell(i));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 2 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(faixa()).toBeNull();
+    expect(pedido.result.current).toBe(false);
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    expect(regioes()).toHaveLength(2);
+  });
+
+  it('Esc faz o mesmo que "Voltar"', async () => {
+    comSessoes(2, (i) => shell(i));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 2 painéis/ });
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(faixa()).toBeNull();
+    expect(pedido.result.current).toBe(false);
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    expect(regioes()).toHaveLength(2);
+  });
+
+  it('"Fechar todos" tira todos os painéis da tela na hora, fecha um a um, limpa o pedido e leva o foco a "Abrir terminal"', async () => {
+    comSessoes(3, (i) => (i === 2 ? shell(i, { missionId: 'm1' }) : shell(i)));
+    // O processo principal ainda não respondeu: o que sai da tela é só a tela.
+    api.workspaces.removePane.mockReturnValue(new Promise(() => {}));
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    const lateral = renderHook(() => useTerminals());
+    renderAt();
+    await pedir();
+    await waitFor(() => expect(lateral.result.current.terminals).toHaveLength(3));
+    await screen.findByRole('group', { name: /Fechar os 3 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    expect(regioes()).toHaveLength(0);
+    expect(faixa()).toBeNull();
+    expect(pedido.result.current).toBe(false);
+    expect(api.workspaces.removePane.mock.calls).toEqual([
+      ['w1', 'g1'],
+      ['w1', 'g2'],
+      ['w1', 'g3'],
+    ]);
+    // As sessões avulsas somem da barra lateral na hora; a de missão segue na lista.
+    expect(lateral.result.current.terminals.map((item) => item.id)).toEqual(['t3']);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveFocus(),
+    );
+  });
+
+  it('com 12 painéis, o foco chega a "Abrir terminal" quando o último sai', async () => {
+    comSessoes(12, (i) => shell(i));
+    api.workspaces.removePane.mockResolvedValue({ ok: true, data: vazio() });
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 12 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    await waitFor(() => expect(api.workspaces.removePane).toHaveBeenCalledTimes(12));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveFocus(),
+    );
+    expect(regioes()).toHaveLength(0);
+  });
+
+  it('um removePane que falha deixa só aquele painel de volta, com o erro; os outros saem', async () => {
+    comSessoes(3, (i) => shell(i));
+    api.workspaces.removePane.mockImplementation((_workspaceId: string, leafId: string) =>
+      Promise.resolve(
+        leafId === 'g2'
+          ? { ok: false, error: { code: 'x', message: 'Não foi possível fechar o painel' } }
+          : { ok: true, data: dto(leaf('g2', 'shell', 't2')) },
+      ),
+    );
+    renderAt();
+    await pedir();
+    await screen.findByRole('group', { name: /Fechar os 3 painéis/ });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar todos' }));
+
+    const volta = await screen.findAllByRole('region', { name: 'Painel PowerShell' });
+    expect(volta).toHaveLength(1);
+    expect(await within(volta[0] as HTMLElement).findByRole('alert')).toHaveTextContent(
+      'Não foi possível fechar o painel',
+    );
+    expect(api.workspaces.removePane).toHaveBeenCalledTimes(3);
+  });
+
+  it('a faixa aparece mesmo com a preferência "perguntar ao fechar" desligada', async () => {
+    window.localStorage.setItem('project-hub:perguntar-ao-fechar-terminal', 'false');
+    comSessoes(2, (i) => shell(i));
+    renderAt();
+    await pedir();
+
+    expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toBeInTheDocument();
+    expect(api.workspaces.removePane).not.toHaveBeenCalled();
+  });
+
+  it('o pedido de outro projeto não abre a faixa deste', async () => {
+    comSessoes(2, (i) => shell(i));
+    renderAt();
+    await pedir('p2');
+
+    expect(faixa()).toBeNull();
+    expect(screen.queryByRole('group', { name: /Fechar os/ })).not.toBeInTheDocument();
+  });
+
+  it('um pedido sem painéis é descartado, sem faixa', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+    const pedido = renderHook(() => useCloseAllRequest('p1'));
+    renderAt();
+    await screen.findByRole('button', { name: 'Abrir terminal' });
+    act(() => requestCloseAll('p1'));
+
+    await waitFor(() => expect(pedido.result.current).toBe(false));
+    expect(faixa()).toBeNull();
+  });
+
+  describe('pelo cabeçalho', () => {
+    /** Abre Mais ações pelo teclado (como em "aba do projeto: visões") e escolhe "Fechar todos os terminais…". */
+    async function escolherFecharTodos() {
+      act(() => screen.getByRole('button', { name: 'Mais ações' }).focus());
+      await userEvent.keyboard('{Enter}');
+      await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' });
+      await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    }
+
+    it('feito de outra visão, abre Terminais e a pergunta aparece uma vez só', async () => {
+      comSessoes(2, (i) => shell(i));
+      renderAt(undefined, 'p1', '?visao=missoes');
+      // A contagem só chega depois de o workspace carregar.
+      await waitFor(() => expect(document.querySelectorAll('.pane').length).toBeGreaterThan(0));
+
+      await escolherFecharTodos();
+
+      expect(screen.getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(await screen.findByRole('group', { name: /Fechar os 2 painéis/ })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+      act(() => screen.getByRole('tab', { name: 'Missões' }).focus());
+      act(() => screen.getByRole('tab', { name: 'Terminais' }).focus());
+
+      expect(faixa()).toBeNull();
+      expect(api.workspaces.removePane).not.toHaveBeenCalled();
+    });
+
+    it('sem painéis, o item está desabilitado', async () => {
+      api.workspaces.open.mockResolvedValue({ ok: true, data: vazio() });
+      renderAt();
+      await screen.findByRole('button', { name: 'Abrir terminal' });
+      act(() => screen.getByRole('button', { name: 'Mais ações' }).focus());
+      await userEvent.keyboard('{Enter}');
+
+      expect(
+        await screen.findByRole('menuitem', { name: 'Fechar todos os terminais…' }),
+      ).toHaveAttribute('aria-disabled', 'true');
+    });
   });
 });

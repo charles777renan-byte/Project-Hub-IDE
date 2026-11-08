@@ -3,6 +3,7 @@ import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } 
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import { arrangeLeaves, arrangeLeavesCapped } from '@project-hub/contracts/layout-arrange';
 import type { LayoutLeaf, LayoutNode, ProviderId, ProviderInfo } from '@project-hub/contracts';
+import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
@@ -20,6 +21,12 @@ import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { hideTerminal, unhideTerminal, useTerminals } from '../terminals-data';
 import { markOfTerminal } from '../state-mark';
+import {
+  clearCloseAllRequest,
+  closeAllQuestion,
+  setPaneCount,
+  useCloseAllRequest,
+} from '../workspace/close-all';
 import { numerarRepetidos, PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
 import { PaneView } from '../workspace/PaneView';
@@ -334,6 +341,45 @@ function WorkspaceBody({
     }
     return tree;
   }, [picked, gridLeaves, shown, columns, rows]);
+
+  // Fechar todos: o cabeçalho publica o pedido num store (workspace/close-all.ts) e este workspace pergunta. Quantos
+  // painéis há, quantas sessões avulsas vivas o fechamento encerra e quantos painéis são de missão (que só saem do
+  // painel). Os painéis que já estão fechando não contam: já saíram da tela.
+  const closeAllCounts = useMemo(() => {
+    let sessions = 0;
+    let missions = 0;
+    for (const leaf of shownLeaves) {
+      const session =
+        leaf.terminalId === null
+          ? undefined
+          : terminals.find((item) => item.id === leaf.terminalId);
+      if (session === undefined) continue;
+      if (session.missionId !== undefined) missions += 1;
+      else if (session.state !== 'exited') sessions += 1;
+    }
+    return { panes: shownLeaves.length, sessions, missions };
+  }, [shownLeaves, terminals]);
+  const paneCount = closeAllCounts.panes;
+  // O cabeçalho só habilita "Fechar todos os terminais…" com painel na tela; ao desmontar, o registro some.
+  useEffect(() => {
+    setPaneCount(projectId, paneCount);
+  }, [projectId, paneCount]);
+  useEffect(() => () => setPaneCount(projectId, 0), [projectId]);
+  // O pedido espera a visão Terminais aparecer (o workspace fica montado, escondido, nas outras): a pergunta nasce
+  // à vista, com o foco no "Voltar". Sair da visão com a pergunta aberta a descarta, para ela não reaparecer depois.
+  const closeAllRequested = useCloseAllRequest(projectId);
+  const askingCloseAll = closeAllRequested && visible && paneCount > 0;
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    if (wasVisible.current && !visible) clearCloseAllRequest(projectId);
+    wasVisible.current = visible;
+  }, [projectId, visible]);
+  // Um pedido sem painel nenhum (a pessoa fechou tudo antes) não tem o que perguntar.
+  const loadedPanes = workspace.state.status === 'ready';
+  useEffect(() => {
+    if (closeAllRequested && loadedPanes && paneCount === 0) clearCloseAllRequest(projectId);
+  }, [closeAllRequested, loadedPanes, paneCount, projectId]);
+
   // Ao ficar sem painéis (o último foi fechado), o foco não pode cair no body: vai para a barra.
   useEffect(() => {
     if (currentLayout === undefined) return;
@@ -454,9 +500,10 @@ function WorkspaceBody({
 
   // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
   // O painel some na hora, sem esperar o processo principal. Se o pedido falhar, ele volta e o erro aparece nele.
-  const removeNow = (leafId: string) => {
+  // `closingAll`: o painel sai junto com todos os outros, então nenhum vizinho precisa virar o ativo.
+  const removeNow = (leafId: string, closingAll = false) => {
     // No modo de um painel, o vizinho vira o ativo antes de fechar: é ele que passa a aparecer.
-    if (soloLeaf?.id === leafId) {
+    if (!closingAll && soloLeaf?.id === leafId) {
       const next = neighbourOf(shownLeaves, leafId);
       if (next !== null) workspace.activate(next);
     }
@@ -500,6 +547,27 @@ function WorkspaceBody({
     leavingRef.current.add(leafId);
     setLeaving((previous) => new Set(previous).add(leafId));
     window.setTimeout(() => finishLeavingRef.current(leafId), LEAVE_FALLBACK_MS);
+  };
+
+  // "Fechar todos" confirmado: todos os painéis saem da tela na hora, sem a animação de saída de cada um, e os pedidos
+  // vão um a um ao processo principal (que os enfileira). Um que falhe volta com o erro, como no fechar de um painel.
+  const closeAll = () => {
+    clearCloseAllRequest(projectId);
+    // Quem estava encolhendo sai agora, junto com os outros: o fim da animação não pede o fechamento de novo.
+    leavingRef.current.clear();
+    setLeaving(new Set());
+    for (const leaf of shownLeaves) removeNow(leaf.id, true);
+    setToolbarFocus((previous) => previous + 1);
+  };
+  const cancelCloseAll = () => {
+    clearCloseAllRequest(projectId);
+    setToolbarFocus((previous) => previous + 1);
+  };
+  const onCloseAllKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelCloseAll();
   };
   const motion: PaneMotion = { entering, leaving, onEntered: settle, onLeft: finishLeaving };
 
@@ -597,6 +665,17 @@ function WorkspaceBody({
         }
         onOpen={(provider) => void openPane(provider)}
       />
+      {askingCloseAll ? (
+        <div className="workspace__confirm" onKeyDown={onCloseAllKeyDown}>
+          <ConfirmInline
+            focusBack
+            question={closeAllQuestion(closeAllCounts)}
+            confirmLabel="Fechar todos"
+            onConfirm={closeAll}
+            onCancel={cancelCloseAll}
+          />
+        </div>
+      ) : null}
       <div className="workspace__area" ref={setAreaElement}>
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">

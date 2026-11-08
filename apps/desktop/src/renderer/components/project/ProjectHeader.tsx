@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import type { AppResult, ProjectSummary } from '@project-hub/contracts';
 import { PROJECT_TEXT } from '../../mission-text';
@@ -11,6 +11,7 @@ import {
 } from '../../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../../routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../workspaces-events';
+import { requestCloseAll, usePaneCount } from '../../workspace/close-all';
 import { ConfirmInline } from '../ConfirmButton';
 import { MenuAcoes } from '../MenuAcoes';
 import { Tabs, type TabItem } from '../Tabs';
@@ -51,7 +52,7 @@ async function closeProjectWorkspace(projectId: string) {
 
 /**
  * Cabeçalho da aba do projeto, numa linha só: o nome (e o apelido, se houver), a barra de visões, o botão
- * Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação); com uma missão aberta,
+ * Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação, e fechar todos os terminais, que leva ao workspace); com uma missão aberta,
  * os dois somem (a missão tem os seus controles). A visão ativa vem de
  * `?visao=` na rota; escolher uma aba troca só esse parâmetro, substituindo a entrada do histórico (cada seta de
  * aba não empilha um passo). O painel da visão é do chamador: as abas apontam para o `project-panel-<visão>` de cada
@@ -77,6 +78,9 @@ export function ProjectHeader({
   const [pending, setPending] = useState<Pending | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const paneCount = usePaneCount(project.id);
+  // Fechar todos leva o foco à pergunta do workspace: o menu não o devolve ao botão ao fechar.
+  const focusGoesToWorkspace = useRef(false);
 
   /** Arquiva ou remove o projeto, fecha a aba dele e volta ao Início, avisando a barra lateral. */
   async function leaveList(action: () => Promise<AppResult<unknown>>) {
@@ -97,6 +101,13 @@ export function ProjectHeader({
     await closeProjectWorkspace(project.id);
     window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
     navigate(ROUTE_PATHS.home);
+  }
+
+  /** Leva à visão Terminais, se outra estiver ativa, e pede ao workspace a pergunta de fechar todos. */
+  function closeAllTerminals() {
+    focusGoesToWorkspace.current = true;
+    requestCloseAll(project.id);
+    if (view !== 'terminais') navigate(projectViewPath(project.id, 'terminais'), { replace: true });
   }
 
   return (
@@ -141,6 +152,11 @@ export function ProjectHeader({
             </button>
             <MenuAcoes
               rotulo={PROJECT_TEXT.moreActions}
+              aoFecharDevolverFoco={(event) => {
+                if (!focusGoesToWorkspace.current) return;
+                focusGoesToWorkspace.current = false;
+                event.preventDefault();
+              }}
               acoes={[
                 {
                   rotulo: PROJECT_TEXT.archive,
@@ -152,6 +168,13 @@ export function ProjectHeader({
                   perigosa: true,
                   desabilitada: leaving,
                   onSelecionar: () => setPending('remove'),
+                },
+                {
+                  rotulo: PROJECT_TEXT.closeAllTerminals,
+                  perigosa: true,
+                  desabilitada: paneCount === 0,
+                  ...(paneCount === 0 ? { dica: PROJECT_TEXT.noTerminalOpen } : {}),
+                  onSelecionar: closeAllTerminals,
                 },
               ]}
             />

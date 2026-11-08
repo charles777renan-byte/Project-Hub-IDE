@@ -7,6 +7,8 @@ export type AcaoMenu = {
   /** Ação destrutiva: o item ganha a cor de perigo. */
   perigosa?: boolean;
   desabilitada?: boolean;
+  /** Dica do item (o `title`), para dizer por que ele está desabilitado. */
+  dica?: string;
 };
 
 /**
@@ -71,6 +73,7 @@ export function MenuAcoes({
                   : 'menu-acoes__item'
               }
               disabled={acao.desabilitada === true}
+              title={acao.dica}
               onSelect={acao.onSelecionar}
             >
               {acao.rotulo}
