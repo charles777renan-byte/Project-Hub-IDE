@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ChevronDown, ICON_PROPS } from './Icon';
+import { MARKS } from '../state-mark';
 import { MenuAcoes } from './MenuAcoes';
 
 /** O atributo com que cada aba da faixa se identifica para o hook e para o menu. */
@@ -178,7 +179,17 @@ export function TabsOverflow({
     <span className={attention ? 'tabs-overflow tabs-overflow--attention' : 'tabs-overflow'}>
       <MenuAcoes
         rotulo={attention ? 'Abas fora de vista, uma aguarda você' : 'Abas fora de vista'}
-        icone={<ChevronDown {...ICON_PROPS} />}
+        icone={
+          <>
+            <ChevronDown {...ICON_PROPS} />
+            {attention ? (
+              // A cor nunca é a única pista: o ◐ (o mesmo de "aguardando") acompanha o amarelo.
+              <span aria-hidden="true" className="tabs-overflow__mark">
+                {MARKS.waiting.glyph}
+              </span>
+            ) : null}
+          </>
+        }
         aoFecharDevolverFoco={(event) => {
           if (!chose.current) return;
           chose.current = false;

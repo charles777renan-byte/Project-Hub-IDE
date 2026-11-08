@@ -107,14 +107,7 @@ describe('pickVisible', () => {
     });
   });
 
-  it('mantém os já mostrados e, se o ativo era ficha, ele toma o lugar do último mostrado', () => {
-    expect(pickVisible(ids, ['a', 'b', 'c', 'd'], 'f', 4)).toEqual({
-      shown: ['a', 'b', 'c', 'f'],
-      hidden: ['d', 'e'],
-    });
-  });
-
-  it('o painel que deixou de ser ativo é tratado como qualquer outro', () => {
+  it('mantém os já mostrados; o ativo que era ficha toma o lugar do último, e o ex-ativo é tratado como qualquer outro', () => {
     // `d` era o ativo e estava mostrado; agora o ativo é `f`, que estava fora: sai o último mostrado, `d`.
     expect(pickVisible(ids, ['a', 'b', 'c', 'd'], 'f', 4)).toEqual({
       shown: ['a', 'b', 'c', 'f'],
