@@ -462,12 +462,14 @@ app
       providers,
       projectName: (projectId) => services.workspaceDeps.projects.get(projectId)?.name,
     });
+    // Os leitores recebem o mesmo ambiente filtrado do Início: nos testes, as pastas de teste; fora deles, as reais.
+    const sources = sessionSourcesOf(process.env);
     const sessionHistory = createSessionHistory({
       indexFile: join(testDataDir ?? app.getPath('userData'), 'session-index.json'),
       readers: [
-        createClaudeSessionReader(process.env),
-        createCodexSessionReader(process.env),
-        createAntigravitySessionReader(),
+        createClaudeSessionReader(sources.env),
+        createCodexSessionReader(sources.env),
+        createAntigravitySessionReader(sources.antigravityHistory),
       ],
       projects: () =>
         services.workspaceDeps.projects

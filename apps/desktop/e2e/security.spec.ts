@@ -109,6 +109,7 @@ test.describe('renderer isolado', () => {
       'profile',
       'projects',
       'providers',
+      'sessions',
       'system',
       'terminals',
       'workspaces',

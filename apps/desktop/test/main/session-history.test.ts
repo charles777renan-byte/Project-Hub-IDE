@@ -185,6 +185,17 @@ describe('createSessionHistory', () => {
     expect(result.indexing).toEqual([{ provider: 'claude', read: 1, total: 2, unreadable: 1 }]);
   });
 
+  it('a lista varre os arquivos novos sem pedir refresh: sessão criada depois aparece', async () => {
+    // A aba só chama `list`, e ninguém chama `refresh` em produção: a lista tem de ler o que mudou por conta própria.
+    const files: Record<string, FakeFile> = {};
+    const history = makeHistory(indexFile, [fakeReader('claude', files, [])]);
+    expect((await history.list({ scope: 'all' })).sessions).toEqual([]);
+
+    files['novo'] = { mtimeMs: 2, size: 1, sessions: [activity(ID_A, PROJECT_PATH)] };
+    const result = await history.list({ scope: 'all' });
+    expect(result.sessions.map((session) => session.id)).toEqual([ID_A]);
+  });
+
   it('linha que falha o schema conta como ilegível e não derruba a lista', async () => {
     const files = {
       a: {
