@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Hint } from './Hint';
 
 /**
@@ -12,6 +12,7 @@ export function ConfirmInline({
   disabled = false,
   focusBack = false,
   confirmTone = 'danger',
+  extra,
   onConfirm,
   onCancel,
 }: {
@@ -26,6 +27,8 @@ export function ConfirmInline({
   focusBack?: boolean;
   /** Cor do botão que confirma: `danger` para o que apaga ou tira algo; `primary` para o que só cria. */
   confirmTone?: 'danger' | 'primary';
+  /** Um controle a mais (como a caixa "Não perguntar de novo"), entre a pergunta e os botões. */
+  extra?: ReactNode;
   onConfirm: () => void;
   /** "Voltar": desfaz o pedido sem chamar `onConfirm`. */
   onCancel: () => void;
@@ -33,6 +36,7 @@ export function ConfirmInline({
   return (
     <span className="confirm-inline" role="group" aria-label={question}>
       <span>{question}</span>
+      {extra}
       <button
         type="button"
         className={confirmTone === 'primary' ? 'btn-primary' : 'btn-danger'}

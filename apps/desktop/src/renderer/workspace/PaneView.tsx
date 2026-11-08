@@ -8,6 +8,7 @@ import { MenuAcoes, type AcaoMenu } from '../components/MenuAcoes';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHeader';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { TerminalView } from '../components/terminals/TerminalView';
+import { setAskBeforeClosing, useAskBeforeClosing } from '../close-confirm';
 import { MARKS, markOfTerminal } from '../state-mark';
 import { contextDetailText, modelLabel } from '../terminal-context';
 import { clearTerminalFocus, setTerminalFocus } from '../terminal-focus';
@@ -113,6 +114,10 @@ export function PaneView(props: PaneViewProps) {
   // Pergunta de "Fechar painel e encerrar…": guarda o id do terminal perguntado, e não um sim ou não, então ela
   // some sozinha se a sessão terminar (ou o painel mudar de sessão) enquanto está aberta.
   const [askingId, setAskingId] = useState<string | null>(null);
+  // A caixa "Não perguntar de novo" da pergunta: só vale se a pessoa confirmar o fechamento; "Voltar" a esquece.
+  const [skipNextTime, setSkipNextTime] = useState(false);
+  // Preferência do app inteiro: desligada, o item do menu fecha direto, sem a pergunta.
+  const ask = useAskBeforeClosing();
 
   // Sem terminal para receber o foco (lançador), o foco pedido vai para o próprio painel.
   const section = useRef<HTMLElement>(null);
@@ -256,15 +261,28 @@ export function PaneView(props: PaneViewProps) {
             },
           ]
         : askToClose
-          ? [
-              {
-                rotulo: 'Fechar painel e encerrar…',
-                // O menu fecha e desmonta ao escolher: a pergunta vive aqui, fora dele.
-                onSelecionar: () => setAskingId(terminal.id),
-                perigosa: true,
-                desabilitada: busy,
-              },
-            ]
+          ? ask
+            ? [
+                {
+                  rotulo: 'Fechar painel e encerrar…',
+                  // O menu fecha e desmonta ao escolher: a pergunta vive aqui, fora dele.
+                  onSelecionar: () => {
+                    setSkipNextTime(false);
+                    setAskingId(terminal.id);
+                  },
+                  perigosa: true,
+                  desabilitada: busy,
+                },
+              ]
+            : [
+                {
+                  // A pessoa pediu para não perguntar mais: o item ainda diz que o processo para, e fecha direto.
+                  rotulo: 'Fechar painel e encerrar',
+                  onSelecionar: props.onClose,
+                  perigosa: true,
+                  desabilitada: busy,
+                },
+              ]
           : [{ rotulo: 'Fechar painel', onSelecionar: props.onClose, desabilitada: busy }];
     const asking = askToClose && askingId === terminal.id;
     content = (
@@ -300,12 +318,26 @@ export function PaneView(props: PaneViewProps) {
               confirmLabel="Fechar e encerrar"
               disabled={busy}
               focusBack
+              extra={
+                <label className="pane__confirm-skip">
+                  <input
+                    type="checkbox"
+                    checked={skipNextTime}
+                    disabled={busy}
+                    onChange={(event) => setSkipNextTime(event.target.checked)}
+                  />
+                  Não perguntar de novo
+                </label>
+              }
               onConfirm={() => {
                 setAskingId(null);
+                // Só confirmar guarda a escolha: quem marcou a caixa e voltou continua sendo perguntado.
+                if (skipNextTime) setAskBeforeClosing(false);
                 props.onClose();
               }}
               onCancel={() => {
                 setAskingId(null);
+                setSkipNextTime(false);
                 // O item do menu já sumiu: o foco volta ao menu ⋯ em vez de se perder no corpo da página.
                 section.current?.querySelector<HTMLElement>('.menu-acoes__gatilho')?.focus();
               }}

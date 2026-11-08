@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppResult, ProjectSummary } from '@project-hub/contracts';
+import { setAskBeforeClosing, useAskBeforeClosing } from '../../close-confirm';
 import { PROJECT_TEXT } from '../../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../../projects-events';
 import { useSidebarData } from '../../use-sidebar-data';
@@ -15,6 +16,8 @@ const TEXT = PROJECT_TEXT.settings;
  */
 export function ProjectSettings({ project }: { project: ProjectSummary }) {
   const { projects } = useSidebarData();
+  // Preferência do app inteiro (não do projeto): a mesma que a caixa "Não perguntar de novo" da pergunta no painel liga.
+  const askBeforeClosing = useAskBeforeClosing();
   const groups = useMemo(
     () =>
       [...new Set(projects.flatMap((item) => item.group ?? []))].sort((a, b) =>
@@ -65,6 +68,20 @@ export function ProjectSettings({ project }: { project: ProjectSummary }) {
           statusLabel={TEXT.nicknameStatus}
           write={(value) => window.projectHub.projects.setNickname(project.id, value)}
         />
+        <div className="settings-row">
+          <dt>{TEXT.terminals}</dt>
+          <dd className="settings-row__wide">
+            <label className="settings-row__check">
+              <input
+                type="checkbox"
+                checked={askBeforeClosing}
+                onChange={(event) => setAskBeforeClosing(event.target.checked)}
+              />
+              {TEXT.askBeforeClosing}
+            </label>
+            <p className="settings-row__note">{TEXT.appWide}</p>
+          </dd>
+        </div>
       </dl>
     </div>
   );
