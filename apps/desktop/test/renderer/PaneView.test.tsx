@@ -1,8 +1,13 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../../src/renderer/components/project/ProjectHeader';
+import {
+  resetTerminalFocusForTests,
+  setTerminalFocus,
+  useTerminalFocus,
+} from '../../src/renderer/terminal-focus';
 import {
   needsCloseConfirmation,
   PaneView,
@@ -674,5 +679,178 @@ describe('menu ⋯ do painel e confirmação ao fechar', () => {
     setup({ terminal: { ...avulsoClaude, state: 'exited' } });
     expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mais ações do painel' })).not.toBeInTheDocument();
+  });
+});
+
+describe('foco do teclado publicado para a barra de status', () => {
+  // O foco vive no store do renderer; `renderHook` o lê de outra raiz, como a barra de status faria.
+  const reader = () => renderHook(() => useTerminalFocus());
+  const menuButton = () => screen.getByRole('button', { name: 'Mais ações do painel' });
+  const focusOn = (element: HTMLElement) => act(() => element.focus());
+  const avulsoClaude: TerminalSummary = { ...session, kind: 'shell', provider: 'claude' };
+  let outside: HTMLButtonElement;
+
+  beforeEach(() => {
+    resetTerminalFocusForTests();
+    outside = document.createElement('button');
+    outside.textContent = 'fora do painel';
+    document.body.append(outside);
+  });
+
+  afterEach(() => {
+    outside.remove();
+    resetTerminalFocusForTests();
+  });
+
+  it('focar um elemento do painel de sessão viva publica a chave da folha e o título do terminal', () => {
+    const focus = reader();
+    setup();
+    expect(focus.result.current).toBeNull();
+    focusOn(menuButton());
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+  });
+
+  it('tirar o foco para fora do painel limpa', () => {
+    const focus = reader();
+    setup();
+    focusOn(menuButton());
+    focusOn(outside);
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('mover o foco entre elementos do mesmo painel não limpa', () => {
+    const focus = reader();
+    setup({ onMaximize: vi.fn() });
+    focusOn(screen.getByRole('button', { name: 'Maximizar painel' }));
+    expect(focus.result.current).not.toBeNull();
+    focusOn(menuButton());
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+  });
+
+  it('desmontar o painel com o foco limpa', () => {
+    const focus = reader();
+    const view = setup();
+    focusOn(menuButton());
+    expect(focus.result.current).not.toBeNull();
+    view.unmount();
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('desmontar um painel sem o foco não apaga o foco de outro painel', () => {
+    const focus = reader();
+    const view = setup();
+    act(() => setTerminalFocus({ key: 'outro', title: 'Codex' }));
+    view.unmount();
+    expect(focus.result.current).toEqual({ key: 'outro', title: 'Codex' });
+  });
+
+  it('o lançador nunca define foco', () => {
+    const focus = reader();
+    setup({ leaf: emptyLeaf, terminal: undefined });
+    focusOn(screen.getByRole('button', { name: 'Fechar painel' }));
+    expect(focus.result.current).toBeNull();
+    focusOn(screen.getByRole('region', { name: 'Painel Claude Code' }));
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('a sessão terminada nunca define foco', () => {
+    const focus = reader();
+    setup({ terminal: { ...session, state: 'exited' } });
+    focusOn(screen.getByRole('button', { name: 'Fechar painel' }));
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('a sessão que termina com o painel focado limpa o foco, e uma sessão viva depois não o refaz sozinha', () => {
+    const focus = reader();
+    const view = setup();
+    focusOn(menuButton());
+    expect(focus.result.current).not.toBeNull();
+    view.rerender(<PaneView {...view.props} terminal={{ ...session, state: 'exited' }} />);
+    expect(focus.result.current).toBeNull();
+    // Voltando a ter sessão viva sem um foco novo, o painel não reaparece como focado.
+    view.rerender(<PaneView {...view.props} />);
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('o título que muda com o painel focado atualiza o publicado', () => {
+    const focus = reader();
+    const view = setup();
+    focusOn(menuButton());
+    view.rerender(<PaneView {...view.props} terminal={{ ...session, title: 'Outro título' }} />);
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Outro título' });
+  });
+
+  it('o elemento focado que some sem blur (troca de aba) não deixa o painel novo como focado', () => {
+    const focus = reader();
+    const view = setup({ onMaximize: vi.fn() });
+    focusOn(screen.getByRole('button', { name: 'Maximizar painel' }));
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    // Modo "um painel por vez": a mesma instância recebe outra folha, e o botão focado sai do DOM sem blur.
+    const other: LayoutLeaf = { ...leaf, id: 'b', terminalId: 't2' };
+    const { onMaximize: _removed, ...rest } = view.props;
+    view.rerender(
+      <PaneView {...rest} leaf={other} terminal={{ ...session, id: 't2', title: 'Segundo' }} />,
+    );
+    expect(document.activeElement).toBe(document.body);
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('dois painéis: o foco que passa de um ao outro mostra sempre o painel certo', () => {
+    const focus = reader();
+    const second: LayoutLeaf = { ...leaf, id: 'b', terminalId: 't2' };
+    render(
+      <>
+        <PaneView
+          leaf={leaf}
+          terminal={session}
+          provider={provider}
+          active
+          busy={false}
+          onActivate={vi.fn()}
+          onStart={vi.fn()}
+          onDetach={vi.fn()}
+          onClose={vi.fn()}
+        />
+        <PaneView
+          leaf={second}
+          terminal={{ ...session, id: 't2', title: 'Segundo' }}
+          provider={provider}
+          active={false}
+          busy={false}
+          onActivate={vi.fn()}
+          onStart={vi.fn()}
+          onDetach={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </>,
+    );
+    const [first, other] = screen.getAllByRole('button', { name: 'Mais ações do painel' });
+    focusOn(first as HTMLElement);
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
+    focusOn(other as HTMLElement);
+    expect(focus.result.current).toEqual({ key: 'b', title: 'Segundo' });
+    focusOn(outside);
+    expect(focus.result.current).toBeNull();
+  });
+
+  it('o foco que entra no menu ⋯ (um portal) não conta como o terminal com o teclado', async () => {
+    // O menu é um portal, mas o `onFocus` e o `onBlur` do React sobem por ele até o painel.
+    const focus = reader();
+    setup({ terminal: avulsoClaude });
+    focusOn(menuButton());
+    expect(focus.result.current).not.toBeNull();
+    await userEvent.keyboard('{Enter}');
+    const item = await screen.findByRole('menuitem', { name: 'Fechar painel e encerrar…' });
+    expect(item.closest('.pane')).toBeNull();
+    expect(item.ownerDocument.activeElement).not.toBe(menuButton());
+    // O foco saiu do painel para o portal: a barra de status não diz mais "Foco".
+    expect(focus.result.current).toBeNull();
+    // Passear pelos itens do menu também não publica nada.
+    await userEvent.keyboard('{ArrowDown}');
+    expect(focus.result.current).toBeNull();
+    // Fechar o menu devolve o foco ao botão ⋯, que está dentro do painel: o teclado voltou.
+    await userEvent.keyboard('{Escape}');
+    expect(menuButton()).toHaveFocus();
+    expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login' });
   });
 });

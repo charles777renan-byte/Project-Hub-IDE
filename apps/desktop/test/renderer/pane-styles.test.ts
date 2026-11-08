@@ -185,6 +185,20 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane:focus').get('outline')).toBe('none');
   });
 
+  it('o painel com o teclado tinge o cabeçalho vivo de lima a 7%; o ativo sem teclado segue no cinza de 1px', () => {
+    expect(rule('.pane:focus-within .pane__head--live').get('background')).toBe(
+      'color-mix(in srgb, var(--lime) 7%, var(--surface))',
+    );
+    // O anel é o de hoje (2px --focus) e o contorno do ativo sem foco também (1px --muted).
+    expect(rule('.pane:focus-within').get('box-shadow')).toBe('inset 0 0 0 2px var(--focus)');
+    expect(rule(".pane[data-active='true']").get('box-shadow')).toBe(
+      'inset 0 0 0 1px var(--muted)',
+    );
+    // A tinta só vale com o foco dentro do cartão e só no cabeçalho vivo: o lançador e a sessão terminada não mudam.
+    expect(rule('.pane__head--live').has('background')).toBe(false);
+    expect(rule('.pane__head').has('background')).toBe(false);
+  });
+
   it('os nós da árvore enchem o pai sem estourar', () => {
     for (const selector of ['.pane-tree__panel', '.pane-tree__leaf', '.pane-tree__group']) {
       const declarations = rule(selector);
@@ -229,9 +243,11 @@ describe('árvore de painéis e painel', () => {
   });
 
   it('a seção só usa as cores neutras do tema', () => {
-    expect(section).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-    expect(section).not.toMatch(/\b(?:rgba?|hsla?)\(/i);
-    const used = [...section.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
+    // A exceção é a tinta de lima do cabeçalho vivo com o teclado dentro (conferida no teste dela).
+    const neutral = section.replace(/\.pane:focus-within \.pane__head--live\s*\{[^{}]*\}/, '');
+    expect(neutral).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(neutral).not.toMatch(/\b(?:rgba?|hsla?)\(/i);
+    const used = [...neutral.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
     // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
     // --surface: o fundo do cartão. --radius*: raios, que não são cor. --text-*: escala tipográfica.

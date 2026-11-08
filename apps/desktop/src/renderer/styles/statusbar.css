@@ -34,6 +34,20 @@
   white-space: nowrap;
 }
 
+/*
+ * O terminal com o foco do teclado ("Foco: título · como sair"): trunca com reticências como o projeto, mas cede depois
+ * dele e dos contadores (fator 10 contra 20) e antes do fim da barra (1).
+ */
+.statusbar__focus {
+  flex: 0 10 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Os contadores são o segundo a ceder: cortam pela borda direita, antes do fim da barra. */
 .statusbar .overview-counters {
   flex: 0 20 auto;
