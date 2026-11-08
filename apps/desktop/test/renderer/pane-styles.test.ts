@@ -6,45 +6,15 @@ import { readCss, ruleDeclarations } from './css-rules';
  * (--surface, raio de cartão, contorno de 1px por sombra interna) com 8px de vão entre os cartões; as
  * divisórias são vãos transparentes de 8px, com um traço no meio ao passar o mouse, arrastar ou focar;
  * o xterm fica num fundo opaco --bg (#080614), com margem de 4px, sem o brilho da casca sob o texto.
- * Cabeça de 28px no lançador e na sessão terminada; a sessão viva tem cabeçalho de duas linhas e não tem rodapé. As regras ficam numa seção própria no fim de workspace.css.
+ * Cabeça de 28px no lançador e na sessão terminada; a sessão viva tem o mesmo cabeçalho de uma linha, com o contexto num fio na borda de baixo, e não tem rodapé. As regras ficam numa seção própria no fim de workspace.css.
  */
-
-/** O bloco `@container <consulta> { ... }` inteiro (com as chaves de dentro), ou texto vazio se não existir. */
-function containerBlock(source: string, query: string): string {
-  const start = source.indexOf(`@container ${query}`);
-  if (start < 0) return '';
-  let depth = 0;
-  for (let index = source.indexOf('{', start); index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1;
-    if (source[index] === '}') depth -= 1;
-    if (depth === 0) return source.slice(start, index + 1);
-  }
-  return '';
-}
-
-/**
- * O CSS sem os blocos `@container`. O `ruleDeclarations` só deixa de fora o `@media`: sem isto, as regras de dentro
- * do `@container` entrariam como regras base e a última venceria.
- */
-function withoutContainers(source: string): string {
-  let result = source;
-  for (let start = result.indexOf('@container'); start >= 0; start = result.indexOf('@container')) {
-    const block = containerBlock(
-      result.slice(start),
-      result.slice(start + '@container '.length).split('{')[0] ?? '',
-    );
-    if (block === '') break;
-    result = result.slice(0, start) + result.slice(start + block.length);
-  }
-  return result;
-}
 
 describe('árvore de painéis e painel', () => {
   const css = readCss('workspace.css');
   // Os comentários saem na leitura: a seção começa na regra da página do workspace.
   const marker = css.indexOf('.app-main:has(.pane-tree) {');
   const section = marker >= 0 ? css.slice(marker) : '';
-  const base = withoutContainers(section);
+  const base = section;
   const rule = (selector: string): Map<string, string> => ruleDeclarations(base, selector);
 
   it('a seção da árvore de painéis existe no fim do arquivo', () => {
@@ -57,76 +27,49 @@ describe('árvore de painéis e painel', () => {
     expect(section).not.toContain('.pane__foot');
   });
 
-  it('o cabeçalho da sessão viva tem duas linhas: altura automática, sem encolher, linhas que não quebram', () => {
+  it('o cabeçalho da sessão viva é de uma linha, com a altura do lançador, ancorando o fio de contexto', () => {
     const live = rule('.pane__head--live');
-    expect(live.get('height')).toBe('auto');
-    expect(live.get('align-items')).toBe('flex-start');
-    // `flex: none` vem da regra base `.pane__head`, que a variante não desfaz.
+    // A altura de 28px e o `flex: none` vêm da regra base `.pane__head`, que a variante não desfaz.
+    expect(live.has('height')).toBe(false);
     expect(live.has('flex')).toBe(false);
-    expect(rule('.pane__lines').get('display')).toBe('flex');
-    expect(rule('.pane__lines').get('flex-direction')).toBe('column');
-    expect(rule('.pane__lines').get('min-width')).toBe('0');
-    expect(rule('.pane__line1').get('min-width')).toBe('0');
-    expect(rule('.pane__line2').get('min-width')).toBe('0');
-    expect(rule('.pane__line2').get('white-space')).toBe('nowrap');
+    expect(live.get('position')).toBe('relative');
+    expect(section).not.toContain('.pane__lines');
+    expect(section).not.toContain('.pane__line1');
+    expect(section).not.toContain('.pane__line2');
+    expect(section).not.toContain('@container');
   });
 
-  it('na linha 2 a worktree cede primeiro, depois o modelo; a pílula e a barra nunca somem', () => {
-    const worktree = rule('.pane__worktree');
-    expect(worktree.get('min-width')).toBe('0');
-    expect(worktree.get('overflow')).toBe('hidden');
-    expect(worktree.get('text-overflow')).toBe('ellipsis');
-    const model = rule('.pane__model');
-    expect(model.get('min-width')).toBe('0');
-    expect(model.get('overflow')).toBe('hidden');
-    expect(model.get('text-overflow')).toBe('ellipsis');
-    // Fator de encolhimento muito maior na worktree: o excesso vai quase todo para ela antes do modelo.
-    const shrink = (declarations: Map<string, string>): number =>
-      Number((declarations.get('flex') ?? '').split(/\s+/)[1]);
-    expect(shrink(worktree)).toBeGreaterThan(shrink(model));
-    expect(shrink(model)).toBeGreaterThan(0);
+  it('a pílula de tokens empurra a si e as ações para a direita; só o título cede', () => {
     expect(rule('.pane__usage').get('flex')).toBe('none');
-    expect(rule('.pane__context').get('flex')).toBe('none');
-    // A barra fica à direita da linha 2.
-    expect(rule('.pane__context').get('margin-left')).toBe('auto');
+    expect(rule('.pane__head--live .pane__usage').get('margin-left')).toBe('auto');
+    expect(rule('.pane__head--live .pane__usage + .pane__actions').get('margin-left')).toBe('0');
+    expect(rule('.pane__actions').get('flex')).toBe('none');
+    const title = rule('.pane__head--live .pane__title');
+    expect(title.get('flex')).toBe('0 1 auto');
+    expect(rule('.pane__title').get('overflow')).toBe('hidden');
+    expect(rule('.pane__title').get('text-overflow')).toBe('ellipsis');
   });
 
-  it('a barra de contexto se adapta ao painel estreito sem nunca pintar sobre os botões', () => {
-    // O contêiner é a área das duas linhas; a consulta é dele, e não da janela.
-    expect(rule('.pane__lines').get('container-type')).toBe('inline-size');
-    expect(rule('.pane__lines').get('container-name')).toBe('pane-lines');
-    // Sem `position: relative`, a barra não pinta por cima das ações (e as ações ficam por cima de qualquer sobra).
-    expect(rule('.pane__context').has('position')).toBe(false);
-    expect(rule('.pane__head--live .pane__actions').get('position')).toBe('relative');
-    // Primeiro limite: some o rótulo (a porcentagem fica) e a barra encurta.
-    const compact = containerBlock(section, 'pane-lines (max-width: 300px)');
-    expect(compact).not.toBe('');
-    expect(ruleDeclarations(compact, '.pane__context small').get('display')).toBe('none');
-    expect(ruleDeclarations(compact, '.pane__context-bar').get('width')).toBe('40px');
-    expect(ruleDeclarations(compact, '.pane__context b').has('display')).toBe(false);
-    // Segundo limite: a linha 2 quebra e a barra desce, sem sumir.
-    const wrap = containerBlock(section, 'pane-lines (max-width: 215px)');
-    expect(wrap).not.toBe('');
-    expect(ruleDeclarations(wrap, '.pane__line2').get('flex-wrap')).toBe('wrap');
-    // Fora dos limites a linha 2 não quebra e o rótulo aparece.
-    expect(rule('.pane__line2').has('flex-wrap')).toBe(false);
-    expect(rule('.pane__context small').has('display')).toBe(false);
+  it('a marca de estado do cabeçalho vivo é só a forma, sem pílula de fundo', () => {
+    const seal = rule('.pane__head--live .pane__state');
+    expect(seal.get('padding')).toBe('0');
+    expect(seal.get('background')).toBe('transparent');
   });
 
-  it('a barra de contexto: 56px x 5px, fundo --line, preenchimento --muted e --brand no nível alto', () => {
-    const bar = rule('.pane__context-bar');
-    expect(bar.get('width')).toBe('56px');
-    expect(bar.get('height')).toBe('5px');
-    expect(bar.get('background')).toBe('var(--line)');
-    expect(bar.get('overflow')).toBe('hidden');
+  it('o contexto é um fio de 2px sobre a borda de baixo: --muted, --brand no nível alto, sem pegar o mouse', () => {
+    const line = rule('.pane__context');
+    expect(line.get('position')).toBe('absolute');
+    expect(line.get('height')).toBe('2px');
+    expect(line.get('bottom')).toBe('-1px');
+    expect(line.get('left')).toBe('0');
+    expect(line.get('right')).toBe('0');
+    expect(line.get('pointer-events')).toBe('none');
     const fill = rule('.pane__context-fill');
     expect(fill.get('height')).toBe('100%');
     expect(fill.get('background')).toBe('var(--muted)');
     expect(rule(".pane__context[data-level='high'] .pane__context-fill").get('background')).toBe(
       'var(--brand)',
     );
-    expect(rule(".pane__context[data-level='high'] b").get('color')).toBe('var(--brand)');
-    expect(rule('.pane__context b').get('color')).toBe('var(--text)');
     // O detalhe para leitor de tela usa o mesmo esconder visual das outras marcas.
     expect(ruleDeclarations(css, '.pane__context-sr').get('clip')).toBe('rect(0, 0, 0, 0)');
   });
@@ -183,6 +126,17 @@ describe('árvore de painéis e painel', () => {
     // para os botões do painel, e o próprio cartão (tabindex -1) não desenha outline.
     expect(rule('.pane:focus-within').get('box-shadow')).toBe('inset 0 0 0 2px var(--focus)');
     expect(rule('.pane:focus').get('outline')).toBe('none');
+  });
+
+  it('o anel de foco também é desenhado por cima do cabeçalho, que tem fundo e o cobriria', () => {
+    const ring = rule('.pane:focus-within::after');
+    expect(ring.get('position')).toBe('absolute');
+    expect(ring.get('inset')).toBe('0');
+    expect(ring.get('border-radius')).toBe('inherit');
+    expect(ring.get('box-shadow')).toBe('inset 0 0 0 2px var(--focus)');
+    expect(ring.get('content')).toBe("''");
+    // Sem pegar o mouse: o clique chega ao cabeçalho e ao terminal por baixo.
+    expect(ring.get('pointer-events')).toBe('none');
   });
 
   it('o painel com o teclado tinge o cabeçalho vivo de lima a 7%; o ativo sem teclado segue no cinza de 1px', () => {

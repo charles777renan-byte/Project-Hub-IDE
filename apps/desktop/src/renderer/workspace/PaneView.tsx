@@ -9,7 +9,7 @@ import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHead
 import { ProviderIcon } from '../components/ProviderIcon';
 import { TerminalView } from '../components/terminals/TerminalView';
 import { MARKS, markOfTerminal } from '../state-mark';
-import { modelLabel } from '../terminal-context';
+import { contextDetailText, modelLabel } from '../terminal-context';
 import { clearTerminalFocus, setTerminalFocus } from '../terminal-focus';
 import { PaneContext } from './PaneContext';
 import { PaneUsage } from './PaneUsage';
@@ -234,6 +234,15 @@ export function PaneView(props: PaneViewProps) {
       terminal.origin === 'recovered' ? `${markLabel} · sessão recuperada` : markLabel;
     // Sem modelo conhecido (terminal de missão, outro programa, id que a tabela não reconhece): o nome do programa.
     const model = (terminal.model === undefined ? undefined : modelLabel(terminal.model)) ?? label;
+    // O que saiu do cabeçalho de uma linha vai na dica do título: projeto, modelo (ou programa), worktree e contexto.
+    const details = [
+      terminal.projectName,
+      model,
+      terminal.worktreeName,
+      terminal.context === undefined ? undefined : contextDetailText(terminal.context),
+    ]
+      .filter((part): part is string => part !== undefined && part !== '')
+      .join(' · ');
     // O menu ⋯ guarda o que fecha o painel. Ocupado (um pedido em curso), os itens ficam desabilitados.
     const askToClose = needsCloseConfirmation(terminal);
     const actions: AcaoMenu[] =
@@ -264,27 +273,16 @@ export function PaneView(props: PaneViewProps) {
           <span className="pane__provider">
             <ProviderIcon provider={terminal.provider} size={16} />
           </span>
-          <span className="pane__lines">
-            <span className="pane__line1">
-              <span className="pane__title" title={terminal.projectName}>
-                {terminal.title}
-              </span>
-              <span className={`pane__state state-mark state-mark--${mark}`} title={markTitle}>
-                <span aria-hidden="true" className="state-mark__glyph">
-                  {glyph}
-                </span>
-                <span className="state-mark__label">{markLabel}</span>
-              </span>
-            </span>
-            <span className="pane__line2">
-              <span className="pane__model">{model}</span>
-              {terminal.worktreeName !== undefined && (
-                <span className="pane__worktree">{terminal.worktreeName}</span>
-              )}
-              <PaneUsage key={terminal.id} usage={terminal.usage} />
-              <PaneContext context={terminal.context} />
-            </span>
+          <span className="pane__title" title={details}>
+            {terminal.title}
           </span>
+          <span className={`pane__state state-mark state-mark--${mark}`} title={markTitle}>
+            <span aria-hidden="true" className="state-mark__glyph">
+              {glyph}
+            </span>
+            <span className="state-mark__sr">{markLabel}</span>
+          </span>
+          <PaneUsage key={terminal.id} usage={terminal.usage} />
           <span className="pane__actions">
             {maximize}
             <MenuAcoes
@@ -293,6 +291,7 @@ export function PaneView(props: PaneViewProps) {
               acoes={actions}
             />
           </span>
+          <PaneContext context={terminal.context} />
         </div>
         {asking && (
           <div className="pane__confirm">
