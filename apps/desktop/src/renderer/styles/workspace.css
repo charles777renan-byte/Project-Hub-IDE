@@ -172,15 +172,6 @@
   flex: none;
 }
 
-/* Uma aba escondida aguarda a pessoa: o "⌄" ganha a cor de aviso (o nome acessível também o diz). */
-.tabs-overflow--attention {
-  color: var(--warn);
-}
-
-.tabs-overflow--attention .menu-acoes__gatilho--icone {
-  color: inherit;
-}
-
 .topbar__tab-list {
   display: flex;
   height: 100%;
