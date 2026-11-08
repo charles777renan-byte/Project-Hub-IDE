@@ -266,6 +266,17 @@ describe('selos de estado em pílula', () => {
       MIN_CONTRAST,
     );
   });
+
+  // Selo de contador zerado (OverviewCounters, `data-zero`): cinza neutro, o tom --muted do par acima, sem brilho.
+  it('o selo de contador zerado usa o tom --muted, o par medido acima, e não tem brilho', () => {
+    const css = readFileSync(
+      resolve(import.meta.dirname, '../../src/renderer/styles/app.css'),
+      'utf8',
+    ).replaceAll(/\s+/g, ' ');
+    const zero = /\.overview-counter\[data-zero='true'\] \{([^}]*)\}/.exec(css)?.[1]?.trim();
+    expect(zero).toBe('--tone: var(--muted);');
+    expect(BADGE_TONES).toContain('--muted');
+  });
 });
 
 /**

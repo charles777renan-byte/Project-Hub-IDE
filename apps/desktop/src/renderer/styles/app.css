@@ -828,6 +828,14 @@ button:disabled {
 }
 
 /*
+ * Contador zerado: cinza neutro (--muted sobre --surface, o par já medido no contrast.test.ts), sem brilho.
+ * O texto "0 …" continua; só a cor do estado sai.
+ */
+.overview-counter[data-zero='true'] {
+  --tone: var(--muted);
+}
+
+/*
  * Uso do computador e "Parar todos" na barra de status (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
  * discreto em --muted. Só em janela bem estreita (800px ou menos) ele some, para os contadores não perderem lugar. A pergunta
  * de "Parar todos" cabe na altura da barra (as regras dela estão em statusbar.css).

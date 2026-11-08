@@ -314,6 +314,73 @@ describe('OverviewCounters', () => {
   });
 });
 
+/**
+ * Selo zerado em cinza: o selo cujo número conhecido é 0 leva `data-zero="true"` (a CSS o pinta de cinza neutro);
+ * o traço de "ainda não lido" e os selos com número maior que zero não levam. O texto "0 …" continua na tela.
+ */
+describe('OverviewCounters, selos zerados', () => {
+  it('com tudo em zero, os três selos levam data-zero e mostram o "0" como texto', async () => {
+    installApi([project('p1')], () => ({ ok: true, data: [] }));
+
+    renderCounters();
+
+    const running = await screen.findByRole('link', { name: '0 executando' });
+    expect(running).toHaveAttribute('data-zero', 'true');
+    expect(screen.getByRole('link', { name: '0 aguarda você' })).toHaveAttribute(
+      'data-zero',
+      'true',
+    );
+    expect(screen.getByRole('link', { name: '0 falharam' })).toHaveAttribute('data-zero', 'true');
+  });
+
+  it('com número maior que zero, o selo não leva data-zero, e os outros zerados levam', async () => {
+    installApi([project('p1')], () => ({
+      ok: true,
+      data: [mission('m1', 'p1', 'running'), mission('m2', 'p1', 'running')],
+    }));
+
+    renderCounters();
+
+    expect(await screen.findByRole('link', { name: '2 executando' })).not.toHaveAttribute(
+      'data-zero',
+    );
+    expect(screen.getByRole('link', { name: '0 aguarda você' })).toHaveAttribute(
+      'data-zero',
+      'true',
+    );
+    expect(screen.getByRole('link', { name: '0 falharam' })).toHaveAttribute('data-zero', 'true');
+  });
+
+  it('"aguarda você" e "falharam" com número maior que zero não levam data-zero', async () => {
+    installApi([project('p1')], () => ({
+      ok: true,
+      data: [mission('m1', 'p1', 'planned'), mission('m2', 'p1', 'failed')],
+    }));
+
+    renderCounters();
+
+    expect(await screen.findByRole('link', { name: '1 aguarda você' })).not.toHaveAttribute(
+      'data-zero',
+    );
+    expect(screen.getByRole('link', { name: '1 falhou' })).not.toHaveAttribute('data-zero');
+    expect(screen.getByRole('link', { name: '0 executando' })).toHaveAttribute('data-zero', 'true');
+  });
+
+  it('antes da primeira leitura, o traço não leva data-zero', () => {
+    window.projectHub = {
+      ping: vi.fn(),
+      projects: { list: vi.fn(() => new Promise<never>(() => {})) },
+      missions: { list: vi.fn(), subscribe: vi.fn(() => () => {}) },
+    } as unknown as ProjectHubApi;
+
+    renderCounters();
+
+    for (const name of ['— executando', '— aguarda você', '— falharam']) {
+      expect(screen.getByRole('link', { name })).not.toHaveAttribute('data-zero');
+    }
+  });
+});
+
 describe('useOverview', () => {
   it('lista em failedProjects o projeto que falhou, e em items só as missões que contam', async () => {
     installApi([project('p1'), project('p2')], (projectId) =>
