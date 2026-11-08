@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { zstdDecompressSync } from 'node:zlib';
@@ -133,8 +133,7 @@ export function readCodexSessionActivity(text: string): SessionActivity | undefi
   }));
 
   const detail: SessionDetail = {
-    title:
-      firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt),
+    title: firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt),
     firstPrompt: firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.firstPrompt),
     lastAgentText:
       lastAgentText === undefined ? null : cutText(lastAgentText, DETAIL_LIMITS.lastAgentText),
@@ -201,13 +200,30 @@ export function listCodexSessions(codexHome: string, sinceIso: string): string[]
 }
 
 /**
- * O texto de uma sessão listada por `listCodexSessions`: descomprime o `.jsonl.zst` e lê o `.jsonl`
- * como está. Arquivo ilegível ou compressão corrompida lança; quem chama decide se o dia fica como
- * "sem dado" (nunca como zero).
+ * Teto de tamanho de um arquivo de sessão, em disco e depois de aberto: 512 MiB. Medido numa máquina de uso
+ * real: o maior `.jsonl.zst` abre em 81,7 MB e o maior `.jsonl` do Claude tem 131,9 MB (4x isso é 528 MB, e
+ * 512 MiB também é o que cabe numa string do V8). Arquivo maior que isso é ilegível, não memória gasta.
  */
-export function readCodexSessionFile(file: string): string {
+export const MAX_SESSION_FILE_BYTES = 512 * 1024 * 1024;
+
+/**
+ * O texto de uma sessão listada por `listCodexSessions`: descomprime o `.jsonl.zst` e lê o `.jsonl`
+ * como está. Arquivo ilegível, compressão corrompida ou arquivo que passa de `maxBytes` (em disco, ou depois
+ * de descomprimido) lança; quem chama decide se o dia fica como "sem dado" (nunca como zero).
+ */
+export function readCodexSessionFile(
+  file: string,
+  maxBytes: number = MAX_SESSION_FILE_BYTES,
+): string {
+  if (statSync(file).size > maxBytes) {
+    throw new Error(`Arquivo de sessão acima do limite de ${maxBytes} bytes: ${file}`);
+  }
   const content = readFileSync(file);
-  return (file.endsWith('.zst') ? zstdDecompressSync(content) : content).toString('utf8');
+  // `maxOutputLength` faz o zstd lançar ao passar do limite, em vez de crescer sem fim com uma bomba de descompressão.
+  const raw = file.endsWith('.zst')
+    ? zstdDecompressSync(content, { maxOutputLength: maxBytes })
+    : content;
+  return raw.toString('utf8');
 }
 
 /**

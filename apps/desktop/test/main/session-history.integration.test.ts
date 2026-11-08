@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { zstdCompressSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ProviderRegistry } from '../../src/main/providers';
 import { createResumeVerdict } from '../../src/main/resume-verdict';
@@ -211,6 +212,73 @@ describe('session-history com os leitores reais, em pastas temporárias', () => 
       unreadable: 1,
       sessions: 1,
     });
+  });
+
+  it('um .zst que expande além do limite conta como ilegível, e as outras sessões seguem', async () => {
+    const codexDay = join(root, 'codex', 'sessions', '2026', '10', '30');
+    const meta = JSON.stringify({
+      timestamp: DAY,
+      type: 'session_meta',
+      payload: { id: 'bomba', timestamp: DAY, cwd: root },
+    });
+    writeFileSync(
+      join(codexDay, 'rollout-2026-10-30T11-00-00-bomba.jsonl.zst'),
+      zstdCompressSync(Buffer.from(`${meta}\n${' '.repeat(200_000)}`)),
+    );
+
+    const service = history([
+      createClaudeSessionReader(env),
+      createCodexSessionReader(env, 50_000),
+      createAntigravitySessionReader(historyFile),
+    ]);
+    await service.refresh();
+    const result = await service.list({ scope: 'all' });
+
+    expect(result.sessions).toHaveLength(3);
+    expect(result.indexing.find((entry) => entry.provider === 'codex')).toEqual({
+      provider: 'codex',
+      read: 1,
+      total: 2,
+      unreadable: 1,
+      sessions: 1,
+    });
+  });
+
+  it('transcripts com o mesmo sessionId de dentro ganham ids diferentes; o mesmo nome em duas pastas vira uma sessão', async () => {
+    const otherId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const copyId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const line = (at: string): string =>
+      JSON.stringify({
+        type: 'user',
+        sessionId: CLAUDE_ID,
+        cwd: root,
+        timestamp: at,
+        message: { role: 'user', content: `prompt ${at}` },
+      }) + '\n';
+    const projects = join(root, 'claude', 'projects');
+    mkdirSync(join(projects, 'outra-pasta'), { recursive: true });
+    // Uma cópia do transcript original, com outro nome e o mesmo sessionId de dentro.
+    writeFileSync(join(projects, 'C--proj-x', `${copyId}.jsonl`), line('2026-10-30T13:00:00.000Z'));
+    // O mesmo nome do original em outra pasta, com atividade mais recente.
+    writeFileSync(
+      join(projects, 'outra-pasta', `${CLAUDE_ID}.jsonl`),
+      line('2026-10-31T09:00:00.000Z'),
+    );
+    writeFileSync(
+      join(projects, 'outra-pasta', `${otherId}.jsonl`),
+      line('2026-10-30T14:00:00.000Z'),
+    );
+
+    const service = history(realReaders());
+    await service.refresh();
+    const result = await service.list({ scope: 'all' });
+
+    const claude = result.sessions.filter((session) => session.provider === 'claude');
+    expect(claude.map((session) => session.id).sort()).toEqual([CLAUDE_ID, copyId, otherId].sort());
+    expect(claude.find((session) => session.id === CLAUDE_ID)?.firstPrompt).toBe(
+      'prompt 2026-10-31T09:00:00.000Z',
+    );
+    expect(result.indexing.find((entry) => entry.provider === 'claude')?.sessions).toBe(3);
   });
 
   it('um índice corrompido é refeito, e a lista não fica vazia', async () => {

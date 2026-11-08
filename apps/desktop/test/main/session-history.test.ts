@@ -258,6 +258,109 @@ describe('createSessionHistory', () => {
     expect(result.sessions.map((session) => session.id).sort()).toEqual([ID_A, ID_B, ID_C].sort());
   });
 
+  it('escopo workspace resolve `.` e `..` antes de comparar, no modo Windows', async () => {
+    const files = {
+      a: {
+        mtimeMs: 1,
+        size: 1,
+        sessions: [
+          activity(ID_A, String.raw`C:\proj\x\..\outra`),
+          activity(ID_B, String.raw`C:\proj\x\a\..\b`),
+          activity(ID_C, String.raw`C:\proj\.\x\sub`),
+          activity(ID_D, String.raw`C:\proj\x\..\..\..\..\proj\x`),
+          activity(ID_E, String.raw`C:\proj\..\outra`),
+        ],
+      },
+    };
+    const history = makeHistory(indexFile, [fakeReader('claude', files, [])]);
+    await history.refresh();
+
+    const result = await history.list({ scope: 'workspace', projectId: 'p1' });
+    expect(result.sessions.map((session) => session.id).sort()).toEqual([ID_B, ID_C, ID_D].sort());
+  });
+
+  it('escopo workspace resolve `..` também no modo POSIX, sem perder a barra inicial', async () => {
+    const files = {
+      a: {
+        mtimeMs: 1,
+        size: 1,
+        sessions: [
+          activity(ID_A, '/home/u/p/../q'),
+          activity(ID_B, '/home/u/p/a/../b'),
+          activity(ID_C, '/home/u/P/b'),
+          activity(ID_D, 'home/u/p/b'),
+        ],
+      },
+    };
+    const history = makeHistory(indexFile, [fakeReader('claude', files, [])], {
+      projects: () => [{ id: 'p1', path: '/home/u/p' }],
+      windowsPaths: false,
+    });
+    await history.refresh();
+
+    const result = await history.list({ scope: 'workspace', projectId: 'p1' });
+    expect(result.sessions.map((session) => session.id)).toEqual([ID_B]);
+  });
+
+  it('sessão com o mesmo id em dois arquivos aparece uma vez, a de atividade mais recente', async () => {
+    const files = {
+      velho: {
+        mtimeMs: 1,
+        size: 1,
+        sessions: [activity(ID_A, PROJECT_PATH, '2026-10-29T12:00:00.000Z', { title: 'velha' })],
+      },
+      novo: {
+        mtimeMs: 2,
+        size: 1,
+        sessions: [activity(ID_A, PROJECT_PATH, '2026-10-31T12:00:00.000Z', { title: 'nova' })],
+      },
+      outra: { mtimeMs: 3, size: 1, sessions: [activity(ID_B, PROJECT_PATH)] },
+    };
+    const history = makeHistory(indexFile, [fakeReader('claude', files, [])]);
+    await history.refresh();
+
+    const result = await history.list({ scope: 'all' });
+    expect(result.sessions.filter((session) => session.id === ID_A)).toHaveLength(1);
+    expect(result.sessions.find((session) => session.id === ID_A)).toMatchObject({ title: 'nova' });
+    expect(result.indexing[0]?.sessions).toBe(2);
+  });
+
+  it('a duplicata mais nova fora do escopo esconde a antiga, e find usa a mesma sessão da lista', async () => {
+    const files = {
+      velho: {
+        mtimeMs: 1,
+        size: 1,
+        sessions: [activity(ID_A, PROJECT_PATH, '2026-10-29T12:00:00.000Z')],
+      },
+      novo: {
+        mtimeMs: 2,
+        size: 1,
+        sessions: [activity(ID_A, String.raw`C:\outro`, '2026-10-31T12:00:00.000Z')],
+      },
+    };
+    const history = makeHistory(indexFile, [fakeReader('claude', files, [])]);
+    await history.refresh();
+
+    const result = await history.list({ scope: 'workspace', projectId: 'p1' });
+    expect(result.sessions).toEqual([]);
+    expect(history.find(ID_A)).toMatchObject({ folder: String.raw`C:\outro`, projectId: null });
+  });
+
+  it('o mesmo id em programas diferentes não se funde', async () => {
+    const claudeFiles = { a: { mtimeMs: 1, size: 1, sessions: [activity(ID_A, PROJECT_PATH)] } };
+    const codexFiles = {
+      b: { mtimeMs: 1, size: 1, sessions: [{ ...activity(ID_A, PROJECT_PATH), agent: 'codex' }] },
+    };
+    const history = makeHistory(indexFile, [
+      fakeReader('claude', claudeFiles, []),
+      fakeReader('codex', codexFiles, []),
+    ]);
+    await history.refresh();
+
+    const result = await history.list({ scope: 'all' });
+    expect(result.sessions.map((session) => session.provider).sort()).toEqual(['claude', 'codex']);
+  });
+
   it('escopo project inclui os worktrees do projeto, mesmo fora da pasta dele', async () => {
     const worktrees: WorktreeInfo[] = [
       { path: PROJECT_PATH, branch: 'main' },
