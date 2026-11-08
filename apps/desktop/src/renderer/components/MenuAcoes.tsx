@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import type { ReactNode } from 'react';
 
 export type AcaoMenu = {
   rotulo: string;
@@ -18,23 +19,52 @@ export type AcaoMenu = {
  * não fica preso e o resto da tela não some dos leitores de tela. O posicionamento do Radix usa o CSSOM
  * (element.style), que a CSP permite.
  *
+ * Com `icone`, o gatilho mostra só o ícone (decorativo) e o `rotulo` vira o nome acessível (`aria-label`); quem
+ * usa o texto não muda. Quem põe o ícone cuida do tamanho e do estilo dele (classe `.menu-acoes__gatilho--icone`).
+ *
  * Escolher um item fecha o menu e desmonta o conteúdo dele. Quem precisa de confirmação (excluir) guarda o
  * estado fora do menu e mostra a pergunta no próprio `onSelecionar`.
  */
-export function MenuAcoes({ rotulo, acoes }: { rotulo: string; acoes: AcaoMenu[] }) {
+export function MenuAcoes({
+  rotulo,
+  icone,
+  acoes,
+  aoFecharDevolverFoco,
+}: {
+  rotulo: string;
+  /** Gatilho só de ícone: o `rotulo` deixa de aparecer e vira o `aria-label`. */
+  icone?: ReactNode;
+  acoes: AcaoMenu[];
+  /**
+   * Ao fechar, o Radix devolve o foco ao botão. Quem leva o foco para outro lugar ao escolher um item chama
+   * `event.preventDefault()` aqui, e o foco fica onde ele o pôs.
+   */
+  aoFecharDevolverFoco?: (event: Event) => void;
+}) {
   return (
     <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger className="menu-acoes__gatilho">{rotulo}</DropdownMenu.Trigger>
+      {icone === undefined ? (
+        <DropdownMenu.Trigger className="menu-acoes__gatilho">{rotulo}</DropdownMenu.Trigger>
+      ) : (
+        <DropdownMenu.Trigger
+          className="menu-acoes__gatilho menu-acoes__gatilho--icone"
+          aria-label={rotulo}
+        >
+          {icone}
+        </DropdownMenu.Trigger>
+      )}
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           className="menu-acoes"
           align="end"
           sideOffset={6}
           collisionPadding={8}
+          onCloseAutoFocus={aoFecharDevolverFoco}
         >
-          {acoes.map((acao) => (
+          {acoes.map((acao, index) => (
+            // O índice entra na chave: dois itens podem ter o mesmo rótulo.
             <DropdownMenu.Item
-              key={acao.rotulo}
+              key={`${index}-${acao.rotulo}`}
               className={
                 acao.perigosa === true
                   ? 'menu-acoes__item menu-acoes__item--perigo'

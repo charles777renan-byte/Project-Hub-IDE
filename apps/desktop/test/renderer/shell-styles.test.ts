@@ -533,6 +533,19 @@ describe('barra de status', () => {
     );
   });
 
+  it('o foco do terminal trunca com reticências, cede depois do projeto e antes do fim da barra', () => {
+    const focus = ruleDeclarations(statusCss, '.statusbar__focus');
+    expect(focus.get('min-width')).toBe('0');
+    expect(focus.get('margin')).toBe('0');
+    expect(focus.get('overflow')).toBe('hidden');
+    expect(focus.get('text-overflow')).toBe('ellipsis');
+    expect(focus.get('white-space')).toBe('nowrap');
+    const shrink = (selector: string) =>
+      Number(ruleDeclarations(statusCss, selector).get('flex')?.split(' ')[1]);
+    expect(shrink('.statusbar__focus')).toBeGreaterThan(shrink('.statusbar__end'));
+    expect(shrink('.statusbar__focus')).toBeLessThan(shrink('.statusbar__project'));
+  });
+
   it('o fim da barra encolhe junto, e o projeto e os contadores cedem antes dele', () => {
     const end = ruleDeclarations(statusCss, '.statusbar__end');
     expect(end.get('min-width')).toBe('0');

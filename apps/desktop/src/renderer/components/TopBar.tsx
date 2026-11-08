@@ -28,6 +28,7 @@ import {
   Plus,
   X,
 } from './Icon';
+import { TabsOverflow, useTabsOverflow } from './TabsOverflow';
 
 /** Nome mostrado na aba quando o projeto dela ainda não chegou na lista (ou saiu dela). */
 const UNKNOWN_PROJECT = 'Projeto';
@@ -96,6 +97,8 @@ export function TopBar({
   const settleTimer = useRef<number | undefined>(undefined);
   const [announce, setAnnounce] = useState('');
   const tabs = useRef<HTMLElement>(null);
+  // As abas que a faixa não mostra por inteiro: a borda esmaece e o botão "⌄" lista elas.
+  const overflow = useTabsOverflow(tabs);
   const focusAfterMove = useRef<string | null>(null);
   // A esquerda de cada aba antes da troca de ordem, para elas deslizarem até o lugar novo.
   const slideFrom = useRef<Map<string, number> | null>(null);
@@ -342,7 +345,13 @@ export function TopBar({
         </NavLink>
       </div>
       {workspaces.length === 0 ? null : (
-        <nav aria-label="Workspaces abertos" className="topbar__tabs" ref={tabs}>
+        <nav
+          aria-label="Workspaces abertos"
+          className="topbar__tabs"
+          ref={tabs}
+          data-fade-start={overflow.start ? 'true' : undefined}
+          data-fade-end={overflow.end ? 'true' : undefined}
+        >
           <ul
             className={
               settling ? 'topbar__tab-list topbar__tab-list--settling' : 'topbar__tab-list'
@@ -360,6 +369,7 @@ export function TopBar({
               return (
                 <li
                   key={workspace.id}
+                  data-tab-id={workspace.id}
                   className={classes.join(' ')}
                   style={shift === 0 ? undefined : { transform: `translateX(${shift}px)` }}
                 >
@@ -425,6 +435,21 @@ export function TopBar({
           </ul>
         </nav>
       )}
+      <TabsOverflow
+        items={workspaces
+          .filter((workspace) => overflow.hidden.includes(workspace.id))
+          .map((workspace) => ({ id: workspace.id, label: nameOf(workspace) }))}
+        onSelect={(id) => {
+          const workspace = workspaces.find((item) => item.id === id);
+          if (workspace === undefined) return;
+          void navigate(workspacePath(workspace.projectId));
+          // O botão "⌄" pode sumir com a escolha (era a última escondida): o foco vai para o link da aba.
+          requestAnimationFrame(() => {
+            const link = tabs.current?.querySelector(`[data-workspace-id="${CSS.escape(id)}"]`);
+            if (link instanceof HTMLElement) link.focus();
+          });
+        }}
+      />
       <OpenWorkspaceMenu
         projects={projects.filter((project) => !openIds.has(project.id))}
         onOpen={(projectId) => void openProject(projectId)}

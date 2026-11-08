@@ -26,6 +26,7 @@ import {
 import { ADD_PROJECT_REQUEST_EVENT } from '../../src/renderer/projects-events';
 import { workspacePath } from '../../src/renderer/routes';
 import { MARKS } from '../../src/renderer/state-mark';
+import { show, useFakeIntersectionObserver } from './fake-intersection-observer';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
 
 // Barra superior (Tarefa 6 do plano do workspace multiagente): abas dos workspaces abertos, o botão
@@ -1046,6 +1047,37 @@ describe('botão do painel direito', () => {
 
     expect(await screen.findByRole('tooltip', {}, { timeout: 2000 })).toHaveTextContent(
       'Ocultar painel direito (Ctrl+Alt+B)',
+    );
+  });
+});
+
+describe('abas fora de vista (botão ⌄)', () => {
+  useFakeIntersectionObserver();
+
+  it('escolher uma aba escondida abre o workspace e leva o foco para o link dela', async () => {
+    const user = userEvent.setup();
+    installApi({
+      projects: [project('p1', 'Alfa'), project('p2', 'Beta'), project('p3', 'Gama')],
+      workspaces: [
+        workspace('w1', 'p1'),
+        workspace('w2', 'p2', { position: 1 }),
+        workspace('w3', 'p3', { position: 2 }),
+      ],
+    });
+    renderBar('/');
+    await screen.findByRole('link', { name: 'Gama' });
+    show('w1');
+
+    await user.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Beta',
+      'Gama',
+    ]);
+    await user.click(screen.getByRole('menuitem', { name: 'Gama' }));
+
+    expect(where()).toBe(workspacePath('p3'));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Gama' })),
     );
   });
 });

@@ -111,6 +111,64 @@
   -webkit-app-region: no-drag;
 }
 
+/*
+ * Faixa que rola de lado (barra de abas do workspace e abas dos arquivos abertos): a borda do lado que tem aba escondida
+ * esmaece (`data-fade-start` / `data-fade-end`, postos por `useTabsOverflow`), sem animação. O esmaecimento é só a pista; o
+ * botão "⌄" (`.tabs-overflow`) lista as abas escondidas e é a saída que não depende de ver o esmaecimento.
+ */
+.topbar__tabs[data-fade-start],
+.file-tabs[data-fade-start] {
+  mask-image: linear-gradient(to right, transparent, var(--text) var(--space-5));
+}
+
+.topbar__tabs[data-fade-end],
+.file-tabs[data-fade-end] {
+  mask-image: linear-gradient(to left, transparent, var(--text) var(--space-5));
+}
+
+.topbar__tabs[data-fade-start][data-fade-end],
+.file-tabs[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    var(--text) var(--space-5),
+    var(--text) calc(100% - var(--space-5)),
+    transparent
+  );
+}
+
+.tabs-overflow {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  -webkit-app-region: no-drag;
+}
+
+.tabs-overflow .menu-acoes__gatilho--icone {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  line-height: 0;
+}
+
+.tabs-overflow .menu-acoes__gatilho--icone:hover,
+.tabs-overflow .menu-acoes__gatilho--icone[data-state='open'] {
+  background: var(--line);
+  color: var(--text);
+}
+
+.tabs-overflow .menu-acoes__gatilho--icone svg {
+  display: block;
+  flex: none;
+}
+
 .topbar__tab-list {
   display: flex;
   height: 100%;
@@ -1163,7 +1221,8 @@
 /* Texto só para leitor de tela; a região "Precisa de você" da barra lateral é um desses. */
 .state-mark__sr,
 .sidebar__sr,
-.pane__usage-sr {
+.pane__usage-sr,
+.pane__context-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1191,9 +1250,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .state-mark--active .state-mark__glyph,
-  .pane__light--active .pane__light-dot,
-  .pane__light--active::after {
+  .state-mark--active .state-mark__glyph {
     animation: none;
   }
 
@@ -1337,6 +1394,28 @@
   box-shadow: inset 0 0 0 2px var(--focus);
 }
 
+/*
+ * A sombra interna do cartão pinta por baixo dos filhos: o cabeçalho (com fundo, e tingido no foco) a cobria e o
+ * anel sumia no topo e nas pontas. O mesmo anel, numa camada por cima de tudo e sem pegar o mouse, fecha o contorno.
+ */
+.pane:focus-within::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--focus);
+  content: '';
+  pointer-events: none;
+}
+
+/*
+ * O painel com o teclado dentro também tinge o cabeçalho de duas linhas de lima a 7% sobre o cartão: o anel diz "aqui",
+ * a tinta repete na cabeça, onde o olho está. O lançador e a sessão terminada (cabeça de uma linha) não mudam. Os
+ * pares de contraste do texto sobre esse fundo estão em contrast.test.ts.
+ */
+.pane:focus-within .pane__head--live {
+  background: color-mix(in srgb, var(--lime) 7%, var(--surface));
+}
+
 .pane__head {
   display: flex;
   flex: none;
@@ -1355,9 +1434,56 @@
 }
 
 /*
- * A base é a largura do texto (e não zero): assim, quando falta espaço, o encolhimento vai primeiro para o
- * gasto de tokens (.pane__usage), e o título só é cortado depois que ele sumiu. Com espaço sobrando, o título
- * cresce como antes e empurra a marca de estado para perto das ações.
+ * Cabeçalho da sessão viva, de uma linha (28px, como o do lançador): o símbolo do programa, o título, a marca de
+ * estado só com a forma (o rótulo vai na dica e no leitor de tela), a pílula de tokens e as ações. Modelo,
+ * worktree e contexto ficam na dica do título. Os filhos que cedem são o título (corta com reticências); a pílula
+ * e as ações nunca encolhem. `position: relative` ancora o fio de contexto na borda de baixo.
+ */
+.pane__head--live {
+  position: relative;
+}
+
+.pane__head--live .pane__state {
+  padding: 0;
+  background: transparent;
+}
+
+/* A pílula empurra a si e as ações para a direita; sem pílula, as ações é que vão (`margin-left: auto` delas). */
+.pane__head--live .pane__usage {
+  margin-left: auto;
+}
+
+.pane__head--live .pane__usage + .pane__actions {
+  margin-left: 0;
+}
+
+/*
+ * Contexto da última resposta: um fio de 2px sobre a borda de baixo do cabeçalho, do canto esquerdo até a
+ * porcentagem ocupada. Cinza (--muted) e violeta (--brand) no nível alto, que vem de `data-level`; nunca vermelho.
+ * Não recebe o mouse: a dica é a do título. A largura do preenchimento vai no `style` (CSSOM).
+ */
+.pane__context {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  pointer-events: none;
+}
+
+.pane__context-fill {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+}
+
+.pane__context[data-level='high'] .pane__context-fill {
+  background: var(--brand);
+}
+
+/*
+ * Título do painel. No lançador cresce e ocupa a linha; na sessão viva só pede o que o texto
+ * ocupa, e é cortado com reticências quando falta espaço.
  */
 .pane__title {
   flex: 1 1 auto;
@@ -1372,22 +1498,9 @@
   font-weight: 600;
 }
 
-/*
- * Grupo do lado direito do cabeçalho: o gasto de tokens (workspace/PaneUsage.tsx) e a luz de estado, colados um no
- * outro. O margin-left: auto empurra o grupo para a direita, e as ações vêm logo depois, sem espaço livre entre a
- * luz e elas (a regra `.pane__status + .pane__actions` zera a margem automática delas, senão o espaço sobrante
- * se dividiria entre os dois e o grupo ficaria no meio). O texto para leitor de tela é absoluto e não ocupa espaço.
- */
-.pane__status {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-}
-
-.pane__status + .pane__actions {
-  margin-left: 0;
+/* Na sessão viva a marca de estado fica logo depois do título: o título só cresce até o que o texto pede. */
+.pane__head--live .pane__title {
+  flex: 0 1 auto;
 }
 
 .pane__usage {
@@ -1420,7 +1533,7 @@
   flex: none;
 }
 
-/* O programa do terminal, só o símbolo, à esquerda (o título da sessão vai na dica e para o leitor de tela). */
+/* O programa do terminal, só o símbolo, à esquerda (o título da sessão fica ao lado, na linha 1). */
 .pane__provider {
   display: inline-flex;
   flex: none;
@@ -1428,56 +1541,12 @@
 }
 
 /*
- * A luz de estado do terminal, no lugar do rótulo e da etiqueta de origem: verde e piscando, a sessão roda; âmbar
- * e parada, ela espera a pessoa; as outras ficam apagadas. O rótulo em texto vai na dica e para o leitor de tela,
- * então a cor nunca é a única pista. O anel que se abre ao redor do ponto (::after) só existe com a sessão rodando.
+ * Maximizar, o menu ⋯ e o fechar do lançador são botões só de ícone: a área é de 24px (o mínimo para acertar o
+ * clique) e o passe do mouse só clareia o fundo.
  */
-.pane__light {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-}
-
-.pane__light-dot {
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentcolor;
-}
-
-.pane__light--active .pane__light-dot {
-  animation: state-mark-pulse 1.6s ease-in-out infinite;
-}
-
-.pane__light--active::after {
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: currentcolor;
-  content: '';
-  animation: pane-light-ring 1.6s ease-out infinite;
-}
-
-@keyframes pane-light-ring {
-  from {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-
-  to {
-    opacity: 0;
-    transform: scale(2.2);
-  }
-}
-
-/* Fechar e maximizar o painel são botões só de ícone: a área é de 24px e o passe do mouse só clareia o fundo. */
 .pane__actions .pane__close,
-.pane__actions .pane__maximize {
+.pane__actions .pane__maximize,
+.pane__actions .menu-acoes__gatilho--icone {
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -1491,13 +1560,16 @@
 }
 
 .pane__actions .pane__close:hover:not(:disabled),
-.pane__actions .pane__maximize:hover:not(:disabled) {
+.pane__actions .pane__maximize:hover:not(:disabled),
+.pane__actions .menu-acoes__gatilho--icone:hover:not(:disabled),
+.pane__actions .menu-acoes__gatilho--icone[data-state='open'] {
   background: var(--line);
   color: var(--text);
 }
 
 .pane__close svg,
-.pane__maximize svg {
+.pane__maximize svg,
+.menu-acoes__gatilho--icone svg {
   display: block;
   flex: none;
 }
@@ -1529,6 +1601,19 @@
  * eixo em relação ao antigo padding de 4px do .xterm: a última coluna não encosta mais na borda). O respiro fica aqui: o terminal
  * mede o próprio clientWidth/clientHeight e não pode ter padding.
  */
+/*
+ * A pergunta de "Fechar painel e encerrar…" (só a sessão viva): uma faixa abaixo do cabeçalho, com a pergunta e os
+ * dois botões. A pergunta quebra de linha no painel estreito, e a faixa nunca encolhe.
+ */
+.pane__confirm {
+  flex: none;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: normal;
+}
+
 .pane__body {
   flex: 1;
   min-height: 0;
@@ -1542,21 +1627,6 @@
 .pane__body .terminal-view {
   width: 100%;
   height: 100%;
-}
-
-.pane__foot {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 22px;
-  padding: 0 var(--space-2);
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .pane__launcher {
@@ -1711,19 +1781,6 @@
 }
 
 .workspace__area[hidden] {
-  display: none;
-}
-
-/* O espaço livre da barra: a faixa dos arquivos abertos (components/project/FileTabs.tsx) ocupa o que sobra e rola. */
-.workspace__toolbar-trailing {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--line);
-}
-
-.workspace__toolbar-trailing:empty {
   display: none;
 }
 

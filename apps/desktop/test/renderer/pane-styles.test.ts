@@ -6,7 +6,7 @@ import { readCss, ruleDeclarations } from './css-rules';
  * (--surface, raio de cartão, contorno de 1px por sombra interna) com 8px de vão entre os cartões; as
  * divisórias são vãos transparentes de 8px, com um traço no meio ao passar o mouse, arrastar ou focar;
  * o xterm fica num fundo opaco --bg (#080614), com margem de 4px, sem o brilho da casca sob o texto.
- * Cabeça de 28px e rodapé de 22px. As regras ficam numa seção própria no fim de workspace.css.
+ * Cabeça de 28px no lançador e na sessão terminada; a sessão viva tem o mesmo cabeçalho de uma linha, com o contexto num fio na borda de baixo, e não tem rodapé. As regras ficam numa seção própria no fim de workspace.css.
  */
 
 describe('árvore de painéis e painel', () => {
@@ -14,18 +14,64 @@ describe('árvore de painéis e painel', () => {
   // Os comentários saem na leitura: a seção começa na regra da página do workspace.
   const marker = css.indexOf('.app-main:has(.pane-tree) {');
   const section = marker >= 0 ? css.slice(marker) : '';
-  const rule = (selector: string): Map<string, string> => ruleDeclarations(section, selector);
+  const base = section;
+  const rule = (selector: string): Map<string, string> => ruleDeclarations(base, selector);
 
   it('a seção da árvore de painéis existe no fim do arquivo', () => {
     expect(marker).toBeGreaterThan(0);
   });
 
-  it('a cabeça tem 28px e o rodapé 22px, ambos fixos e de uma linha', () => {
+  it('o lançador e a sessão terminada mantêm a cabeça de 28px; o rodapé deixou de existir', () => {
     expect(rule('.pane__head').get('height')).toBe('28px');
     expect(rule('.pane__head').get('flex')).toBe('none');
-    expect(rule('.pane__foot').get('height')).toBe('22px');
-    expect(rule('.pane__foot').get('flex')).toBe('none');
-    expect(rule('.pane__foot').get('white-space')).toBe('nowrap');
+    expect(section).not.toContain('.pane__foot');
+  });
+
+  it('o cabeçalho da sessão viva é de uma linha, com a altura do lançador, ancorando o fio de contexto', () => {
+    const live = rule('.pane__head--live');
+    // A altura de 28px e o `flex: none` vêm da regra base `.pane__head`, que a variante não desfaz.
+    expect(live.has('height')).toBe(false);
+    expect(live.has('flex')).toBe(false);
+    expect(live.get('position')).toBe('relative');
+    expect(section).not.toContain('.pane__lines');
+    expect(section).not.toContain('.pane__line1');
+    expect(section).not.toContain('.pane__line2');
+    expect(section).not.toContain('@container');
+  });
+
+  it('a pílula de tokens empurra a si e as ações para a direita; só o título cede', () => {
+    expect(rule('.pane__usage').get('flex')).toBe('none');
+    expect(rule('.pane__head--live .pane__usage').get('margin-left')).toBe('auto');
+    expect(rule('.pane__head--live .pane__usage + .pane__actions').get('margin-left')).toBe('0');
+    expect(rule('.pane__actions').get('flex')).toBe('none');
+    const title = rule('.pane__head--live .pane__title');
+    expect(title.get('flex')).toBe('0 1 auto');
+    expect(rule('.pane__title').get('overflow')).toBe('hidden');
+    expect(rule('.pane__title').get('text-overflow')).toBe('ellipsis');
+  });
+
+  it('a marca de estado do cabeçalho vivo é só a forma, sem pílula de fundo', () => {
+    const seal = rule('.pane__head--live .pane__state');
+    expect(seal.get('padding')).toBe('0');
+    expect(seal.get('background')).toBe('transparent');
+  });
+
+  it('o contexto é um fio de 2px sobre a borda de baixo: --muted, --brand no nível alto, sem pegar o mouse', () => {
+    const line = rule('.pane__context');
+    expect(line.get('position')).toBe('absolute');
+    expect(line.get('height')).toBe('2px');
+    expect(line.get('bottom')).toBe('-1px');
+    expect(line.get('left')).toBe('0');
+    expect(line.get('right')).toBe('0');
+    expect(line.get('pointer-events')).toBe('none');
+    const fill = rule('.pane__context-fill');
+    expect(fill.get('height')).toBe('100%');
+    expect(fill.get('background')).toBe('var(--muted)');
+    expect(rule(".pane__context[data-level='high'] .pane__context-fill").get('background')).toBe(
+      'var(--brand)',
+    );
+    // O detalhe para leitor de tela usa o mesmo esconder visual das outras marcas.
+    expect(ruleDeclarations(css, '.pane__context-sr').get('clip')).toBe('rect(0, 0, 0, 0)');
   });
 
   it('a divisória é um vão transparente de 8px, e o mouse segue a orientação', () => {
@@ -82,6 +128,31 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane:focus').get('outline')).toBe('none');
   });
 
+  it('o anel de foco também é desenhado por cima do cabeçalho, que tem fundo e o cobriria', () => {
+    const ring = rule('.pane:focus-within::after');
+    expect(ring.get('position')).toBe('absolute');
+    expect(ring.get('inset')).toBe('0');
+    expect(ring.get('border-radius')).toBe('inherit');
+    expect(ring.get('box-shadow')).toBe('inset 0 0 0 2px var(--focus)');
+    expect(ring.get('content')).toBe("''");
+    // Sem pegar o mouse: o clique chega ao cabeçalho e ao terminal por baixo.
+    expect(ring.get('pointer-events')).toBe('none');
+  });
+
+  it('o painel com o teclado tinge o cabeçalho vivo de lima a 7%; o ativo sem teclado segue no cinza de 1px', () => {
+    expect(rule('.pane:focus-within .pane__head--live').get('background')).toBe(
+      'color-mix(in srgb, var(--lime) 7%, var(--surface))',
+    );
+    // O anel é o de hoje (2px --focus) e o contorno do ativo sem foco também (1px --muted).
+    expect(rule('.pane:focus-within').get('box-shadow')).toBe('inset 0 0 0 2px var(--focus)');
+    expect(rule(".pane[data-active='true']").get('box-shadow')).toBe(
+      'inset 0 0 0 1px var(--muted)',
+    );
+    // A tinta só vale com o foco dentro do cartão e só no cabeçalho vivo: o lançador e a sessão terminada não mudam.
+    expect(rule('.pane__head--live').has('background')).toBe(false);
+    expect(rule('.pane__head').has('background')).toBe(false);
+  });
+
   it('os nós da árvore enchem o pai sem estourar', () => {
     for (const selector of ['.pane-tree__panel', '.pane-tree__leaf', '.pane-tree__group']) {
       const declarations = rule(selector);
@@ -126,9 +197,11 @@ describe('árvore de painéis e painel', () => {
   });
 
   it('a seção só usa as cores neutras do tema', () => {
-    expect(section).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-    expect(section).not.toMatch(/\b(?:rgba?|hsla?)\(/i);
-    const used = [...section.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
+    // A exceção é a tinta de lima do cabeçalho vivo com o teclado dentro (conferida no teste dela).
+    const neutral = section.replace(/\.pane:focus-within \.pane__head--live\s*\{[^{}]*\}/, '');
+    expect(neutral).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(neutral).not.toMatch(/\b(?:rgba?|hsla?)\(/i);
+    const used = [...neutral.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, name = '']) => name);
     expect(used.length).toBeGreaterThan(0);
     // --focus: o anel de foco lima é o mesmo em toda a interface (identidade visual).
     // --surface: o fundo do cartão. --radius*: raios, que não são cor. --text-*: escala tipográfica.
@@ -140,10 +213,30 @@ describe('árvore de painéis e painel', () => {
       '--muted',
       '--text',
       '--focus',
+      '--brand',
     ]);
     expect(
       used.filter((name) => !allowed.has(name) && !/^--(?:space|font|radius|text-)/.test(name)),
     ).toEqual([]);
+  });
+
+  it('os botões do cabeçalho (maximizar, menu ⋯ e o fechar do lançador) têm área de 24x24 px', () => {
+    for (const selector of [
+      '.pane__actions .pane__maximize',
+      '.pane__actions .pane__close',
+      '.pane__actions .menu-acoes__gatilho--icone',
+    ]) {
+      const declarations = rule(selector);
+      expect(declarations.get('width'), `${selector} width`).toBe('24px');
+      expect(declarations.get('height'), `${selector} height`).toBe('24px');
+      expect(declarations.get('padding'), `${selector} padding`).toBe('0');
+    }
+  });
+
+  it('a pergunta do fechamento fica numa faixa abaixo do cabeçalho, que nunca encolhe', () => {
+    const strip = rule('.pane__confirm');
+    expect(strip.get('flex')).toBe('none');
+    expect(strip.get('border-bottom')).toBe('1px solid var(--line)');
   });
 
   it('o aviso da sessão encerrada é flex e as ações não encolhem (Limpar painel não é cortado)', () => {
@@ -152,18 +245,16 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__actions').get('flex')).toBe('none');
   });
 
-  it('o gasto de tokens é mono pequeno, sem cor própria, colado à direita do cabeçalho', () => {
+  it('o gasto de tokens é mono pequeno, sem cor própria, na linha 2 do cabeçalho', () => {
     const usage = rule('.pane__usage');
     expect(usage.get('font-family')).toBe('var(--font-mono)');
     expect(usage.get('font-size')).toBe('var(--text-xs)');
     // Herda a cor do cabeçalho (--muted, mais apagada no painel inativo): nem lima nem cor nova.
     expect(usage.has('color')).toBe(false);
     expect(usage.has('background')).toBe(false);
-    // Não cresce, e o grupo (gasto e luz) é que vai para a direita: nada de espaço livre no meio do cabeçalho.
+    // Não cresce nem encolhe: some só se não houver dado, nunca por falta de espaço.
     expect(usage.get('flex')).toBe('none');
     expect(usage.has('margin-left')).toBe(false);
-    expect(rule('.pane__status').get('margin-left')).toBe('auto');
-    expect(rule('.pane__status + .pane__actions').get('margin-left')).toBe('0');
     expect(rule('.pane__provider').has('margin-right')).toBe(false);
     expect(rule('.pane__usage-value').get('white-space')).toBe('nowrap');
     // Dígitos de largura igual, para o número não balançar enquanto sobe; a cor, o fundo e o brilho seguem o nível (app.css).

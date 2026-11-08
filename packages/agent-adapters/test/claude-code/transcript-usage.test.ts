@@ -47,6 +47,22 @@ export function assistantLine(id: string, usage: UsageFields, model = 'claude-so
 
 const OTHER_LINE = JSON.stringify({ type: 'user', message: { role: 'user', content: 'oi' } });
 
+/** Como `assistantLine`, mas com `timestamp` (ISO) quando informado. */
+function timedLine(
+  id: string,
+  timestamp: string | undefined,
+  usage: UsageFields,
+  model = 'claude-sonnet-5-5',
+): string {
+  const record = JSON.parse(assistantLine(id, usage, model)) as Record<string, unknown>;
+  if (timestamp !== undefined) record['timestamp'] = timestamp;
+  return JSON.stringify(record);
+}
+
+const T1 = '2026-11-08T10:00:00.000Z';
+const T2 = '2026-11-08T10:05:00.000Z';
+const T3 = '2026-11-08T10:10:00.000Z';
+
 let configDir = '';
 let projectDir = '';
 beforeEach(() => {
@@ -118,6 +134,17 @@ describe('readUsageLine', () => {
         }),
       ),
     ).toBeUndefined();
+  });
+
+  it('devolve `at` em milissegundos quando o timestamp é um ISO válido', () => {
+    expect(readUsageLine(timedLine('msg_1', '2026-11-08T10:00:00.000Z', { output: 1 }))?.at).toBe(
+      Date.parse('2026-11-08T10:00:00.000Z'),
+    );
+  });
+
+  it('sem timestamp, ou com um que não é data, não devolve `at`', () => {
+    expect(readUsageLine(timedLine('msg_1', undefined, { output: 1 }))).not.toHaveProperty('at');
+    expect(readUsageLine(timedLine('msg_1', 'ontem', { output: 1 }))).not.toHaveProperty('at');
   });
 });
 
@@ -247,6 +274,135 @@ describe('createTranscriptUsageTracker', () => {
 
     writeFileSync(sessionFile(), `${assistantLine('msg_3', { output: 1 })}\n`);
     expect((await tracker.poll())?.outputTokens).toBe(11);
+  });
+});
+
+describe('latestContext', () => {
+  it('é a resposta principal mais recente por timestamp, com o modelo e o contexto dela', async () => {
+    writeFileSync(
+      sessionFile(),
+      [
+        timedLine(
+          'msg_2',
+          T2,
+          { input: 3, cacheRead: 1000, write5m: 50, write1h: 7, output: 9 },
+          'claude-opus-4-7',
+        ),
+        timedLine('msg_1', T1, { input: 1, cacheRead: 10 }),
+        '',
+      ].join('\n'),
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+    expect(tracker.latestContext()).toBeUndefined();
+
+    await tracker.poll();
+    // Entrada + leitura + as duas escritas de cache; a saída não conta.
+    expect(tracker.latestContext()).toEqual({ model: 'claude-opus-4-7', usedTokens: 1060 });
+  });
+
+  it('com duas sessões principais (/clear), vale a de timestamp maior, mesmo lida antes', async () => {
+    writeFileSync(sessionFile(), `${timedLine('msg_novo', T3, { input: 500 }, 'modelo-b')}\n`);
+    writeFileSync(
+      sessionFile(OTHER_SESSION),
+      `${timedLine('msg_velho', T1, { input: 9000 }, 'modelo-a')}\n`,
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+    tracker.addSession(sessionFile(OTHER_SESSION), OTHER_SESSION);
+
+    await tracker.poll();
+    expect(tracker.latestContext()).toEqual({ model: 'modelo-b', usedTokens: 500 });
+  });
+
+  it('a resposta de um subagente, mesmo mais nova, não muda o contexto', async () => {
+    writeFileSync(sessionFile(), `${timedLine('msg_main', T1, { input: 100 })}\n`);
+    const subagents = join(projectDir, SESSION, 'subagents');
+    mkdirSync(subagents, { recursive: true });
+    writeFileSync(
+      join(subagents, 'agent-abc123.jsonl'),
+      `${timedLine('msg_sub', T3, { input: 70_000 }, 'modelo-sub')}\n`,
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+
+    const summary = await tracker.poll();
+    // O subagente entra na soma do uso, só não é o contexto.
+    expect(summary?.inputTokens).toBe(70_100);
+    expect(tracker.latestContext()).toEqual({ model: 'claude-sonnet-5-5', usedTokens: 100 });
+  });
+
+  it('a mesma resposta em várias linhas conta uma vez, com o maior valor de cada campo', async () => {
+    writeFileSync(
+      sessionFile(),
+      [
+        timedLine('msg_1', T1, { input: 2, cacheRead: 100, write5m: 5, output: 1 }),
+        timedLine('msg_1', T1, { input: 4, cacheRead: 90, write5m: 5, write1h: 8, output: 30 }),
+        timedLine('msg_1', T1, { input: 3, cacheRead: 100, write5m: 2, output: 30 }),
+        '',
+      ].join('\n'),
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+
+    await tracker.poll();
+    expect(tracker.latestContext()?.usedTokens).toBe(4 + 100 + 5 + 8);
+  });
+
+  it('resposta sem usage válido não cria contexto', async () => {
+    const semUsage = JSON.stringify({
+      type: 'assistant',
+      timestamp: T1,
+      message: { id: 'msg_1', model: 'claude-sonnet-5-5', content: [] },
+    });
+    const usageInvalido = JSON.stringify({
+      type: 'assistant',
+      timestamp: T2,
+      message: {
+        id: 'msg_2',
+        model: 'claude-sonnet-5-5',
+        usage: { input_tokens: -1, output_tokens: 2 },
+      },
+    });
+    writeFileSync(sessionFile(), `${semUsage}\n${usageInvalido}\n`);
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+
+    await tracker.poll();
+    expect(tracker.latestContext()).toBeUndefined();
+  });
+
+  it('resposta sintética, com tudo zero, não cria contexto nem apaga o anterior', async () => {
+    writeFileSync(sessionFile(), `${timedLine('msg_sintetica', T1, {}, '<synthetic>')}\n`);
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+    await tracker.poll();
+    expect(tracker.latestContext()).toBeUndefined();
+
+    appendFileSync(sessionFile(), `${timedLine('msg_real', T2, { input: 40 })}\n`);
+    appendFileSync(sessionFile(), `${timedLine('msg_sintetica_2', T3, {}, '<synthetic>')}\n`);
+    await tracker.poll();
+    expect(tracker.latestContext()).toEqual({ model: 'claude-sonnet-5-5', usedTokens: 40 });
+  });
+
+  it('sem timestamp, vale a ordem de leitura', async () => {
+    writeFileSync(
+      sessionFile(),
+      `${timedLine('msg_1', undefined, { input: 10 })}\n${timedLine('msg_2', undefined, { input: 20 })}\n`,
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+    await tracker.poll();
+    expect(tracker.latestContext()?.usedTokens).toBe(20);
+
+    // Uma resposta com timestamp, lida depois de uma sem, também vence pela ordem de leitura.
+    writeFileSync(sessionFile(OTHER_SESSION), `${timedLine('msg_3', T1, { input: 30 })}\n`);
+    tracker.addSession(sessionFile(OTHER_SESSION), OTHER_SESSION);
+    await tracker.poll();
+    expect(tracker.latestContext()?.usedTokens).toBe(30);
+    appendFileSync(sessionFile(OTHER_SESSION), `${timedLine('msg_4', undefined, { input: 40 })}\n`);
+    await tracker.poll();
+    expect(tracker.latestContext()?.usedTokens).toBe(40);
   });
 });
 

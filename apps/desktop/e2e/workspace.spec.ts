@@ -2,13 +2,14 @@ import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { addGitProject, openProject, sidebarOf } from './missions';
+import { addGitProject, openProject, projectLink, sidebarOf, statusBarOf } from './missions';
 import { decodePng, pixelAt } from './png';
 import {
   expectOpenSessions,
   E2E_HOOK_KEY,
   expectTerminalToContain,
   expectWebglCanvas,
+  fecharPainel,
   terminalForeground,
   skipWithoutWebgl2,
   terminalRowBox,
@@ -59,11 +60,11 @@ async function runHello(page: Page): Promise<void> {
   await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
 }
 
-/** Fecha o painel de índice `index` pelo botão "Fechar painel", sem confirmação; o painel some da tela. */
+/** Fecha o painel de índice `index` pelo menu ⋯ (shell comum: sem confirmação); o painel some da tela. */
 async function closePane(page: Page, index: number): Promise<void> {
   const panes = shellPanes(page);
   const before = await panes.count();
-  await panes.nth(index).getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await fecharPainel(page, 'PowerShell', { indice: index });
   await expect(panes).toHaveCount(before - 1, { timeout: 15_000 });
   await expectOpenSessions(page, before - 1);
 }
@@ -353,9 +354,9 @@ test('os painéis e a divisória da raiz voltam iguais depois de fechar e reabri
   expect(Math.abs(after.first / after.total - movedShare)).toBeLessThan(0.01);
 
   // Fechar um painel sem sessão não pede confirmação; o último deixa o estado vazio.
-  await second.page.getByRole('button', { name: 'Fechar painel', exact: true }).first().click();
+  await fecharPainel(second.page, 'PowerShell');
   await expect(shellPanes(second.page)).toHaveCount(1);
-  await second.page.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await fecharPainel(second.page, 'PowerShell');
   await expect(second.page.getByText('Nenhum terminal aberto')).toBeVisible();
 });
 
@@ -379,6 +380,45 @@ test('a barra lateral lista a sessão do workspace e leva de volta ao terminal d
   await expect(page.locator('.terminal-view')).toHaveCount(0);
   await session.click();
   await expectTerminalToContain(page.locator('.terminal-view'), 'ola-4');
+  await endShell(page);
+});
+
+test('a barra de status diz qual terminal tem o teclado e a parte Foco some ao focar a barra lateral', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await addProjectAndOpenWorkspace(page, projectName);
+  await openShell(page);
+
+  const status = statusBarOf(page);
+  const focus = status.getByText(/^Foco: .+ · Ctrl\+Shift\+Tab sai do terminal$/);
+  // Clicar no terminal leva o teclado a ele: a barra diz qual é e como sair.
+  await shellPanes(page).first().locator('.terminal-view').click();
+  await expect(focus).toBeVisible();
+  // O painel com o teclado ganha a tinta de lima no cabeçalho (o fundo deixa de ser o do cartão).
+  const head = shellPanes(page).first().locator('.pane__head--live');
+  const background = () => head.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const tinted = await background();
+
+  // Ctrl+Shift+Tab sai do terminal para o cartão: o painel segue com o teclado (Foco e tinta ficam), mas a dica de
+  // sair some, já que a pessoa acabou de sair.
+  const title = (await shellPanes(page).first().locator('.pane__title').textContent()) ?? '';
+  await page.keyboard.press('Control+Shift+Tab');
+  await expect(status.getByText(`Foco: ${title}`, { exact: true })).toBeVisible();
+  await expect(focus).toHaveCount(0);
+  expect(await background()).toBe(tinted);
+
+  // Focar a barra lateral tira o teclado do terminal: a parte Foco some, e a tinta também.
+  await projectLink(page, projectName).focus();
+  await expect(focus).toHaveCount(0);
+  await expect(status.getByText(/Foco:/)).toHaveCount(0);
+  expect(await background()).not.toBe(tinted);
+
+  // Voltar ao terminal traz o Foco de volta.
+  await shellPanes(page).first().locator('.terminal-view').click();
+  await expect(focus).toBeVisible();
   await endShell(page);
 });
 

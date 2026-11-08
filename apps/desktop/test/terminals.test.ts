@@ -765,6 +765,38 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     expect(byId.get('shell-2')).not.toHaveProperty('usage');
   });
 
+  it('a lista traz modelo e contexto só no painel avulso do Claude com resposta, nunca na missão nem em outro programa', async () => {
+    const usage = { inputTokens: 40, outputTokens: 900, estimatedCostUsd: 0.02 };
+    const h = setup({ executions: [{ ...agentExecution, usage }], missions: [mission] });
+    await h.service.openSession('p1', 'claude');
+    await h.service.openSession('p1', 'shell');
+    h.hooks.sessionStart('shell-1', writeAnswer(120));
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    const byId = new Map(result.data.map((entry) => [entry.id, entry]));
+    expect(byId.get('shell-1')).toMatchObject({
+      model: 'claude-sonnet-5-5',
+      context: { usedTokens: 2, windowTokens: 1_000_000 },
+    });
+    expect(byId.get('shell-2')).not.toHaveProperty('model');
+    expect(byId.get('shell-2')).not.toHaveProperty('context');
+    expect(byId.get('sessao-agente')).not.toHaveProperty('model');
+    expect(byId.get('sessao-agente')).not.toHaveProperty('context');
+  });
+
+  it('painel do Claude sem resposta ainda não tem modelo nem contexto', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).not.toHaveProperty('model');
+    expect(result.data[0]).not.toHaveProperty('context');
+  });
+
   it('painel do Claude sem resposta ainda não tem o campo (não é zero)', async () => {
     const h = setup();
     await h.service.openSession('p1', 'claude');

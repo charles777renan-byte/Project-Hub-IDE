@@ -1,8 +1,8 @@
 import { basename } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { addGitProject, openProject } from './missions';
-import { expectOpenSessions, expectTerminalToContain } from './terminals';
+import { addGitProject, openProject, statusBarOf } from './missions';
+import { expectOpenSessions, expectTerminalToContain, fecharPainel } from './terminals';
 
 // O modo "um painel por vez" do workspace pela janela do Electron construído: o botão "Abas", a faixa de abas, o
 // atalho Ctrl+Alt com as setas com o foco dentro do terminal (o xterm toma teclas, então só o navegador real
@@ -33,10 +33,7 @@ async function openShell(page: Page): Promise<void> {
 async function endShells(page: Page): Promise<void> {
   const total = await shellPanes(page).count();
   for (let left = total; left > 0; left -= 1) {
-    await shellPanes(page)
-      .nth(0)
-      .getByRole('button', { name: 'Fechar painel', exact: true })
-      .click();
+    await fecharPainel(page, 'PowerShell');
     await expect(shellPanes(page)).toHaveCount(left - 1, { timeout: 15_000 });
     await expectOpenSessions(page, left - 1);
   }
@@ -74,6 +71,11 @@ test('Abas mostra um painel por vez, Ctrl+Alt com as setas troca de aba com o fo
   await page.keyboard.type('Write-Output "aba-$(1+1)"');
   await page.keyboard.press('Enter');
   await expectTerminalToContain(shellPanes(page).locator('.terminal-view'), 'aba-2');
+  // A barra de status diz que o teclado está no painel mostrado (o único montado), e não em um que saiu da tela.
+  const title = (await shellPanes(page).locator('.pane__title').textContent()) ?? '';
+  await expect(
+    statusBarOf(page).getByText(`Foco: ${title} · Ctrl+Shift+Tab sai do terminal`, { exact: true }),
+  ).toBeVisible();
 
   // O botão do painel devolve à grade, e o layout guardado não mudou: a grade tem os três.
   await shellPanes(page).getByRole('button', { name: 'Voltar à grade' }).click();

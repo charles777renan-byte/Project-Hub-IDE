@@ -275,19 +275,6 @@ button:disabled {
   --tone: var(--danger);
 }
 
-/* Luz de estado do painel de terminal (workspace.css): ativa em lima, aguardando em âmbar, o resto apagado. */
-.pane__light {
-  color: var(--muted);
-}
-
-.pane__light--active {
-  color: var(--accent);
-}
-
-.pane__light--waiting {
-  color: var(--warn);
-}
-
 /*
  * Gasto de tokens do painel de terminal (workspace/PaneUsage.tsx): a pílula muda de cor com o uso, numa rampa neon
  * do frio ao quente (`data-level`, de 0 a 5; os limites estão em terminal-usage.ts). O texto é a cor do nível, o
@@ -838,6 +825,14 @@ button:disabled {
 .overview-counter {
   text-decoration: none;
   white-space: nowrap;
+}
+
+/*
+ * Contador zerado: cinza neutro (--muted sobre --surface, o par já medido no contrast.test.ts), sem brilho.
+ * O texto "0 …" continua; só a cor do estado sai.
+ */
+.overview-counter[data-zero='true'] {
+  --tone: var(--muted);
 }
 
 /*
