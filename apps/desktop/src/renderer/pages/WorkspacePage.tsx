@@ -403,7 +403,8 @@ function WorkspaceBody({
     return providers.find((item) => item.id === providerId)?.label ?? providerId;
   };
   const numbered = numerarRepetidos(shownLeaves.map(labelOf));
-  const hiddenIds = new Set(picked?.hidden ?? []);
+  // "Fora da grade" só existe com a grade à vista: no modo Abas (manual ou automático) todos os painéis são abas.
+  const hiddenIds = new Set(soloLeaf === undefined ? (picked?.hidden ?? []) : []);
   const offGrid: OffGridItem[] = shownLeaves.flatMap((leaf, index) => {
     if (!hiddenIds.has(leaf.id)) return [];
     const session = sessionOf(leaf);
