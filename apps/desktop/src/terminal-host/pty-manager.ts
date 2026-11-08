@@ -98,8 +98,9 @@ export class PtyManager {
       for (const listener of entry.dataListeners) listener(data);
     });
     pty.onExit(({ exitCode, signal }) => {
-      entry.exit = signal === undefined ? { exitCode } : { exitCode, signal };
-      for (const listener of entry.exitListeners) listener(entry.exit);
+      // Encerrado pelo `taskkill`, o terminal já saiu (`markKilled`): o aviso atrasado do node-pty não repete a saída.
+      if (entry.exit !== undefined) return;
+      settle(entry, signal === undefined ? { exitCode } : { exitCode, signal });
     });
   }
 
@@ -174,14 +175,20 @@ export class PtyManager {
   }
 
   /**
-   * Encerra o terminal e os processos que ele criou. No Windows, `taskkill /T /F` derruba a árvore inteira.
-   * Se o terminal não termina dentro do prazo, o último recurso é encerrar o próprio PTY.
+   * Encerra o terminal e os processos que ele criou. No Windows, `taskkill /T /F` derruba a árvore inteira, e a
+   * confirmação dele basta: o node-pty só avisa a saída 1 s depois de o processo morrer (espera a saída restante
+   * escoar), e esperar esse aviso segurava a fila do processo principal. Se o `taskkill` falha ou o terminal não
+   * termina dentro do prazo, o último recurso é encerrar o próprio PTY.
    */
   async kill(id: string): Promise<void> {
     const entry = this.entries.get(id);
     if (entry === undefined || entry.exit !== undefined) return;
     if (process.platform === 'win32') {
-      await killProcessTree(entry.pty.pid);
+      if (await killProcessTree(entry.pty.pid)) {
+        // O processo pode ter saído sozinho enquanto o `taskkill` rodava: vale a saída que ele avisou.
+        if (entry.exit === undefined) settle(entry, { exitCode: TASKKILL_EXIT_CODE });
+        return;
+      }
       if (await this.waitForExit(entry, KILL_TIMEOUT_MS)) return;
     }
     try {
@@ -232,17 +239,26 @@ export class PtyManager {
   }
 }
 
+/** Registra a saída do terminal e avisa quem assinou. */
+function settle(entry: Entry, exit: TerminalExit): void {
+  entry.exit = exit;
+  for (const listener of entry.exitListeners) listener(exit);
+}
+
+/** O código com que o `taskkill /F` deixa o processo encerrado (o `TerminateProcess` do Windows). */
+const TASKKILL_EXIT_CODE = 1;
+
 /**
  * Encerra o processo e tudo que ele criou. Os argumentos vão em array, sem shell. O PID é o do próprio
- * terminal aberto por este processo.
+ * terminal aberto por este processo. Devolve true se o `taskkill` confirmou a árvore encerrada.
  */
-function killProcessTree(pid: number): Promise<void> {
+function killProcessTree(pid: number): Promise<boolean> {
   return new Promise((resolve) => {
     execFile(
       'taskkill',
       ['/PID', String(pid), '/T', '/F'],
       { timeout: KILL_TIMEOUT_MS, windowsHide: true },
-      () => resolve(),
+      (error) => resolve(error === null),
     );
   });
 }
