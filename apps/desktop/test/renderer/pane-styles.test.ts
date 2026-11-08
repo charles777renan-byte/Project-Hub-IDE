@@ -286,4 +286,23 @@ describe('árvore de painéis e painel', () => {
         expect(value).not.toMatch(/--accent|#[0-9a-f]{3,6}/i);
     }
   });
+
+  it('a lista de abas do modo Abas esmaece a borda como as abas dos arquivos, e o aviso de janela estreita é --muted', () => {
+    const fileFade = ruleDeclarations(css, '.file-tabs[data-fade-end]').get('mask-image');
+    expect(fileFade).toBeDefined();
+    expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-end]').get('mask-image')).toBe(fileFade);
+    expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-start]').get('mask-image')).toBe(
+      ruleDeclarations(css, '.file-tabs[data-fade-start]').get('mask-image'),
+    );
+    expect(
+      ruleDeclarations(css, '.pane-tabs__list[data-fade-start][data-fade-end]').get('mask-image'),
+    ).toBe(ruleDeclarations(css, '.file-tabs[data-fade-start][data-fade-end]').get('mask-image'));
+    const note = ruleDeclarations(css, '.pane-tabs__auto');
+    expect(note.get('color')).toBe('var(--muted)');
+    expect(note.get('flex')).toBe('none');
+  });
+
+  it('o "⌄" com uma aba aguardando você fica em --warn', () => {
+    expect(ruleDeclarations(css, '.tabs-overflow--attention').get('color')).toBe('var(--warn)');
+  });
 });
