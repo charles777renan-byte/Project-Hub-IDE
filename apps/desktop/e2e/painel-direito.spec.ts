@@ -110,10 +110,11 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
     'true',
   );
 
-  // Expandir src e abrir a.ts só com o teclado cria a aba "a.ts" ao lado de "Terminais".
+  // Expandir src e abrir a.ts só com o teclado cria a aba "a.ts" na faixa, ao lado de "Árvore", e o editor toma o lugar da árvore.
   await expect(filesTree(page).getByRole('treeitem', { name: 'LEIA.md' })).toBeVisible();
   await openFileFromPanel(page, 'src/a.ts');
-  await expect(openTabs(page).getByRole('tab')).toHaveText(['Terminais', 'a.ts']);
+  await expect(openTabs(page).getByRole('tab')).toHaveText(['Árvore', 'a.ts']);
+  await expect(filesTree(page)).toBeHidden();
   await expect(editorOf(page, 'a.ts')).toContainText('export const a = 1;');
 
   // Digitar mostra o ponto de não salvo; Ctrl+S grava, e o arquivo no disco tem o texto novo.
@@ -140,7 +141,7 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
   ).toBeVisible();
   writeFileSync(files.a, 'export const externo = true;\n');
   // Voltar à aba confere o disco (a janela do teste não ganha foco do sistema).
-  await openTabs(page).getByRole('tab', { name: 'Terminais' }).click();
+  await openTabs(page).getByRole('tab', { name: 'Árvore' }).click();
   await openTabs(page).getByRole('tab', { name: 'a.ts alterações não salvas' }).click();
   await expect(page.getByText('O arquivo mudou no disco enquanto você editava')).toBeVisible();
   await expect(saveButton(page)).toBeDisabled();
@@ -204,6 +205,8 @@ test('painel direito: buscas por nome e por conteúdo, recolher e reabrir, e foc
     'aria-selected',
     'true',
   );
+  // Com o editor no lugar da árvore, a busca fica escondida: a aba Árvore a traz de volta.
+  await openTabs(page).getByRole('tab', { name: 'Árvore' }).click();
   await field.fill('');
   await modes.getByRole('tab', { name: 'Nomes' }).click();
   await expect(filesTree(page)).toBeVisible();
@@ -212,6 +215,7 @@ test('painel direito: buscas por nome e por conteúdo, recolher e reabrir, e foc
   await page.keyboard.press('Shift');
   await filesTree(page).getByRole('treeitem', { name: 'notas.txt' }).focus();
   expectRing(await focusRing(filesTree(page).getByRole('treeitem', { name: 'notas.txt' })));
+  await openTabs(page).getByRole('tab', { name: /^LEIA\.md/ }).click();
   await typeAtEnd(page, 'LEIA.md', 'mais uma');
   await expect(saveButton(page)).toBeEnabled();
   await page.keyboard.press('Shift');
@@ -221,7 +225,7 @@ test('painel direito: buscas por nome e por conteúdo, recolher e reabrir, e foc
   await saveButton(page).press('Enter');
   await expect.poll(() => readDisk(files.leia)).toBe(`${LEIA_MD}mais uma`);
 
-  // Recolher o painel com Ctrl+Alt+B e reabrir mantém a aba escolhida, a árvore e o arquivo aberto.
+  // Recolher o painel com Ctrl+Alt+B e reabrir mantém a aba escolhida e o arquivo aberto.
   await page.keyboard.press('Control+Alt+B');
   await expect(panel).toBeHidden();
   await page.keyboard.press('Control+Alt+B');
@@ -230,8 +234,11 @@ test('painel direito: buscas por nome e por conteúdo, recolher e reabrir, e foc
     'aria-selected',
     'true',
   );
-  await expect(filesTree(page).getByRole('treeitem', { name: 'notas.txt' })).toBeVisible();
-  await expect(openTabs(page).getByRole('tab', { name: /^LEIA\.md/ })).toBeVisible();
+  await expect(openTabs(page).getByRole('tab', { name: /^LEIA\.md/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(editorOf(page, 'LEIA.md')).toContainText('mais uma');
 
   await expectNoViolations(page, consoleCsp);
 });
@@ -275,10 +282,6 @@ test('o terminal montado antes segue montado ao abrir e fechar arquivos', async 
     await expectTerminalToContain(view, 'PS ');
     await expectNoViolations(page, consoleCsp, { allowXterm: true });
   } finally {
-    // Com um arquivo aberto o terminal fica escondido: volta a ele para fechar o painel (e não esconder o erro do teste).
-    if ((await openTabs(page).count()) > 0) {
-      await openTabs(page).getByRole('tab', { name: 'Terminais' }).click();
-    }
     await panes.first().getByRole('button', { name: 'Fechar painel', exact: true }).click();
     await expectOpenSessions(page, 0);
     await expect(page.getByText('Nenhum terminal aberto')).toBeVisible({ timeout: 15_000 });

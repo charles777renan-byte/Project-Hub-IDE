@@ -1714,19 +1714,6 @@
   display: none;
 }
 
-/* O espaço livre da barra: a faixa dos arquivos abertos (components/project/FileTabs.tsx) ocupa o que sobra e rola. */
-.workspace__toolbar-trailing {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--line);
-}
-
-.workspace__toolbar-trailing:empty {
-  display: none;
-}
-
 /*
  * Modo "um painel por vez" (workspace/PaneTabs.tsx e WorkspacePage.tsx): a faixa de abas em cima e, embaixo, o
  * painel mostrado ocupando o resto. A faixa tem a superfície da barra do workspace. A aba selecionada leva um traço

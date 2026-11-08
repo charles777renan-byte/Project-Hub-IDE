@@ -124,7 +124,7 @@
   overflow: hidden;
 }
 
-/* O workspace de painéis enche o que a faixa de arquivos deixa. Escondido (um arquivo ativo), segue montado. */
+/* O workspace de painéis enche a visão Terminais. Escondido nas outras visões, segue montado. */
 .project-tab__terminals {
   flex: 1;
   min-height: 0;
@@ -132,20 +132,6 @@
 
 .project-tab__terminals[hidden] {
   display: none;
-}
-
-/* Com um arquivo no lugar da grade, só a barra do workspace (com a faixa dos arquivos) fica; o editor toma o resto. */
-.project-tab__terminals--file {
-  flex: none;
-}
-
-/* O arquivo ativo ocupa o mesmo lugar do workspace; o editor (right-panel.css) enche o painel e rola por dentro. */
-.project-tab__file {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .project-tab__panel--missoes,

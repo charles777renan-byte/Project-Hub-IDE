@@ -9,14 +9,11 @@ import { SquareTerminal } from '../components/Icon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { PathText } from '../components/PathText';
 import { PROJECT_UNAVAILABLE_NOTICE_ID, ProjectHeader } from '../components/project/ProjectHeader';
-import { FileEditorTab } from '../components/project/FileEditorTab';
-import { FileTabs, fileTabId } from '../components/project/FileTabs';
 import { ProjectMissions } from '../components/project/ProjectMissions';
 import { ProjectSettings } from '../components/project/ProjectSettings';
 import { WorktreesTab } from '../components/WorktreesTab';
 import { PROJECT_TEXT } from '../mission-text';
 import { notify } from '../notify';
-import { setActive, TERMINALS_TAB, useOpenFiles } from '../open-files';
 import { MissionPage } from './MissionPage';
 import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
@@ -55,10 +52,8 @@ function requestedTerminal(state: unknown): string | null {
  * formulário Nova missão; Progresso mostra o resumo, as missões agrupadas com a linha do tempo das tarefas e a
  * atividade recente; Worktrees e Configurações mostram a lista e os formulários do projeto. Os terminais
  * ficam sempre montados (só escondidos nas outras visões): trocar de visão não recarrega o workspace nem refaz
- * os terminais. As outras visões só são montadas enquanto ativas. Arquivos abertos (pelo painel direito) ganham
- * uma faixa de abas acima do workspace, na visão Terminais; enquanto um arquivo está ativo ele ocupa o lugar do
- * workspace, que segue montado e só fica escondido, como nas outras visões. Projeto arquivado ou removido com a aba
- * aberta mostra a mensagem e o link para o Início.
+ * os terminais. As outras visões só são montadas enquanto ativas. Projeto arquivado ou removido com a aba aberta
+ * mostra a mensagem e o link para o Início.
  *
  * Uma missão aberta (`/workspaces/:projectId/missoes/:missionId`) ocupa o painel das Missões, no lugar da
  * lista, e o cabeçalho segue na tela com Missões como visão ativa. É a mesma rota (a do `/*`), então a
@@ -72,9 +67,6 @@ export function WorkspacePage() {
   const view = missionId === undefined ? projectViewFromParams(params) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
-  // Com um arquivo aberto e ativo, ele ocupa o lugar do workspace de painéis (que segue montado, escondido).
-  const openFiles = useOpenFiles(projectId);
-  const activeFile = openFiles.files.find((file) => file.path === openFiles.active);
   // Pasta que sumiu: o aviso sai acima de todas as visões e os terminais não abrem. Sem o campo, vale disponível.
   const unavailable = project?.available === false;
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -104,21 +96,15 @@ export function WorkspacePage() {
         </p>
       ) : null}
       <ProjectPanel view="terminais" active={view} labelled={project !== undefined}>
-        <div
-          className={`project-tab__terminals${activeFile === undefined ? '' : ' project-tab__terminals--file'}`}
-        >
+        <div className="project-tab__terminals">
           <WorkspaceBody
             key={projectId}
             projectId={projectId}
             projectName={project?.name ?? ''}
-            visible={view === 'terminais' && activeFile === undefined}
-            filesActive={activeFile !== undefined}
+            visible={view === 'terminais'}
             {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
           />
         </div>
-        {activeFile === undefined ? null : (
-          <OpenFilePanel projectId={projectId} path={activeFile.path} />
-        )}
       </ProjectPanel>
       <ProjectPanel
         view="missoes"
@@ -143,18 +129,6 @@ export function WorkspacePage() {
           <ProjectSettings project={project} />
         ) : null}
       </ProjectPanel>
-    </div>
-  );
-}
-
-/**
- * O painel do arquivo ativo, no lugar do workspace: o `tabpanel` da aba dele na faixa, com o editor dentro. A chave
- * é o caminho, então cada arquivo ganha um editor e um estado de gravação só seus.
- */
-function OpenFilePanel({ projectId, path }: { projectId: string; path: string }) {
-  return (
-    <div role="tabpanel" aria-labelledby={fileTabId(path)} className="project-tab__file">
-      <FileEditorTab key={path} projectId={projectId} path={path} />
     </div>
   );
 }
@@ -197,15 +171,12 @@ function WorkspaceBody({
   projectId,
   projectName,
   visible,
-  filesActive,
   unavailableReason,
 }: {
   projectId: string;
   projectName: string;
   /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
   visible: boolean;
-  /** Há um arquivo ativo no lugar da grade: a barra (com a faixa dos arquivos) fica, e a grade fica escondida. */
-  filesActive: boolean;
   /** A pasta do projeto sumiu: a barra não abre terminal e a dica mostra este motivo. */
   unavailableReason?: string;
 }) {
@@ -325,15 +296,7 @@ function WorkspaceBody({
     setSoloOn(true);
     workspace.activateWithFocus(leafId);
   };
-  /** Com um arquivo no lugar da grade, abrir terminal ou ligar as abas volta primeiro aos terminais. */
-  const backToTerminals = () => {
-    if (filesActive) setActive(projectId, TERMINALS_TAB);
-  };
-  const toggleSolo = () => {
-    // Vindo de um arquivo, o clique só volta à grade (ou ao painel mostrado): não desliga o modo que já estava ligado.
-    if (filesActive) backToTerminals();
-    else setSoloOn(soloLeaf === undefined);
-  };
+  const toggleSolo = () => setSoloOn(soloLeaf === undefined);
 
   const run = async (leafId: string, action: (id: string) => Promise<string | null>) => {
     setBusy((previous) => new Set(previous).add(leafId));
@@ -356,7 +319,6 @@ function WorkspaceBody({
 
   const openPane = async (provider: ProviderId) => {
     if (openingRef.current) return;
-    backToTerminals();
     openingRef.current = true;
     setOpening(true);
     try {
@@ -503,9 +465,8 @@ function WorkspaceBody({
         canSolo={shownLeaves.length > 0}
         onToggleSolo={toggleSolo}
         onOpen={(provider) => void openPane(provider)}
-        trailing={<FileTabs projectId={projectId} />}
       />
-      <div className="workspace__area" hidden={filesActive}>
+      <div className="workspace__area">
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">
             <PaneTabs

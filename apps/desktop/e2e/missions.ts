@@ -110,10 +110,16 @@ export function filesTree(page: Page): Locator {
 /**
  * Abre um arquivo pela árvore do painel direito, só com o teclado: cada pasta do caminho (relativo, em POSIX)
  * recebe o foco e é expandida com Enter, se estiver recolhida, e o arquivo é aberto com Enter. Espera a aba do
- * arquivo aparecer ao lado de "Terminais".
+ * arquivo aparecer na faixa do painel. Com um arquivo aberto, o editor ocupa o lugar da árvore: ela volta pela aba
+ * "Árvore" antes de caminhar nela.
  */
 export async function openFileFromPanel(page: Page, caminho: string): Promise<void> {
   const partes = caminho.split('/');
+  const faixa = page.getByRole('tablist', { name: 'Arquivos abertos' });
+  const arvore = faixa.getByRole('tab', { name: 'Árvore' });
+  if ((await arvore.count()) > 0 && (await arvore.getAttribute('aria-selected')) !== 'true') {
+    await arvore.click();
+  }
   const tree = filesTree(page);
   for (const [indice, nome] of partes.entries()) {
     // Pelo nome visível e pelo nível: o nome acessível de uma pasta aberta inclui o que ela contém (aria-owns).
