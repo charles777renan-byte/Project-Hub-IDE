@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ConfirmButton, ConfirmInline } from '../../src/renderer/components/ConfirmButton';
@@ -269,6 +269,33 @@ describe('ConfirmInline', () => {
     await user.click(screen.getByRole('button', { name: 'Excluir' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('o extra aparece dentro do grupo, entre a pergunta e os botões', () => {
+    render(
+      <ConfirmInline
+        question={QUESTION}
+        confirmLabel="Excluir"
+        extra={
+          <label>
+            Lembrar <input type="checkbox" />
+          </label>
+        }
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    const grupo = screen.getByRole('group', { name: QUESTION });
+    const caixa = within(grupo).getByRole('checkbox', { name: 'Lembrar' });
+    const confirmar = screen.getByRole('button', { name: 'Excluir' });
+    expect(
+      (grupo.firstElementChild as Element).compareDocumentPosition(caixa) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      caixa.compareDocumentPosition(confirmar) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('desabilitado, nenhum dos dois botões age', async () => {

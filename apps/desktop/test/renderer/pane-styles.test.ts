@@ -239,6 +239,38 @@ describe('árvore de painéis e painel', () => {
     expect(strip.get('border-bottom')).toBe('1px solid var(--line)');
   });
 
+  it('a pergunta do fechamento quebra linha num painel estreito, sem cortar com reticências', () => {
+    const strip = rule('.pane__confirm');
+    expect(strip.get('white-space')).toBe('normal');
+    expect(strip.get('overflow-wrap')).toBe('anywhere');
+    expect(strip.has('text-overflow')).toBe(false);
+    // O grupo e a pergunta dentro dela também quebram: nada de nowrap nem reticências herdados.
+    for (const selector of [
+      '.pane__confirm .confirm-inline',
+      '.pane__confirm .confirm-inline > span',
+    ]) {
+      const declarations = rule(selector);
+      expect(declarations.get('text-overflow'), `${selector} text-overflow`).not.toBe('ellipsis');
+      expect(declarations.get('white-space'), `${selector} white-space`).not.toBe('nowrap');
+    }
+    // O grupo ocupa a faixa toda (e não só a largura do conteúdo) e a pergunta pode encolher.
+    expect(rule('.pane__confirm .confirm-inline').get('display')).toBe('flex');
+    expect(rule('.pane__confirm .confirm-inline > span:first-child').get('flex')).toBe('1 1 12rem');
+    expect(rule('.pane__confirm .confirm-inline > span:first-child').get('min-width')).toBe('0');
+  });
+
+  it('a faixa de confirmação do workspace tem o visual da pergunta do painel, só com tokens neutros', () => {
+    const strip = rule('.workspace__confirm');
+    expect(strip.get('background')).toBe('var(--surface)');
+    expect(strip.get('box-shadow')).toBe('inset 0 0 0 1px var(--line)');
+    expect(strip.get('border-radius')).toBe('var(--radius-card)');
+    expect(strip.get('padding')).toBe('var(--space-2)');
+    expect(strip.get('color')).toBe('var(--text)');
+    expect(strip.get('white-space')).toBe('normal');
+    expect(strip.get('overflow-wrap')).toBe('anywhere');
+    expect(strip.has('text-overflow')).toBe(false);
+  });
+
   it('o aviso da sessão encerrada é flex e as ações não encolhem (Limpar painel não é cortado)', () => {
     expect(rule('.pane__notice').get('display')).toBe('flex');
     expect(rule('.pane__notice > span:first-child').get('min-width')).toBe('0');
@@ -290,7 +322,9 @@ describe('árvore de painéis e painel', () => {
   it('a lista de abas do modo Abas esmaece a borda como as abas dos arquivos, e o aviso de janela estreita é --muted', () => {
     const fileFade = ruleDeclarations(css, '.file-tabs[data-fade-end]').get('mask-image');
     expect(fileFade).toBeDefined();
-    expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-end]').get('mask-image')).toBe(fileFade);
+    expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-end]').get('mask-image')).toBe(
+      fileFade,
+    );
     expect(ruleDeclarations(css, '.pane-tabs__list[data-fade-start]').get('mask-image')).toBe(
       ruleDeclarations(css, '.file-tabs[data-fade-start]').get('mask-image'),
     );

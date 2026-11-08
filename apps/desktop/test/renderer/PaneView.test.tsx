@@ -8,6 +8,7 @@ import {
   setTerminalFocus,
   useTerminalFocus,
 } from '../../src/renderer/terminal-focus';
+import { askBeforeClosing, setAskBeforeClosing } from '../../src/renderer/close-confirm';
 import {
   needsCloseConfirmation,
   PaneView,
@@ -566,6 +567,14 @@ describe('needsCloseConfirmation', () => {
 });
 
 describe('menu ⋯ do painel e confirmação ao fechar', () => {
+  // A preferência de perguntar é do app inteiro e vive no localStorage: cada teste parte do padrão (perguntar).
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
   const avulsoClaude: TerminalSummary = {
     ...session,
     kind: 'shell',
@@ -629,6 +638,115 @@ describe('menu ⋯ do painel e confirmação ao fechar', () => {
     expect(screen.getByRole('group')).toBeInTheDocument();
     rerender(<PaneView {...props} terminal={{ ...avulsoClaude, state: 'exited' }} />);
     expect(screen.queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('a pergunta traz a caixa "Não perguntar de novo", desmarcada, entre a pergunta e os botões', async () => {
+    setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    const box = screen.getByRole('checkbox', { name: 'Não perguntar de novo' });
+    expect(box).not.toBeChecked();
+    const group = screen.getByRole('group', {
+      name: 'Encerrar o Claude Code e fechar o painel? O processo para.',
+    });
+    expect(group).toContainElement(box);
+    // Ordem no DOM: pergunta, caixa, "Fechar e encerrar", "Voltar".
+    const order = [
+      group.firstElementChild as Element,
+      box.closest('label') as Element,
+      screen.getByRole('button', { name: 'Fechar e encerrar' }),
+      screen.getByRole('button', { name: 'Voltar' }),
+    ];
+    for (let i = 1; i < order.length; i += 1) {
+      expect(
+        (order[i - 1] as Element).compareDocumentPosition(order[i] as Element) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it('o menu ⋯ já fechou quando a pergunta aparece', async () => {
+    setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    expect(screen.getByRole('group')).toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
+  });
+
+  it('marcar a caixa e confirmar fecha e desliga a pergunta para os próximos', async () => {
+    const { props } = setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Não perguntar de novo' }));
+    expect(askBeforeClosing()).toBe(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar e encerrar' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(askBeforeClosing()).toBe(false);
+  });
+
+  it('confirmar com a caixa desmarcada não guarda nada', async () => {
+    const { props } = setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar e encerrar' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(askBeforeClosing()).toBe(true);
+  });
+
+  it('marcar a caixa e voltar não fecha e não guarda a preferência', async () => {
+    const { props } = setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Não perguntar de novo' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(askBeforeClosing()).toBe(true);
+    // Perguntar de novo: a caixa volta desmarcada.
+    await abrirMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    expect(screen.getByRole('checkbox', { name: 'Não perguntar de novo' })).not.toBeChecked();
+  });
+
+  it('com a pergunta desligada, o item é "Fechar painel e encerrar" e fecha direto', async () => {
+    setAskBeforeClosing(false);
+    const { props } = setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Fechar painel e encerrar…' }),
+    ).not.toBeInTheDocument();
+    const item = screen.getByRole('menuitem', { name: 'Fechar painel e encerrar' });
+    expect(item).toHaveClass('menu-acoes__item--perigo');
+    await userEvent.click(item);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('desligar a preferência de fora com a pergunta aberta deixa a pessoa decidir', async () => {
+    const { props } = setup({ terminal: avulsoClaude });
+    await abrirMenu();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Fechar painel e encerrar…' }));
+    expect(screen.getByRole('group')).toBeInTheDocument();
+    act(() => setAskBeforeClosing(false));
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar e encerrar' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shell comum e terminal de missão não mudam com a pergunta desligada', async () => {
+    setAskBeforeClosing(false);
+    const first = setup({ terminal: { ...avulsoClaude, provider: 'shell' } });
+    await abrirMenu();
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Fechar painel',
+    ]);
+    first.unmount();
+    setup({ terminal: { ...session, missionId: 'm1' } });
+    await abrirMenu();
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Tirar do painel',
+      'Fechar painel (a missão continua)',
+    ]);
   });
 
   it('shell comum: o item é Fechar painel e fecha direto, sem pergunta', async () => {

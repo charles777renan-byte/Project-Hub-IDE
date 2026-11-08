@@ -250,6 +250,23 @@
   display: none;
 }
 
+/* Seção Terminais: uma caixa com o texto ao lado e, abaixo, a nota de alcance. */
+.settings-row__check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.settings-row__check input {
+  margin-top: 0.2em;
+}
+
+.settings-row__note {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 /*
  * Missões: a lista com progresso (.mission-progress*, de home.css) e o formulário Nova missão, compacto e sem
  * moldura: título, três campos com uma dica cada, duas opções e Cancelar e Criar no fim.

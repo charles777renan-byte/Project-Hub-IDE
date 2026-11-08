@@ -624,6 +624,9 @@ export const PROJECT_TEXT = {
     cancel: 'Cancelar',
     edit: 'Editar',
     none: 'Nenhum',
+    terminals: 'Terminais',
+    askBeforeClosing: 'Perguntar antes de fechar um terminal com agente rodando',
+    appWide: 'Vale para todos os projetos.',
   },
 } as const;
 
