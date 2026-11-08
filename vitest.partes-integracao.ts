@@ -27,6 +27,7 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   // Parte 2
   'apps/desktop/test/terminal-host/terminal-port.integration.test.ts': 2, // 149 s
   'packages/git-adapter/test/worktree.integration.test.ts': 2, // 42 s
+  'packages/git-adapter/test/worktree-list.integration.test.ts': 2, // 1 s (estimativa; medir no CI)
   'packages/git-adapter/test/detect.integration.test.ts': 2, // 6 s
   'packages/database/test/mission-repository.integration.test.ts': 2, // 2 s
   'apps/desktop/test/projects-flow.integration.test.ts': 2, // 2 s
@@ -41,6 +42,7 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'packages/git-adapter/test/git-read.integration.test.ts': 3, // 43 s
   'packages/git-adapter/test/git-panel-port.integration.test.ts': 3, // 17 s
   'apps/desktop/test/worktrees-flow.integration.test.ts': 3, // 9 s
+  'apps/desktop/test/main/session-history.integration.test.ts': 3, // 1 s (estimativa; medir no CI)
   'packages/git-adapter/test/diff.integration.test.ts': 3, // 8 s
   'packages/database/test/migrate.integration.test.ts': 3, // 6 s
   'packages/database/test/project-repository.integration.test.ts': 3, // 2 s

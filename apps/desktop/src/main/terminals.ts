@@ -54,11 +54,22 @@ export type TerminalServiceDeps = {
   settingsDir: string;
 };
 
+/** Como abrir uma sessão fora do padrão: a pasta e os argumentos extras do programa. */
+export type OpenSessionOptions = { cwd?: string; args?: readonly string[] };
+
 /** O que a interface pede ao app. Só entram ids: o caminho e o comando saem do banco e do registro de provedores. */
 export type TerminalService = {
   list(): Promise<AppResult<TerminalSummary[]>>;
-  /** Abre um terminal do provedor na pasta do projeto e grava a sessão. Provedor ausente: PROCESS_START_FAILED com o motivo. */
-  openSession(projectId: string, provider: ProviderId): Promise<AppResult<{ terminalId: string }>>;
+  /**
+   * Abre um terminal do provedor e grava a sessão. Sem `options`, o terminal abre na pasta do projeto. Com `cwd`, abre
+   * nessa pasta; `args` vão depois dos argumentos do programa (é como a retomada entra). Provedor ausente:
+   * PROCESS_START_FAILED com o motivo.
+   */
+  openSession(
+    projectId: string,
+    provider: ProviderId,
+    options?: OpenSessionOptions,
+  ): Promise<AppResult<{ terminalId: string }>>;
   /** Mata o processo (se ainda existir) e marca a sessão como fechada. Terminal de missão: VALIDATION_FAILED. */
   closeSession(terminalId: string): Promise<AppResult<undefined>>;
   /** Se o terminal é a sessão de uma missão em andamento (o agente), que só termina pela missão. */
@@ -267,6 +278,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   async function openSession(
     projectId: string,
     provider: ProviderId,
+    options: OpenSessionOptions = {},
   ): Promise<AppResult<{ terminalId: string }>> {
     const target = projects.get(projectId);
     if (target === undefined) {
@@ -277,7 +289,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
 
     const terminalId = deps.newId();
     const base = {
-      args: resolution.launch.args,
+      // Os argumentos extras (a retomada) entram depois dos do programa, como o `.cmd` exige.
+      args: [...resolution.launch.args, ...(options.args ?? [])],
       // COLORTERM fica fora da lista de permitidos (que protege segredos): o valor é fixo e nosso.
       env: buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }),
     };
@@ -287,7 +300,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     try {
       await port.open({
         id: terminalId,
-        cwd: target.path,
+        cwd: options.cwd ?? target.path,
         command: resolution.launch.command,
         args: launch.args,
         env: launch.env,
@@ -403,7 +416,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       });
     },
 
-    openSession: (projectId, provider) => guarded(() => openSession(projectId, provider)),
+    openSession: (projectId, provider, options) =>
+      guarded(() => openSession(projectId, provider, options)),
 
     closeSession: (terminalId) => guarded(() => closeSession(terminalId)),
 

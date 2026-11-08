@@ -152,6 +152,9 @@ function setup(
     repo: memory.repo,
     projects,
     terminals,
+    // A retomada tem testes próprios (resume-session.test.ts); aqui o histórico não tem sessão nenhuma.
+    history: { find: () => undefined },
+    checkResume: () => ({ resumable: true, resumeBlockedReason: null }),
     now: () => AT,
     newId: counter('id-'),
   });

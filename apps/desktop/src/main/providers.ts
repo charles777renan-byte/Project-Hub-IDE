@@ -45,6 +45,17 @@ const ORDER: readonly ProviderId[] = [
 /** No Windows, o `.exe` roda direto e os scripts `.cmd` e `.bat` só rodam pelo interpretador de comandos. */
 const WINDOWS_EXTENSIONS = ['.exe', '.cmd', '.bat'] as const;
 
+/**
+ * Argumentos que retomam uma sessão pelo id, depois do comando do programa. Claude: `--resume <id>`. Codex:
+ * `resume <id>`, a forma que `codex resume --help` mostra na versão instalada (o id é posicional). Antigravity e
+ * shell não têm retomada: `undefined`.
+ */
+export function resumeArgs(provider: ProviderId, sessionId: string): string[] | undefined {
+  if (provider === 'claude') return ['--resume', sessionId];
+  if (provider === 'codex') return ['resume', sessionId];
+  return undefined;
+}
+
 export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegistry {
   const { env, platform, exists } = deps;
   const windows = platform === 'win32';

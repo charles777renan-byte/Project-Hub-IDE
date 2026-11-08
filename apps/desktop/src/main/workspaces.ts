@@ -10,7 +10,10 @@ import {
 } from '@project-hub/contracts';
 import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
 import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database';
-import type { TerminalService } from './terminals';
+import { resumeArgs } from './providers';
+import type { ResumeCheckInput, ResumeVerdict } from './resume-verdict';
+import type { SessionHistory } from './session-history';
+import type { OpenSessionOptions, TerminalService } from './terminals';
 
 export type WorkspaceServiceDeps = {
   repo: WorkspaceRepository;
@@ -19,6 +22,10 @@ export type WorkspaceServiceDeps = {
     TerminalService,
     'openSession' | 'closeSession' | 'knownIds' | 'stateOf' | 'isMissionSession'
   >;
+  /** O histórico de sessões: a retomada acha a sessão pelo id que o renderer manda. */
+  history: Pick<SessionHistory, 'find'>;
+  /** A mesma regra que a lista usa para o botão. A retomada confere de novo antes de abrir o terminal. */
+  checkResume: (input: ResumeCheckInput) => ResumeVerdict;
   now: () => string;
   newId: () => string;
 };
@@ -37,6 +44,11 @@ export type WorkspaceService = {
   endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   /** Abre a sessão do provedor e cria o painel dela; os painéis se reorganizam. Sem sessão aberta, sem painel. */
   addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
+  /**
+   * Retoma uma sessão do histórico: abre o programa na pasta dela, já com a conversa retomada, e põe o painel no
+   * workspace. Sessão fora do índice, ou que não pode ser retomada agora, não abre nada.
+   */
+  resumeSession(workspaceId: string, sessionId: string): Promise<AppResult<WorkspaceDto>>;
   /** Encerra a sessão do painel (menos a de missão) e tira o painel; os que sobram se reorganizam. */
   removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   /** Põe os workspaces abertos na ordem dada. A lista precisa ter todos os abertos, uma vez cada. */
@@ -110,7 +122,7 @@ function setTerminal(layout: LayoutNode, leafId: string, terminalId: string | nu
 }
 
 export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceService {
-  const { repo, projects, terminals, now, newId } = deps;
+  const { repo, projects, terminals, history, checkResume, now, newId } = deps;
 
   // Os pedidos que mudam workspaces ou sessões andam um de cada vez: dois cliques em "Iniciar"
   // abririam duas sessões no mesmo painel, e um `saveLayout` poderia apagar o id recém-gravado.
@@ -254,12 +266,12 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     return { ok: true, data: persist(record, setTerminal(layout, leafId, null)) };
   }
 
-  async function addPane(
-    workspaceId: string,
+  /** Abre a sessão e põe o painel dela no layout do `record` (lido pelo chamador), se ainda cabe. */
+  async function openPane(
+    record: WorkspaceRecord,
     provider: ProviderId,
+    options?: OpenSessionOptions,
   ): Promise<AppResult<WorkspaceDto>> {
-    const record = repo.get(workspaceId);
-    if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
     const leaves = leavesOf(storedLayout(record));
     // O limite vem antes: depois de aberta, a sessão teria de ser desfeita.
     if (leaves.length >= LAYOUT_LIMITS.maxLeaves) {
@@ -268,7 +280,11 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
         `O workspace já tem o máximo de ${LAYOUT_LIMITS.maxLeaves} painéis.`,
       );
     }
-    const session = await terminals.openSession(record.projectId, provider);
+    // Sem opções, a chamada fica com os dois argumentos de sempre (é o que o adicionar painel já testa).
+    const session =
+      options === undefined
+        ? await terminals.openSession(record.projectId, provider)
+        : await terminals.openSession(record.projectId, provider, options);
     if (!session.ok) return session;
     const { terminalId } = session.data;
     try {
@@ -279,6 +295,49 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       await terminals.closeSession(terminalId).catch(() => undefined);
       throw error;
     }
+  }
+
+  async function addPane(
+    workspaceId: string,
+    provider: ProviderId,
+  ): Promise<AppResult<WorkspaceDto>> {
+    const record = repo.get(workspaceId);
+    if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
+    return openPane(record, provider);
+  }
+
+  /**
+   * A sessão é conferida de novo aqui, contra o projeto do workspace: o id tem de estar no índice e a regra de
+   * retomada tem de passar. Só então o terminal abre, na pasta da sessão, com os argumentos de retomada.
+   */
+  async function resumeSession(
+    workspaceId: string,
+    sessionId: string,
+  ): Promise<AppResult<WorkspaceDto>> {
+    const record = repo.get(workspaceId);
+    if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
+    const session = history.find(sessionId);
+    if (session === undefined) {
+      return failure(
+        'VALIDATION_FAILED',
+        'A sessão não está no histórico. Atualize a lista e tente de novo.',
+      );
+    }
+    const verdict = checkResume({
+      id: session.id,
+      provider: session.provider,
+      folder: session.folder,
+      projectId: session.projectId,
+      activeProjectId: record.projectId,
+    });
+    const args = resumeArgs(session.provider, session.id);
+    if (!verdict.resumable || args === undefined) {
+      return failure(
+        'VALIDATION_FAILED',
+        verdict.resumeBlockedReason ?? 'Esta sessão não pode ser retomada.',
+      );
+    }
+    return openPane(record, session.provider, { cwd: session.folder, args });
   }
 
   async function removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>> {
@@ -325,6 +384,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     endSession: (workspaceId, leafId) => serial(() => endSession(workspaceId, leafId)),
 
     addPane: (workspaceId, provider) => serial(() => addPane(workspaceId, provider)),
+
+    resumeSession: (workspaceId, sessionId) => serial(() => resumeSession(workspaceId, sessionId)),
 
     removePane: (workspaceId, leafId) => serial(() => removePane(workspaceId, leafId)),
 

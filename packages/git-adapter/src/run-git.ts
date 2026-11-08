@@ -121,7 +121,8 @@ export class GitError extends Error {
  * exata cada: `log`, `rev-list`, `merge-base`, `ls-files` e o `diff` contra um commit (ver as funções
  * abaixo); `status` e `rev-parse` seguem abertos como antes. Tudo o que não está aqui é recusado antes de
  * criar um processo. Opções antes do subcomando (`-c`, `-C`, `--exec-path`) também caem: o subcomando
- * precisa ser o primeiro argumento.
+ * precisa ser o primeiro argumento. `worktree list --porcelain` (a lista de worktrees de `listWorktrees`)
+ * é a leitura de `worktree`; nenhuma outra forma de `worktree` lê.
  */
 function isReadOnly(args: readonly string[]): boolean {
   const [subcommand, ...rest] = args;
@@ -150,6 +151,10 @@ function isReadOnly(args: readonly string[]): boolean {
         flag === '--get' && key !== undefined && CONFIG_READ_KEYS.has(key) && extra.length === 0
       );
     }
+    case 'worktree':
+      // Só a lista de worktrees (`listWorktrees`), com `--porcelain` e nada mais. As formas que escrevem
+      // são de `runGitWorktree`.
+      return rest.length === 2 && rest[0] === 'list' && rest[1] === '--porcelain';
     case 'log':
       return isLogRead(rest);
     case 'rev-list': {

@@ -8,7 +8,7 @@ import {
   type MissionUsageEventDto,
   type TerminalEvent,
 } from '@project-hub/contracts';
-import { getStatus } from '@project-hub/git-adapter';
+import { getStatus, listWorktrees } from '@project-hub/git-adapter';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   app,
@@ -58,7 +58,15 @@ import { createSystemUsageSampler } from './system-usage';
 import { buildTerminalEnv } from '../terminal-host/env';
 import { registerTerminalHandlers } from './ipc/terminals';
 import { registerWorkspaceHandlers } from './ipc/workspaces';
+import { registerSessionHandlers } from './ipc/sessions';
 import { createProviderRegistry } from './providers';
+import { createResumeVerdict } from './resume-verdict';
+import { createSessionHistory } from './session-history';
+import {
+  createAntigravitySessionReader,
+  createClaudeSessionReader,
+  createCodexSessionReader,
+} from './session-readers';
 import { createTerminalService } from './terminals';
 import { createWorkspaceService } from './workspaces';
 import { chooseProjectDirectory } from './dialogs';
@@ -447,6 +455,29 @@ app
       platform: process.platform,
       exists: existsSync,
     });
+    // Aba Sessões: os leitores dos três programas, o índice em disco e a mesma regra de retomada para a lista e para o
+    // botão (ver resume-verdict.ts). O índice fica em `userData`, ou na pasta de teste.
+    const resumeVerdict = createResumeVerdict({
+      folderExists: existsSync,
+      providers,
+      projectName: (projectId) => services.workspaceDeps.projects.get(projectId)?.name,
+    });
+    // Os leitores recebem o mesmo ambiente filtrado do Início: nos testes, as pastas de teste; fora deles, as reais.
+    const sources = sessionSourcesOf(process.env);
+    const sessionHistory = createSessionHistory({
+      indexFile: join(testDataDir ?? app.getPath('userData'), 'session-index.json'),
+      readers: [
+        createClaudeSessionReader(sources.env),
+        createCodexSessionReader(sources.env),
+        createAntigravitySessionReader(sources.antigravityHistory),
+      ],
+      projects: () =>
+        services.workspaceDeps.projects
+          .list()
+          .map((project) => ({ id: project.id, path: project.path })),
+      worktreesOf: (projectPath) => listWorktrees(projectPath),
+      resumeState: resumeVerdict,
+    });
     // Início "Visão geral": uso por agente, só do que o app abriu. Lê as sessões dos CLIs com o mesmo ambiente
     // filtrado que os terminais recebem, fora do evento do IPC, e guarda o resultado por 60 s.
     registerAgentActivityHandlers(
@@ -484,18 +515,17 @@ app
       settingsDir: join(terminalOptions.dataDir, 'terminal-host', 'settings'),
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
-    registerWorkspaceHandlers(
-      ipcMain,
-      isTrustedSender,
-      createWorkspaceService({
-        repo: services.workspaceDeps.repo,
-        projects: services.workspaceDeps.projects,
-        terminals: terminalService,
-        now: () => new Date().toISOString(),
-        newId: randomUUID,
-      }),
-      providers,
-    );
+    const workspaceService = createWorkspaceService({
+      repo: services.workspaceDeps.repo,
+      projects: services.workspaceDeps.projects,
+      terminals: terminalService,
+      history: sessionHistory,
+      checkResume: resumeVerdict,
+      now: () => new Date().toISOString(),
+      newId: randomUUID,
+    });
+    registerWorkspaceHandlers(ipcMain, isTrustedSender, workspaceService, providers);
+    registerSessionHandlers(ipcMain, isTrustedSender, sessionHistory, workspaceService);
     createMainWindow();
     limits.start();
 

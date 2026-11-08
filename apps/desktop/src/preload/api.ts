@@ -49,6 +49,9 @@ import {
   type ProjectSummary,
   type ProviderId,
   type ProviderInfo,
+  type SessionsListInput,
+  type SessionsListResult,
+  type SessionsResumeInput,
   type ProvideInput,
   type RepositoryInitPreview,
   type RequestChanges,
@@ -219,6 +222,10 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     },
     providers: {
       list: () => call<ProviderInfo[]>(CHANNELS.providersList),
+    },
+    sessions: {
+      list: (input: SessionsListInput) => call<SessionsListResult>(CHANNELS.sessionsList, input),
+      resume: (input: SessionsResumeInput) => call<WorkspaceDto>(CHANNELS.sessionsResume, input),
     },
     worktrees: {
       list: (projectId: string) => call<WorktreeDto[]>(CHANNELS.worktreesList, { projectId }),

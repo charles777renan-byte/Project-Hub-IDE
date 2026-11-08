@@ -285,14 +285,19 @@ describe('createSessionReader', () => {
   });
 
   const userLine = (iso: string) =>
-    JSON.stringify({ type: 'user', timestamp: iso, message: { content: 'texto' } });
+    JSON.stringify({
+      type: 'user',
+      timestamp: iso,
+      sessionId: '5f0c2a7e-8d1b-4c3a-9e2f-1a2b3c4d5e6f',
+      message: { content: 'texto' },
+    });
 
   function codexSession(startedAt: string): string {
     return [
       JSON.stringify({
         type: 'session_meta',
         timestamp: startedAt,
-        payload: { cwd: 'C:\\dev\\app', timestamp: startedAt },
+        payload: { id: '019a0c3e-7b2d-7f10-8a4e-2c5d6e7f8a9b', cwd: 'C:\\dev\\app', timestamp: startedAt },
       }),
       JSON.stringify({
         type: 'event_msg',

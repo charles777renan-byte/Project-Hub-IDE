@@ -10,10 +10,7 @@ import {
   readCodexSessionFile,
 } from '../../src/codex/session-activity';
 
-const FIXTURE = readFileSync(
-  new URL('../fixtures/codex-session.jsonl', import.meta.url),
-  'utf8',
-);
+const FIXTURE = readFileSync(new URL('../fixtures/codex-session.jsonl', import.meta.url), 'utf8');
 
 function at(year: number, month: number, day: number, hour = 12, minute = 0): string {
   return new Date(year, month - 1, day, hour, minute).toISOString();
@@ -23,7 +20,7 @@ function meta(timestamp: string, cwd = String.raw`C:\proj\x`): string {
   return JSON.stringify({
     timestamp,
     type: 'session_meta',
-    payload: { timestamp, cwd, originator: 'codex-tui' },
+    payload: { id: 'sessao-de-teste', timestamp, cwd, originator: 'codex-tui' },
   });
 }
 
@@ -63,7 +60,8 @@ describe('readCodexSessionActivity', () => {
   it('lê a fixture de uma sessão do CLI: pasta, início, mensagens e tokens do dia', () => {
     // Tokens por linha: (entrada - cache) + saída, em valor acumulado: 3358, 6794, 10360, 10995.
     // A diferença entre elas soma 10995; a linha repetida e a de `info: null` não contam de novo.
-    expect(readCodexSessionActivity(FIXTURE)).toEqual({
+    expect(readCodexSessionActivity(FIXTURE)).toMatchObject({
+      id: 'sessao',
       agent: 'codex',
       cwd: String.raw`C:\proj\x`,
       startedAt: '2026-10-30T12:00:00.000Z',
@@ -77,7 +75,11 @@ describe('readCodexSessionActivity', () => {
       JSON.stringify({
         timestamp: at(2026, 10, 30, 9, 1),
         type: 'response_item',
-        payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'texto' }] },
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'texto' }],
+        },
       }),
       userMessage(at(2026, 10, 30, 9, 2)),
       JSON.stringify({
@@ -118,7 +120,12 @@ describe('readCodexSessionActivity', () => {
   });
 
   it('ignora linha que não é JSON, inclusive a cortada no fim', () => {
-    const text = session(meta(at(2026, 10, 30, 9)), userMessage(at(2026, 10, 30, 9, 1)), 'lixo', '{"type":');
+    const text = session(
+      meta(at(2026, 10, 30, 9)),
+      userMessage(at(2026, 10, 30, 9, 1)),
+      'lixo',
+      '{"type":',
+    );
     expect(readCodexSessionActivity(text)?.days).toEqual([
       { date: '2026-10-30', messages: 1, tokens: 0 },
     ]);
@@ -219,6 +226,21 @@ describe('readCodexSessionFile', () => {
     const file = join(codexHome, 'rollout-b.jsonl.zst');
     writeFileSync(file, 'isto não é zstd');
     expect(() => readCodexSessionFile(file)).toThrow();
+  });
+
+  it('lança quando o .jsonl.zst expande além do limite, e lê quando cabe no limite', () => {
+    const file = join(codexHome, 'rollout-c.jsonl.zst');
+    // Comprime bem: o arquivo é minúsculo e a saída passa do limite (uma bomba de descompressão em miniatura).
+    writeFileSync(file, zstdCompressSync(Buffer.alloc(100_000, 'a')));
+    expect(() => readCodexSessionFile(file, 1_000)).toThrow();
+    expect(readCodexSessionFile(file, 100_000)).toHaveLength(100_000);
+  });
+
+  it('lança quando o .jsonl em disco passa do limite', () => {
+    const file = join(codexHome, 'rollout-d.jsonl');
+    writeFileSync(file, 'a'.repeat(2_000));
+    expect(() => readCodexSessionFile(file, 1_000)).toThrow();
+    expect(readCodexSessionFile(file, 2_000)).toHaveLength(2_000);
   });
 });
 

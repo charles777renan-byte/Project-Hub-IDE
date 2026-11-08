@@ -131,4 +131,8 @@ export const CHANNELS = {
   githubMerge: 'github:merge:v1',
   /** Abre no navegador um endereço do `github.com` (link de check ou de comentário). Só o processo principal decide: https, host exato, sem usuário, senha nem porta. */
   githubOpenUrl: 'github:open-url:v1',
+  /** Histórico das sessões dos agentes (painel direito, fase 4). Só entram escopo e busca; o texto vem como texto puro. */
+  sessionsList: 'sessions:list:v1',
+  /** Retomar em Worktree. Entram só o id do workspace e o id da sessão: pasta e programa saem do índice no processo principal. */
+  sessionsResume: 'sessions:resume:v1',
 } as const;

@@ -74,10 +74,18 @@ test('Visão geral: soma mensagens e tokens do que o app abriu, por agente e por
   }
 
   // 3. As sessões dos CLIs, nos formatos reais deles.
+  // O formato real grava o `sessionId` em toda linha; sem ele o leitor descarta a sessão (ela não tem como ser retomada).
+  const claudeSessionId = randomUUID();
   const claudeLine = (kind: 'user' | 'assistant', at: Date, id: string, input = 0, output = 0) =>
     kind === 'user'
-      ? { type: 'user', timestamp: at.toISOString(), message: { role: 'user', content: 'texto' } }
+      ? {
+          sessionId: claudeSessionId,
+          type: 'user',
+          timestamp: at.toISOString(),
+          message: { role: 'user', content: 'texto' },
+        }
       : {
+          sessionId: claudeSessionId,
           type: 'assistant',
           timestamp: at.toISOString(),
           message: {
@@ -132,7 +140,7 @@ test('Visão geral: soma mensagens e tokens do que o app abriu, por agente e por
       {
         timestamp: codexDay.toISOString(),
         type: 'session_meta',
-        payload: { cwd: projectPath, timestamp: codexDay.toISOString() },
+        payload: { id: randomUUID(), cwd: projectPath, timestamp: codexDay.toISOString() },
       },
       codexUser(localAt(2, 14, 1)),
       codexTokens(localAt(2, 14, 2), 2000, 500, 300),
