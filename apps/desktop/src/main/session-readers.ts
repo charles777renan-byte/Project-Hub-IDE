@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import {
+  MAX_SESSION_FILE_BYTES,
   antigravityHistoryFile,
   claudeConfigDirOf,
   codexHomeOf,
@@ -29,6 +30,9 @@ async function namesIn(folder: string, kind: 'file' | 'folder'): Promise<string[
   }
 }
 
+/** O nome de um transcript do Claude que é o id da sessão: `claude --resume <id>` procura `<id>.jsonl`. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Data e tamanho de um arquivo; `undefined` quando ele sumiu entre a listagem e a leitura. */
 async function infoOf(path: string): Promise<SessionFileInfo | undefined> {
   try {
@@ -52,9 +56,15 @@ async function countSubagents(transcript: string): Promise<number> {
 /**
  * Leitor do Claude Code: todo `projects/<pasta>/*.jsonl`, de todas as pastas. A pasta de trabalho vem do
  * próprio transcript (`transcriptCwd`), porque o nome da pasta não se desfaz. Transcript sem nenhum `cwd`,
- * ou sem horário, não tem sessão para mostrar e fica de fora sem contar como ilegível.
+ * ou sem horário, não tem sessão para mostrar e fica de fora sem contar como ilegível. O id da sessão é o nome do
+ * arquivo (sem `.jsonl`) quando ele é um UUID, e não o `sessionId` de dentro: um transcript copiado ou retomado
+ * leva o id do original lá dentro, e é o nome que o `claude --resume` procura. Nome que não é UUID mantém o
+ * `sessionId` de dentro. Arquivo acima de `maxFileBytes` lança, e vira ilegível.
  */
-export function createClaudeSessionReader(env: Env): SessionReader {
+export function createClaudeSessionReader(
+  env: Env,
+  maxFileBytes: number = MAX_SESSION_FILE_BYTES,
+): SessionReader {
   const projects = join(claudeConfigDirOf(env), 'projects');
   return {
     provider: 'claude',
@@ -70,11 +80,16 @@ export function createClaudeSessionReader(env: Env): SessionReader {
       return out;
     },
     async read(path: string) {
+      if ((await stat(path)).size > maxFileBytes) {
+        throw new Error(`Transcript acima do limite de ${maxFileBytes} bytes: ${path}`);
+      }
       const text = await readFile(path, 'utf8');
       const cwd = transcriptCwd(text);
       if (cwd === undefined) return [];
       const activity = readClaudeTranscriptActivity(text, cwd);
       if (activity === undefined) return [];
+      const fileId = basename(path, '.jsonl');
+      if (UUID.test(fileId)) activity.id = fileId;
       if (activity.detail !== undefined) {
         activity.detail.subagents = await countSubagents(path);
       }
@@ -85,9 +100,12 @@ export function createClaudeSessionReader(env: Env): SessionReader {
 
 /**
  * Leitor do Codex: os `rollout-*.jsonl` e os `.jsonl.zst` de `<CODEX_HOME>/sessions`, de todos os dias. Erro de
- * leitura ou de descompressão lança e vira ilegível; rollout sem `session_meta` não tem sessão e fica de fora.
+ * leitura ou de descompressão lança e vira ilegível, e o arquivo que passa de `maxFileBytes` também; rollout sem `session_meta` não tem sessão e fica de fora.
  */
-export function createCodexSessionReader(env: Env): SessionReader {
+export function createCodexSessionReader(
+  env: Env,
+  maxFileBytes: number = MAX_SESSION_FILE_BYTES,
+): SessionReader {
   const home = codexHomeOf(env);
   return {
     provider: 'codex',
@@ -100,7 +118,7 @@ export function createCodexSessionReader(env: Env): SessionReader {
       return out;
     },
     async read(path: string) {
-      const activity = readCodexSessionActivity(readCodexSessionFile(path));
+      const activity = readCodexSessionActivity(readCodexSessionFile(path, maxFileBytes));
       return activity === undefined ? [] : [activity];
     },
   };

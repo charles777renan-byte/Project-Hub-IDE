@@ -34,6 +34,7 @@ export {
   transcriptCwd,
 } from './claude-code/transcript-activity';
 export {
+  MAX_SESSION_FILE_BYTES,
   codexHomeOf,
   listCodexSessions,
   readCodexSessionActivity,

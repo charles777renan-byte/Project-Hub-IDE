@@ -85,6 +85,39 @@ function byMostRecent(a: { lastActivityAt: string }, b: { lastActivityAt: string
   return Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt) || 0;
 }
 
+/** Uma sessão do índice, com o programa e o arquivo de onde veio. */
+type IndexedActivity = {
+  provider: SessionProvider;
+  path: string;
+  activity: NonNullable<SessionIndex['files'][string]['sessions']>[number];
+};
+
+/** `a` ganha de `b`: atividade mais recente; no empate, o caminho menor, para a escolha não depender da ordem do índice. */
+function isNewer(a: IndexedActivity, b: IndexedActivity): boolean {
+  const diff = Date.parse(a.activity.lastActivityAt) - Date.parse(b.activity.lastActivityAt);
+  if (diff !== 0 && !Number.isNaN(diff)) return diff > 0;
+  return a.path < b.path;
+}
+
+/**
+ * As sessões do índice sem repetição por (programa, id). O mesmo id pode estar em mais de um arquivo (um transcript
+ * copiado, a mesma sessão em duas pastas); vale a de atividade mais recente. A lista e o `find` partem daqui, para
+ * mostrarem e retomarem a mesma sessão.
+ */
+function uniqueSessions(index: SessionIndex): IndexedActivity[] {
+  const best = new Map<string, IndexedActivity>();
+  for (const [path, file] of Object.entries(index.files)) {
+    if (file.sessions === null) continue;
+    for (const activity of file.sessions) {
+      const entry = { provider: file.provider, path, activity };
+      const key = JSON.stringify([file.provider, activity.id]);
+      const current = best.get(key);
+      if (current === undefined || isNewer(entry, current)) best.set(key, entry);
+    }
+  }
+  return [...best.values()];
+}
+
 /**
  * O histórico de sessões do painel: lê os arquivos de cada programa em segundo plano, guarda o resultado no
  * índice e responde às listagens com o que já foi lido. Arquivo que não lê vira "ilegível" no progresso, e
@@ -98,12 +131,26 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
   const progress = new Map<SessionProvider, Progress>();
   let worktreeCache = new Map<string, readonly WorktreeInfo[]>();
 
+  /**
+   * O caminho em forma comparável: barras para `/`, caixa baixa no Windows, segmentos `.` e `..` resolvidos e sem
+   * barra final. A barra inicial dos caminhos POSIX e a letra de unidade do Windows ficam: o `..` não passa delas.
+   */
   function normalize(path: string): string {
     const slashes = windowsPaths ? /[\\/]+/g : /\/+/g;
-    let out = path.replace(slashes, '/');
-    if (windowsPaths) out = out.toLowerCase();
-    if (out.length > 1 && out.endsWith('/')) out = out.slice(0, -1);
-    return out;
+    let text = path.replace(slashes, '/');
+    if (windowsPaths) text = text.toLowerCase();
+    const segments = text.split('/').filter((segment) => segment !== '' && segment !== '.');
+    const drive = windowsPaths && /^[a-z]:$/.test(segments[0] ?? '') ? segments.shift() : undefined;
+    const leadingSlash = text.startsWith('/');
+    const out: string[] = [];
+    for (const segment of segments) {
+      if (segment !== '..') out.push(segment);
+      else if (out.length > 0 && out[out.length - 1] !== '..') out.pop();
+      // Num caminho com raiz o `..` não passa dela; num relativo ele fica.
+      else if (!leadingSlash && drive === undefined) out.push('..');
+    }
+    const joined = (drive === undefined ? out : [drive, ...out]).join('/');
+    return leadingSlash ? `/${joined}` : joined;
   }
 
   /** `child` é a pasta `parent` ou está dentro dela, comparando por segmento (`x` não casa com `xy`). */
@@ -273,55 +320,52 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
     const valid = new Map<SessionProvider, number>();
     const rows: SessionSummary[] = [];
 
-    for (const file of Object.values(snapshot.files)) {
-      if (file.sessions === null) continue;
-      for (const activity of file.sessions) {
-        const owner = ownerOf(activity.cwd, candidates);
-        const resume = deps.resumeState({
-          id: activity.id,
-          provider: file.provider,
-          folder: activity.cwd,
-          projectId: owner?.project.id ?? null,
-          activeProjectId: input.projectId,
-        });
-        const detail = activity.detail;
-        const parsed = sessionSummarySchema.safeParse({
-          id: activity.id,
-          provider: file.provider,
-          title: detail?.title ?? null,
-          folder: activity.cwd,
-          projectId: owner?.project.id ?? null,
-          branch: owner?.branch ?? null,
-          isWorktree: owner?.isWorktree ?? false,
-          startedAt: activity.startedAt,
-          lastActivityAt: activity.lastActivityAt,
-          messages: detail?.messages ?? null,
-          subagents: detail?.subagents ?? null,
-          model: detail?.model ?? null,
-          firstPrompt: detail?.firstPrompt ?? null,
-          lastAgentText: detail?.lastAgentText ?? null,
-          lastTurns: detail?.lastTurns ?? null,
-          resumable: resume.resumable,
-          resumeBlockedReason: resume.resumeBlockedReason,
-        });
-        // A faixa conta as sessões válidas da casa inteira. Linha fora do schema fica de fora e conta como ilegível,
-        // sem derrubar a lista.
-        if (!parsed.success) {
-          dropped.set(file.provider, (dropped.get(file.provider) ?? 0) + 1);
-          continue;
-        }
-        valid.set(file.provider, (valid.get(file.provider) ?? 0) + 1);
-        // Projeto desconhecido não casa com nenhuma pasta: a lista sai vazia, sem erro.
-        if (input.scope !== 'all') {
-          const inWorkspace = target !== undefined && isInside(activity.cwd, target.path);
-          const inProject =
-            inWorkspace ||
-            (input.scope === 'project' &&
-              targetCandidates.some((candidate) => isInside(activity.cwd, candidate.path)));
-          if (!inProject) continue;
-        }
-        rows.push(parsed.data);
+    for (const { provider, activity } of uniqueSessions(snapshot)) {
+      const owner = ownerOf(activity.cwd, candidates);
+      const resume = deps.resumeState({
+        id: activity.id,
+        provider,
+        folder: activity.cwd,
+        projectId: owner?.project.id ?? null,
+        activeProjectId: input.projectId,
+      });
+      const detail = activity.detail;
+      const parsed = sessionSummarySchema.safeParse({
+        id: activity.id,
+        provider,
+        title: detail?.title ?? null,
+        folder: activity.cwd,
+        projectId: owner?.project.id ?? null,
+        branch: owner?.branch ?? null,
+        isWorktree: owner?.isWorktree ?? false,
+        startedAt: activity.startedAt,
+        lastActivityAt: activity.lastActivityAt,
+        messages: detail?.messages ?? null,
+        subagents: detail?.subagents ?? null,
+        model: detail?.model ?? null,
+        firstPrompt: detail?.firstPrompt ?? null,
+        lastAgentText: detail?.lastAgentText ?? null,
+        lastTurns: detail?.lastTurns ?? null,
+        resumable: resume.resumable,
+        resumeBlockedReason: resume.resumeBlockedReason,
+      });
+      // A faixa conta as sessões válidas da casa inteira. Linha fora do schema fica de fora e conta como ilegível,
+      // sem derrubar a lista.
+      if (!parsed.success) {
+        dropped.set(provider, (dropped.get(provider) ?? 0) + 1);
+        continue;
       }
+      valid.set(provider, (valid.get(provider) ?? 0) + 1);
+      // Projeto desconhecido não casa com nenhuma pasta: a lista sai vazia, sem erro.
+      if (input.scope !== 'all') {
+        const inWorkspace = target !== undefined && isInside(activity.cwd, target.path);
+        const inProject =
+          inWorkspace ||
+          (input.scope === 'project' &&
+            targetCandidates.some((candidate) => isInside(activity.cwd, candidate.path)));
+        if (!inProject) continue;
+      }
+      rows.push(parsed.data);
     }
 
     const indexing = deps.readers.map((reader) => {
@@ -340,29 +384,31 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
   function find(sessionId: string): IndexedSession | undefined {
     if (index === undefined) return undefined;
     const candidates = candidatesOfAll(deps.projects());
-    for (const file of Object.values(index.files)) {
-      if (file.sessions === null) continue;
-      const activity = file.sessions.find((session) => session.id === sessionId);
-      if (activity === undefined) continue;
-      const owner = ownerOf(activity.cwd, candidates);
-      // Sem projeto de referência: só o programa e a pasta contam aqui. O `resumeSession` confere o projeto do workspace.
-      const resume = deps.resumeState({
-        id: activity.id,
-        provider: file.provider,
-        folder: activity.cwd,
-        projectId: owner?.project.id ?? null,
-        activeProjectId: undefined,
-      });
-      return {
-        id: sessionId,
-        provider: file.provider,
-        folder: activity.cwd,
-        projectId: owner?.project.id ?? null,
-        resumable: resume.resumable,
-        resumeBlockedReason: resume.resumeBlockedReason,
-      };
+    // Entre os programas com esse id, a mesma escolha da lista: a de atividade mais recente.
+    let found: IndexedActivity | undefined;
+    for (const entry of uniqueSessions(index)) {
+      if (entry.activity.id !== sessionId) continue;
+      if (found === undefined || isNewer(entry, found)) found = entry;
     }
-    return undefined;
+    if (found === undefined) return undefined;
+    const { provider, activity } = found;
+    const owner = ownerOf(activity.cwd, candidates);
+    // Sem projeto de referência: só o programa e a pasta contam aqui. O `resumeSession` confere o projeto do workspace.
+    const resume = deps.resumeState({
+      id: activity.id,
+      provider,
+      folder: activity.cwd,
+      projectId: owner?.project.id ?? null,
+      activeProjectId: undefined,
+    });
+    return {
+      id: sessionId,
+      provider,
+      folder: activity.cwd,
+      projectId: owner?.project.id ?? null,
+      resumable: resume.resumable,
+      resumeBlockedReason: resume.resumeBlockedReason,
+    };
   }
 
   return {
