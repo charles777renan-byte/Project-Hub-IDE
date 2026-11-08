@@ -302,7 +302,16 @@ describe('árvore de painéis e painel', () => {
     expect(note.get('flex')).toBe('none');
   });
 
-  it('o "⌄" com uma aba aguardando você fica em --warn', () => {
-    expect(ruleDeclarations(css, '.tabs-overflow--attention').get('color')).toBe('var(--warn)');
+  it('o "⌄" com uma aba aguardando você fica em --warn, na app.css (o chrome do workspace só leva cores neutras)', () => {
+    const app = readCss('app.css');
+    expect(ruleDeclarations(app, '.tabs-overflow--attention').get('color')).toBe('var(--warn)');
+    // O gatilho herda essa cor, com uma classe a mais para vencer o --muted do workspace.css.
+    expect(
+      ruleDeclarations(
+        app,
+        '.tabs-overflow.tabs-overflow--attention .menu-acoes__gatilho--icone',
+      ).get('color'),
+    ).toBe('inherit');
+    expect(css).not.toContain('tabs-overflow--attention');
   });
 });

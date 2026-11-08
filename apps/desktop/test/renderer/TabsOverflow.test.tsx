@@ -187,7 +187,7 @@ describe('useTabsOverflow e TabsOverflow', () => {
 describe('TabsOverflow: atenção', () => {
   const items = [{ id: 'x', label: 'Aba x' }];
 
-  it('com attention, o botão leva a classe de atenção e o nome acessível diz que uma aba aguarda', () => {
+  it('com attention, o invólucro do botão leva a classe de atenção e o nome acessível diz que uma aba aguarda', () => {
     const { container } = render(<TabsOverflow items={items} onSelect={() => undefined} attention />);
 
     expect(container.querySelector('.tabs-overflow')).toHaveClass('tabs-overflow--attention');
