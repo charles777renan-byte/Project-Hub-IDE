@@ -1014,6 +1014,31 @@ describe('grade responsiva', () => {
     expect(fichas()[0]).toHaveAttribute('title', 'Aguardando · traz para a grade');
   });
 
+  it('com "Abas" ligado à mão numa janela larga não há "Fora da grade"; ao sair do modo a faixa volta com o ativo na grade', async () => {
+    abrirCom(guardado(6));
+    renderAt();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1000, 600);
+    expect(fichas()).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
+    expect(dock()).toBeNull();
+
+    // Escolhe a aba do 6º painel (que estava fora da grade) e volta à grade: ele entra, e o ativo é um dos mostrados.
+    await userEvent.click(
+      within(screen.getByRole('tablist', { name: 'Painéis abertos' })).getAllByRole(
+        'tab',
+      )[5] as HTMLElement,
+    );
+    expect(dock()).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
+    expect(regioes()).toHaveLength(4);
+    expect(fichas()).toHaveLength(2);
+    expect(fichas().map(nomeDaFicha)).not.toContain('Claude Code 6');
+    expect(document.querySelector('.pane[data-active="true"]')).not.toBeNull();
+  });
+
   describe('janela estreita (modo Abas automático)', () => {
     it('abaixo de 720 px entra a faixa de abas com o aviso, sem o botão "Grade", e "Abas" fica apertado', async () => {
       renderAt();
