@@ -40,7 +40,7 @@
   background: var(--fill);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -106,7 +106,7 @@
   flex: none;
   color: var(--tone);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 

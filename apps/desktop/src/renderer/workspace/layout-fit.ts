@@ -52,13 +52,18 @@ export function rowsOf(node: LayoutNode): number {
 }
 
 /**
- * O menor tamanho, no eixo dado, que a árvore pede: uma folha pede o mínimo de um painel; uma divisão no próprio eixo
- * soma os dois lados e o vão; no outro eixo, vale o maior dos lados.
+ * O menor tamanho, no eixo dado, que a árvore pede: uma folha pede o mínimo de um painel (`leaf`, que por padrão é
+ * 340 px de largura ou 260 de altura); uma divisão no próprio eixo soma os dois lados e o vão; no outro eixo, vale o
+ * maior dos lados.
  */
-export function minExtent(node: LayoutNode, axis: 'width' | 'height'): number {
-  if (node.type === 'leaf') return axis === 'width' ? PANE_MIN_WIDTH : PANE_MIN_HEIGHT;
-  const first = minExtent(node.first, axis);
-  const second = minExtent(node.second, axis);
+export function minExtent(
+  node: LayoutNode,
+  axis: 'width' | 'height',
+  leaf: number = axis === 'width' ? PANE_MIN_WIDTH : PANE_MIN_HEIGHT,
+): number {
+  if (node.type === 'leaf') return leaf;
+  const first = minExtent(node.first, axis, leaf);
+  const second = minExtent(node.second, axis, leaf);
   const splitsThisAxis = (axis === 'width') === (node.direction === 'row');
   return splitsThisAxis ? first + second + PANE_GAP : Math.max(first, second);
 }
