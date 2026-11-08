@@ -1163,7 +1163,8 @@
 /* Texto só para leitor de tela; a região "Precisa de você" da barra lateral é um desses. */
 .state-mark__sr,
 .sidebar__sr,
-.pane__usage-sr {
+.pane__usage-sr,
+.pane__context-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1191,9 +1192,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .state-mark--active .state-mark__glyph,
-  .pane__light--active .pane__light-dot,
-  .pane__light--active::after {
+  .state-mark--active .state-mark__glyph {
     animation: none;
   }
 
@@ -1355,9 +1354,116 @@
 }
 
 /*
- * A base é a largura do texto (e não zero): assim, quando falta espaço, o encolhimento vai primeiro para o
- * gasto de tokens (.pane__usage), e o título só é cortado depois que ele sumiu. Com espaço sobrando, o título
- * cresce como antes e empurra a marca de estado para perto das ações.
+ * Cabeçalho da sessão viva, de duas linhas (o lançador e a sessão terminada seguem na linha única de 28px). O
+ * símbolo do programa fica à esquerda e as ações à direita, as duas linhas no meio: na 1, o título e o selo de
+ * estado; na 2, o modelo, a worktree, a pílula de tokens e, à direita, a barra de contexto. A altura é a do
+ * conteúdo (sem `height` fixo); `flex: none` vem de `.pane__head`, então o cabeçalho nunca encolhe.
+ */
+.pane__head--live {
+  align-items: flex-start;
+  height: auto;
+  padding: 6px var(--space-2) 7px;
+}
+
+.pane__head--live .pane__provider {
+  margin-top: 1px;
+}
+
+.pane__lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pane__line1,
+.pane__line2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.pane__line2 {
+  white-space: nowrap;
+}
+
+/* Na linha 1 o selo fica logo depois do título: o título só cresce até o que o texto pede. */
+.pane__line1 .pane__title {
+  flex: 0 1 auto;
+}
+
+/*
+ * Linha 2, da esquerda para a direita: a worktree cede primeiro (fator de encolhimento muito maior), depois o
+ * modelo, os dois cortados com reticências. A pílula de tokens (`.pane__usage`) e a barra de contexto são
+ * `flex: none` e nunca somem por falta de espaço.
+ */
+.pane__model,
+.pane__worktree {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane__model {
+  flex: 0 1 auto;
+}
+
+.pane__worktree {
+  flex: 0 100 auto;
+}
+
+/*
+ * Contexto da última resposta: rótulo, barra de 56px por 5px e a porcentagem, sempre à direita da linha 2. A
+ * barra é cinza (fundo --line, preenchimento --muted) e passa a violeta (--brand) no nível alto, que vem de
+ * `data-level`; nunca vermelho. A largura do preenchimento vai no `style` (CSSOM).
+ */
+.pane__context {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--text-xs);
+}
+
+.pane__context small {
+  font-size: inherit;
+}
+
+.pane__context-bar {
+  width: 56px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+
+.pane__context-fill {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+}
+
+.pane__context b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.pane__context[data-level='high'] .pane__context-fill {
+  background: var(--brand);
+}
+
+.pane__context[data-level='high'] b {
+  color: var(--brand);
+}
+
+/*
+ * Título do painel. No lançador cresce e ocupa a linha; na sessão viva (`.pane__line1`) só pede o que o texto
+ * ocupa, e é cortado com reticências quando falta espaço.
  */
 .pane__title {
   flex: 1 1 auto;
@@ -1370,24 +1476,6 @@
 .pane[data-active='true'] .pane__title {
   color: var(--text);
   font-weight: 600;
-}
-
-/*
- * Grupo do lado direito do cabeçalho: o gasto de tokens (workspace/PaneUsage.tsx) e a luz de estado, colados um no
- * outro. O margin-left: auto empurra o grupo para a direita, e as ações vêm logo depois, sem espaço livre entre a
- * luz e elas (a regra `.pane__status + .pane__actions` zera a margem automática delas, senão o espaço sobrante
- * se dividiria entre os dois e o grupo ficaria no meio). O texto para leitor de tela é absoluto e não ocupa espaço.
- */
-.pane__status {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-}
-
-.pane__status + .pane__actions {
-  margin-left: 0;
 }
 
 .pane__usage {
@@ -1420,59 +1508,11 @@
   flex: none;
 }
 
-/* O programa do terminal, só o símbolo, à esquerda (o título da sessão vai na dica e para o leitor de tela). */
+/* O programa do terminal, só o símbolo, à esquerda (o título da sessão fica ao lado, na linha 1). */
 .pane__provider {
   display: inline-flex;
   flex: none;
   align-items: center;
-}
-
-/*
- * A luz de estado do terminal, no lugar do rótulo e da etiqueta de origem: verde e piscando, a sessão roda; âmbar
- * e parada, ela espera a pessoa; as outras ficam apagadas. O rótulo em texto vai na dica e para o leitor de tela,
- * então a cor nunca é a única pista. O anel que se abre ao redor do ponto (::after) só existe com a sessão rodando.
- */
-.pane__light {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-}
-
-.pane__light-dot {
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentcolor;
-}
-
-.pane__light--active .pane__light-dot {
-  animation: state-mark-pulse 1.6s ease-in-out infinite;
-}
-
-.pane__light--active::after {
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: currentcolor;
-  content: '';
-  animation: pane-light-ring 1.6s ease-out infinite;
-}
-
-@keyframes pane-light-ring {
-  from {
-    opacity: 0.5;
-    transform: scale(1);
-  }
-
-  to {
-    opacity: 0;
-    transform: scale(2.2);
-  }
 }
 
 /* Fechar e maximizar o painel são botões só de ícone: a área é de 24px e o passe do mouse só clareia o fundo. */
@@ -1542,21 +1582,6 @@
 .pane__body .terminal-view {
   width: 100%;
   height: 100%;
-}
-
-.pane__foot {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 22px;
-  padding: 0 var(--space-2);
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .pane__launcher {

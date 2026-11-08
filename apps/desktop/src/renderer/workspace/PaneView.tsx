@@ -5,9 +5,10 @@ import { Hint } from '../components/Hint';
 import { ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHeader';
 import { ProviderIcon } from '../components/ProviderIcon';
-import { EXIT_HINT } from '../components/terminals/exit-hint';
 import { TerminalView } from '../components/terminals/TerminalView';
 import { MARKS, markOfTerminal } from '../state-mark';
+import { modelLabel } from '../terminal-context';
+import { PaneContext } from './PaneContext';
 import { PaneUsage } from './PaneUsage';
 
 export type PaneViewProps = {
@@ -85,7 +86,7 @@ function CloseButton({
 
 /** Um painel do workspace: lançador, sessão em andamento ou sessão que terminou. */
 export function PaneView(props: PaneViewProps) {
-  const { leaf, terminal, provider, projectName, active, busy, error } = props;
+  const { leaf, terminal, provider, active, busy, error } = props;
   const focusTerminal = props.focusTerminal === true;
   const unavailable = props.unavailable === true;
   // Com a pasta indisponível, o botão de iniciar ou reiniciar aponta para o aviso da página (aria-describedby).
@@ -182,25 +183,38 @@ export function PaneView(props: PaneViewProps) {
       </>
     );
   } else {
-    // A luz é a única marca do estado: o rótulo vai para o leitor de tela e para a dica, com a origem da sessão.
-    const lightLabel = MARKS[markOfTerminal(terminal.state)].label;
-    const lightTitle =
-      terminal.origin === 'recovered' ? `${lightLabel} · sessão recuperada` : lightLabel;
+    // O selo do estado tem forma e rótulo visíveis (a cor nunca é a única pista); a origem da sessão vai na dica.
+    const mark = markOfTerminal(terminal.state);
+    const { glyph, label: markLabel } = MARKS[mark];
+    const markTitle =
+      terminal.origin === 'recovered' ? `${markLabel} · sessão recuperada` : markLabel;
+    // Sem modelo conhecido (terminal de missão, outro programa, id que a tabela não reconhece): o nome do programa.
+    const model = (terminal.model === undefined ? undefined : modelLabel(terminal.model)) ?? label;
     content = (
       <>
-        <div className="pane__head">
-          <span className="pane__provider" title={terminal.title}>
+        <div className="pane__head pane__head--live">
+          <span className="pane__provider">
             <ProviderIcon provider={terminal.provider} size={16} />
-            <span className="state-mark__sr">{terminal.title}</span>
           </span>
-          <span className="pane__status">
-            <PaneUsage key={terminal.id} usage={terminal.usage} />
-            <span
-              className={`pane__light pane__light--${markOfTerminal(terminal.state)}`}
-              title={lightTitle}
-            >
-              <span aria-hidden="true" className="pane__light-dot" />
-              <span className="state-mark__sr">{lightLabel}</span>
+          <span className="pane__lines">
+            <span className="pane__line1">
+              <span className="pane__title" title={terminal.projectName}>
+                {terminal.title}
+              </span>
+              <span className={`pane__state state-mark state-mark--${mark}`} title={markTitle}>
+                <span aria-hidden="true" className="state-mark__glyph">
+                  {glyph}
+                </span>
+                <span className="state-mark__label">{markLabel}</span>
+              </span>
+            </span>
+            <span className="pane__line2">
+              <span className="pane__model">{model}</span>
+              {terminal.worktreeName !== undefined && (
+                <span className="pane__worktree">{terminal.worktreeName}</span>
+              )}
+              <PaneUsage key={terminal.id} usage={terminal.usage} />
+              <PaneContext context={terminal.context} />
             </span>
           </span>
           <span className="pane__actions">
@@ -230,11 +244,6 @@ export function PaneView(props: PaneViewProps) {
         {error !== undefined && <p role="alert">{error}</p>}
         <div className="pane__body">
           <TerminalView terminalId={terminal.id} active={focusTerminal} />
-        </div>
-        <div className="pane__foot">
-          {`${label} · ${projectName}`}
-          {terminal.worktreeName !== undefined && <span> · {terminal.worktreeName}</span>}
-          <span className="pane__hint"> · {EXIT_HINT}</span>
         </div>
       </>
     );
