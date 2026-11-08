@@ -10,6 +10,7 @@ import {
 } from '../../open-files';
 import { Hint } from '../Hint';
 import { ICON_PROPS, X } from '../Icon';
+import { TabsOverflow, useTabsOverflow } from '../TabsOverflow';
 
 const TEXT = RIGHT_PANEL_TEXT.openFiles;
 
@@ -29,12 +30,15 @@ export const TREE_TAB_ID = 'file-tab-tree';
  * "não salvo" (o texto escondido o diz para leitor de tela) e o botão de fechar. Setas, Home e End percorrem as abas
  * (a ativa é a única parada de Tab), e Ctrl+W fecha a ativa; o botão de fechar fica fora do Tab, e o teclado fecha
  * por Ctrl+W. Fechar uma aba com alterações não salvas pergunta antes, numa faixa logo abaixo das abas (Salvar,
- * Descartar, Voltar), sem diálogo do sistema. Só aparece quando há arquivo aberto.
+ * Descartar, Voltar), sem diálogo do sistema. Só aparece quando há arquivo aberto. Se as abas não cabem, a faixa rola,
+ * esmaece a borda do lado que tem aba escondida e ganha o botão "⌄", que lista só as escondidas (`TabsOverflow`).
  */
 export function FileTabs({ projectId }: { projectId: string }) {
   const { files, active } = useOpenFiles(projectId);
   // O arquivo cuja aba está sendo fechada com alterações: a faixa de pergunta mostra o dele.
   const [closing, setClosing] = useState<string | null>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const overflow = useTabsOverflow(strip);
   if (files.length === 0) return null;
 
   // As chaves das abas, na ordem da faixa: a Árvore primeiro.
@@ -65,6 +69,9 @@ export function FileTabs({ projectId }: { projectId: string }) {
   }
 
   const asking = files.find((file) => file.path === closing && file.dirty);
+  const hiddenTabs = keys
+    .filter((key) => overflow.hidden.includes(key))
+    .map((key) => ({ id: key, label: key === TREE_TAB ? TEXT.tree : fileName(key) }));
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const at = keys.indexOf(active);
@@ -87,60 +94,73 @@ export function FileTabs({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <div role="tablist" aria-label={TEXT.tabs} className="file-tabs" onKeyDown={onKeyDown}>
-        <button
-          id={TREE_TAB_ID}
-          type="button"
-          role="tab"
-          aria-selected={active === TREE_TAB}
-          tabIndex={active === TREE_TAB ? 0 : -1}
-          className="file-tabs__tab"
-          onClick={() => setActive(projectId, TREE_TAB)}
+      <div className="file-tabs-bar">
+        <div
+          ref={strip}
+          role="tablist"
+          aria-label={TEXT.tabs}
+          className="file-tabs"
+          data-fade-start={overflow.start ? 'true' : undefined}
+          data-fade-end={overflow.end ? 'true' : undefined}
+          onKeyDown={onKeyDown}
         >
-          {TEXT.tree}
-        </button>
-        {files.map((file) => {
-          const selected = file.path === active;
-          const name = fileName(file.path);
-          return (
-            <div
-              key={file.path}
-              className="file-tabs__item"
-              data-selected={selected ? 'true' : 'false'}
-            >
-              <button
-                id={fileTabId(file.path)}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                tabIndex={selected ? 0 : -1}
-                title={file.path}
-                className="file-tabs__tab"
-                onClick={() => setActive(projectId, file.path)}
+          <button
+            id={TREE_TAB_ID}
+            data-tab-id={TREE_TAB}
+            type="button"
+            role="tab"
+            aria-selected={active === TREE_TAB}
+            tabIndex={active === TREE_TAB ? 0 : -1}
+            className="file-tabs__tab"
+            onClick={() => setActive(projectId, TREE_TAB)}
+          >
+            {TEXT.tree}
+          </button>
+          {files.map((file) => {
+            const selected = file.path === active;
+            const name = fileName(file.path);
+            return (
+              <div
+                key={file.path}
+                data-tab-id={file.path}
+                className="file-tabs__item"
+                data-selected={selected ? 'true' : 'false'}
               >
-                <span className="file-tabs__name">{name}</span>
-                {file.dirty ? (
-                  <>
-                    {' '}
-                    <span aria-hidden="true" className="file-tabs__dirty" />
-                    <span className="visually-hidden">{TEXT.unsaved}</span>
-                  </>
-                ) : null}
-              </button>
-              <Hint label={TEXT.close(name)}>
                 <button
+                  id={fileTabId(file.path)}
                   type="button"
-                  tabIndex={-1}
-                  aria-label={TEXT.close(name)}
-                  className="file-tabs__close"
-                  onClick={() => requestClose(file.path, false)}
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  title={file.path}
+                  className="file-tabs__tab"
+                  onClick={() => setActive(projectId, file.path)}
                 >
-                  <X {...ICON_PROPS} />
+                  <span className="file-tabs__name">{name}</span>
+                  {file.dirty ? (
+                    <>
+                      {' '}
+                      <span aria-hidden="true" className="file-tabs__dirty" />
+                      <span className="visually-hidden">{TEXT.unsaved}</span>
+                    </>
+                  ) : null}
                 </button>
-              </Hint>
-            </div>
-          );
-        })}
+                <Hint label={TEXT.close(name)}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label={TEXT.close(name)}
+                    className="file-tabs__close"
+                    onClick={() => requestClose(file.path, false)}
+                  >
+                    <X {...ICON_PROPS} />
+                  </button>
+                </Hint>
+              </div>
+            );
+          })}
+        </div>
+        <TabsOverflow items={hiddenTabs} onSelect={(key) => setActive(projectId, key)} />
       </div>
       {asking === undefined ? null : (
         <CloseAsk
