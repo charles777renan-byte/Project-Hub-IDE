@@ -95,8 +95,11 @@ test('fechar todos: a faixa pergunta com a contagem, Voltar mantém os painéis 
   await expect(confirm).toHaveCount(0);
 
   // Mais ações → Fechar todos os terminais…: a pergunta aparece na faixa do workspace, com a contagem certa.
+  const areaBefore = await page.locator('.workspace__area').boundingBox();
   await askToCloseAll(page);
   await expect(question).toBeVisible();
+  // A faixa flutua sobre a área da grade: a área mede o mesmo com a pergunta aberta (a grade não reflui).
+  expect(await page.locator('.workspace__area').boundingBox()).toEqual(areaBefore);
   await expect(confirm.getByText('Fechar os 3 painéis? 3 sessões serão encerradas.')).toBeVisible();
   // O foco vai ao "Voltar", a saída segura.
   await expect(question.getByRole('button', { name: 'Voltar', exact: true })).toBeFocused();

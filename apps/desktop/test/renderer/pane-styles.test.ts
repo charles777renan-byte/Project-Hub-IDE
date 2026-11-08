@@ -244,12 +244,16 @@ describe('árvore de painéis e painel', () => {
     expect(strip.get('white-space')).toBe('normal');
     expect(strip.get('overflow-wrap')).toBe('anywhere');
     expect(strip.has('text-overflow')).toBe(false);
-    // O grupo e a pergunta dentro dela também quebram: nada de nowrap nem reticências herdados.
+    // O grupo e a pergunta dentro dela também quebram: nada de nowrap nem reticências herdados. Cada regra tem de
+    // existir (um seletor que não casa com nada deixaria as verificações passarem vazias).
     for (const selector of [
       '.pane__confirm .confirm-inline',
-      '.pane__confirm .confirm-inline > span',
+      '.pane__confirm .confirm-inline > span:first-child',
+      '.workspace__confirm .confirm-inline',
+      '.workspace__confirm .confirm-inline > span:first-child',
     ]) {
       const declarations = rule(selector);
+      expect(declarations.size, `${selector} existe`).toBeGreaterThan(0);
       expect(declarations.get('text-overflow'), `${selector} text-overflow`).not.toBe('ellipsis');
       expect(declarations.get('white-space'), `${selector} white-space`).not.toBe('nowrap');
     }
@@ -257,6 +261,18 @@ describe('árvore de painéis e painel', () => {
     expect(rule('.pane__confirm .confirm-inline').get('display')).toBe('flex');
     expect(rule('.pane__confirm .confirm-inline > span:first-child').get('flex')).toBe('1 1 12rem');
     expect(rule('.pane__confirm .confirm-inline > span:first-child').get('min-width')).toBe('0');
+  });
+
+  it('a faixa de fechar todos flutua sobre o topo da área, fora do fluxo, sem tirar altura da grade', () => {
+    // A área é o contêiner posicionado; a faixa não é `flex: none` em fluxo (isso encolheria a área medida).
+    expect(rule('.workspace__area').get('position')).toBe('relative');
+    const strip = rule('.workspace__confirm');
+    expect(strip.get('position')).toBe('absolute');
+    expect(strip.get('top')).toBe('var(--space-2)');
+    expect(strip.get('left')).toBe('var(--space-2)');
+    expect(strip.get('right')).toBe('var(--space-2)');
+    expect(Number(strip.get('z-index'))).toBeGreaterThan(0);
+    expect(strip.has('flex')).toBe(false);
   });
 
   it('a faixa de confirmação do workspace tem o visual da pergunta do painel, só com tokens neutros', () => {

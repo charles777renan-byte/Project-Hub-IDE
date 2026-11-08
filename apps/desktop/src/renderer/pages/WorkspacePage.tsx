@@ -364,11 +364,20 @@ function WorkspaceBody({
   useEffect(() => {
     setPaneCount(projectId, paneCount);
   }, [projectId, paneCount]);
-  useEffect(() => () => setPaneCount(projectId, 0), [projectId]);
+  // Ao desmontar (sair do projeto, ir ao Início, fechar a aba), o registro some e o pedido pendente também: sem isso a
+  // pergunta reapareceria sozinha na volta.
+  useEffect(
+    () => () => {
+      setPaneCount(projectId, 0);
+      clearCloseAllRequest(projectId);
+    },
+    [projectId],
+  );
   // O pedido espera a visão Terminais aparecer (o workspace fica montado, escondido, nas outras): a pergunta nasce
   // à vista, com o foco no "Voltar". Sair da visão com a pergunta aberta a descarta, para ela não reaparecer depois.
+  // Só com a lista de terminais carregada: antes dela a contagem de sessões a encerrar sairia subestimada.
   const closeAllRequested = useCloseAllRequest(projectId);
-  const askingCloseAll = closeAllRequested && visible && paneCount > 0;
+  const askingCloseAll = closeAllRequested && visible && paneCount > 0 && loaded;
   const wasVisible = useRef(visible);
   useEffect(() => {
     if (wasVisible.current && !visible) clearCloseAllRequest(projectId);
@@ -665,18 +674,19 @@ function WorkspaceBody({
         }
         onOpen={(provider) => void openPane(provider)}
       />
-      {askingCloseAll ? (
-        <div className="workspace__confirm" onKeyDown={onCloseAllKeyDown}>
-          <ConfirmInline
-            focusBack
-            question={closeAllQuestion(closeAllCounts)}
-            confirmLabel="Fechar todos"
-            onConfirm={closeAll}
-            onCancel={cancelCloseAll}
-          />
-        </div>
-      ) : null}
       <div className="workspace__area" ref={setAreaElement}>
+        {/* Flutua sobre o topo da área (position: absolute): não tira altura da área medida, e a grade não reflui. */}
+        {askingCloseAll ? (
+          <div className="workspace__confirm" onKeyDown={onCloseAllKeyDown}>
+            <ConfirmInline
+              focusBack
+              question={closeAllQuestion(closeAllCounts)}
+              confirmLabel="Fechar todos"
+              onConfirm={closeAll}
+              onCancel={cancelCloseAll}
+            />
+          </div>
+        ) : null}
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">
             <PaneTabs

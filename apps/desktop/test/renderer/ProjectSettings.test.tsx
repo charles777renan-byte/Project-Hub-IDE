@@ -62,6 +62,16 @@ describe('ProjectSettings: terminais', () => {
     expect(screen.getByText('Vale para todos os projetos.')).toBeInTheDocument();
   });
 
+  it('a nota de alcance descreve a caixa (aria-describedby), para quem usa leitor de tela', () => {
+    installApi();
+    renderSettings();
+
+    const nota = screen.getByText('Vale para todos os projetos.');
+    expect(nota.id).not.toBe('');
+    expect(askBox()).toHaveAccessibleDescription('Vale para todos os projetos.');
+    expect(askBox()).toHaveAttribute('aria-describedby', nota.id);
+  });
+
   it('desmarcar a caixa desliga a pergunta; marcar de novo a religa', async () => {
     installApi();
     renderSettings();
