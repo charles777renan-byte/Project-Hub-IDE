@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -58,10 +59,11 @@ import {
   type PaneMotion,
 } from '../workspace/pane-motion';
 import { providerShortcutIndex } from '../workspace/provider-shortcuts';
+import { isIdle, useActivity } from '../sidebar-activity';
 import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useAreaSize } from '../workspace/use-area-size';
 import { useWorkspace } from '../workspace/use-workspace';
-import { WorkspaceToolbar } from '../workspace/WorkspaceToolbar';
+import { WorkspaceToolbar, type PaneLayoutMode } from '../workspace/WorkspaceToolbar';
 
 const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.';
 const UNAVAILABLE_NOTICE =
@@ -101,6 +103,19 @@ export function WorkspacePage() {
   const view = missionId === undefined ? projectViewFromParams(params) : 'missoes';
   const sidebar = useSidebarData();
   const project = sidebar.projects.find((item) => item.id === projectId);
+  // As ferramentas dos terminais vão para o cabeçalho (uma faixa a menos), por portal num nó fixo que só muda de pai:
+  // o cabeçalho de verdade ou, enquanto ele não existe, o de reserva. Assim a barra nunca é recriada (nem fecha o menu).
+  const [toolsHost] = useState(() => {
+    const host = document.createElement('div');
+    host.className = 'project-header__tools-host';
+    return host;
+  });
+  const attachTools = useCallback(
+    (slot: HTMLDivElement | null) => {
+      if (slot !== null && toolsHost.parentElement !== slot) slot.append(toolsHost);
+    },
+    [toolsHost],
+  );
   // Pasta que sumiu: o aviso sai acima de todas as visões e os terminais não abrem. Sem o campo, vale disponível.
   const unavailable = project?.available === false;
   // Só some a tela quando a lista chegou inteira e o projeto não está nela; carregando ou com falha
@@ -115,10 +130,18 @@ export function WorkspacePage() {
   }
   return (
     <div className="project-tab">
-      {project === undefined ? null : (
+      {project === undefined ? (
+        // Reserva enquanto a lista de projetos não chegou (ou falhou): as ferramentas dos terminais seguem à mão.
+        <header className="project-header">
+          <div className="project-header__row">
+            <div className="project-header__tools" ref={attachTools} />
+          </div>
+        </header>
+      ) : (
         <ProjectHeader
           project={project}
           missionOpen={missionId !== undefined}
+          toolsRef={attachTools}
           onNewMission={() =>
             navigate(projectViewPath(projectId, 'missoes'), { state: { newMission: true } })
           }
@@ -135,6 +158,7 @@ export function WorkspacePage() {
             key={projectId}
             projectId={projectId}
             visible={view === 'terminais'}
+            toolsHost={toolsHost}
             {...(unavailable ? { unavailableReason: UNAVAILABLE_REASON } : {})}
           />
         </div>
@@ -219,9 +243,12 @@ function singleRow(leaves: readonly LayoutLeaf[], newId: () => string): LayoutNo
 function WorkspaceBody({
   projectId,
   visible,
+  toolsHost,
   unavailableReason,
 }: {
   projectId: string;
+  /** O nó das ferramentas no cabeçalho do projeto: a barra vai para lá por portal, só com a visão Terminais à vista. */
+  toolsHost: HTMLElement;
   /** Os terminais ficam montados, mas escondidos nas outras visões; escondido, o estado vazio não anima o fundo. */
   visible: boolean;
   /** A pasta do projeto sumiu: a barra não abre terminal e a dica mostra este motivo. */
@@ -232,6 +259,11 @@ function WorkspaceBody({
   const unavailable = unavailableReason !== undefined;
 
   const { terminals, loaded, reload } = useTerminals();
+  // Sessão viva e parada há algumas leituras: a marca dela vira o ponto vazado "Ocioso" (painel, aba e ficha).
+  const activity = useActivity(terminals);
+  const idleIds = new Set(
+    terminals.filter((item) => isIdle(activity.get(item.id))).map((item) => item.id),
+  );
   const location = useLocation();
   const navigate = useNavigate();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -498,8 +530,8 @@ function WorkspaceBody({
     if (!soloAuto) setSoloOn(true);
     workspace.activateWithFocus(leafId);
   };
-  // O clique em "Abas" é da pessoa: com a janela estreita ele vale quando a janela alargar.
-  const toggleSolo = () => setSoloOn(!soloOn);
+  // A escolha no seletor é da pessoa: "Abas" com a janela estreita vale quando a janela alargar.
+  const chooseLayout = (mode: PaneLayoutMode) => setSoloOn(mode === 'abas');
 
   // O nome e o estado de cada painel, como nas abas. O número de ordem dos repetidos vale para todos os painéis
   // ("Claude Code 5" é o quinto Claude Code do layout, esteja ele na grade ou fora dela).
@@ -520,7 +552,10 @@ function WorkspaceBody({
         id: leaf.id,
         label: numbered[index] ?? labelOf(leaf),
         provider: session?.provider ?? leaf.provider,
-        mark: session === undefined ? 'disconnected' : markOfTerminal(session.state),
+        mark:
+          session === undefined
+            ? 'disconnected'
+            : markOfTerminal(session.state, idleIds.has(session.id)),
       },
     ];
   });
@@ -630,6 +665,28 @@ function WorkspaceBody({
     event.stopPropagation();
     cancelCloseAll();
   };
+  // As ferramentas dos terminais, no cabeçalho do projeto (ver `toolsHost`). Os eventos seguem a árvore do React, então
+  // os atalhos capturados no `.workspace` continuam valendo com o foco nelas.
+  const toolbar = (
+    <WorkspaceToolbar
+      providers={providers}
+      busy={opening}
+      limitReached={leavesOf(layout).length >= LAYOUT_LIMITS.maxLeaves}
+      {...(unavailableReason === undefined ? {} : { unavailableReason })}
+      focusToken={toolbarFocus}
+      soloMode={soloLeaf !== undefined}
+      soloAuto={soloAuto}
+      canSolo={shownLeaves.length > 0}
+      onLayout={chooseLayout}
+      dock={
+        <OffGridDock
+          items={dockOrder(offGrid)}
+          onBring={(leafId) => workspace.activateWithFocus(leafId)}
+        />
+      }
+      onOpen={(provider) => void openPane(provider)}
+    />
+  );
   const motion: PaneMotion = { entering, leaving, onEntered: settle, onLeft: finishLeaving };
 
   // Ctrl+Alt+número abre o programa dessa posição no menu "Abrir terminal", e vale como o clique no menu: com o limite
@@ -685,6 +742,7 @@ function WorkspaceBody({
         leaf={leaf}
         terminal={terminal}
         provider={providers.find((item) => item.id === providerId)}
+        idle={terminal !== undefined && idleIds.has(terminal.id)}
         active={workspace.activeLeafId === leaf.id}
         focusTerminal={workspace.focusLeafId === leaf.id}
         busy={busy.has(leaf.id)}
@@ -708,24 +766,7 @@ function WorkspaceBody({
 
   return (
     <div className="workspace" onKeyDownCapture={onKeyDownCapture}>
-      <WorkspaceToolbar
-        providers={providers}
-        busy={opening}
-        limitReached={leavesOf(layout).length >= LAYOUT_LIMITS.maxLeaves}
-        {...(unavailableReason === undefined ? {} : { unavailableReason })}
-        focusToken={toolbarFocus}
-        soloMode={soloLeaf !== undefined}
-        soloAuto={soloAuto}
-        canSolo={shownLeaves.length > 0}
-        onToggleSolo={toggleSolo}
-        dock={
-          <OffGridDock
-            items={dockOrder(offGrid)}
-            onBring={(leafId) => workspace.activateWithFocus(leafId)}
-          />
-        }
-        onOpen={(provider) => void openPane(provider)}
-      />
+      {visible ? createPortal(toolbar, toolsHost) : null}
       <div className="workspace__area" ref={setAreaElement}>
         {/* Flutua sobre o topo da área (position: absolute): não tira altura da área medida, e a grade não reflui. */}
         {askingCloseAll ? (
@@ -745,9 +786,9 @@ function WorkspaceBody({
               leaves={shownLeaves}
               activeId={soloLeaf.id}
               terminals={terminals}
+              idleIds={idleIds}
               providers={providers}
               onSelect={showSolo}
-              onGrid={() => setSoloOn(false)}
               auto={soloAuto}
             />
             <div
@@ -791,7 +832,9 @@ function WorkspaceBody({
           />
         )}
         <div ref={parkingRef} className="workspace__parking" hidden />
-        {mountedLeaves.map((leaf) => createPortal(renderLeaf(leaf), hosts.hostOf(leaf.id), leaf.id))}
+        {mountedLeaves.map((leaf) =>
+          createPortal(renderLeaf(leaf), hosts.hostOf(leaf.id), leaf.id),
+        )}
       </div>
     </div>
   );

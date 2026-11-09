@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faixa do projeto</title>
+<link rel="stylesheet" href="../../../../apps/desktop/src/renderer/styles/fonts.css">
+<link rel="stylesheet" href="../../../../apps/desktop/src/renderer/styles/tokens.css">
+<style>
+* { box-sizing: border-box; }
+html { background: var(--bg); scrollbar-color: var(--field-line) var(--bg); }
+body { margin: 0; padding: 32px 28px 64px; background: var(--bg) var(--glow-app) no-repeat; color: var(--text); font-family: var(--font-sans); font-size: var(--text-sm); line-height: 1.45; }
+::selection { background: color-mix(in srgb, var(--brand) 40%, transparent); color: var(--text); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.doc { max-width: 1180px; margin: 0 auto; }
+.doc > h1 { margin: 0 0 6px; font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.02em; }
+.doc > p { margin: 0 0 36px; max-width: 70ch; color: var(--muted); }
+.scene { margin: 0 0 48px; }
+.scene > h2 { margin: 0 0 4px; font-size: var(--text-md); font-weight: 600; }
+.scene > p { margin: 0 0 14px; max-width: 72ch; color: var(--muted); }
+.scene > p b { color: var(--text); font-weight: 600; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.case { min-width: 0; }
+.case > .ruler { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; color: var(--muted); font-size: var(--text-xs); }
+.case > .ruler span { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.case > .ruler::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--fill); color: var(--text); font-size: 11px; font-weight: 600; }
+.tag--new { background: color-mix(in srgb, var(--lime) 16%, var(--surface)); color: var(--lime); }
+
+/* O palco reduz a janela de verdade (largura real em px) para caber na página, sem mudar o desenho. */
+.stage { width: 100%; overflow: hidden; }
+.win { display: flex; flex-direction: column; height: 286px; overflow: hidden; border-radius: var(--radius-card); background: var(--bg); box-shadow: 0 0 0 1px var(--line), 0 18px 48px rgb(4 2 16 / 55%); transform-origin: top left; }
+
+/* Barra superior da janela (como no app). */
+.top { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.top__brand { display: inline-flex; align-items: center; gap: 8px; margin-right: 14px; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; }
+.top__brand svg { color: var(--brand); }
+.wtab { display: inline-flex; align-items: center; gap: 10px; height: 28px; padding: 0 12px; border-radius: var(--radius); color: var(--muted); font-weight: 600; font-size: var(--text-sm); }
+.wtab--on { background: var(--surface); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.wtab--on svg { color: var(--muted); }
+.wtab--add { width: 28px; padding: 0; justify-content: center; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line); }
+
+.body { display: flex; flex: 1; min-height: 0; gap: 8px; padding: 8px; }
+.side { flex: none; width: 240px; border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.side__field { height: 30px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line); }
+.side__row { height: 26px; border-radius: var(--radius); background: color-mix(in srgb, var(--fill) 55%, transparent); }
+.side__row--dim { width: 60%; background: var(--line); opacity: 0.6; }
+.main { display: flex; flex-direction: column; flex: 1; min-width: 0; border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; padding: 8px; }
+.pane { border-radius: var(--radius-card); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.pane--on { box-shadow: inset 0 0 0 1px var(--lime); }
+.pane__h { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 600; }
+.pane__h svg { color: var(--cyan); }
+.pane__b { padding: 8px 10px; color: var(--text); font-family: var(--font-mono); font-size: 11px; line-height: 1.6; white-space: nowrap; overflow: hidden; }
+.pane__b i { display: inline-block; width: 7px; height: 13px; vertical-align: -2px; background: var(--lime); }
+
+/* Ícones: SVG desenhados, traço 2, do mesmo conjunto do app. */
+.ic { flex: none; display: block; }
+
+/* ───────── HOJE: como está no ramo ───────── */
+.now { container: now / inline-size; }
+.now__row { display: flex; align-items: center; gap: 0 24px; min-height: 40px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.now__title { flex: 0 1 auto; min-width: 0; font-size: var(--text-md); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabs { display: flex; gap: 4px; }
+.tab { position: relative; padding: 4px 12px; border-radius: var(--radius-pill); color: var(--muted); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
+.tab--on { background: linear-gradient(135deg, var(--fill), var(--line)); box-shadow: inset 0 0 0 1px var(--muted); color: var(--text); font-weight: 700; }
+.now__tools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line); }
+.seg b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--muted); }
+.seg b.on { background: var(--line); color: var(--text); }
+.btn { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: 1px solid var(--field-line); border-radius: var(--radius); color: var(--text); font-size: var(--text-xs); font-weight: 600; line-height: 26px; white-space: nowrap; }
+.now__actions { display: flex; align-items: center; gap: 8px; }
+.now__actions .big { padding: 4px 16px; font-size: var(--text-sm); line-height: 1.45; }
+.big--lime { border-color: var(--lime); background: var(--lime); color: var(--accent-ink); }
+.dock-now { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: var(--text-xs); }
+.now .dots { display: none; }
+@container now (max-width: 1100px) { .now__title { display: none; } .now__row { gap: 0 16px; } .now .lbl { display: none; } .now .dots { display: block; } .now__actions .big--more { padding: 4px 8px; } }
+
+/* ───────── PROPOSTA ───────── */
+.hdr { container: hdr / inline-size; }
+.hdr__row { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.hdr .tabs { flex: none; gap: 2px; }
+.hdr .tab { height: 28px; padding: 0 12px; line-height: 28px; }
+
+/* As ferramentas da visão: uma cápsula só, que pertence a Terminais e encosta nas ações do projeto. */
+.ctx { display: flex; flex: 0 1 auto; align-items: center; gap: 2px; height: 32px; margin-left: auto; padding: 2px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.ctx__sep { flex: none; width: 1px; height: 16px; margin: 0 4px; background: var(--line); }
+.ctx .seg { flex: none; padding: 0; box-shadow: none; gap: 2px; }
+.ctx .seg b { width: 28px; height: 28px; border-radius: var(--radius); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.ctx .seg b:hover { color: var(--text); background: color-mix(in srgb, var(--line) 60%, transparent); }
+.ctx .seg b.on { background: var(--fill); color: var(--text); }
+.term { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 7px; border-radius: var(--radius); color: var(--text); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; transition: background-color var(--dur-fast) var(--ease); }
+.term:hover { background: color-mix(in srgb, var(--line) 60%, transparent); }
+.term .plus { color: var(--cyan); }
+.term .chev { color: var(--muted); }
+
+.dock { display: flex; flex: 0 1 auto; align-items: center; gap: 2px; min-width: 0; padding-left: 6px; }
+.dock__label { flex: none; display: inline-flex; align-items: center; gap: 6px; padding-right: 4px; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
+.n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--fill); color: var(--text); font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chips { display: flex; flex: 0 1 auto; gap: 2px; min-width: 0; overflow: hidden; contain: inline-size; }
+.more[hidden], .chip[hidden] { display: none; }
+/* Com fichas, a cápsula toma o espaço livre da linha e as fichas o preenchem; sem fichas, ela fica do tamanho dos botões. */
+.ctx:has(.dock) { flex: 1 1 auto; }
+.ctx .dock { flex: 1 1 auto; }
+.ctx .chips { flex: 1 1 auto; }
+/* Nenhuma ficha coube: a cápsula volta ao tamanho dos botões, e o "+N" encosta na contagem. */
+.ctx.is-tight { flex: 0 1 auto; }
+.ctx.is-tight .chips { display: none; }
+.chip { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 28px; max-width: 10rem; padding: 0 8px 0 6px; border-radius: var(--radius); color: var(--muted); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; }
+.chip svg { color: var(--cyan); }
+.chip--wait { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); color: var(--warn); }
+.chip--wait svg { color: var(--warn); }
+.chip__mark { font-family: var(--font-mono); font-size: 11px; }
+.more { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--field-line); color: var(--text); font-family: var(--font-mono); font-size: 11px; }
+
+.hdr__div { flex: none; width: 1px; height: 20px; background: var(--line); }
+.acts { flex: none; display: flex; align-items: center; gap: 6px; }
+.new { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 10px; border-radius: var(--radius); background: var(--lime); color: var(--accent-ink); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; transition: background-color var(--dur-fast) var(--ease); }
+.new:hover { background: color-mix(in srgb, var(--lime) 88%, white); }
+.kebab { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius); color: var(--text); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.kebab:hover { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--field-line); }
+
+/* Compactação pela largura da própria faixa, uma coisa por vez. */
+@container hdr (max-width: 1000px) { .dock__label .txt { display: none; } }
+@container hdr (max-width: 860px) { .term .txt { display: none; } .term { padding: 0 6px; gap: 2px; } }
+@container hdr (max-width: 780px) { .hdr .tab { padding: 0 9px; } .hdr__row { gap: 10px; } .new .txt { display: none; } .new { width: 28px; padding: 0; justify-content: center; } }
+
+/* Anatomia */
+.anat { position: relative; padding: 46px 18px 58px; border-radius: var(--radius-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow-x: auto; }
+.anat .hdr__row { width: 1100px; border: 0; border-radius: var(--radius); box-shadow: inset 0 0 0 1px var(--line); }
+.mark { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; text-align: center; white-space: nowrap; }
+.mark::before { content: ''; width: 100%; height: 6px; border: 1px solid var(--field-line); border-top: 0; border-radius: 0 0 4px 4px; }
+.mark--up { flex-direction: column-reverse; }
+.mark--up::before { border-top: 1px solid var(--field-line); border-bottom: 0; border-radius: 4px 4px 0 0; }
+.mark b { color: var(--text); font-weight: 600; }
+
+.changes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 28px; margin: 0; padding: 0; list-style: none; }
+.changes li { padding: 12px 0; border-top: 1px solid var(--line); color: var(--muted); }
+.changes li b { display: block; margin-bottom: 2px; color: var(--text); font-weight: 600; }
+.foot { color: var(--muted); font-size: var(--text-xs); }
+</style>
+</head>
+<body>
+<main class="doc">
+  <h1>Faixa do projeto</h1>
+  <p>Hoje a linha junta título, visões, ferramentas dos terminais e ações do projeto com quatro alturas e três estilos de botão, e a compactação muda o desenho conforme a janela. A proposta deixa a mesma linha em qualquer largura: visões à esquerda, as ferramentas de Terminais numa cápsula, as ações do projeto no fim. Janelas abaixo em tamanho real, reduzidas para caber na página.</p>
+
+  <section class="scene">
+    <h2>Hoje</h2>
+    <p>Na janela cheia cabe tudo, mas o nome repete a aba da janela logo acima, e Nova missão e Mais ações são mais altos que o resto. Na janela menor o nome some e os botões trocam de forma, então a linha muda de cara ao redimensionar.</p>
+    <div class="pair">
+      <div class="case"><div class="ruler">Janela <span>1440 px</span></div><div class="stage" data-w="1440" data-kind="now"></div></div>
+      <div class="case"><div class="ruler">Sua janela <span>1200 px</span></div><div class="stage" data-w="1200" data-kind="now"></div></div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Proposta <span class="tag tag--new">nova</span></h2>
+    <p><b>Uma régua de 28 px.</b> Todas as peças têm a mesma altura e encostam no mesmo centro. O nome sai da linha de vez (a aba da janela é o título), então nada some nem aparece ao redimensionar. As ferramentas de Terminais ficam numa cápsula, separadas por um fio das ações do projeto: Nova missão em lima e o menu em ⋯.</p>
+    <div class="pair">
+      <div class="case"><div class="ruler">Janela <span>1440 px</span></div><div class="stage" data-w="1440" data-kind="new"></div></div>
+      <div class="case"><div class="ruler">Sua janela <span>1200 px</span> · o mesmo desenho, sem trocar nada</div><div class="stage" data-w="1200" data-kind="new"></div></div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Com terminais fora da grade</h2>
+    <p>As fichas entram na cápsula, à esquerda do seletor, e usam o espaço livre da linha. Faltando espaço, primeiro sai o texto "Fora da grade" (a contagem fica), depois "Terminal" fica só no +, e as fichas vão para o "+N". Na janela mínima as visões apertam e Nova missão vira o + lima, com a dica do nome. A ficha que aguarda você vem primeiro, em amarelo.</p>
+    <div class="pair">
+      <div class="case"><div class="ruler">Janela <span>1440 px</span> · 3 fora da grade</div><div class="stage" data-w="1440" data-kind="new" data-chips="3"></div></div>
+      <div class="case"><div class="ruler">Sua janela <span>1200 px</span> · 3 fora da grade</div><div class="stage" data-w="1200" data-kind="new" data-chips="3"></div></div>
+      <div class="case"><div class="ruler">Janela <span>1040 px</span> · a menor: só contagem e "+N", ícones, e Nova missão vira o + lima</div><div class="stage" data-w="1040" data-kind="new" data-chips="3"></div></div>
+    </div>
+  </section>
+
+  <section class="scene">
+    <h2>Anatomia</h2>
+    <p>Três grupos, um papel cada. Vãos de 12 px entre grupos e de 2 px dentro da cápsula. O + de Terminal é ciano, a cor de terminal na identidade; o lima fica só com Nova missão, a ação principal.</p>
+    <div class="anat" id="anat"></div>
+  </section>
+
+  <section class="scene">
+    <h2>O que muda</h2>
+    <ul class="changes">
+      <li><b>Nome fora da linha</b>A aba da janela já mostra o projeto. Sem o nome, as visões abrem a linha, e o h1 segue para leitores de tela.</li>
+      <li><b>Uma altura, 28 px</b>Visões, seletor, + Terminal, Nova missão e ⋯ alinham pelo centro. Hoje há 26, 28 e 30 px na mesma linha.</li>
+      <li><b>Cápsula de Terminais</b>Fora da grade, Grade | Abas e + Terminal viram um objeto só, que aparece e some com a visão Terminais.</li>
+      <li><b>⋯ sempre</b>Mais ações vira o ⋯ em qualquer largura, com o mesmo nome acessível. Menos um botão de contorno disputando atenção.</li>
+      <li><b>Cor com papel</b>Lima só em Nova missão. O + de Terminal ganha o ciano do terminal. Fichas que aguardam ficam em amarelo, como hoje.</li>
+      <li><b>Compactação discreta</b>Saem, um de cada vez, "Fora da grade", "Terminal" e, só na janela mínima, o texto de Nova missão. A linha não quebra nas larguras do app com a barra lateral à vista.</li>
+    </ul>
+  </section>
+  <p class="foot">Mockup estático. Os nomes de terminal e de projeto são de exemplo.</p>
+</main>
+
+<script>
+const I = {
+  logo: '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 22V12M3 7l9 5 9-5"/></svg>',
+  x: '<svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  plus: (s = 14) => `<svg class="ic plus" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  chev: '<svg class="ic chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  grid: '<svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  tabs: '<svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>',
+  dots: '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>',
+  term: '<svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></svg>',
+};
+const VIEWS = ['Terminais', 'Missões', 'Progresso', 'Worktrees', 'Configurações'];
+const tabs = () => `<div class="tabs" role="tablist">${VIEWS.map((v, i) => `<span class="tab${i === 0 ? ' tab--on' : ''}">${v}</span>`).join('')}</div>`;
+const seg = () => `<span class="seg"><b class="on" title="Grade">${I.grid}</b><b title="Abas">${I.tabs}</b></span>`;
+
+function headerNow() {
+  return `<div class="now"><div class="now__row">
+    <span class="now__title">World Gate Chronicle</span>${tabs()}
+    <span class="now__tools">${seg()}<span class="btn">${I.plus()}<span class="lbl">Terminal</span>${I.chev}</span></span>
+    <span class="now__actions"><span class="btn big big--lime">Nova missão</span><span class="btn big big--more"><span class="dots">${I.dots}</span><span class="lbl">Mais ações</span></span></span>
+  </div></div>`;
+}
+
+function dock(n) {
+  if (!n) return '';
+  const list = [
+    ['chip chip--wait', 'Claude Code 3', '◐'],
+    ['chip', 'PowerShell 5', '●'],
+    ['chip', 'PowerShell 6', '●'],
+  ].slice(0, n);
+  return `<span class="dock"><span class="dock__label"><span class="txt">Fora da grade</span><span class="n">${n}</span></span>
+    <span class="chips">${list.map(([c, l, m]) => `<span class="${c}">${I.term}<span>${l}</span><span class="chip__mark">${m}</span></span>`).join('')}</span>
+    <span class="more" data-more>+${n}</span></span><span class="ctx__sep"></span>`;
+}
+
+function headerNew(chips) {
+  return `<div class="hdr"><div class="hdr__row">${tabs()}
+    <span class="ctx">${dock(chips)}${seg()}<span class="ctx__sep"></span><span class="term">${I.plus()}<span class="txt">Terminal</span>${I.chev}</span></span>
+    <span class="hdr__div"></span>
+    <span class="acts"><span class="new" title="Nova missão">${I.plus()}<span class="txt">Nova missão</span></span><span class="kebab" title="Mais ações">${I.dots}</span></span>
+  </div></div>`;
+}
+
+function pane(on, n) {
+  return `<div class="pane${on ? ' pane--on' : ''}"><div class="pane__h">${I.term}PowerShell ${n} · World Gate Chronicle</div>
+    <div class="pane__b">PS C:\\Projetos\\World Gate Chronicle&gt; ${on ? '<i></i>' : ''}</div></div>`;
+}
+
+function win(kind, chips) {
+  return `<div class="win">
+    <div class="top"><span class="top__brand">${I.logo}PROJECT HUB</span><span class="wtab">Início</span>
+      <span class="wtab wtab--on">World Gate Chronicle ${I.x}</span><span class="wtab wtab--add">${I.plus(12)}</span></div>
+    <div class="body"><aside class="side"><div class="side__field"></div><div class="side__row"></div><div class="side__row side__row--dim"></div></aside>
+      <section class="main">${kind === 'now' ? headerNow() : headerNew(chips)}<div class="grid">${pane(false, 1)}${pane(true, 2)}</div></section></div>
+  </div>`;
+}
+
+/** Fichas que a faixa cortou vão para o "+N"; sem corte, o "+N" some. */
+function fitChips(root) {
+  root.querySelectorAll('.dock').forEach((d) => {
+    const strip = d.querySelector('.chips');
+    const more = d.querySelector('[data-more]');
+    const chips = [...strip.children];
+    const ctx = d.closest('.ctx');
+    ctx.classList.remove('is-tight');
+    chips.forEach((c) => (c.hidden = false));
+    const edge = strip.getBoundingClientRect().right + 0.5;
+    const out = chips.filter((c) => c.getBoundingClientRect().right > edge);
+    out.forEach((c) => (c.hidden = true));
+    const cut = out.length;
+    ctx.classList.toggle('is-tight', cut === chips.length);
+    more.hidden = cut === 0;
+    more.textContent = `+${cut}`;
+  });
+}
+
+const stages = [...document.querySelectorAll('.stage')];
+stages.forEach((s) => {
+  s.innerHTML = win(s.dataset.kind, Number(s.dataset.chips || 0));
+  const w = Number(s.dataset.w);
+  s.firstElementChild.style.width = `${w}px`;
+});
+
+const anat = document.getElementById('anat');
+anat.innerHTML = `${headerNew(0).replace('class="hdr"', 'class="hdr" style="width:1100px"')}
+  <span class="mark" data-for=".tabs"><span><b>Visões</b> · o lugar no projeto</span></span>
+  <span class="mark mark--up" data-for=".ctx"><span><b>Cápsula de Terminais</b> · só nesta visão</span></span>
+  <span class="mark" data-for=".acts"><span><b>Projeto</b> · ação principal e menu</span></span>`;
+/** Cada marcação cobre o grupo que nomeia, medido na hora. */
+function placeMarks() {
+  const base = anat.getBoundingClientRect();
+  const row = anat.querySelector('.hdr__row').getBoundingClientRect();
+  anat.querySelectorAll('.mark').forEach((m) => {
+    const r = anat.querySelector(m.dataset.for).getBoundingClientRect();
+    m.style.left = `${r.left - base.left + anat.scrollLeft}px`;
+    m.style.width = `${r.width}px`;
+    if (m.classList.contains('mark--up')) m.style.top = `${row.top - base.top - 34}px`;
+    else m.style.top = `${row.bottom - base.top + 6}px`;
+  });
+}
+
+function layout() {
+  stages.forEach((s) => {
+    const w = Number(s.dataset.w);
+    const scale = Math.min(1, s.clientWidth / w);
+    const el = s.firstElementChild;
+    el.style.transform = `scale(${scale})`;
+    s.style.height = `${el.offsetHeight * scale}px`;
+  });
+  fitChips(document);
+  placeMarks();
+}
+window.addEventListener('resize', layout);
+document.fonts.ready.then(layout);
+layout();
+</script>
+</body>
+</html>

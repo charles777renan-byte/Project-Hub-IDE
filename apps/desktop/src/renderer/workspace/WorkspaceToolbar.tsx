@@ -3,11 +3,16 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { Hint } from '../components/Hint';
-import { ChevronDown, ICON_PROPS, LayoutGrid, Plus, Search } from '../components/Icon';
+import { ChevronDown, ICON_PROPS, LayoutGrid, PanelTop, Plus, Search } from '../components/Icon';
 import { providerShortcutKeys, providerShortcutLabel } from './provider-shortcuts';
 
 export const LIMIT_HINT = 'Limite de 12 painéis';
 const SOLO_AUTO_HINT = 'Janela estreita: um painel por vez';
+const GRID_HINT = 'Grade: todos os painéis lado a lado';
+const TABS_HINT = 'Abas: um painel por vez, com uma aba para cada um (Ctrl+Alt+setas troca de aba)';
+
+/** Como os painéis aparecem: lado a lado ou um por vez. */
+export type PaneLayoutMode = 'grade' | 'abas';
 
 /** Linha de apoio de cada programa no menu, abaixo do nome (só a do item marcado aparece). */
 const DESCRIPTION: Record<ProviderId, string> = {
@@ -30,7 +35,9 @@ function rowStyle(index: number): CSSProperties {
 }
 
 /**
- * Barra fina no topo do workspace, com um botão "Abrir terminal" que abre o menu dos programas. O menu abre
+ * Ferramentas dos terminais, na faixa do projeto (o cabeçalho, à direita): "Fora da grade", o seletor de layout
+ * (Grade e Abas, só ícones) e o botão "+ Terminal" (nome acessível "Abrir terminal"), que abre o menu dos programas
+ * alinhado à direita. O menu abre
  * com o foco no campo de busca, que filtra os programas pelo nome (sem diferenciar maiúsculas nem acentos), e
  * Enter abre o item marcado. O item marcado é o que tem o mouse em cima ou o foco, e só ele mostra a descrição;
  * sem nenhum dos dois, vale o primeiro disponível. Cada linha traz o atalho Ctrl+Alt+posição no menu, que só
@@ -42,8 +49,9 @@ function rowStyle(index: number): CSSProperties {
  * painéis, o botão fica desabilitado com a dica do limite. Com `unavailableReason` (a pasta do projeto sumiu), o
  * botão também fica desabilitado, e a dica é o motivo. Um bloqueio que chega com o menu aberto fecha o menu.
  * `focusToken` novo leva o foco ao botão, como quando o
- * último painel é fechado. `dock` (os terminais "Fora da grade") vai no fim da barra, à direita; com `soloAuto` (a
- * janela está estreita e o modo Abas valeu sozinho) "Abas" fica apertado e a dica diz isso.
+ * último painel é fechado. `dock` (os terminais "Fora da grade") vai no começo, à esquerda do seletor. Com `soloAuto`
+ * (a janela está estreita e o modo Abas valeu sozinho), "Abas" fica apertado, "Grade" fica desabilitado e as dicas
+ * dizem isso; escolher "Abas" ainda vale, para quando a janela alargar.
  */
 export function WorkspaceToolbar({
   providers,
@@ -55,7 +63,7 @@ export function WorkspaceToolbar({
   soloAuto = false,
   canSolo = false,
   dock,
-  onToggleSolo,
+  onLayout,
   onOpen,
 }: {
   providers: readonly ProviderInfo[];
@@ -72,9 +80,10 @@ export function WorkspaceToolbar({
   soloAuto?: boolean;
   /** Há painel para mostrar sozinho; sem ele o botão fica desabilitado. */
   canSolo?: boolean;
-  /** O que vai no fim da barra, à direita (a faixa "Fora da grade"). */
+  /** O que vai no começo da barra, à esquerda do seletor (a faixa "Fora da grade"). */
   dock?: ReactNode;
-  onToggleSolo?(): void;
+  /** A pessoa escolheu como os painéis aparecem. Sem ele, o seletor não aparece. */
+  onLayout?(mode: PaneLayoutMode): void;
   onOpen(provider: ProviderId): void;
 }) {
   const [open, setOpen] = useState(false);
@@ -188,12 +197,13 @@ export function WorkspaceToolbar({
       type="button"
       className="btn-secondary workspace__open"
       disabled={blocked}
+      aria-label="Abrir terminal"
       aria-haspopup="menu"
       aria-expanded={open}
       onClick={() => setOpen((current) => !current)}
     >
       <Plus {...ICON_PROPS} />
-      Abrir terminal
+      <span className="workspace__open-label">Terminal</span>
       <ChevronDown {...ICON_PROPS} />
     </button>
   );
@@ -208,36 +218,53 @@ export function WorkspaceToolbar({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      {hint !== undefined ? (
-        <Hint label={hint}>
-          <span className="workspace__open-wrap" role="group" aria-label={hint} tabIndex={0}>
-            {trigger}
-          </span>
-        </Hint>
-      ) : (
-        trigger
-      )}
-      {onToggleSolo === undefined ? null : (
-        <Hint
-          label={
-            soloAuto
-              ? SOLO_AUTO_HINT
-              : 'Mostra um painel por vez, com uma aba para cada um (Ctrl+Alt+setas troca de aba)'
-          }
-        >
-          <button
-            type="button"
-            className="btn-secondary workspace__open"
-            aria-pressed={soloMode || soloAuto}
-            disabled={!canSolo}
-            onClick={onToggleSolo}
-          >
-            <LayoutGrid {...ICON_PROPS} />
-            Abas
-          </button>
-        </Hint>
-      )}
       {dock}
+      {/* A cápsula: o seletor de layout e o gatilho, juntos, com um fio entre eles. */}
+      <div className="workspace__controls">
+        {onLayout === undefined ? null : (
+          <div className="workspace__layout" role="group" aria-label="Layout dos painéis">
+            <Hint label={soloAuto ? SOLO_AUTO_HINT : GRID_HINT}>
+              {/* Desabilitado com a janela estreita, mas ainda focável (aria-disabled), para a dica explicar o porquê. */}
+              <button
+                type="button"
+                className="workspace__layout-btn"
+                aria-label="Grade"
+                aria-pressed={!(soloMode || soloAuto)}
+                aria-disabled={soloAuto}
+                onClick={() => {
+                  if (!soloAuto) onLayout('grade');
+                }}
+              >
+                <LayoutGrid {...ICON_PROPS} />
+              </button>
+            </Hint>
+            <Hint label={soloAuto ? SOLO_AUTO_HINT : TABS_HINT}>
+              <button
+                type="button"
+                className="workspace__layout-btn"
+                aria-label="Abas"
+                aria-pressed={soloMode || soloAuto}
+                disabled={!canSolo}
+                onClick={() => onLayout('abas')}
+              >
+                <PanelTop {...ICON_PROPS} />
+              </button>
+            </Hint>
+          </div>
+        )}
+        {onLayout === undefined ? null : (
+          <span className="workspace__controls-sep" aria-hidden="true" />
+        )}
+        {hint !== undefined ? (
+          <Hint label={hint}>
+            <span className="workspace__open-wrap" role="group" aria-label={hint} tabIndex={0}>
+              {trigger}
+            </span>
+          </Hint>
+        ) : (
+          trigger
+        )}
+      </div>
       {open ? (
         <div className="workspace__popup">
           <div className="workspace__menu-search" style={rowStyle(0)}>

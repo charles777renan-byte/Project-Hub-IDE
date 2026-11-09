@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ProviderInfo } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
@@ -339,39 +339,99 @@ describe('WorkspaceToolbar', () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  describe('grade responsiva', () => {
-    it('`dock` aparece no fim da barra, depois de "Abas"', () => {
+  describe('na faixa do projeto', () => {
+    it('a ordem é "Fora da grade", o seletor de layout e, por último, "+ Terminal"', () => {
       const { container } = setup({
         canSolo: true,
-        onToggleSolo: vi.fn(),
+        onLayout: vi.fn(),
         dock: <div data-testid="dock">fora da grade</div>,
       });
       const barra = container.querySelector('.workspace__toolbar') as HTMLElement;
-      expect(barra.lastElementChild).toBe(screen.getByTestId('dock'));
-      expect(
-        screen
-          .getByRole('button', { name: 'Abas' })
-          .compareDocumentPosition(screen.getByTestId('dock')) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      const ordem = [
+        screen.getByTestId('dock'),
+        screen.getByRole('group', { name: 'Layout dos painéis' }),
+        screen.getByRole('button', { name: 'Abrir terminal' }),
+      ];
+      expect(barra.firstElementChild).toBe(ordem[0]);
+      for (let k = 1; k < ordem.length; k += 1) {
+        expect(
+          (ordem[k - 1] as HTMLElement).compareDocumentPosition(ordem[k] as HTMLElement) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
     });
 
-    it('`soloAuto` deixa "Abas" apertado e a dica diz que a janela está estreita', async () => {
-      setup({ canSolo: true, onToggleSolo: vi.fn(), soloAuto: true });
+    it('o botão mostra "Terminal" e se chama "Abrir terminal"', () => {
+      setup();
+      expect(screen.getByRole('button', { name: 'Abrir terminal' })).toHaveTextContent('Terminal');
+    });
+
+    it('o seletor e o gatilho ficam juntos na cápsula, separados por um fio que o leitor de tela ignora', () => {
+      setup({ canSolo: true, onLayout: vi.fn() });
+      const capsule = screen.getByRole('group', { name: 'Layout dos painéis' }).parentElement;
+      expect(capsule).toHaveClass('workspace__controls');
+      expect(capsule).toContainElement(screen.getByRole('button', { name: 'Abrir terminal' }));
+      expect(capsule?.querySelector('.workspace__controls-sep')).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('o texto "Terminal" fica num rótulo à parte, que a faixa estreita esconde deixando os ícones', () => {
+      setup();
+      const trigger = screen.getByRole('button', { name: 'Abrir terminal' });
+      expect(within(trigger).getByText('Terminal')).toHaveClass('workspace__open-label');
+    });
+
+    it('sem `onLayout`, o seletor não aparece', () => {
+      setup({ canSolo: true });
+      expect(screen.queryByRole('group', { name: 'Layout dos painéis' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('seletor de layout', () => {
+    it('na grade, "Grade" fica apertado; escolher "Abas" avisa', async () => {
+      const onLayout = vi.fn();
+      setup({ canSolo: true, onLayout });
+      expect(screen.getByRole('button', { name: 'Grade' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'false');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+      expect(onLayout).toHaveBeenCalledWith('abas');
+    });
+
+    it('no modo Abas, "Abas" fica apertado; escolher "Grade" avisa', async () => {
+      const onLayout = vi.fn();
+      setup({ canSolo: true, soloMode: true, onLayout });
+      expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'true');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
+      expect(onLayout).toHaveBeenCalledWith('grade');
+    });
+
+    it('sem painel, "Abas" fica desabilitado', () => {
+      setup({ canSolo: false, onLayout: vi.fn() });
+      expect(screen.getByRole('button', { name: 'Abas' })).toBeDisabled();
+    });
+
+    it('`soloAuto` deixa "Abas" apertado, "Grade" sem efeito e a dica diz que a janela está estreita', async () => {
+      const onLayout = vi.fn();
+      setup({ canSolo: true, onLayout, soloAuto: true });
       const abas = screen.getByRole('button', { name: 'Abas' });
+      const grade = screen.getByRole('button', { name: 'Grade' });
       expect(abas).toHaveAttribute('aria-pressed', 'true');
-      await userEvent.hover(abas);
+      expect(grade).toHaveAttribute('aria-disabled', 'true');
+
+      await userEvent.hover(grade);
       expect(await screen.findByRole('tooltip')).toHaveTextContent(
         'Janela estreita: um painel por vez',
       );
+      await userEvent.click(grade);
+      expect(onLayout).not.toHaveBeenCalled();
     });
 
-    it('sem `soloAuto` nem `soloMode`, "Abas" fica solto e com a dica de sempre', async () => {
-      setup({ canSolo: true, onToggleSolo: vi.fn() });
-      const abas = screen.getByRole('button', { name: 'Abas' });
-      expect(abas).toHaveAttribute('aria-pressed', 'false');
-      await userEvent.hover(abas);
+    it('fora do modo automático, as dicas dizem o que cada layout faz', async () => {
+      setup({ canSolo: true, onLayout: vi.fn() });
+      await userEvent.hover(screen.getByRole('button', { name: 'Abas' }));
       expect(await screen.findByRole('tooltip')).toHaveTextContent(
-        'Mostra um painel por vez, com uma aba para cada um',
+        'Abas: um painel por vez, com uma aba para cada um',
       );
     });
   });

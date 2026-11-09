@@ -36,7 +36,6 @@ function setup(
   auto = false,
 ) {
   const onSelect = vi.fn();
-  const onGrid = vi.fn();
   const { unmount } = render(
     <PaneTabs
       leaves={leaves}
@@ -44,11 +43,10 @@ function setup(
       terminals={terminals}
       providers={providers}
       onSelect={onSelect}
-      onGrid={onGrid}
       auto={auto}
     />,
   );
-  return { onSelect, onGrid, unmount };
+  return { onSelect, unmount };
 }
 
 /** Os rótulos de cada aba, na ordem da faixa (sem o número de posição). */
@@ -127,6 +125,25 @@ describe('PaneTabs: rótulos repetidos', () => {
   });
 });
 
+describe('PaneTabs: marca da sessão', () => {
+  it('a sessão viva e parada mostra Ocioso (◦); a que está produzindo segue Ativo (●)', () => {
+    render(
+      <PaneTabs
+        leaves={[leaf('a', 'claude', 't1'), leaf('b', 'shell', 't2')]}
+        activeId="a"
+        terminals={[terminal('t1', 'claude'), terminal('t2', 'shell')]}
+        idleIds={new Set(['t1'])}
+        providers={providers}
+        onSelect={vi.fn()}
+      />,
+    );
+    const [first, second] = screen.getAllByRole('tab');
+    expect(first?.querySelector('.state-mark')).toHaveClass('state-mark--idle');
+    expect(first).toHaveTextContent('◦');
+    expect(second?.querySelector('.state-mark')).toHaveClass('state-mark--active');
+  });
+});
+
 describe('PaneTabs: abas que rolam (esmaecimento e "⌄")', () => {
   const quatro = [leaf('a', 'claude'), leaf('b', 'codex'), leaf('c', 'shell'), leaf('d', 'claude')];
   const trigger = () => screen.queryByRole('button', { name: /Abas fora de vista/ });
@@ -186,7 +203,9 @@ describe('PaneTabs: abas que rolam (esmaecimento e "⌄")', () => {
     ];
     const { unmount } = setup(ligados, sessoes);
     show('a', 'b');
-    expect(screen.getByRole('button', { name: 'Abas fora de vista, uma aguarda você' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Abas fora de vista, uma aguarda você' }),
+    ).toBeInTheDocument();
     unmount();
 
     // A que aguarda está à vista: o "⌄" lista só abas calmas e não pede atenção.
@@ -199,12 +218,10 @@ describe('PaneTabs: abas que rolam (esmaecimento e "⌄")', () => {
 describe('PaneTabs: janela estreita (modo ligado pela largura)', () => {
   const dois = [leaf('a', 'claude'), leaf('b', 'shell')];
 
-  it('sem auto, o botão "Grade" segue como hoje e chama onGrid', async () => {
-    const { onGrid } = setup(dois);
+  it('sem auto, a faixa não tem botão "Grade" (é do seletor de layout, no cabeçalho) nem o aviso', () => {
+    setup(dois);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
-
-    expect(onGrid).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Grade' })).toBeNull();
     expect(screen.queryByText('Janela estreita')).toBeNull();
   });
 

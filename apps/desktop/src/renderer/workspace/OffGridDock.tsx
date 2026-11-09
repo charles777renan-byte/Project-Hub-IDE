@@ -18,7 +18,7 @@ export type OffGridItem = { id: string; label: string; provider: ProviderId; mar
  *
  * A ficha que acaba de chegar (um id que não estava no desenho anterior) leva `data-arriving="true"` e ganha um
  * brilho curto; o atributo sai quando a animação termina. A primeira vez que a faixa aparece não conta como chegada.
- * Com a faixa estreita, a CSS esconde o texto "Fora da grade" e deixa a contagem. O estilo vem de `off-grid.css`.
+ * Com a faixa estreita, a CSS esconde o texto "Fora da grade" e deixa a contagem; a dica do rótulo diz o que ela conta. O estilo vem de `off-grid.css`.
  */
 export function OffGridDock({
   items,
@@ -38,7 +38,10 @@ export function OffGridDock({
   const overflow = items.filter((item) => hidden.includes(item.id));
   return (
     <div role="group" aria-label="Terminais fora da grade" className="off-grid">
-      <span className="off-grid__label">
+      <span
+        className="off-grid__label"
+        title={`${items.length} ${items.length === 1 ? 'terminal' : 'terminais'} fora da grade`}
+      >
         <span className="off-grid__label-text">Fora da grade</span>
         <span className="off-grid__count">{items.length}</span>
       </span>

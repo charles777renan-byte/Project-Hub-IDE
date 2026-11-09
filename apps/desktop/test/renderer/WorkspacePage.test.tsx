@@ -1076,13 +1076,13 @@ describe('grade responsiva', () => {
   });
 
   describe('janela estreita (modo Abas automático)', () => {
-    it('abaixo de 720 px entra a faixa de abas com o aviso, sem o botão "Grade", e "Abas" fica apertado', async () => {
+    it('abaixo de 720 px entra a faixa de abas com o aviso, "Grade" sem efeito e "Abas" apertado', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
       medirArea(700, 600);
       expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
       expect(screen.getByText('Janela estreita')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Grade' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Grade' })).toHaveAttribute('aria-disabled', 'true');
       expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'true');
       expect(regioes()).toHaveLength(1);
     });
@@ -1263,6 +1263,37 @@ describe('aba do projeto: visões', () => {
       'true',
     );
     expect(screen.getByRole('heading', { level: 1, name: 'app' })).toBeInTheDocument();
+  });
+
+  it('as ferramentas dos terminais ficam na faixa do projeto, sem uma terceira faixa', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    const header = document.querySelector('.project-header') as HTMLElement;
+    expect(within(header).getByRole('button', { name: 'Abrir terminal' })).toBeInTheDocument();
+    expect(within(header).getByRole('group', { name: 'Layout dos painéis' })).toBeInTheDocument();
+    expect(document.querySelector('.workspace > .workspace__toolbar')).toBeNull();
+    // Um destino num lugar só: "Terminais" é a aba da visão e nada mais.
+    expect(screen.getAllByText('Terminais')).toHaveLength(1);
+  });
+
+  it('em outra visão, as ferramentas dos terminais saem do cabeçalho e voltam com Terminais', async () => {
+    Object.assign(api, {
+      worktrees: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
+    });
+    Object.assign(api.missions, {
+      subscribe: vi.fn(() => () => undefined),
+      subscribeUsage: vi.fn(() => () => undefined),
+    });
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+
+    selectView('Worktrees');
+    expect(screen.queryByRole('group', { name: 'Layout dos painéis' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Abrir terminal' })).not.toBeInTheDocument();
+
+    selectView('Terminais');
+    expect(screen.getByRole('group', { name: 'Layout dos painéis' })).toBeInTheDocument();
   });
 
   it('?visao=terminais é a mesma visão do padrão', async () => {

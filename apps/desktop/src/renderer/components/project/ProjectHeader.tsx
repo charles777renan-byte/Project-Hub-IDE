@@ -13,8 +13,10 @@ import { projectViewPath, ROUTE_PATHS } from '../../routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../workspaces-events';
 import { requestCloseAll, usePaneCount } from '../../workspace/close-all';
 import { ConfirmInline } from '../ConfirmButton';
+import { Ellipsis, ICON_PROPS, Plus } from '../Icon';
 import { MenuAcoes } from '../MenuAcoes';
 import { Tabs, type TabItem } from '../Tabs';
+import { TabsOverflow, useTabsOverflow } from '../TabsOverflow';
 
 const VIEW_TABS: readonly TabItem<ProjectView>[] = PROJECT_VIEWS.map((view) => ({
   id: view,
@@ -51,24 +53,34 @@ async function closeProjectWorkspace(projectId: string) {
 }
 
 /**
- * Cabeçalho da aba do projeto, numa linha só: o nome (e o apelido, se houver), a barra de visões, o botão
- * Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação, e fechar todos os terminais, que
+ * Cabeçalho da aba do projeto, numa linha só: o nome (e o apelido, se houver), a barra de visões, o lugar das
+ * ferramentas dos terminais (`toolsRef`: o workspace põe ali, por portal, "Fora da grade", o seletor de layout e
+ * "+ Terminal", só na visão Terminais), o botão Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação, e fechar todos os terminais, que
  * leva ao workspace); com uma missão aberta, os dois somem (a missão tem os seus controles). A visão ativa vem de
  * `?visao=` na rota; escolher uma aba troca só esse parâmetro, substituindo a entrada do histórico (cada seta de
  * aba não empilha um passo). O painel da visão é do chamador: as abas apontam para o `project-panel-<visão>` de cada
  * visão. Arquivar ou remover só sai da tela quando a ação dá certo, e então fecha também a aba do workspace do
  * projeto: falha fica aqui, com a mensagem da API, e o projeto segue como estava. Com a pasta indisponível
  * (`available` false), Nova missão fica desabilitado e aponta para o aviso da WorkspacePage.
+ *
+ * O nome fica no h1 para leitores de tela, fora da linha (a aba da janela já o mostra), e "Mais ações" é o ⋯, com o
+ * nome acessível no `aria-label`. Janela estreita: o cabeçalho é o contêiner de uma consulta de largura (project.css),
+ * e só textos secundários saem, um de cada vez. Se nem assim couber (o painel direito aberto numa janela menor), a
+ * barra de visões encolhe e rola de lado, com a borda esmaecida e o "⌄" listando as visões fora de vista: a linha
+ * nunca quebra.
  */
 export function ProjectHeader({
   project,
   onNewMission,
   missionOpen = false,
+  toolsRef,
 }: {
   project: ProjectSummary;
   onNewMission: () => void;
   /** Com uma missão aberta no centro, a visão ativa é Missões, e escolhê-la de novo volta à lista. */
   missionOpen?: boolean;
+  /** Recebe o lugar das ferramentas dos terminais (some com uma missão aberta). */
+  toolsRef?: (element: HTMLDivElement | null) => void;
 }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -81,6 +93,17 @@ export function ProjectHeader({
   const paneCount = usePaneCount(project.id);
   // Fechar todos leva o foco à pergunta do workspace: o menu não o devolve ao botão ao fechar.
   const focusGoesToWorkspace = useRef(false);
+  const viewsStrip = useRef<HTMLDivElement>(null);
+  const viewsOverflow = useTabsOverflow(viewsStrip);
+  const hiddenViews = VIEW_TABS.filter((tab) => viewsOverflow.hidden.includes(tab.id));
+
+  /** Escolher uma visão pelo "⌄": troca a visão e leva o foco à aba dela (já à vista, na próxima pintura). */
+  function chooseHiddenView(id: string) {
+    const next = VIEW_TABS.find((tab) => tab.id === id);
+    if (next === undefined) return;
+    navigate(projectViewPath(project.id, next.id), { replace: true });
+    requestAnimationFrame(() => document.getElementById(`tab-${next.id}`)?.focus());
+  }
 
   /** Arquiva ou remove o projeto, fecha a aba dele e volta ao Início, avisando a barra lateral. */
   async function leaveList(action: () => Promise<AppResult<unknown>>) {
@@ -119,26 +142,32 @@ export function ProjectHeader({
             <span className="project-header__name">{project.name}</span>
           )}
         </div>
-        <Tabs
-          label={PROJECT_TEXT.viewsLabel}
-          tabs={VIEW_TABS}
-          active={view}
-          panelId={projectPanelId}
-          onChange={(next) => navigate(projectViewPath(project.id, next), { replace: true })}
-          {...(missionOpen
-            ? {
-                onReselect: (next: ProjectView) =>
-                  navigate(projectViewPath(project.id, next), { replace: true }),
-              }
-            : {})}
-        />
+        <div className="project-header__views">
+          <Tabs
+            listRef={viewsStrip}
+            overflow={viewsOverflow}
+            label={PROJECT_TEXT.viewsLabel}
+            tabs={VIEW_TABS}
+            active={view}
+            panelId={projectPanelId}
+            onChange={(next) => navigate(projectViewPath(project.id, next), { replace: true })}
+            {...(missionOpen
+              ? {
+                  onReselect: (next: ProjectView) =>
+                    navigate(projectViewPath(project.id, next), { replace: true }),
+                }
+              : {})}
+          />
+          <TabsOverflow items={hiddenViews} onSelect={chooseHiddenView} />
+        </div>
+        {missionOpen ? null : <div className="project-header__tools" ref={toolsRef} />}
         {missionOpen ? null : (
           <div className="project-header__actions">
             <button
               type="button"
               className="btn-primary"
               disabled={unavailable || noGit}
-              title={noGit ? PROJECT_TEXT.noGitNotice : undefined}
+              title={noGit ? PROJECT_TEXT.noGitNotice : PROJECT_TEXT.newMission}
               aria-describedby={
                 unavailable
                   ? PROJECT_UNAVAILABLE_NOTICE_ID
@@ -148,10 +177,12 @@ export function ProjectHeader({
               }
               onClick={onNewMission}
             >
-              {PROJECT_TEXT.newMission}
+              <Plus {...ICON_PROPS} />
+              <span className="project-header__new-label">{PROJECT_TEXT.newMission}</span>
             </button>
             <MenuAcoes
               rotulo={PROJECT_TEXT.moreActions}
+              icone={<Ellipsis {...ICON_PROPS} />}
               aoFecharDevolverFoco={(event) => {
                 if (!focusGoesToWorkspace.current) return;
                 focusGoesToWorkspace.current = false;

@@ -500,16 +500,16 @@ describe('tela do terminal', () => {
 });
 
 /**
- * Barra de status (components/StatusBar.tsx, styles/statusbar.css): rodapé de 24px da janela, com borda
+ * Barra de status (components/StatusBar.tsx, styles/statusbar.css): rodapé de 28px da janela, com borda
  * superior no token de linha, fonte pequena e uma linha só, que trunca com reticências em janela estreita,
  * sem rolagem de lado. Só tokens de cor.
  */
 describe('barra de status', () => {
   const statusCss = readCss('statusbar.css');
 
-  it('tem 24px, não encolhe, não quebra linha e tem borda superior --line', () => {
+  it('tem 28px, não encolhe, não quebra linha e tem borda superior --line', () => {
     const bar = ruleDeclarations(statusCss, '.statusbar');
-    expect(bar.get('height')).toBe('24px');
+    expect(bar.get('height')).toBe('28px');
     expect(bar.get('flex')).toBe('none');
     expect(bar.get('flex-wrap')).toBe('nowrap');
     expect(bar.get('overflow')).toBe('hidden');

@@ -36,6 +36,22 @@ describe('OffGridDock', () => {
     expect(within(group).getByText('2')).toBeInTheDocument();
   });
 
+  it('o rótulo traz a dica com a contagem, para quando a faixa estreita deixa só o número', () => {
+    render(<OffGridDock items={TWO} onBring={vi.fn()} />);
+
+    const count = screen.getByText('2');
+    expect(count.closest('.off-grid__label')).toHaveAttribute('title', '2 terminais fora da grade');
+  });
+
+  it('com um terminal só, a dica fica no singular', () => {
+    render(<OffGridDock items={[item('a', 'Claude Code 5')]} onBring={vi.fn()} />);
+
+    expect(screen.getByText('1').closest('.off-grid__label')).toHaveAttribute(
+      'title',
+      '1 terminal fora da grade',
+    );
+  });
+
   it('cada item é um botão com o nome, a marca escondida, o rótulo do estado e a dica', () => {
     render(<OffGridDock items={TWO} onBring={vi.fn()} />);
 

@@ -82,10 +82,10 @@ test('Abas mostra um painel por vez, Ctrl+Alt com as setas troca de aba com o fo
   await expect(tabs(page)).toHaveCount(0);
   await expect(shellPanes(page)).toHaveCount(3);
 
-  // Maximizar pelo botão do painel liga o modo de novo, e "Grade" na faixa volta.
+  // Maximizar pelo botão do painel liga o modo de novo, e "Grade" no seletor do cabeçalho volta à grade.
   await shellPanes(page).nth(1).getByRole('button', { name: 'Maximizar painel' }).click();
   await expect(shellPanes(page)).toHaveCount(1);
-  await page.locator('.pane-tabs').getByRole('button', { name: 'Grade', exact: true }).click();
+  await page.locator('.project-header').getByRole('button', { name: 'Grade', exact: true }).click();
   await expect(shellPanes(page)).toHaveCount(3);
 
   await endShells(page);
