@@ -158,7 +158,11 @@ export function ProjectHeader({
                 }
               : {})}
           />
-          <TabsOverflow items={hiddenViews} onSelect={chooseHiddenView} />
+          <TabsOverflow
+            items={hiddenViews}
+            onSelect={chooseHiddenView}
+            label="Visões fora de vista"
+          />
         </div>
         {missionOpen ? null : <div className="project-header__tools" ref={toolsRef} />}
         {missionOpen ? null : (
