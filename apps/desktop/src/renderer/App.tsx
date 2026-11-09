@@ -11,6 +11,7 @@ import { useMatch, useNavigate } from 'react-router';
 import { PaletaComandos } from './components/PaletaComandos';
 import { RightPanel } from './components/right-panel/RightPanel';
 import { Sidebar } from './components/Sidebar';
+import { SidebarRail } from './components/SidebarRail';
 import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { listenForSaveAllRequests } from './open-files';
@@ -26,10 +27,14 @@ const OLD_SIDE_STORAGE_KEY = 'project-hub:sidebar-layout';
 const SIDE_ID = 'side';
 const MAIN_ID = 'main';
 const RIGHT_ID = 'right';
-const DEFAULT_SIDE = 22;
+/** A lateral em pixels: 264 de partida, de 220 a 360 ao arrastar, e o trilho de 48 quando recolhida. */
+const DEFAULT_SIDE_PX = 264;
+const MIN_SIDE_PX = 220;
+const MAX_SIDE_PX = 360;
+const RAIL_PX = 48;
 const DEFAULT_RIGHT = 24;
 /** Larguras máximas das colunas, em %, e o mínimo que sobra para a página (o `minSize` do painel central). */
-const MAX_SIDE = 40;
+const MAX_SIDE = 60;
 const MAX_RIGHT = 45;
 const MIN_MAIN = 30;
 /** Folga para o ruído de ponto flutuante das larguras que a biblioteca devolve. */
@@ -39,8 +44,6 @@ const TOLERANCE = 0.01;
 function layoutOf(side: number, right: number): Layout {
   return { [SIDE_ID]: side, [MAIN_ID]: 100 - side - right, [RIGHT_ID]: right };
 }
-
-const DEFAULT_LAYOUT = layoutOf(DEFAULT_SIDE, DEFAULT_RIGHT);
 
 /** Uma largura em % de 0 (recolhida) até `max`; qualquer outra coisa não é largura. */
 function percentOf(value: unknown, max: number): number | null {
@@ -56,29 +59,32 @@ function readStored(key: string): Record<string, unknown> | null {
 }
 
 /**
- * As larguras guardadas das colunas (0 = recolhida); sem `localStorage` ou com valor estranho, as padrão. A chave
- * nova (`side` e `right`) vale mais; sem ela, a antiga dá a largura da lateral e o painel direito abre na padrão.
+ * As larguras guardadas das colunas, em % (0 = recolhida); sem nada guardado, ou com valor estranho, `undefined`: aí
+ * cada painel abre na própria largura padrão (a lateral com 264px). A chave nova (`side` e `right`) vale mais; sem
+ * ela, a antiga dá a largura da lateral e o painel direito abre na padrão. A lateral guardada como 0 abre no trilho:
+ * a biblioteca encaixa no `collapsedSize` a largura abaixo do mínimo.
  */
-function readAppLayout(): Layout {
+function readAppLayout(): Layout | undefined {
   try {
     const stored = readStored(LAYOUT_STORAGE_KEY);
     if (stored !== null) {
       const side = percentOf(stored[SIDE_ID], MAX_SIDE);
       const right = percentOf(stored[RIGHT_ID], MAX_RIGHT);
       const fits = side !== null && right !== null && side + right <= 100 - MIN_MAIN + TOLERANCE;
-      return fits ? layoutOf(side, right) : DEFAULT_LAYOUT;
+      return fits ? layoutOf(side, right) : undefined;
     }
     const old = readStored(OLD_SIDE_STORAGE_KEY);
     const side = percentOf(old?.[SIDE_ID], MAX_SIDE);
-    return side === null ? DEFAULT_LAYOUT : layoutOf(side, DEFAULT_RIGHT);
+    return side === null ? undefined : layoutOf(side, DEFAULT_RIGHT);
   } catch {
-    return DEFAULT_LAYOUT;
+    return undefined;
   }
 }
 
-function saveAppLayout(layout: Layout) {
+/** Guarda as larguras; a lateral recolhida (no trilho) vai como 0, para abrir recolhida na próxima vez. */
+function saveAppLayout(layout: Layout, sideCollapsed: boolean) {
   try {
-    const stored = { [SIDE_ID]: layout[SIDE_ID], [RIGHT_ID]: layout[RIGHT_ID] };
+    const stored = { [SIDE_ID]: sideCollapsed ? 0 : layout[SIDE_ID], [RIGHT_ID]: layout[RIGHT_ID] };
     window.localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(stored));
   } catch {
     // Sem armazenamento, as larguras só valem até fechar a janela.
@@ -129,8 +135,8 @@ export function App() {
   const [initialLayout] = useState(readAppLayout);
   const sidePanel = usePanelRef();
   const rightPanel = usePanelRef();
-  const [sideCollapsed, setSideCollapsed] = useState(() => initialLayout[SIDE_ID] === 0);
-  const [rightCollapsed, setRightCollapsed] = useState(() => initialLayout[RIGHT_ID] === 0);
+  const [sideCollapsed, setSideCollapsed] = useState(() => initialLayout?.[SIDE_ID] === 0);
+  const [rightCollapsed, setRightCollapsed] = useState(() => initialLayout?.[RIGHT_ID] === 0);
   const toggleSidebar = useCallback(
     () => toggleColumn(sidePanel.current, '.app-side', '.topbar__sidebar-toggle'),
     [sidePanel],
@@ -230,22 +236,32 @@ export function App() {
           .join(' ')}
         orientation="horizontal"
         defaultLayout={initialLayout}
-        onLayoutChanged={saveAppLayout}
+        onLayoutChanged={(layout) =>
+          saveAppLayout(layout, sidePanel.current?.isCollapsed() ?? false)
+        }
       >
         <Panel
           id={SIDE_ID}
           className="app-body__panel"
-          defaultSize={`${DEFAULT_SIDE}`}
-          minSize={200}
-          maxSize={`${MAX_SIDE}`}
+          defaultSize={DEFAULT_SIDE_PX}
+          // A lateral guarda a largura em pixels quando a janela muda: encolher a janela tira da página, não da lateral.
+          groupResizeBehavior="preserve-pixel-size"
+          minSize={MIN_SIDE_PX}
+          maxSize={MAX_SIDE_PX}
           collapsible
-          collapsedSize={0}
+          collapsedSize={RAIL_PX}
           panelRef={sidePanel}
-          onResize={(size) => setSideCollapsed(size.inPixels === 0)}
+          onResize={(size) => setSideCollapsed(size.inPixels <= RAIL_PX + 1)}
         >
-          {/* Recolhida, a lateral sai do Tab também: `inert` tira os controles dela da ordem de foco. */}
-          <div className="app-side" inert={sideCollapsed}>
-            <Sidebar onSearch={() => setPaletaAberta(true)} />
+          {/*
+           * Recolhida, a lateral vira o trilho de 48px: um botão por agente vivo e o que a expande. A lateral cheia
+           * continua montada (guarda os projetos abertos), mas escondida e `inert`, fora do Tab.
+           */}
+          <div className="app-side">
+            {sideCollapsed ? <SidebarRail onExpand={toggleSidebar} /> : null}
+            <div className="app-side__full" hidden={sideCollapsed} inert={sideCollapsed}>
+              <Sidebar onSearch={() => setPaletaAberta(true)} />
+            </div>
           </div>
         </Panel>
         <Separator className="pane-tree__separator" aria-label="Redimensionar barra lateral" />

@@ -438,8 +438,81 @@
   min-height: 0;
 }
 
-.app-side > .sidebar {
+.app-side > .sidebar-rail,
+.app-side__full,
+.app-side__full > .sidebar {
   flex: 1;
+}
+
+.app-side__full {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-side__full[hidden] {
+  display: none;
+}
+
+/*
+ * A lateral recolhida (components/SidebarRail.tsx): um trilho de 48px no mesmo cartão da lateral, com o botão que a
+ * expande e um botão de 32px por agente vivo. A marca do estado fica no canto de baixo do botão, com a cor do estado
+ * (a cor fica em app.css, com as classes state-mark--) e a forma própria de cada um.
+ */
+.sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2) 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    var(--shadow-card);
+}
+
+.sidebar-rail__list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar-rail__expand,
+.sidebar-rail__agent {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sidebar-rail__expand:hover,
+.sidebar-rail__agent:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+
+.rail-agent-mark {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: var(--text-xs);
+  line-height: 1;
 }
 
 /*
@@ -1880,7 +1953,6 @@
   cursor: default;
   opacity: 0.5;
 }
-
 
 .workspace__layout-btn:focus-visible {
   outline: 2px solid var(--focus);

@@ -97,9 +97,11 @@ test('o documento não rola, as três barras aparecem e o anel de foco não é c
   }
 });
 
-test('lateral recolhida sai da ordem de Tab e volta quando reaberta', async ({ launchApp }) => {
+test('a lateral cheia recolhida sai da ordem de Tab (fica o trilho) e volta quando reaberta', async ({
+  launchApp,
+}) => {
   const { page } = await launchApp();
-  const side = page.locator('.app-side');
+  const side = page.locator('.app-side__full');
 
   // Foco num controle da lateral e Ctrl+B: ao recolher, o foco sai da lateral e não cai no body.
   await side.getByRole('button', { name: 'Adicionar projeto' }).focus();
@@ -108,7 +110,7 @@ test('lateral recolhida sai da ordem de Tab e volta quando reaberta', async ({ l
   await expect(page.locator('.topbar__sidebar-toggle')).toBeFocused();
   const foco = await page.evaluate(() => ({
     corpo: document.activeElement === document.body,
-    naLateral: document.activeElement?.closest('.app-side') != null,
+    naLateral: document.activeElement?.closest('.app-side__full') != null,
   }));
   expect(foco.corpo).toBe(false);
   expect(foco.naLateral).toBe(false);
@@ -118,11 +120,11 @@ test('lateral recolhida sai da ordem de Tab e volta quando reaberta', async ({ l
   await page.keyboard.press('Control+b');
   await expect(side).toHaveAttribute('inert', '');
 
-  // Percorre bem mais controles do que a barra superior tem: nenhum pode cair dentro da lateral.
+  // Percorre bem mais controles do que a barra superior e o trilho têm: nenhum pode cair dentro da lateral cheia.
   for (let step = 0; step < 40; step += 1) {
     await page.keyboard.press('Tab');
     const focusInSide = await page.evaluate(
-      () => document.activeElement?.closest('.app-side') != null,
+      () => document.activeElement?.closest('.app-side__full') != null,
     );
     expect(focusInSide).toBe(false);
   }

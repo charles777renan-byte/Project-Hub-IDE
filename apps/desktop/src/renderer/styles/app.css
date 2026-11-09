@@ -276,6 +276,14 @@ button:disabled {
 }
 
 /*
+ * A marca do estado no botão de um agente do trilho (components/SidebarRail.tsx): a cor do estado, pelo --tone das
+ * classes state-mark-- acima. Fica aqui pelo mesmo motivo do "⌄" abaixo: o chrome de workspace.css só leva neutras.
+ */
+.rail-agent-mark {
+  color: var(--tone);
+}
+
+/*
  * O "⌄" das abas escondidas (components/TabsOverflow.tsx) com uma aba aguardando a pessoa: cor de aviso e o ◐, como o estado
  * "aguardando". Fica aqui, e não em workspace.css, porque a seção de chrome de lá só leva cores neutras
  * (contrast.test.ts). O workspace.css carrega depois e pinta o gatilho de --muted; a regra do gatilho tem uma classe a
