@@ -7,7 +7,7 @@ import { formatTime, statusIcon, statusLabel } from '../mission-text';
 import { notify } from '../notify';
 import { colorOf } from '../project-color';
 import { missionPath, ROUTE_PATHS, workspacePath } from '../routes';
-import { barLevels, hasActivity, useActivity } from '../sidebar-activity';
+import { barLevels, hasActivity, isIdle, useActivity } from '../sidebar-activity';
 import { useTerminals } from '../terminals-data';
 import { useProjectActions, type ProjectActions } from '../use-project-actions';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
@@ -552,6 +552,7 @@ function ProjectRow({
                     ? undefined
                     : barLevels(activity.get(session.id))
                 }
+                idle={isIdle(activity.get(session.id))}
                 onShowTerminal={() => onShowTerminal(project.id, session.id)}
                 onEnd={() => void endSession(project.id, session.id, onReload)}
               />
@@ -658,12 +659,15 @@ function SessionCard({
   session,
   detail,
   levels,
+  idle = false,
   onShowTerminal,
   onEnd,
 }: {
   session: TerminalSummary;
   detail: string;
   levels: readonly number[] | undefined;
+  /** Viva e parada há algumas leituras: "ociosa", com o trilho cinza e parado. */
+  idle?: boolean;
   onShowTerminal: () => void;
   onEnd: () => void;
 }) {
@@ -672,7 +676,9 @@ function SessionCard({
     session.state === 'waiting'
       ? 'aguardando você'
       : session.state === 'running'
-        ? 'rodando'
+        ? idle
+          ? 'ociosa'
+          : 'rodando'
         : 'encerrada';
   // Sessão em execução: Encerrar mata o processo. Sessão já encerrada: o botão só tira o painel, e segue Fechar.
   const endLabel = session.state === 'exited' ? 'Fechar' : 'Encerrar';
@@ -680,7 +686,7 @@ function SessionCard({
     <li className="sidebar__session">
       <button
         type="button"
-        className={`sidebar__card sidebar__card--${session.state} state-rail state-rail--${session.state}`}
+        className={`sidebar__card sidebar__card--${session.state} state-rail state-rail--${session.state === 'running' && idle ? 'idle' : session.state}`}
         onClick={onShowTerminal}
       >
         <span className="sidebar__card-ico" aria-hidden="true">

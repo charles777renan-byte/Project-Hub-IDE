@@ -6,10 +6,12 @@ import type { MissionStatus } from './mission-text';
  * um rótulo em texto: a cor nunca é a única pista.
  */
 
-export type MarkKind = 'active' | 'waiting' | 'done' | 'error' | 'disconnected';
+export type MarkKind = 'active' | 'idle' | 'waiting' | 'done' | 'error' | 'disconnected';
 
 export const MARKS: Record<MarkKind, { glyph: string; label: string }> = {
   active: { glyph: '●', label: 'Ativo' },
+  // Sessão viva e parada: ponto vazado e cinza, sem pulsar. O preenchido fica só para quem está produzindo.
+  idle: { glyph: '◦', label: 'Ocioso' },
   waiting: { glyph: '◐', label: 'Aguardando' },
   done: { glyph: '✓', label: 'Concluído' },
   error: { glyph: '✕', label: 'Erro' },
@@ -41,6 +43,8 @@ export function markOfMission(status: MissionStatus): MarkKind {
   return MISSION_MARKS[status];
 }
 
-export function markOfTerminal(state: TerminalSummary['state']): MarkKind {
+/** `idle`: a sessão está viva, mas não produziu nada nas últimas leituras (`isIdle`, sidebar-activity.ts). */
+export function markOfTerminal(state: TerminalSummary['state'], idle = false): MarkKind {
+  if (state === 'running' && idle) return 'idle';
   return TERMINAL_MARKS[state];
 }

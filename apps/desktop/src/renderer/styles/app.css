@@ -355,6 +355,7 @@ button:disabled {
 .chip--blue,
 .chip--orange,
 .chip--cyan,
+.state-mark--idle,
 .state-mark--disconnected {
   --tone: var(--muted);
 }
@@ -2056,6 +2057,11 @@ button:disabled {
 
 .state-rail--exited {
   --rail: var(--field-line);
+}
+
+/* Viva e parada: cinza e sem pulsar; o azul que pulsa fica para quem está produzindo. */
+.state-rail--idle {
+  --rail: var(--muted);
 }
 
 .state-rail--running::before {

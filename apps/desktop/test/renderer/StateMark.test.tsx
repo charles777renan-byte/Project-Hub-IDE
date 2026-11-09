@@ -6,12 +6,13 @@ import { MARKS, markOfMission, markOfTerminal, type MarkKind } from '../../src/r
 
 // Marca de estado (Tarefa 7 do plano do workspace multiagente): forma e texto, nunca só a cor.
 
-const KINDS: MarkKind[] = ['active', 'waiting', 'done', 'error', 'disconnected'];
+const KINDS: MarkKind[] = ['active', 'idle', 'waiting', 'done', 'error', 'disconnected'];
 
 describe('MARKS', () => {
   it('cada estado tem uma forma e um rótulo em português', () => {
     expect(MARKS).toEqual({
       active: { glyph: '●', label: 'Ativo' },
+      idle: { glyph: '◦', label: 'Ocioso' },
       waiting: { glyph: '◐', label: 'Aguardando' },
       done: { glyph: '✓', label: 'Concluído' },
       error: { glyph: '✕', label: 'Erro' },
@@ -61,6 +62,12 @@ describe('markOfTerminal', () => {
     ['exited', 'disconnected'],
   ] as const)('%s vira %s', (state, kind) => {
     expect(markOfTerminal(state)).toBe(kind);
+  });
+
+  it('sessão viva e parada (sem saída nas últimas leituras) é Ocioso; os outros estados não mudam', () => {
+    expect(markOfTerminal('running', true)).toBe('idle');
+    expect(markOfTerminal('waiting', true)).toBe('waiting');
+    expect(markOfTerminal('exited', true)).toBe('disconnected');
   });
 });
 

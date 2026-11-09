@@ -151,6 +151,13 @@ describe('PaneView', () => {
     expect(container.querySelector('.pane__state')).toHaveAttribute('title', 'Ativo');
   });
 
+  it('sessão viva e parada mostra Ocioso, com o ponto vazado ◦ e sem pulsar', () => {
+    const { container } = setup({ idle: true });
+    expect(screen.getByText('Ocioso')).toBeInTheDocument();
+    expect(container.querySelector('.pane__state')).toHaveClass('state-mark--idle');
+    expect(container.querySelector('.pane__state')).toHaveTextContent('◦');
+  });
+
   it('sessão aguardando mostra Aguardando, com a forma ◐', () => {
     const { container } = setup({ terminal: { ...session, state: 'waiting' } });
     expect(screen.getByText('Aguardando')).toBeInTheDocument();
