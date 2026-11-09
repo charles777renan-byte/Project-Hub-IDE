@@ -542,6 +542,7 @@ describe('buildProjectHubApi', () => {
       'searchContent',
       'searchNames',
       'stat',
+      'watch',
       'write',
     ]);
     expect(Object.keys(api.git).sort()).toEqual([
@@ -751,6 +752,50 @@ describe('buildProjectHubApi', () => {
       unsubscribe();
 
       expect(removed).toEqual([CHANNELS.filesSaveAllRequest]);
+    });
+  });
+
+  describe('files.watch', () => {
+    function watchSetup() {
+      const invoked: Array<[string, unknown]> = [];
+      let registered: { channel: string; listener: (payload: unknown) => void } | undefined;
+      const removed: string[] = [];
+      const api = buildProjectHubApi(
+        (channel, payload) => {
+          invoked.push([channel, payload]);
+          return Promise.resolve({ ok: true, data: undefined });
+        },
+        (channel, listener) => {
+          registered = { channel, listener };
+          return () => removed.push(channel);
+        },
+      );
+      return {
+        api,
+        invoked,
+        removed,
+        registered: () => required(registered, 'o canal de mudanças'),
+      };
+    }
+
+    it('pede para observar o projeto e só avisa as mudanças dele; parar solta o ouvinte e o pedido', () => {
+      const { api, invoked, removed, registered } = watchSetup();
+      const onChange = vi.fn();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const stop = api.files.watch('p1', onChange);
+      expect(registered().channel).toBe(CHANNELS.filesChanged);
+      expect(invoked).toEqual([[CHANNELS.filesWatch, { projectId: 'p1' }]]);
+      registered().listener({ projectId: 'p2' });
+      registered().listener({ projectId: '' });
+      expect(onChange).not.toHaveBeenCalled();
+      registered().listener({ projectId: 'p1' });
+      expect(onChange).toHaveBeenCalledTimes(1);
+
+      stop();
+      expect(removed).toEqual([CHANNELS.filesChanged]);
+      expect(invoked.at(-1)).toEqual([CHANNELS.filesUnwatch, { projectId: 'p1' }]);
+      warn.mockRestore();
     });
   });
 
