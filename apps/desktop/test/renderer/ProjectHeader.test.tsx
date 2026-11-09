@@ -121,7 +121,7 @@ describe('ProjectHeader: visões que rolam (painel direito aberto numa janela me
         .map((tab) => tab.getAttribute('data-tab-id')),
     ).toEqual(['terminais', 'missoes', 'progresso', 'worktrees', 'configuracoes']);
     expect(views()).not.toHaveAttribute('data-fade-end');
-    expect(screen.queryByRole('button', { name: 'Abas fora de vista' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Visões fora de vista' })).toBeNull();
   });
 
   it('sem espaço, a barra esmaece o fim e o "⌄" lista as visões escondidas; escolher uma troca a visão', async () => {
@@ -130,7 +130,7 @@ describe('ProjectHeader: visões que rolam (painel direito aberto numa janela me
     show('terminais', 'missoes');
 
     expect(views()).toHaveAttribute('data-fade-end', 'true');
-    await userEvent.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Visões fora de vista' }));
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'Progresso',
       'Worktrees',

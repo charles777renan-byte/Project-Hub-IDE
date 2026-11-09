@@ -163,7 +163,9 @@ describe('casca do app', () => {
     expect(side.get('display')).toBe('flex');
     expect(side.get('flex-direction')).toBe('column');
     expect(side.get('min-height')).toBe('0');
-    expect(ruleDeclarations(workspaceCss, '.app-side > .sidebar').get('flex')).toBe('1');
+    // A lateral cheia fica num invólucro (o trilho de 48px aparece no lugar dela quando recolhida).
+    expect(ruleDeclarations(workspaceCss, '.app-side__full').get('flex')).toBe('1');
+    expect(ruleDeclarations(workspaceCss, '.app-side__full > .sidebar').get('flex')).toBe('1');
   });
 
   it('a área da página ocupa o resto da altura e rola sozinha', () => {

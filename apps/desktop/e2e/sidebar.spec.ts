@@ -117,3 +117,29 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
     projectName,
   ]);
 });
+
+// §3.5 do documento de UI/UX: a lateral abre com 264 px e, recolhida, vira um trilho de 48 px (não some). O trilho
+// tem o botão que a expande de volta. A largura pode vir com até 2 px de arredondamento da biblioteca.
+test('a lateral abre com 264 px e, recolhida, vira o trilho de 48 px que a expande de volta', async ({
+  launchApp,
+}) => {
+  const { page } = await launchApp();
+  const side = page.locator('.app-side');
+  await expect(sidebarOf(page)).toBeVisible();
+  await expect
+    .poll(async () => Math.abs(((await side.boundingBox())?.width ?? 0) - 264))
+    .toBeLessThanOrEqual(2);
+
+  await page.getByRole('button', { name: 'Ocultar barra lateral' }).click();
+  const rail = page.getByRole('navigation', { name: 'Agentes' });
+  await expect(rail).toBeVisible();
+  await expect
+    .poll(async () => Math.abs(((await side.boundingBox())?.width ?? 0) - 48))
+    .toBeLessThanOrEqual(2);
+
+  await rail.getByRole('button', { name: 'Expandir barra lateral' }).click();
+  await expect(sidebarOf(page)).toBeVisible();
+  await expect
+    .poll(async () => Math.abs(((await side.boundingBox())?.width ?? 0) - 264))
+    .toBeLessThanOrEqual(2);
+});

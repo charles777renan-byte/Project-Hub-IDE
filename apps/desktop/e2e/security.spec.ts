@@ -124,6 +124,7 @@ test.describe('renderer isolado', () => {
       'searchContent',
       'searchNames',
       'stat',
+      'watch',
       'write',
     ]);
     expect(surface?.git).toEqual([

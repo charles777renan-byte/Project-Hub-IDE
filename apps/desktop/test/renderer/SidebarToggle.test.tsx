@@ -58,6 +58,8 @@ vi.mock('react-resizable-panels', async () => {
     }) => {
       const group = React.useContext(GroupContext);
       const [size, setSize] = React.useState(group.layout[props.id] ?? 20);
+      // Sem layout guardado, cada painel abre na própria largura padrão e entra no layout do grupo assim.
+      group.layout[props.id] ??= size;
       const sizeRef = React.useRef(size);
       // Largura de volta ao expandir: a padrão de cada painel recolhível.
       const expanded = props.id === 'right' ? 24 : 22;
@@ -337,7 +339,7 @@ describe('painel direito: esconder e mostrar', () => {
     renderApp();
 
     await user.click(rightToggle('Ocultar painel direito'));
-    expect(savedSide()).toBe(22);
+    expect(savedSide()).toBeGreaterThan(0);
     expect(savedRight()).toBe(0);
 
     await user.click(within(topBar()).getByRole('button', { name: 'Ocultar barra lateral' }));

@@ -408,7 +408,7 @@ test('com o painel direito aberto numa janela menor, a linha do projeto não que
     previousRight = box.right;
   }
   // As visões que não cabem saem pela borda e o "⌄" as lista; escolher uma troca a visão.
-  const more = header.getByRole('button', { name: 'Abas fora de vista' });
+  const more = header.getByRole('button', { name: 'Visões fora de vista' });
   await expect(more).toBeVisible();
   await expect(views).toHaveAttribute('data-fade-end', 'true');
   await more.click();
