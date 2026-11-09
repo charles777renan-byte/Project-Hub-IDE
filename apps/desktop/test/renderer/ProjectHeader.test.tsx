@@ -16,6 +16,7 @@ import {
 import { PROJECTS_CHANGED_EVENT } from '../../src/renderer/projects-events';
 import { ROUTE_PATHS } from '../../src/renderer/routes';
 import { WORKSPACES_CHANGED_EVENT } from '../../src/renderer/workspaces-events';
+import { show, useFakeIntersectionObserver } from './fake-intersection-observer';
 import {
   resetCloseAllForTests,
   setPaneCount,
@@ -104,6 +105,74 @@ afterEach(() => {
 function RequestProbe({ projectId }: { projectId: string }) {
   return <output data-testid="pedido">{String(useCloseAllRequest(projectId))}</output>;
 }
+
+describe('ProjectHeader: visões que rolam (painel direito aberto numa janela menor)', () => {
+  useFakeIntersectionObserver();
+  const views = () => screen.getByRole('tablist', { name: 'Visões do projeto' });
+
+  it('cada visão leva o id em data-tab-id, e com todas à vista não há esmaecimento nem "⌄"', () => {
+    installApi();
+    renderAt('/workspaces/p1');
+    show('terminais', 'missoes', 'progresso', 'worktrees', 'configuracoes');
+
+    expect(
+      within(views())
+        .getAllByRole('tab')
+        .map((tab) => tab.getAttribute('data-tab-id')),
+    ).toEqual(['terminais', 'missoes', 'progresso', 'worktrees', 'configuracoes']);
+    expect(views()).not.toHaveAttribute('data-fade-end');
+    expect(screen.queryByRole('button', { name: 'Abas fora de vista' })).toBeNull();
+  });
+
+  it('sem espaço, a barra esmaece o fim e o "⌄" lista as visões escondidas; escolher uma troca a visão', async () => {
+    installApi();
+    renderAt('/workspaces/p1');
+    show('terminais', 'missoes');
+
+    expect(views()).toHaveAttribute('data-fade-end', 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'Abas fora de vista' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Progresso',
+      'Worktrees',
+      'Configurações',
+    ]);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Worktrees' }));
+
+    expect(current.search).toBe('?visao=worktrees');
+    expect(current.type).toBe('REPLACE');
+  });
+});
+
+describe('ProjectHeader: janela estreita', () => {
+  it('Mais ações é o ⋯: só o ícone, com o nome no aria-label', () => {
+    installApi();
+    renderAt('/workspaces/p1');
+
+    const trigger = screen.getByRole('button', { name: 'Mais ações' });
+    expect(trigger).toHaveAttribute('aria-label', 'Mais ações');
+    expect(trigger.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(trigger).not.toHaveTextContent('Mais ações');
+  });
+
+  it('Nova missão traz o + e o rótulo separados, com o nome como dica para quando só o + aparece', () => {
+    installApi();
+    renderAt('/workspaces/p1');
+
+    const button = screen.getByRole('button', { name: 'Nova missão' });
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(button).getByText('Nova missão')).toHaveClass('project-header__new-label');
+    expect(button).toHaveAttribute('title', 'Nova missão');
+  });
+
+  it('o cabeçalho é o contêiner da compactação, e o título segue no h1 mesmo quando a CSS o tira da linha', () => {
+    installApi();
+    renderAt('/workspaces/p1');
+
+    const heading = screen.getByRole('heading', { level: 1, name: 'Project Hub' });
+    expect(heading.closest('header')).toHaveClass('project-header');
+    expect(heading.closest('.project-header__title')).not.toBeNull();
+  });
+});
 
 describe('ProjectHeader: uma linha', () => {
   it('mostra só o nome do projeto, sem o tipo do repositório nem etiquetas de branch e grupo', () => {

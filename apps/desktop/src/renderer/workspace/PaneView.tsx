@@ -20,6 +20,8 @@ export type PaneViewProps = {
   /** O item de `terminals.list` com o id da folha; indefinido se a sessão sumiu da lista. */
   terminal: TerminalSummary | undefined;
   provider: ProviderInfo | undefined;
+  /** A sessão está viva, mas parada há algumas leituras: a marca vira o ponto vazado "Ocioso". */
+  idle?: boolean;
   active: boolean;
   /** Pede o foco do terminal: só depois de um gesto do usuário neste painel ou na barra lateral. */
   focusTerminal?: boolean;
@@ -233,7 +235,7 @@ export function PaneView(props: PaneViewProps) {
     );
   } else {
     // O selo do estado tem forma e rótulo visíveis (a cor nunca é a única pista); a origem da sessão vai na dica.
-    const mark = markOfTerminal(terminal.state);
+    const mark = markOfTerminal(terminal.state, props.idle);
     const { glyph, label: markLabel } = MARKS[mark];
     const markTitle =
       terminal.origin === 'recovered' ? `${markLabel} · sessão recuperada` : markLabel;

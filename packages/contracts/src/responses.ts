@@ -120,6 +120,8 @@ export const responseSchemas = {
   [CHANNELS.filesSearchContent]: appResultSchema(contentSearchSchema),
   [CHANNELS.filesOpenDefault]: appResultSchema(z.undefined()),
   [CHANNELS.filesSaveAllResult]: appResultSchema(z.undefined()),
+  [CHANNELS.filesWatch]: appResultSchema(z.undefined()),
+  [CHANNELS.filesUnwatch]: appResultSchema(z.undefined()),
   [CHANNELS.gitStatus]: appResultSchema(gitStatusSchema),
   [CHANNELS.gitDiff]: appResultSchema(gitFileDiffSchema),
   [CHANNELS.gitStage]: appResultSchema(z.undefined()),

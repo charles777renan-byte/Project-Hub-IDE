@@ -37,6 +37,14 @@ export const filesPathInputSchema = z.object({
 });
 export type FilesPathInput = z.infer<typeof filesPathInputSchema>;
 
+/** Entrada de `files:watch:v1` e `files:unwatch:v1`. */
+export const filesWatchInputSchema = z.object({ projectId: projectIdSchema });
+export type FilesWatchInput = z.infer<typeof filesWatchInputSchema>;
+
+/** Evento de `files:changed:v1` (do processo principal ao renderer): só o projeto; o renderer relê o que mostra. */
+export const filesChangedEventSchema = z.object({ projectId: projectIdSchema });
+export type FilesChangedEvent = z.infer<typeof filesChangedEventSchema>;
+
 /** Identifica um pedido de "Salvar" ao fechar a janela, para o resultado voltar ao pedido certo. */
 const saveAllRequestIdSchema = z.string().min(1).max(100);
 

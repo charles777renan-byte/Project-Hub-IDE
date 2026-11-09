@@ -309,6 +309,7 @@ describe('responseSchemas', () => {
       CHANNELS.limitsEvent,
       CHANNELS.terminalsEvent,
       CHANNELS.filesSaveAllRequest,
+      CHANNELS.filesChanged,
     ];
     const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());

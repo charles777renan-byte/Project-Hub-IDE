@@ -1,5 +1,6 @@
 import {
   CHANNELS,
+  filesChangedEventSchema,
   filesSaveAllRequestSchema,
   limitsDtoSchema,
   missionEventDtoSchema,
@@ -290,6 +291,24 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         }),
       openDefault: (projectId: string, path: string) =>
         call<void>(CHANNELS.filesOpenDefault, { projectId, path }),
+      watch: (projectId: string, onChange: () => void) => {
+        const stop = subscribe(CHANNELS.filesChanged, (payload) => {
+          const parsed = filesChangedEventSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.filesChanged}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          if (parsed.data.projectId === projectId) onChange();
+        });
+        void call<void>(CHANNELS.filesWatch, { projectId });
+        return () => {
+          stop();
+          void call<void>(CHANNELS.filesUnwatch, { projectId });
+        };
+      },
     },
     git: {
       status: (input: GitProjectInput) => call<GitStatusDto>(CHANNELS.gitStatus, input),

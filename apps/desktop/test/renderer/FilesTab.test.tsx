@@ -28,7 +28,7 @@ function names(...paths: string[]): AppResult<NameSearchDto> {
 }
 
 type FilesApi = ProjectHubApi['files'];
-type FilesMocks = { [K in 'list' | 'searchNames' | 'searchContent']: Mock<FilesApi[K]> };
+type FilesMocks = { [K in 'list' | 'searchNames' | 'searchContent' | 'watch']: Mock<FilesApi[K]> };
 
 function installApi(overrides: Partial<FilesMocks> = {}): FilesMocks {
   const files: FilesMocks = {
@@ -39,6 +39,7 @@ function installApi(overrides: Partial<FilesMocks> = {}): FilesMocks {
     searchContent: vi.fn<FilesApi['searchContent']>(() =>
       Promise.resolve({ ok: true, data: { matches: [], truncated: false } }),
     ),
+    watch: vi.fn<FilesApi['watch']>(() => () => undefined),
     ...overrides,
   };
   window.projectHub = {
@@ -95,6 +96,27 @@ afterEach(() => {
 });
 
 describe('FilesTab', () => {
+  it('observa a pasta do projeto: uma mudança no disco relê a árvore sem clicar em Atualizar; ao sair, para de observar', async () => {
+    const stop = vi.fn();
+    let notify: (() => void) | undefined;
+    const files = installApi({
+      watch: vi.fn<FilesApi['watch']>((_projectId, onChange) => {
+        notify = onChange;
+        return stop;
+      }),
+    });
+    const { unmount } = render(<FilesTab projectId="p1" onOpenFile={vi.fn()} />);
+    await screen.findByRole('treeitem', { name: /^src/ });
+    expect(files.watch).toHaveBeenCalledWith('p1', expect.any(Function));
+    const before = files.list.mock.calls.length;
+
+    act(() => notify?.());
+
+    await waitFor(() => expect(files.list.mock.calls.length).toBeGreaterThan(before));
+    unmount();
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
   it('lê a raiz ao montar, mostra o nome do projeto e o botão Atualizar', async () => {
     const files = installApi();
     render(<FilesTab projectId="p1" onOpenFile={vi.fn()} />);

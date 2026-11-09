@@ -99,6 +99,12 @@ export const CHANNELS = {
   filesSaveAllRequest: 'files:save-all-request:v1',
   /** O renderer diz como foi o pedido acima: `saved` só vale `true` se nada ficou sujo. */
   filesSaveAllResult: 'files:save-all-result:v1',
+  /** Passa a observar a pasta do projeto: uma mudança no disco chega como `filesChanged`. Só entra o id do projeto. */
+  filesWatch: 'files:watch:v1',
+  /** Deixa de observar (cada `filesWatch` tem o seu `filesUnwatch`). */
+  filesUnwatch: 'files:unwatch:v1',
+  /** Algo mudou na pasta de um projeto observado (fora de node_modules, dist, out e .git). Não tem resposta. */
+  filesChanged: 'files:changed:v1',
   /** Painel de código-fonte (fase 2, ADR 0010): branch, upstream, à frente/atrás e arquivos alterados. Só entram o id do projeto, caminhos relativos POSIX e a mensagem do commit. */
   gitStatus: 'git:status:v1',
   /** Diff de um arquivo contra o último commit (`HEAD`). */

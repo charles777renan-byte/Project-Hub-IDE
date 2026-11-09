@@ -40,6 +40,8 @@ import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
 import { registerFilesHandlers } from './ipc/files';
+import { registerFilesWatchHandlers } from './ipc/files-watch';
+import { createProjectWatcher } from './files/project-watcher';
 import { registerGitHandlers } from './ipc/git';
 import { registerGithubHandlers } from './ipc/github';
 import { registerSaveAllResultHandler } from './ipc/save-all';
@@ -438,6 +440,12 @@ app
     registerFilesHandlers(ipcMain, isTrustedSender, {
       files: createProjectFiles(services.fileDeps),
       openPath: (path) => shell.openPath(path),
+    });
+    // O explorador se atualiza sozinho: um observador por pasta de projeto aberta no painel direito.
+    const projectWatcher = createProjectWatcher({ rootOf: (id) => services.fileDeps.rootOf(id) });
+    registerFilesWatchHandlers(ipcMain, isTrustedSender, projectWatcher);
+    app.once('will-quit', () => {
+      projectWatcher.closeAll();
     });
     registerGitHandlers(ipcMain, isTrustedSender, services.gitPanelDeps);
     registerGithubHandlers(ipcMain, isTrustedSender, {

@@ -156,7 +156,16 @@ test('com mais terminais que a grade comporta numa janela 1360 x 840, nenhum pai
   const expectedShown = capacity;
   await expect(shellPanes(page)).toHaveCount(expectedShown);
   await expect(chips(page)).toHaveCount(total - expectedShown);
-  await expect(dock(page).getByText('Fora da grade', { exact: true })).toBeVisible();
+  // A faixa divide a linha do projeto com as visões e as ações: o texto "Fora da grade" só aparece se couber, e a
+  // contagem fica sempre, com a dica dizendo o que ela conta.
+  const offGrid = total - expectedShown;
+  const label = dock(page).locator('.off-grid__label');
+  await expect(label.locator('.off-grid__count')).toHaveText(String(offGrid));
+  await expect(label).toBeVisible();
+  await expect(label).toHaveAttribute(
+    'title',
+    `${offGrid} ${offGrid === 1 ? 'terminal' : 'terminais'} fora da grade`,
+  );
 
   /** Todos os painéis mostrados cabem nas medidas mínimas. */
   const expectMinimumSize = async (): Promise<void> => {
@@ -247,10 +256,10 @@ test('com a janela estreita a grade vira a faixa de abas com "Janela estreita", 
   await expect(tabs(page)).toHaveCount(total);
   await expect(shellPanes(page)).toHaveCount(1);
   await expect(page.getByText('Janela estreita', { exact: true })).toBeVisible();
-  // Na faixa de abas o aviso toma o lugar do botão "Grade": a janela estreita não é escolha da pessoa.
+  // A janela estreita não é escolha da pessoa: "Grade", no seletor do cabeçalho, fica sem efeito.
   await expect(
-    page.locator('.pane-tabs').getByRole('button', { name: 'Grade', exact: true }),
-  ).toHaveCount(0);
+    page.locator('.project-header').getByRole('button', { name: 'Grade', exact: true }),
+  ).toHaveAttribute('aria-disabled', 'true');
   await expect(chips(page)).toHaveCount(0);
   // O terminal mostrado segue vivo no modo estreito.
   await shellPanes(page).locator('.xterm-helper-textarea').focus();
@@ -268,4 +277,154 @@ test('com a janela estreita a grade vira a faixa de abas com "Janela estreita", 
 
   expect(cspViolations(messages), cspViolations(messages).slice(0, 3).join(' | ')).toEqual([]);
   await endShells(page, total);
+});
+
+/** Caixa de um elemento do cabeçalho do projeto, em px de CSS. */
+async function boxOf(
+  locator: Locator,
+): Promise<{ left: number; right: number; top: number; bottom: number }> {
+  const box = await locator.boundingBox();
+  if (box === null) throw new Error('elemento sem caixa');
+  return { left: box.x, right: box.x + box.width, top: box.y, bottom: box.y + box.height };
+}
+
+test('com a janela menor, o cabeçalho do projeto compacta e segue numa linha só, sem sobrepor nada', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.setTimeout(180_000);
+  const projectName = basename(gitRepo.path);
+  const { app, page } = await launchApp({ dialogPath: gitRepo.path });
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setSize(1200, 760);
+  });
+  await addProjectAndOpenWorkspace(page, projectName);
+  // Como na janela da pessoa: a barra lateral à vista, o painel direito escondido.
+  await page.getByRole('button', { name: 'Ocultar painel direito' }).click();
+  await openShell(page);
+
+  const header = page.locator('.project-header');
+  const views = header.getByRole('tablist', { name: 'Visões do projeto' });
+  const layout = header.getByRole('group', { name: 'Layout dos painéis' });
+  const open = header.getByRole('button', { name: 'Abrir terminal' });
+  const mission = header.getByRole('button', { name: 'Nova missão' });
+  const more = header.getByRole('button', { name: 'Mais ações' });
+  const row = [views, layout, open, mission, more];
+  /** Tudo numa linha (o centro de cada um na faixa das visões) e em ordem, cada um depois do anterior. */
+  const expectOneRow = async (): Promise<void> => {
+    const boxes = await Promise.all(row.map((item) => boxOf(item)));
+    const band = boxes[0]!;
+    for (const [index, box] of boxes.entries()) {
+      const middle = (box.top + box.bottom) / 2;
+      expect(middle, `item ${index} na linha das visões`).toBeGreaterThan(band.top);
+      expect(middle, `item ${index} na linha das visões`).toBeLessThan(band.bottom);
+      if (index > 0)
+        expect(box.left, `item ${index} depois do anterior`).toBeGreaterThanOrEqual(
+          boxes[index - 1]!.right - 1,
+        );
+    }
+  };
+
+  /** A largura do cabeçalho, que decide a compactação (consulta de contêiner), e não a da janela. */
+  const headerWidth = async (): Promise<number> =>
+    header.evaluate((element) => {
+      // A consulta de contêiner mede a caixa de conteúdo: a largura sem o padding.
+      const style = getComputedStyle(element);
+      return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    });
+  /** Numa linha, na régua de 28px, com o nome fora dela e cada texto secundário só onde cabe. */
+  const expectRow = async (): Promise<void> => {
+    await expectOneRow();
+    for (const item of [header.getByRole('tab', { name: 'Terminais' }), open, mission, more]) {
+      const box = await boxOf(item);
+      expect(Math.round(box.bottom - box.top)).toBe(28);
+    }
+    await expect(header.getByRole('heading', { level: 1, name: projectName })).toHaveCount(1);
+    const title = await boxOf(header.locator('.project-header__title'));
+    expect(title.right - title.left).toBeLessThanOrEqual(1);
+    await expect(more.locator('svg')).toBeVisible();
+    const width = await headerWidth();
+    const terminalLabel = open.locator('.workspace__open-label');
+    const missionLabel = mission.locator('.project-header__new-label');
+    if (width > 860) await expect(terminalLabel).toBeVisible();
+    else await expect(terminalLabel).toBeHidden();
+    const label = await boxOf(missionLabel);
+    if (width > 780) expect(label.right - label.left).toBeGreaterThan(1);
+    else expect(label.right - label.left).toBeLessThanOrEqual(1);
+  };
+
+  // A janela da pessoa, uma larga e a menor: sempre uma linha só, sem sobrepor nada.
+  await expectRow();
+  for (const [width, height] of [
+    [1600, 900],
+    [1040, 760],
+  ] as const) {
+    await app.evaluate(
+      ({ BrowserWindow }, size) => {
+        BrowserWindow.getAllWindows()[0]?.setSize(size.width, size.height);
+      },
+      { width, height },
+    );
+    await expect.poll(async () => Math.round(await headerWidth())).not.toBe(0);
+    await page.waitForTimeout(150);
+    await expectRow();
+  }
+  // Na menor, Nova missão é só o + lima: o nome segue no botão e na dica.
+  if ((await headerWidth()) <= 780) await expect(mission).toHaveAttribute('title', 'Nova missão');
+
+  await endShells(page, 1);
+});
+
+test('com o painel direito aberto numa janela menor, a linha do projeto não quebra: as visões rolam e o "⌄" leva às escondidas', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.setTimeout(180_000);
+  const projectName = basename(gitRepo.path);
+  const { app, page } = await launchApp({ dialogPath: gitRepo.path });
+  // Como na janela da pessoa: uns 920 px, com a barra lateral e o painel direito à vista.
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setSize(920, 760);
+  });
+  await addProjectAndOpenWorkspace(page, projectName);
+  await openShell(page);
+
+  const header = page.locator('.project-header');
+  const views = header.getByRole('tablist', { name: 'Visões do projeto' });
+  const items = [
+    views,
+    header.getByRole('button', { name: 'Abrir terminal' }),
+    header.getByRole('button', { name: 'Nova missão' }),
+    header.getByRole('button', { name: 'Mais ações' }),
+  ];
+  const band = await boxOf(views);
+  let previousRight = -Infinity;
+  for (const [index, item] of items.entries()) {
+    const box = await boxOf(item);
+    const middle = (box.top + box.bottom) / 2;
+    expect(middle, `item ${index} na linha das visões`).toBeGreaterThan(band.top);
+    expect(middle, `item ${index} na linha das visões`).toBeLessThan(band.bottom);
+    expect(box.left, `item ${index} depois do anterior`).toBeGreaterThanOrEqual(previousRight - 1);
+    previousRight = box.right;
+  }
+  // As visões que não cabem saem pela borda e o "⌄" as lista; escolher uma troca a visão.
+  const more = header.getByRole('button', { name: 'Abas fora de vista' });
+  await expect(more).toBeVisible();
+  await expect(views).toHaveAttribute('data-fade-end', 'true');
+  await more.click();
+  await page.getByRole('menuitem', { name: 'Configurações' }).click();
+  await expect(views.getByRole('tab', { name: 'Configurações' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(views.getByRole('tab', { name: 'Configurações' })).toBeFocused();
+  await views.getByRole('tab', { name: 'Configurações' }).press('Home');
+  await expect(views.getByRole('tab', { name: 'Terminais' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(views.getByRole('tab', { name: 'Terminais' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+
+  await endShells(page, 1);
 });

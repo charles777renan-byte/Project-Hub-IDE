@@ -1,4 +1,4 @@
-import { useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { CircleAlert, ICON_PROPS, Search } from '../Icon';
 import { RIGHT_PANEL_TEXT } from '../../mission-text';
 import { getOverviewState, subscribeOverview } from '../../overview-data';
@@ -17,6 +17,18 @@ const MODES: ReadonlyArray<{ mode: SearchMode; label: string }> = [
   { mode: 'content', label: TEXT.byContent },
 ];
 
+/**
+ * Observa a pasta do projeto pelo processo principal. Como a leitura das pastas (`use-project-files.ts`), uma falha
+ * da ponte não derruba a aba: sem a observação, a árvore segue com o botão Atualizar.
+ */
+function watchFiles(projectId: string, onChange: () => void): () => void {
+  try {
+    return window.projectHub.files.watch(projectId, onChange);
+  } catch {
+    return () => undefined;
+  }
+}
+
 /** O nome do projeto no cabeçalho: o apelido, se houver. Sem o projeto na lista (ainda carregando), um nome geral. */
 function useProjectName(projectId: string): string {
   const sidebar = useSyncExternalStore(subscribeOverview, () => getOverviewState().sidebar);
@@ -34,6 +46,16 @@ function FilesTabBody({
   const files = useProjectFiles(projectId);
   // A mesma carga da aba Código-fonte; a aba Arquivos só está montada enquanto visível, então está sempre ativa.
   const git = useGitPanel(projectId, true);
+  // A árvore se atualiza sozinha: o processo principal observa a pasta e avisa cada mudança, já agrupada. O botão
+  // Atualizar continua, para quando a pessoa quer conferir na hora.
+  const reloadAll = useRef(() => undefined as void);
+  useEffect(() => {
+    reloadAll.current = () => {
+      files.refresh();
+      git.reload();
+    };
+  });
+  useEffect(() => watchFiles(projectId, () => reloadAll.current()), [projectId]);
   const projectName = useProjectName(projectId);
   const [mode, setMode] = useState<SearchMode>('names');
   const [query, setQuery] = useState('');

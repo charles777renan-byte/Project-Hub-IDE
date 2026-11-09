@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test, type LaunchedApp, type LaunchOptions } from './fixtures';
@@ -215,7 +215,9 @@ test('painel direito: buscas por nome e por conteúdo, recolher e reabrir, e foc
   await page.keyboard.press('Shift');
   await filesTree(page).getByRole('treeitem', { name: 'notas.txt' }).focus();
   expectRing(await focusRing(filesTree(page).getByRole('treeitem', { name: 'notas.txt' })));
-  await openTabs(page).getByRole('tab', { name: /^LEIA\.md/ }).click();
+  await openTabs(page)
+    .getByRole('tab', { name: /^LEIA\.md/ })
+    .click();
   await typeAtEnd(page, 'LEIA.md', 'mais uma');
   await expect(saveButton(page)).toBeEnabled();
   await page.keyboard.press('Shift');
@@ -241,6 +243,25 @@ test('painel direito: buscas por nome e por conteúdo, recolher e reabrir, e foc
   await expect(editorOf(page, 'LEIA.md')).toContainText('mais uma');
 
   await expectNoViolations(page, consoleCsp);
+});
+
+test('a árvore se atualiza sozinha quando um arquivo aparece ou some no disco', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  const files = seedFiles(gitRepo.path);
+  const projectName = basename(gitRepo.path);
+  const { page } = await launchApp({ dialogPath: gitRepo.path });
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  const tree = filesTree(page);
+  await expect(tree.getByRole('treeitem', { name: 'LEIA.md' })).toBeVisible();
+
+  // Sem clicar em Atualizar: o observador do processo principal avisa e a árvore relê.
+  writeFileSync(join(gitRepo.path, 'NOVO.md'), '# novo\n');
+  await expect(tree.getByRole('treeitem', { name: 'NOVO.md' })).toBeVisible({ timeout: 10_000 });
+  rmSync(files.leia);
+  await expect(tree.getByRole('treeitem', { name: 'LEIA.md' })).toHaveCount(0, { timeout: 10_000 });
 });
 
 test('o terminal montado antes segue montado ao abrir e fechar arquivos', async ({

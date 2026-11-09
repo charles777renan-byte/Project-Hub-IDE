@@ -44,6 +44,7 @@ export {
   PanelRight,
   PanelRightClose,
   PanelRightOpen,
+  PanelTop,
   Plus,
   Quote,
   RefreshCw,

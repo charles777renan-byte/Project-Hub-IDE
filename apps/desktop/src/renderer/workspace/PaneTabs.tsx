@@ -1,6 +1,5 @@
 import { useRef, type KeyboardEvent } from 'react';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
-import { ICON_PROPS, LayoutGrid } from '../components/Icon';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { StateMark } from '../components/StateMark';
 import { TabsOverflow, useTabsOverflow } from '../components/TabsOverflow';
@@ -28,27 +27,29 @@ export function numerarRepetidos(rotulos: readonly string[]): string[] {
 /**
  * A faixa de abas do modo "um painel por vez": uma aba por painel, com a posição, o ícone do programa, o nome e o
  * estado da sessão. Programas repetidos ganham número de ordem no nome. Clicar numa aba mostra aquele painel. Setas,
- * Home e End percorrem as abas (a aba ativa é a única parada de Tab), e "Grade" volta a mostrar todos os painéis.
+ * Home e End percorrem as abas (a aba ativa é a única parada de Tab). Voltar à grade é do seletor de layout, no
+ * cabeçalho do projeto (um destino num lugar só).
  * Se as abas não cabem, a lista rola, esmaece a borda do lado que tem aba escondida e ganha o botão "⌄", que lista só
  * as escondidas (`TabsOverflow`) e pede atenção se uma delas aguarda a pessoa. Com `auto` (o modo foi ligado pela
- * largura da janela, não por escolha), no lugar de "Grade" fica o aviso "Janela estreita", que não é botão.
+ * largura da janela, não por escolha), a faixa mostra o aviso "Janela estreita", que não é botão.
  */
 export function PaneTabs({
   leaves,
   activeId,
   terminals,
+  idleIds,
   providers,
   onSelect,
-  onGrid,
   auto = false,
 }: {
   leaves: readonly LayoutLeaf[];
   activeId: string;
   terminals: readonly TerminalSummary[];
+  /** Sessões vivas e paradas: a marca da aba vira o ponto vazado "Ocioso". */
+  idleIds?: ReadonlySet<string>;
   providers: readonly ProviderInfo[];
   onSelect(leafId: string): void;
-  onGrid(): void;
-  /** O modo foi ligado pela largura da janela: sem o botão "Grade", só o aviso. */
+  /** O modo foi ligado pela largura da janela: a faixa mostra o aviso. */
   auto?: boolean;
 }) {
   const strip = useRef<HTMLDivElement>(null);
@@ -127,7 +128,7 @@ export function PaneTabs({
               <ProviderIcon provider={providerId} />
               <span className="pane-tabs__label">{rotulos[index]}</span>
               {terminal !== undefined && terminal.state !== 'exited' ? (
-                <StateMark kind={markOfTerminal(terminal.state)} />
+                <StateMark kind={markOfTerminal(terminal.state, idleIds?.has(terminal.id))} />
               ) : null}
             </button>
           );
@@ -146,12 +147,7 @@ export function PaneTabs({
           <NarrowIcon />
           Janela estreita
         </span>
-      ) : (
-        <button type="button" className="btn-secondary pane-tabs__grid" onClick={onGrid}>
-          <LayoutGrid {...ICON_PROPS} />
-          Grade
-        </button>
-      )}
+      ) : null}
     </div>
   );
 }

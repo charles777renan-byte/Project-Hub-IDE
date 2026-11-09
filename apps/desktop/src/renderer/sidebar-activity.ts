@@ -52,6 +52,18 @@ export function hasActivity(values: readonly number[] | undefined): boolean {
 }
 
 /**
+ * Quantas leituras seguidas sem saída fazem uma sessão viva contar como ociosa (com a leitura a cada 2 s, uns 6 s).
+ * Menos que isso, o ponto piscaria entre uma linha e outra do agente.
+ */
+export const IDLE_SAMPLES = 3;
+
+/** Se a sessão ficou parada nas últimas `IDLE_SAMPLES` leituras. Sem leituras suficientes, ainda não dá para dizer. */
+export function isIdle(values: readonly number[] | undefined): boolean {
+  if (values === undefined || values.length < IDLE_SAMPLES) return false;
+  return values.slice(-IDLE_SAMPLES).every((value) => value === 0);
+}
+
+/**
  * A altura de cada barra, de 1 a 6 (a classe `activity__bar--N`): zero fica na menor, e o resto é proporcional
  * ao maior valor da janela. Sempre devolve `ACTIVITY_BARS` itens, com a menor altura à esquerda onde falta dado.
  */

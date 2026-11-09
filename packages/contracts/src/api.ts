@@ -239,6 +239,11 @@ export type ProjectHubApi = {
      * volta). Com qualquer outra resposta a janela fica aberta. Devolve a função que cancela a assinatura.
      */
     onSaveAllRequest(handler: () => Promise<boolean>): () => void;
+    /**
+     * Observa a pasta do projeto: `onChange` roda quando algo muda no disco (já agrupado, fora de node_modules,
+     * dist, out e .git). Devolve a função que para de observar.
+     */
+    watch(projectId: string, onChange: () => void): () => void;
   };
   git: {
     /** Branch, upstream, à frente/atrás, linhas contra a base e arquivos alterados do projeto. */

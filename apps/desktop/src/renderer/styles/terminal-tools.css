@@ -1,0 +1,111 @@
+/*
+ * Ferramentas dos terminais na faixa do projeto (WorkspaceToolbar, posta no cabeçalho por portal, só na visão
+ * Terminais). Grade | Abas e "+ Terminal" formam a cápsula (`.workspace__controls`): um cartão de 32px com fio, os
+ * controles na régua de 28px da faixa e um fio entre o seletor e o gatilho. O + de Terminal é ciano, a cor de
+ * terminal da identidade; o lima fica com Nova missão (project.css). As fichas "Fora da grade" ficam à esquerda da
+ * cápsula, sem fundo: a faixa delas cresce no espaço livre e mede a própria largura (off-grid.css).
+ *
+ * Ligado depois do off-grid.css, para vencer as medidas da antiga barra própria (workspace.css). Só tokens.
+ */
+
+.project-header__tools .workspace__toolbar {
+  flex: 0 1 auto;
+  gap: var(--space-2);
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* Com terminais fora da grade, a barra toma o espaço livre e a faixa das fichas o preenche. */
+.project-header__tools .workspace__toolbar:has(.off-grid) {
+  flex: 1 1 auto;
+}
+
+/* A faixa tem contenção de tamanho e não informa largura mínima: a contagem e o "+N" precisam caber. */
+.project-header__tools .off-grid {
+  min-width: 6rem;
+  padding-left: 0;
+}
+
+.project-header__tools .off-grid__chip,
+.project-header__tools .off-grid__more .menu-acoes__gatilho--icone {
+  height: 28px;
+}
+
+.workspace__controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.workspace__controls-sep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-1);
+  background: var(--line);
+}
+
+/* O seletor perde o contorno próprio: a cápsula é o contorno. */
+.workspace__controls .workspace__layout {
+  gap: 2px;
+  padding: 0;
+  box-shadow: none;
+}
+
+.workspace__controls .workspace__layout-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+}
+
+.workspace__controls .workspace__layout-btn[aria-pressed='true'] {
+  background: var(--fill);
+  color: var(--text);
+}
+
+.workspace__controls .workspace__open {
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--space-2) 0 7px;
+  border-color: transparent;
+  background: transparent;
+  line-height: normal;
+}
+
+.workspace__controls .workspace__open:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-2);
+}
+
+.workspace__controls .workspace__open > svg:first-child {
+  color: var(--cyan);
+}
+
+.workspace__controls .workspace__open > svg:last-child {
+  color: var(--muted);
+}
+
+.project-header__tools .workspace__popup {
+  right: 0;
+  left: auto;
+  transform-origin: top right;
+}
+
+/* Faixa estreita: "Terminal" sai e o gatilho fica com o + e a seta (o nome acessível é "Abrir terminal"). */
+@container project-header (max-width: 860px) {
+  .workspace__controls .workspace__open-label {
+    display: none;
+  }
+
+  .workspace__controls .workspace__open {
+    gap: 2px;
+    padding: 0 6px;
+  }
+}

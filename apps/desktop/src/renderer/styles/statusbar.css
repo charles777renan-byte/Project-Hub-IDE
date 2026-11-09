@@ -1,5 +1,5 @@
 /*
- * Barra de status (components/StatusBar.tsx): o rodapé da janela, de 24px, abaixo do corpo. Uma linha só, em
+ * Barra de status (components/StatusBar.tsx): o rodapé da janela, de 28px, abaixo do corpo (cabe um alvo de 24px com a borda). Uma linha só, em
  * fonte pequena, que trunca com reticências em janela estreita e nunca rola de lado. Só tokens de cor
  * (--bg, --line, --muted e --text). Ligado antes de workspace.css no index.html.
  */
@@ -9,7 +9,7 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-3);
-  height: 24px;
+  height: 28px;
   padding: 0 var(--space-3);
   overflow: hidden;
   border-top: 1px solid var(--line);
@@ -55,6 +55,11 @@
   overflow: hidden;
 }
 
+/* Cada contador é um link para o filtro: alvo de ao menos 24px de altura. */
+.statusbar .overview-counter {
+  min-height: 24px;
+}
+
 /*
  * O uso do computador e "Parar todos" ficam no canto direito. Podem encolher (min-width: 0), mas só depois do projeto e
  * dos contadores; o que está dentro (o uso, o botão, a pergunta) não encolhe nem quebra.
@@ -78,7 +83,7 @@
   outline-offset: -2px;
 }
 
-/* "Parar todos" e a pergunta cabem na altura da barra: botões baixos, sem quebra de linha. */
+/* "Parar todos" e a pergunta cabem na altura da barra: botões de 24px (a menor área de clique), sem quebra de linha. */
 .statusbar .confirm-inline {
   flex-wrap: nowrap;
   white-space: nowrap;
@@ -88,8 +93,8 @@
 .statusbar .btn-danger,
 .statusbar .btn-secondary,
 .statusbar .confirm-inline button {
-  height: 20px;
+  height: 24px;
   padding: 0 var(--space-2);
   font-size: var(--text-xs);
-  line-height: 18px;
+  line-height: 22px;
 }

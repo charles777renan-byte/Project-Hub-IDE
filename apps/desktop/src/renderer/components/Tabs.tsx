@@ -1,5 +1,6 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
-import type { MouseEvent } from 'react';
+import type { MouseEvent, Ref } from 'react';
+import { TAB_ID_ATTRIBUTE, type TabsOverflowState } from './TabsOverflow';
 
 /**
  * Contagem opcional de uma aba: `value` é o número curto ao lado do nome (escondido do leitor de tela)
@@ -32,6 +33,9 @@ export type TabItem<T extends string> = { id: T; label: string; count?: TabCount
  * A raiz do Radix vira a própria barra (`asChild`), sem `div` extra: o CSS do painel inferior da missão depende de a barra
  * ser filha direta do contêiner (`.mission-dock > .tabs`). Os ids `tab-<id>` e o `aria-controls` ficam
  * os mesmos de antes, porque os painéis apontam para eles por `aria-labelledby`.
+ *
+ * Barra que rola de lado: `listRef` entrega a barra ao `useTabsOverflow`, cada aba leva o `data-tab-id` com o seu id, e
+ * `overflow` põe o esmaecimento do lado que tem aba escondida (quem usa desenha o "⌄" ao lado).
  */
 export function Tabs<T extends string>({
   label,
@@ -41,6 +45,8 @@ export function Tabs<T extends string>({
   filled = false,
   panelId,
   onReselect,
+  listRef,
+  overflow,
 }: {
   label: string;
   tabs: readonly TabItem<T>[];
@@ -50,6 +56,8 @@ export function Tabs<T extends string>({
   panelId?: (id: T) => string;
   /** Clique na aba que já está ativa (o `onChange` não dispara nesse caso). Opcional. */
   onReselect?: (id: T) => void;
+  listRef?: Ref<HTMLDivElement>;
+  overflow?: TabsOverflowState;
 }) {
   // O Radix entrega o valor como texto; devolvemos o `id` tipado da própria lista.
   function handleValueChange(value: string) {
@@ -59,7 +67,13 @@ export function Tabs<T extends string>({
 
   return (
     <RadixTabs.Root asChild value={active} onValueChange={handleValueChange}>
-      <RadixTabs.List aria-label={label} className={filled ? 'tabs tabs--filled' : 'tabs'}>
+      <RadixTabs.List
+        ref={listRef}
+        aria-label={label}
+        className={filled ? 'tabs tabs--filled' : 'tabs'}
+        data-fade-start={overflow?.start === true ? 'true' : undefined}
+        data-fade-end={overflow?.end === true ? 'true' : undefined}
+      >
         {tabs.map((tab) => {
           const countId = `tab-${tab.id}-count`;
           return (
@@ -70,6 +84,7 @@ export function Tabs<T extends string>({
               aria-controls={panelId === undefined ? 'tab-panel' : panelId(tab.id)}
               aria-describedby={tab.count === undefined ? undefined : countId}
               className={`tab tab--${tab.id}`}
+              {...(listRef === undefined ? {} : { [TAB_ID_ATTRIBUTE]: tab.id })}
               onMouseDown={focusWithoutRing}
               onClick={
                 tab.id === active && onReselect !== undefined ? () => onReselect(tab.id) : undefined

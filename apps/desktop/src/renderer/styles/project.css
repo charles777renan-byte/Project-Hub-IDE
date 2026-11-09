@@ -24,83 +24,182 @@
   min-height: 0;
 }
 
-/* Cabeçalho: uma linha de 40px que cede para duas quando a janela é estreita (o nome trunca primeiro). */
+/*
+ * Cabeçalho: uma linha de 44px, com todas as peças na mesma régua de 28px. Ordem: as visões, as ferramentas dos
+ * terminais (só na visão Terminais; estilo em terminal-tools.css), um fio e as ações do projeto (Nova missão e ⋯).
+ * O nome do projeto não ocupa a linha: a aba da janela, logo acima, já o mostra, e o h1 fica para leitores de tela.
+ * É o contêiner da compactação (`project-header`, pela largura dele, não da janela): faltando espaço, saem só
+ * textos secundários, um de cada vez. A quebra em duas linhas fica como último recurso.
+ */
 .project-header {
+  container: project-header / inline-size;
   flex: none;
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2) 0 0.625rem;
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
 
+/* Uma linha só, sempre: sem espaço, quem cede é a barra de visões, que rola de lado (abaixo). */
 .project-header__row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 0 var(--space-4);
-  min-height: 40px;
+  gap: 0 0.75rem;
+  min-height: 44px;
 }
 
 .project-header .project-header__title {
-  display: flex;
-  flex: 0 1 auto;
-  align-items: baseline;
-  gap: var(--space-2);
-  min-width: 0;
-  max-width: 24rem;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .project-header .project-header__title h1 {
   margin: 0;
-  overflow: hidden;
   font-size: var(--text-md);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .project-header__name {
-  overflow: hidden;
   color: var(--muted);
   font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /*
- * Visões: as mesmas pílulas arredondadas das outras abas do app (a ativa acende o gradiente e o anel do
- * `.tab::before`, que herda o raio da aba). Centralizadas na altura do cabeçalho, com folga em volta do nome,
- * para a pílula não encostar nas bordas.
+ * As visões e o "⌄" das que ficaram fora de vista. É o que encolhe primeiro quando falta espaço na linha (o painel
+ * direito aberto numa janela menor): a barra rola de lado, a borda esmaece (workspace.css) e o "⌄" lista o resto.
  */
+.project-header__views {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Visões: as mesmas pílulas das outras abas do app (a ativa acende o gradiente e o anel do `.tab::before`), em 28px. */
 .project-header .tabs {
+  flex: 0 1 auto;
   flex-wrap: nowrap;
   align-self: center;
-  gap: 0 var(--space-1);
+  gap: 0 2px;
+  min-width: 0;
   margin: 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
 .project-header .tab {
   flex: none;
+  height: 28px;
   margin: 0;
   border-radius: var(--radius-pill);
-  /* 12px dos lados: com o vão de 4px, cada aba ocupa 28px a mais que o nome, menos que os 32px da versão sublinhada. */
-  padding: var(--space-1) 0.75rem;
+  padding: 0 0.75rem;
   font-size: var(--text-sm);
+  line-height: 28px;
   white-space: nowrap;
+}
+
+/* O lugar das ferramentas dos terminais: ocupa o espaço livre e as encosta nas ações. Em outra visão fica vazio. Sem
+   `min-width: 0` de propósito: o mínimo dele é o da barra (contagem, "+N" e cápsula), e sem espaço quem cede são as
+   visões, que rolam, em vez de as fichas vazarem por cima delas. */
+.project-header__tools {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* O nó fixo da barra (WorkspacePage), que só muda de pai: não ocupa caixa própria. */
+.project-header__tools-host {
+  display: contents;
 }
 
 .project-header__actions {
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   margin-left: auto;
 }
 
-.project-header__actions button,
-.project-header .menu-acoes__gatilho {
+.project-header__tools + .project-header__actions {
+  margin-left: 0;
+}
+
+/* O fio entre as ferramentas dos terminais e as ações do projeto, só quando as ferramentas estão na linha. */
+.project-header:has(.project-header__tools .workspace__toolbar) .project-header__actions::before {
+  content: '';
+  width: 1px;
+  height: 20px;
+  margin-right: 6px;
+  background: var(--line);
+}
+
+/* Nova missão: o botão lima da ação principal (app.css), na régua de 28px, com o + antes do texto. */
+.project-header__actions .btn-primary {
+  display: inline-flex;
   flex: none;
-  padding: var(--space-1) var(--space-3);
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 0.75rem 0 0.625rem;
   font-size: var(--text-sm);
+  font-weight: 700;
   white-space: nowrap;
+}
+
+/* ⋯: o menu do projeto, só o ícone, sem contorno até o mouse passar. */
+.project-header .menu-acoes__gatilho--icone {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text);
+}
+
+.project-header .menu-acoes__gatilho--icone:hover,
+.project-header .menu-acoes__gatilho--icone[data-state='open'] {
+  border-color: var(--field-line);
+  background: var(--surface-2);
+}
+
+.project-header .menu-acoes__gatilho--icone svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Faixa mínima: as visões apertam e Nova missão fica só com o + (o nome segue no botão e na dica). */
+@container project-header (max-width: 780px) {
+  .project-header__row {
+    gap: 0 0.625rem;
+  }
+
+  .project-header .tab {
+    padding: 0 0.5625rem;
+  }
+
+  .project-header__actions .btn-primary {
+    justify-content: center;
+    width: 28px;
+    padding: 0;
+  }
+
+  .project-header__new-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .project-header .confirm-inline,
