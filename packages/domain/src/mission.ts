@@ -1,3 +1,4 @@
+import type { ContextUsage } from './context-window';
 import type { MissionStatus } from './mission-state';
 
 /** Valores de cada enumeração do modelo (seção 9). O banco confere os mesmos valores em `CHECK`. */
@@ -138,6 +139,8 @@ export type Execution = {
   agentCursor?: string;
   exitReason?: ExitReason;
   usage?: UsageSummary;
+  /** Modelo e contexto da resposta principal mais recente, quando o agente informa. */
+  context?: ContextUsage;
   startedAt?: string;
   finishedAt?: string;
 };

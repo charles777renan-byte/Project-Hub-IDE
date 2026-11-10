@@ -1,5 +1,12 @@
 import type { MessageUsage } from './usage';
 
+/**
+ * O que a resposta principal mais recente de um agente deixou na janela de contexto: o id do modelo que
+ * respondeu e os tokens ocupados. Sobe e desce (um `/compact` derruba), ao contrário do gasto, que só soma.
+ * O tamanho da janela não vem aqui: sai de `contextWindowOf(model)` na hora de mostrar.
+ */
+export type ContextUsage = { model: string; usedTokens: number };
+
 /** Janela de contexto de um modelo fora da tabela, em tokens. */
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
 

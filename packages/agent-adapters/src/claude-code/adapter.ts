@@ -9,7 +9,6 @@ import type {
   AgentSession,
   AgentStartInput,
 } from '@project-hub/agent-sdk';
-import type { UsageSummary } from '@project-hub/domain';
 import {
   isClearSessionEnd,
   mapHookEntry,
@@ -300,8 +299,8 @@ async function* watchEvents(
       }
       if (tracking && Date.now() >= nextUsageRead) {
         nextUsageRead = Date.now() + usageOptions.intervalMs;
-        const summary = await readUsage(usage);
-        if (summary !== undefined) yield usageEvent(summary);
+        const event = await readUsage(usage);
+        if (event !== undefined) yield event;
       }
       const snapshot = await terminal.snapshot(executionId);
       exited = snapshot === undefined || !snapshot.alive;
@@ -312,17 +311,25 @@ async function* watchEvents(
   }
 }
 
-/** Lê o gasto sem nunca derrubar a sessão: um erro de arquivo só deixa o número como estava. */
-async function readUsage(usage: TranscriptUsageTracker): Promise<UsageSummary | undefined> {
+/**
+ * Lê o gasto sem nunca derrubar a sessão: um erro de arquivo só deixa o número como estava. O evento leva
+ * também o modelo e o contexto da resposta principal mais recente. Não há leitura à parte para o contexto:
+ * ele só muda quando chega uma resposta nova, e toda resposta com tokens muda o total.
+ */
+async function readUsage(usage: TranscriptUsageTracker): Promise<AgentEvent | undefined> {
   try {
-    return await usage.poll();
+    const summary = await usage.poll();
+    if (summary === undefined) return undefined;
+    const context = usage.latestContext();
+    return {
+      type: 'usage.updated',
+      usage: summary,
+      ...(context === undefined ? {} : { context }),
+      at: new Date().toISOString(),
+    };
   } catch {
     return undefined;
   }
-}
-
-function usageEvent(summary: UsageSummary): AgentEvent {
-  return { type: 'usage.updated', usage: summary, at: new Date().toISOString() };
 }
 
 /** Últimas leituras do gasto antes do fim, com uma espera entre elas. */
@@ -333,8 +340,8 @@ async function* drainUsage(
 ): AsyncGenerator<AgentEvent> {
   for (let read = 0; read < USAGE_DRAIN_READS && !signal.aborted; read += 1) {
     if (read > 0) await sleep(delayMs, signal);
-    const summary = await readUsage(usage);
-    if (summary !== undefined) yield usageEvent(summary);
+    const event = await readUsage(usage);
+    if (event !== undefined) yield event;
   }
 }
 

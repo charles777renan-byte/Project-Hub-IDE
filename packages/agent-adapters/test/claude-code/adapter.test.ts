@@ -392,6 +392,45 @@ describe('adaptador do Claude Code: gasto de tokens', () => {
     expect(rest[0]).toMatchObject({ usage: { inputTokens: 2, outputTokens: 12 } });
   });
 
+  it('entrega, junto do gasto, o modelo e o contexto da resposta principal mais recente', async () => {
+    const f = fakes();
+    const adapter = adapterWithUsage(f);
+    const session = await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    const file = transcript(SESSION_A, [transcriptLine('msg_1', 5)]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION_A, transcript_path: file });
+
+    const iterator = session.events()[Symbol.asyncIterator]();
+    expect((await iterator.next()).value).toMatchObject({ type: 'session.started' });
+    // Contexto = entrada nova (1) + cache lido (10); a saída não ocupa a janela.
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'usage.updated',
+      context: { model: 'claude-sonnet-5-5', usedTokens: 11 },
+    });
+
+    // Uma resposta nova, com mais cache lido: o contexto é o dela, não a soma das duas.
+    const bigger = JSON.stringify({
+      type: 'assistant',
+      message: {
+        id: 'msg_2',
+        model: 'claude-opus-5-5',
+        usage: { input_tokens: 2, output_tokens: 7, cache_read_input_tokens: 40 },
+      },
+    });
+    writeFileSync(file, `${transcriptLine('msg_1', 5)}\n${bigger}\n`);
+    f.push({ hook_event_name: 'SessionEnd', session_id: SESSION_A, transcript_path: file });
+    const rest: AgentEvent[] = [];
+    for (let next = await iterator.next(); next.done !== true; next = await iterator.next()) {
+      rest.push(next.value);
+    }
+    expect(rest[0]).toMatchObject({
+      type: 'usage.updated',
+      context: { model: 'claude-opus-5-5', usedTokens: 42 },
+    });
+  });
+
   it('soma a sessão aberta por um /clear com a de antes', async () => {
     const f = fakes();
     const adapter = adapterWithUsage(f);
