@@ -363,6 +363,36 @@ describe('reanexação ao abrir o app', () => {
       h.repo.listAudit(execution?.id ?? '').filter((event) => event.eventType === 'usage.updated'),
     ).toEqual([]);
   });
+
+  it('o modelo e o contexto do gasto ficam na tentativa, e um gasto sem contexto não os apaga', async () => {
+    const h = setup();
+    h.repo.insertMission(missionFixture({ id: 'm1' }));
+    await startRunning(h, 'm1');
+    const live = h.agent.lives.get('sessao-1');
+
+    live?.push({
+      type: 'usage.updated',
+      usage: { inputTokens: 1, outputTokens: 2 },
+      context: { model: 'claude-opus-5-5', usedTokens: 76_000 },
+    });
+    await waitFor(() => h.repo.listExecutions('m1')[0]?.agentCursor === '1');
+    expect(h.repo.listExecutions('m1')[0]?.context).toEqual({
+      model: 'claude-opus-5-5',
+      usedTokens: 76_000,
+    });
+
+    // Depois de um /compact o contexto cai: vale o mais recente, não o maior.
+    live?.push({
+      type: 'usage.updated',
+      usage: { inputTokens: 2, outputTokens: 4 },
+      context: { model: 'claude-opus-5-5', usedTokens: 9_000 },
+    });
+    live?.push({ type: 'usage.updated', usage: { inputTokens: 3, outputTokens: 5 } });
+    await waitFor(() => h.repo.listExecutions('m1')[0]?.agentCursor === '3');
+    const execution = h.repo.listExecutions('m1')[0];
+    expect(execution?.usage).toEqual({ inputTokens: 3, outputTokens: 5 });
+    expect(execution?.context).toEqual({ model: 'claude-opus-5-5', usedTokens: 9_000 });
+  });
 });
 
 describe('fila: falha antes de rodar', () => {

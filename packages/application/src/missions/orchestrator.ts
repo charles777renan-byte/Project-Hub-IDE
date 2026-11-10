@@ -652,7 +652,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       case 'usage.updated':
         // O adaptador manda o total a cada mudança (uma a cada segundo ou dois): só a tentativa guarda o
         // número, sem linha de auditoria, senão a auditoria e a tela receberiam um evento por leitura.
-        repo.updateExecution(executionId, { usage: event.usage });
+        // O contexto (modelo e janela ocupada) vem junto quando o adaptador informa; sem ele, fica o anterior.
+        repo.updateExecution(executionId, {
+          usage: event.usage,
+          ...(event.context === undefined ? {} : { context: event.context }),
+        });
         return 'continue';
 
       case 'session.started':
