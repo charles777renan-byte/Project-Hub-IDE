@@ -14,7 +14,7 @@ import {
   type UsageSummaryDto,
 } from '@project-hub/contracts';
 import type { TerminalSessionRepository } from '@project-hub/database';
-import { contextWindowOf } from '@project-hub/domain';
+import { MODEL_NAME_MAX_LENGTH, contextWindowOf } from '@project-hub/domain';
 import {
   claudeConfigDirOf,
   writeHookScript,
@@ -398,7 +398,9 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             // O gasto da tentativa em curso, que o orquestrador já grava: nada é contado de novo aqui.
             ...(execution.usage === undefined ? {} : { usage: execution.usage }),
             // O modelo e o contexto também vêm da tentativa; a janela sai da mesma tabela do painel avulso.
-            ...(execution.context === undefined
+            // Um nome longo demais (gravado antes de o leitor o barrar) derrubaria a lista inteira no contrato.
+            ...(execution.context === undefined ||
+            execution.context.model.length > MODEL_NAME_MAX_LENGTH
               ? {}
               : {
                   model: execution.context.model,

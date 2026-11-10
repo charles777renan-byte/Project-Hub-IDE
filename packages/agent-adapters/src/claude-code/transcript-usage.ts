@@ -3,6 +3,7 @@ import { open } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import {
+  MODEL_NAME_MAX_LENGTH,
   contextTokensOf,
   summarizeUsage,
   type MessageUsage,
@@ -301,9 +302,10 @@ export function createTranscriptUsageTracker(options: {
     },
 
     latestContext() {
-      return latest === undefined
-        ? undefined
-        : { model: latest.usage.model, usedTokens: contextTokensOf(latest.usage) };
+      // Nome longo demais não é um id de modelo: a resposta continua na soma, mas não vira contexto.
+      if (latest === undefined || latest.usage.model.length > MODEL_NAME_MAX_LENGTH)
+        return undefined;
+      return { model: latest.usage.model, usedTokens: contextTokensOf(latest.usage) };
     },
   };
 }

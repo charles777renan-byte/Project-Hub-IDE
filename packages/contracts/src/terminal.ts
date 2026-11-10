@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { tokenCount, usageSummaryDtoSchema } from './mission';
 import { providerIdSchema } from './workspace';
 
+/**
+ * Tamanho máximo do nome de um modelo, o mesmo de `MODEL_NAME_MAX_LENGTH` do domínio (este pacote não depende dele).
+ * O leitor de transcript e a lista de terminais já barram um nome maior, para o limite daqui nunca derrubar a lista.
+ */
+const MODEL_NAME_MAX_LENGTH = 100;
+
 /** Tipos de terminal dos terminais: o de um agente (uma missão) ou um shell comum de um projeto. */
 export const TERMINAL_KIND_VALUES = ['agent', 'shell'] as const;
 
@@ -38,7 +44,7 @@ export const terminalSummarySchema = z.object({
    * Modelo da resposta mais recente do Claude Code deste terminal. Só o Claude informa; sem resposta, não vem.
    * No terminal de agente de missão, vem da tentativa em curso, como o gasto.
    */
-  model: z.string().optional(),
+  model: z.string().max(MODEL_NAME_MAX_LENGTH).optional(),
   /**
    * Quanto da janela de contexto a resposta mais recente ocupa (`usedTokens`) e o tamanho da janela do modelo
    * (`windowTokens`). Só o Claude informa, no painel avulso e no agente de missão; sem resposta, não vem

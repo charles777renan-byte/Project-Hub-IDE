@@ -824,6 +824,23 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     });
   });
 
+  it('contexto gravado com nome de modelo longo demais não sai na lista, e a lista continua valendo', async () => {
+    const usage = { inputTokens: 40, outputTokens: 900, estimatedCostUsd: 0.02 };
+    const h = setup({
+      executions: [
+        { ...agentExecution, usage, context: { model: 'm'.repeat(101), usedTokens: 76_000 } },
+      ],
+      missions: [mission],
+    });
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).toMatchObject({ id: 'sessao-agente', usage });
+    expect(result.data[0]).not.toHaveProperty('model');
+    expect(result.data[0]).not.toHaveProperty('context');
+  });
+
   it('a lista traz modelo e contexto no painel avulso do Claude com resposta, nunca na missão sem contexto nem em outro programa', async () => {
     const usage = { inputTokens: 40, outputTokens: 900, estimatedCostUsd: 0.02 };
     const h = setup({ executions: [{ ...agentExecution, usage }], missions: [mission] });
