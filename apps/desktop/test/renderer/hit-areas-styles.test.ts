@@ -29,6 +29,13 @@ describe('áreas de clique de ao menos 24px', () => {
     ).toBeGreaterThanOrEqual(24);
   });
 
+  it('o link de voltar da página da missão tem 24px de altura', () => {
+    const back = ruleDeclarations(readCss('mission.css'), '.mission-head__back');
+    expect(px(back.get('min-height'))).toBeGreaterThanOrEqual(24);
+    // Em linha, a altura mínima não valeria: o link precisa ser uma caixa.
+    expect(back.get('display')).toBe('inline-flex');
+  });
+
   it('o x de fechar uma aba de arquivo tem 24 x 24 px', () => {
     const close = ruleDeclarations(readCss('right-panel.css'), '.file-tabs__close');
     expect(px(close.get('width'))).toBeGreaterThanOrEqual(24);
