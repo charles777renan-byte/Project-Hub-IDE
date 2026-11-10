@@ -8,6 +8,7 @@ import {
   missionSummary,
   openProject,
   orchestrate,
+  sidebarOf,
 } from './missions';
 
 // Gasto de tokens em tempo real, pela interface real: o agente das missões é o Claude Code do app (terminal,
@@ -48,6 +49,66 @@ const FINAL = {
   cache: 'Cache: 350.000 lidos · 30.000 escritos',
   cost: /Custo estimado a preço de lista da API: USD\s0,24 \(não é fatura\)\./,
 };
+
+// O terminal da missão, na visão Terminais, mostra o fio de contexto e diz o modelo e o contexto na dica do
+// título. Com o agente falso parado na primeira parte, a resposta mais recente é a A (claude-sonnet-5-5,
+// janela de 1 milhão): contexto = entrada 12.000 + cache lido 200.000 + cache escrito 20.000 = 232.000 -> 23%.
+// A saída (3.000) não ocupa a janela.
+test('Contexto da missão: o terminal da missão mostra o fio e a dica com o modelo', async ({
+  launchApp,
+  gitRepo,
+  claudeConfigDir,
+}) => {
+  const projectName = basename(gitRepo.path);
+  const { page, close } = await launchApp({ dialogPath: gitRepo.path, agentScript: FAKE_AGENT });
+
+  await addGitProject(page, projectName);
+  await openProject(page, projectName);
+  await createMission(page, MISSION);
+  await orchestrate(page);
+  const decision = decisionBlock(page);
+  await decision.getByRole('button', { name: 'Aprovar plano' }).click();
+  await decision.getByRole('button', { name: 'Iniciar missão' }).click();
+
+  // O primeiro total na página da missão prova que o gasto (e o contexto, que vem no mesmo evento) já foi lido.
+  await expect(page.getByRole('region', { name: 'Gasto de tokens' })).toContainText(FIRST.headline);
+
+  // "Ver no terminal" só pede o painel quando a sessão da missão já está na lista de terminais da tela (lida a
+  // cada 2 s). O cartão dela na barra lateral vem da mesma lista: com ele à vista, o link já leva ao painel.
+  const bar = sidebarOf(page);
+  await bar.getByRole('button', { name: `Sessões de ${projectName}` }).click();
+  await expect(bar.locator('.sidebar__card')).toHaveCount(1, { timeout: 15_000 });
+
+  await page.getByRole('link', { name: 'Ver no terminal' }).click();
+  const title = page.locator('.pane__head--live .pane__title', { hasText: MISSION.title });
+  await expect(title).toBeVisible();
+  // O `has` é relativo ao cabeçalho: o seletor de dentro não repete a classe dele.
+  const head = page.locator('.pane__head--live', {
+    has: page.locator('.pane__title', { hasText: MISSION.title }),
+  });
+  const CONTEXT = 'Contexto: 232.000 de 1.000.000 tokens (23%)';
+  await expect(head.locator('.pane__context')).toHaveAttribute('data-level', 'normal');
+  await expect(head.locator('.pane__context')).toContainText(CONTEXT);
+  // O fio tem largura de verdade: perto de 23% da faixa (não é um zero nem a faixa inteira).
+  const fill = await head.locator('.pane__context-fill').boundingBox();
+  const track = await head.locator('.pane__context').boundingBox();
+  if (fill === null || track === null) throw new Error('o fio de contexto deveria ter caixa');
+  expect(fill.width / track.width).toBeGreaterThan(0.2);
+  expect(fill.width / track.width).toBeLessThan(0.26);
+  // A dica do título diz o modelo (a família, não "Claude Code") e repete o contexto em texto.
+  const hint = (await title.getAttribute('title')) ?? '';
+  expect(hint).toContain('Sonnet');
+  expect(hint).not.toContain('Claude Code');
+  expect(hint).toContain(CONTEXT);
+
+  // Libera o agente falso para a sessão terminar antes de o app fechar (senão o fechamento espera por ele).
+  const gateFolder = join(claudeConfigDir, 'fake-agent');
+  mkdirSync(gateFolder, { recursive: true });
+  writeFileSync(join(gateFolder, 'liberar-segunda-parte'), '', 'utf8');
+  await expect(title).toHaveCount(0, { timeout: 20_000 });
+
+  await close();
+});
 
 test('Gasto de tokens: o primeiro total aparece e o número troca ao vivo até o total final', async ({
   launchApp,
