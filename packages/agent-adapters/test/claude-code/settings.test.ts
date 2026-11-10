@@ -1,4 +1,7 @@
+import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +10,7 @@ import {
   buildHookSettings,
   hookCommand,
   mapHookEntry,
+  writeHookScript,
   writeSettingsFile,
 } from '../../src/claude-code/settings';
 
@@ -67,7 +71,11 @@ describe('configuração de hooks', () => {
 describe('mapHookEntry', () => {
   it('converte o início da sessão', () => {
     expect(
-      mapHookEntry({ seq: 1, receivedAt: at, payload: { hook_event_name: 'SessionStart', session_id: 'abc' } }),
+      mapHookEntry({
+        seq: 1,
+        receivedAt: at,
+        payload: { hook_event_name: 'SessionStart', session_id: 'abc' },
+      }),
     ).toEqual({ type: 'session.started', sessionId: 'abc', at });
   });
 
@@ -90,7 +98,12 @@ describe('mapHookEntry', () => {
       mapHookEntry({
         seq: 3,
         receivedAt: at,
-        payload: { hook_event_name: 'PreToolUse', tool_use_id: 't1', tool_name: 'Bash', tool_input: { command: 'ls' } },
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_use_id: 't1',
+          tool_name: 'Bash',
+          tool_input: { command: 'ls' },
+        },
       }),
     ).toEqual({
       type: 'tool.requested',
@@ -98,7 +111,11 @@ describe('mapHookEntry', () => {
       at,
     });
     expect(
-      mapHookEntry({ seq: 4, receivedAt: at, payload: { hook_event_name: 'PostToolUse', tool_use_id: 't1' } }),
+      mapHookEntry({
+        seq: 4,
+        receivedAt: at,
+        payload: { hook_event_name: 'PostToolUse', tool_use_id: 't1' },
+      }),
     ).toEqual({ type: 'tool.completed', callId: 't1', result: { ok: true }, at });
   });
 
@@ -108,7 +125,9 @@ describe('mapHookEntry', () => {
       messageId: 'stop-5',
       at,
     });
-    expect(mapHookEntry({ seq: 6, receivedAt: at, payload: { hook_event_name: 'SessionEnd' } })).toEqual({
+    expect(
+      mapHookEntry({ seq: 6, receivedAt: at, payload: { hook_event_name: 'SessionEnd' } }),
+    ).toEqual({
       type: 'session.completed',
       result: { summary: '' },
       at,
@@ -116,11 +135,77 @@ describe('mapHookEntry', () => {
   });
 
   it('usa valores de reserva quando um campo falta, e ignora evento que não entra no contrato', () => {
-    expect(mapHookEntry({ seq: 7, receivedAt: at, payload: { hook_event_name: 'SessionStart' } })).toEqual({
+    expect(
+      mapHookEntry({ seq: 7, receivedAt: at, payload: { hook_event_name: 'SessionStart' } }),
+    ).toEqual({
       type: 'session.started',
       sessionId: 'sessao-7',
       at,
     });
-    expect(mapHookEntry({ seq: 8, receivedAt: at, payload: { hook_event_name: 'UserPromptSubmit' } })).toBeUndefined();
+    expect(
+      mapHookEntry({ seq: 8, receivedAt: at, payload: { hook_event_name: 'UserPromptSubmit' } }),
+    ).toBeUndefined();
+  });
+});
+
+describe('script de hook', () => {
+  /** Roda o script de verdade contra um receptor local e devolve o corpo que chegou. */
+  async function send(payload: Record<string, unknown>, env: Record<string, string>) {
+    const dir = mkdtempSync(join(tmpdir(), 'ph-hook-'));
+    const bodies: string[] = [];
+    const server = createServer((request, response) => {
+      let body = '';
+      request.on('data', (chunk: Buffer) => (body += chunk.toString('utf8')));
+      request.on('end', () => {
+        bodies.push(body);
+        response.end('ok');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      const script = writeHookScript(dir);
+      // O receptor roda neste mesmo processo: o script precisa rodar sem travar o laço de eventos.
+      const child = spawn(process.execPath, [script], {
+        env: { ...process.env, PROJECT_HUB_HOOK_URL: `http://127.0.0.1:${port}/hooks/t1`, ...env },
+      });
+      child.stdin.end(JSON.stringify(payload));
+      const status = await new Promise((resolve) => child.on('exit', resolve));
+      expect(status).toBe(0);
+      return JSON.parse(bodies[0] ?? 'null') as Record<string, unknown> | null;
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const full = {
+    hook_event_name: 'PostToolUse',
+    session_id: 's1',
+    transcript_path: '/t/s1.jsonl',
+    notification_type: 'permission_prompt',
+    reason: 'clear',
+    source: 'startup',
+    tool_name: 'Bash',
+    tool_input: { command: 'segredo' },
+    tool_response: { stdout: 'saída longa' },
+    prompt: 'o que a pessoa digitou',
+    message: 'texto do aviso',
+    last_assistant_message: 'resposta',
+  };
+
+  it('sem o modo enxuto, envia o evento inteiro (a missão lê a ferramenta e a mensagem)', async () => {
+    expect(await send(full, {})).toEqual(full);
+  });
+
+  it('no modo enxuto, envia só os campos que o painel lê', async () => {
+    expect(await send(full, { PROJECT_HUB_HOOK_SLIM: '1' })).toEqual({
+      hook_event_name: 'PostToolUse',
+      session_id: 's1',
+      transcript_path: '/t/s1.jsonl',
+      notification_type: 'permission_prompt',
+      reason: 'clear',
+      source: 'startup',
+    });
   });
 });
