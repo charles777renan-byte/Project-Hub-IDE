@@ -274,6 +274,15 @@ export function resolveAgentCommand(
   return { command: defaultCommand, commandPrefix: [], extraEnv: {}, overridden: false };
 }
 
+/**
+ * Script que faz o papel do `claude` do painel de terminal nos testes de ponta a ponta. Só com `PROJECT_HUB_ENV=test`
+ * o gancho `APP_PANEL_CLAUDE_SCRIPT` vale; empacotado, as variáveis já foram retiradas por `applicationEnvironment`.
+ */
+export function resolvePanelClaudeScript(env: NodeJS.ProcessEnv): string | undefined {
+  const script = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_PANEL_CLAUDE_SCRIPT'] : undefined;
+  return script === undefined || script === '' ? undefined : script;
+}
+
 /** Como a leitura dos limites da assinatura é executada: o executável, o que vai antes dos argumentos e o ambiente extra. */
 export type LimitsCommand = {
   command: string;

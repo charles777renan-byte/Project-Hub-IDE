@@ -359,3 +359,113 @@ describe('gasto de tokens por terminal', () => {
     }
   });
 });
+
+describe('atenção do terminal (o Claude pede algo)', () => {
+  const permission = { hook_event_name: 'PermissionRequest', tool_name: 'Bash' };
+  const notice = (type?: string) => ({
+    hook_event_name: 'Notification',
+    ...(type === undefined ? {} : { notification_type: type }),
+  });
+
+  it('terminal não acompanhado ou sem pedido não aguarda', async () => {
+    const h = setup();
+    expect(h.service.waitingOf('t1')).toBe(false);
+    h.service.track('t1');
+    h.log.push('t1', sessionStart(SESSION));
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(false);
+  });
+
+  it('um pedido de permissão deixa o terminal aguardando, mesmo sem transcript nem número', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', permission);
+    expect(await h.service.usageOf('t1')).toBeUndefined();
+    expect(h.service.waitingOf('t1')).toBe(true);
+  });
+
+  it.each([
+    'permission_prompt',
+    'elicitation_dialog',
+    'elicitation_url_dialog',
+    'agent_needs_input',
+  ])('o aviso %s também deixa aguardando', async (type) => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', notice(type));
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(true);
+  });
+
+  it.each(['idle_prompt', 'auth_success', 'agent_completed', undefined])(
+    'o aviso %s não é pedido: resposta terminada continua ociosa',
+    async (type) => {
+      const h = setup();
+      h.service.track('t1');
+      h.log.push('t1', notice(type));
+      await h.service.usageOf('t1');
+      expect(h.service.waitingOf('t1')).toBe(false);
+    },
+  );
+
+  it.each([
+    'PostToolUse',
+    'PostToolUseFailure',
+    'UserPromptSubmit',
+    'Stop',
+    'SessionEnd',
+    'SessionStart',
+  ])('o evento %s depois do pedido encerra a espera', async (event) => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', permission);
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(true);
+
+    h.log.push('t1', { hook_event_name: event });
+    h.advance(1500);
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(false);
+  });
+
+  it('o aviso de permissão que chega segundos depois do pedido mantém a espera', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', permission);
+    h.log.push('t1', notice('permission_prompt'));
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(true);
+  });
+
+  it('um aviso que não é pedido não encerra a espera de um pedido', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', permission);
+    h.log.push('t1', notice('auth_success'));
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(true);
+  });
+
+  it('registro cortado ainda conta como evento: encerra a espera', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', permission);
+    h.log.push('t1', { hook_event_name: 'PostToolUse', truncated: true });
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(false);
+  });
+
+  it('terminal recuperado refaz o estado pelo log inteiro, e esquecer o terminal o apaga', async () => {
+    const h = setup();
+    h.log.push('t1', sessionStart(SESSION));
+    h.log.push('t1', permission);
+    h.log.push('t1', { hook_event_name: 'PostToolUse' });
+    h.log.push('t1', permission);
+    h.service.track('t1');
+    await h.service.usageOf('t1');
+    expect(h.service.waitingOf('t1')).toBe(true);
+
+    h.service.forget('t1');
+    expect(h.service.waitingOf('t1')).toBe(false);
+  });
+});

@@ -38,9 +38,33 @@ export type TerminalUsageService = {
   usageOf(terminalId: string): Promise<UsageSummaryDto | undefined>;
   /** Modelo e contexto da resposta mais recente, como a última leitura deixou. Não lê de novo. Sem dado: `undefined`. */
   contextOf(terminalId: string): TerminalContext | undefined;
+  /** Se o Claude do terminal pediu algo à pessoa e ainda espera, como a última leitura deixou. Não lê de novo. */
+  waitingOf(terminalId: string): boolean;
 };
 
 export type TerminalContext = { model: string; usedTokens: number; windowTokens: number };
+
+/** Avisos do Claude Code que são um pedido à pessoa. O `idle_prompt` (resposta terminada) fica de fora, de propósito. */
+const ATTENTION_NOTIFICATIONS: ReadonlySet<unknown> = new Set([
+  'permission_prompt',
+  'elicitation_dialog',
+  'elicitation_url_dialog',
+  'agent_needs_input',
+]);
+
+/**
+ * O que um hook diz sobre a espera: `true`, o Claude pediu algo (permissão para uma ferramenta, ou um aviso de
+ * pedido); `false`, ele voltou a trabalhar ou a vez acabou; `undefined`, o hook não muda nada (um aviso que não é
+ * pedido chega no meio de uma espera sem encerrá-la).
+ */
+function attentionOf(payload: Record<string, unknown>): boolean | undefined {
+  const event = payload['hook_event_name'];
+  if (event === 'PermissionRequest') return true;
+  if (event === 'Notification') {
+    return ATTENTION_NOTIFICATIONS.has(payload['notification_type']) ? true : undefined;
+  }
+  return false;
+}
 
 type Entry = {
   tracker: TranscriptUsageTracker;
@@ -52,6 +76,8 @@ type Entry = {
   last: UsageSummaryDto | undefined;
   /** Último contexto lido. Guardado à parte do total: o contexto muda (`/compact`) com a soma igual. */
   context: TerminalContext | undefined;
+  /** O hook mais recente que fala da espera é um pedido. Refeito do zero pelo log, como o resto. */
+  waiting: boolean;
   nextReadAt: number;
   reading: Promise<void> | undefined;
 };
@@ -69,6 +95,9 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
   const entries = new Map<string, Entry>();
 
   function learn(entry: Entry, record: HookRecord): void {
+    // A espera só depende do nome do evento, que o registro cortado ainda traz.
+    const attention = attentionOf(record.payload);
+    if (attention !== undefined) entry.waiting = attention;
     // Registro grande demais chega sem o conteúdo: não aponta transcript nenhum.
     if (record.payload['truncated'] === true) return;
     const path = record.payload['transcript_path'];
@@ -119,6 +148,7 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
         learned: false,
         last: undefined,
         context: undefined,
+        waiting: false,
         nextReadAt: 0,
         reading: undefined,
       });
@@ -146,5 +176,7 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
     },
 
     contextOf: (terminalId) => entries.get(terminalId)?.context,
+
+    waitingOf: (terminalId) => entries.get(terminalId)?.waiting ?? false,
   };
 }

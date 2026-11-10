@@ -187,3 +187,34 @@ describe('registro de provedores', () => {
     expect(registry.resolve('claude').ok).toBe(false);
   });
 });
+
+describe('gancho de teste do Claude do painel', () => {
+  const script = 'C:/e2e/fake-claude-pedido.mjs';
+
+  it('o script de teste toma o lugar do claude do painel e roda no Node do PATH', () => {
+    const registry = createProviderRegistry({
+      env: {},
+      platform: 'win32',
+      exists: () => false,
+      panelClaudeScript: script,
+    });
+
+    expect(registry.resolve('claude')).toEqual({
+      ok: true,
+      launch: { command: 'node.exe', prefix: [script], args: [] },
+    });
+    expect(registry.list().find((info) => info.id === 'claude')).toMatchObject({ available: true });
+    // Só o Claude: os outros programas seguem a busca normal.
+    expect(registry.resolve('codex').ok).toBe(false);
+  });
+
+  it('o ambiente do processo sozinho não liga o gancho: quem decide é a composição', () => {
+    const registry = createProviderRegistry({
+      env: { PROJECT_HUB_ENV: 'test', APP_PANEL_CLAUDE_SCRIPT: script },
+      platform: 'win32',
+      exists: () => false,
+    });
+
+    expect(registry.resolve('claude').ok).toBe(false);
+  });
+});

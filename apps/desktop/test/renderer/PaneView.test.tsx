@@ -589,7 +589,8 @@ describe('needsCloseConfirmation', () => {
     ['agente avulso que terminou', { ...base, state: 'exited' as const }, false],
     ['terminal de missão (agent)', { ...base, kind: 'agent' as const, missionId: 'm1' }, false],
     ['sessão agent sem missão', { ...base, kind: 'agent' as const }, false],
-    ['agente avulso aguardando', { ...base, state: 'waiting' as const }, false],
+    // Aguardando um pedido, o processo continua vivo: fechar o mata do mesmo jeito.
+    ['agente avulso aguardando', { ...base, state: 'waiting' as const }, true],
   ])('%s', (_nome, terminal, esperado) => {
     expect(needsCloseConfirmation(terminal)).toBe(esperado);
   });

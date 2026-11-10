@@ -93,6 +93,11 @@ function fakeHooks(options: { failRegister?: boolean } = {}) {
     registered,
     unregistered,
     reads,
+    push(terminalId: string, payload: Record<string, unknown>) {
+      const log = logs.get(terminalId) ?? [];
+      log.push({ seq: log.length + 1, receivedAt: '2026-10-22T12:00:00.000Z', payload });
+      logs.set(terminalId, log);
+    },
     sessionStart(terminalId: string, transcriptPath: string, session = TRANSCRIPT_SESSION) {
       const log = logs.get(terminalId) ?? [];
       log.push({
@@ -156,6 +161,7 @@ function setup(
     hooks?: ReturnType<typeof fakeHooks>;
     /** Pasta de configuração dos hooks. Padrão: uma pasta temporária nova. */
     settingsDir?: string;
+    providers?: ProviderRegistry;
   } = {},
 ) {
   const hooks = options.hooks ?? fakeHooks();
@@ -226,7 +232,7 @@ function setup(
       get: (id) => [project, otherProject].find((p) => p.id === id),
     },
     sessions: sessions.repo,
-    providers,
+    providers: options.providers ?? providers,
     publish: (event) => events.push(event),
     countChanges: options.countChanges ?? (() => Promise.resolve(undefined)),
     env: { PATH: 'C:/Windows', ANTHROPIC_API_KEY: 'segredo', CLAUDE_CONFIG_DIR: claudeDir },
@@ -671,11 +677,31 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     // O token vai só pelo ambiente: a linha de comando é visível para outros processos.
     expect(JSON.stringify(h.opened[0]?.args)).not.toContain(HOOK_TOKEN);
     expect(h.opened[0]?.env).not.toHaveProperty('ANTHROPIC_API_KEY');
-    // Só o início e o fim da sessão: os outros hooks encheriam o log a cada ferramenta.
+    // O `PreToolUse` fica de fora: dispara antes do pedido de permissão e só encheria o log.
     const written = JSON.parse(readFileSync(settingsFile, 'utf8')) as {
       hooks: Record<string, unknown>;
     };
-    expect(Object.keys(written.hooks).sort()).toEqual(['SessionEnd', 'SessionStart']);
+    expect(Object.keys(written.hooks)).toContain('SessionStart');
+    expect(Object.keys(written.hooks)).not.toContain('PreToolUse');
+  });
+
+  it('o prefixo do programa (o script do CLI falso dos testes) vem antes do --settings', async () => {
+    const h = setup({
+      providers: {
+        ...providers,
+        resolve: () => ({
+          ok: true,
+          launch: { command: 'node.exe', prefix: ['C:/e2e/fake.mjs'], args: [] },
+        }),
+      },
+    });
+
+    await h.service.openSession('p1', 'claude');
+
+    expect(h.opened[0]).toMatchObject({
+      command: 'node.exe',
+      args: ['C:/e2e/fake.mjs', '--settings', join(settingsDir(), 'shell-1.settings.json')],
+    });
   });
 
   it('outros provedores abrem como antes, sem registro nem variáveis do hook', async () => {
@@ -838,6 +864,40 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
 
     if (!result.ok) throw new Error('esperava sucesso');
     expect(result.data[0]).not.toHaveProperty('usage');
+  });
+
+  it('o painel pede os hooks que dizem quando o Claude pede algo e quando volta a trabalhar', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+
+    const file = join(settingsDir(), 'shell-1.settings.json');
+    const written = JSON.parse(readFileSync(file, 'utf8')) as { hooks: Record<string, unknown> };
+    expect(Object.keys(written.hooks).sort()).toEqual([
+      'Notification',
+      'PermissionRequest',
+      'PostToolUse',
+      'PostToolUseFailure',
+      'SessionEnd',
+      'SessionStart',
+      'Stop',
+      'UserPromptSubmit',
+    ]);
+    // Com mais eventos no log, o hook manda só os campos que o app lê (sem comando, resposta nem mensagem).
+    expect(h.opened[0]?.env).toMatchObject({ PROJECT_HUB_HOOK_SLIM: '1' });
+  });
+
+  it('o Claude avulso que pede permissão aparece aguardando, e volta a rodando quando a ferramenta termina', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+    expect(await h.service.list()).toMatchObject({ data: [{ id: 'shell-1', state: 'running' }] });
+
+    h.hooks.push('shell-1', { hook_event_name: 'PermissionRequest' });
+    h.advance(1500);
+    expect(await h.service.list()).toMatchObject({ data: [{ id: 'shell-1', state: 'waiting' }] });
+
+    h.hooks.push('shell-1', { hook_event_name: 'PostToolUse' });
+    h.advance(1500);
+    expect(await h.service.list()).toMatchObject({ data: [{ id: 'shell-1', state: 'running' }] });
   });
 
   it('a lista relê os transcripts no máximo a cada 1,5 s', async () => {

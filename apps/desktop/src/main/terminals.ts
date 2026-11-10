@@ -30,10 +30,21 @@ import { createTerminalUsageService } from './terminal-usage';
 const CHANGES_TTL_MS = 10_000;
 
 /**
- * Hooks do painel do Claude Code: só o início e o fim da sessão, que apontam o transcript. Os outros
- * gravariam cada chamada de ferramenta no log, que o receptor relê inteiro a cada leitura.
+ * Hooks do painel do Claude Code. O início e o fim da sessão apontam o transcript. `PermissionRequest` e
+ * `Notification` dizem que o Claude pediu algo à pessoa; os outros, que ele voltou a trabalhar ou que a vez acabou
+ * (terminal-usage.ts). `PreToolUse` fica de fora: dispara antes do pedido e não diz nada. O log é relido inteiro a
+ * cada leitura, então o hook do painel roda no modo enxuto e cada evento vira uma linha curta.
  */
-const PANEL_HOOK_EVENTS: readonly HookEventName[] = ['SessionStart', 'SessionEnd'];
+const PANEL_HOOK_EVENTS: readonly HookEventName[] = [
+  'SessionStart',
+  'SessionEnd',
+  'PermissionRequest',
+  'Notification',
+  'UserPromptSubmit',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'Stop',
+];
 
 export type TerminalServiceDeps = {
   port: TerminalPort;
@@ -185,6 +196,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           ...launch.env,
           PROJECT_HUB_HOOK_URL: registration.url,
           PROJECT_HUB_HOOK_TOKEN: registration.token,
+          PROJECT_HUB_HOOK_SLIM: '1',
         },
         hooked: true,
       };
@@ -303,7 +315,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         id: terminalId,
         cwd: options.cwd ?? target.path,
         command: resolution.launch.command,
-        args: launch.args,
+        args: [...(resolution.launch.prefix ?? []), ...launch.args],
         env: launch.env,
       });
     } catch (error) {
@@ -416,7 +428,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             title: record.title,
             projectId: record.projectId,
             projectName: folder?.name ?? '',
-            state,
+            // O Claude que pediu algo (permissão, pergunta) aguarda a pessoa; os outros programas não avisam.
+            state: state === 'running' && usage.waitingOf(record.id) ? 'waiting' : state,
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
             startedAt: record.createdAt,
