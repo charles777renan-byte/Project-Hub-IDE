@@ -251,12 +251,21 @@ describe('menu de programas (Abrir terminal)', () => {
     );
   });
 
-  it('"reduzir movimento" desliga a entrada e a transição do atalho', () => {
+  it('a marca lateral do item marcado acende por opacidade, no mesmo tempo que o fundo', () => {
+    expect(flat(ruleDeclarations(motionCss, '.workspace__menu-item::before').get('transition'))).toBe(
+      'opacity var(--dur-fast) var(--ease)',
+    );
+  });
+
+  it('"reduzir movimento" desliga a entrada e as transições do atalho e da marca', () => {
     expect(ruleDeclarations(reduced, POPUP).get('animation')).toBe('none');
     expect(ruleDeclarations(reduced, LINHA).get('animation')).toBe('none');
     expect(ruleDeclarations(reduced, '.workspace__menu-search').get('animation')).toBe('none');
     expect(ruleDeclarations(reduced, '.workspace__menu-foot').get('animation')).toBe('none');
     expect(ruleDeclarations(reduced, '.workspace__menu-kbd').get('transition')).toBe('none');
+    expect(ruleDeclarations(reduced, '.workspace__menu-item::before').get('transition')).toBe(
+      'none',
+    );
   });
 });
 
