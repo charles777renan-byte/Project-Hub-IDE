@@ -22,9 +22,30 @@ export type HookRecord = {
 const HOOK_SCRIPT_NAME = 'project-hub-hook.cjs';
 
 /**
+ * Eventos que só o painel de terminal pede: dizem quando o Claude pede algo à pessoa (`PermissionRequest`) e quando
+ * volta a trabalhar (`UserPromptSubmit`, `PostToolUseFailure`). A missão não os usa.
+ */
+export const PANEL_ONLY_HOOK_EVENTS = [
+  'PermissionRequest',
+  'UserPromptSubmit',
+  'PostToolUseFailure',
+] as const;
+
+/** Campos que o hook envia no modo enxuto (`PROJECT_HUB_HOOK_SLIM=1`): os que o painel de terminal lê. */
+export const SLIM_HOOK_FIELDS = [
+  'hook_event_name',
+  'session_id',
+  'transcript_path',
+  'notification_type',
+  'reason',
+  'source',
+] as const;
+
+/**
  * Script que cada hook executa. Lê o JSON do evento pela entrada padrão e envia ao receptor do app, com
  * o endereço e o token que o terminal recebeu pelo ambiente. Nunca falha: um erro sai com código 0, para
- * o hook não travar nem derrubar o agente.
+ * o hook não travar nem derrubar o agente. No modo enxuto (`PROJECT_HUB_HOOK_SLIM=1`, do painel de terminal)
+ * envia só `SLIM_HOOK_FIELDS`: o comando, a resposta da ferramenta e o que a pessoa digitou não vão para o log.
  */
 export const HOOK_SCRIPT_SOURCE = `// Hook do Project Hub: envia o evento do Claude Code ao receptor do app.
 // Qualquer erro sai com código 0: o hook não pode travar nem derrubar o agente.
@@ -39,6 +60,19 @@ try {
     body += chunk;
   });
   process.stdin.on('end', () => {
+    if (process.env.PROJECT_HUB_HOOK_SLIM === '1') {
+      try {
+        const event = JSON.parse(body);
+        const slim = {};
+        for (const field of ${JSON.stringify(SLIM_HOOK_FIELDS)}) {
+          if (event[field] !== undefined) slim[field] = event[field];
+        }
+        body = JSON.stringify(slim);
+      } catch {
+        // Evento que não é JSON não vai inteiro para o log: o modo enxuto existe para não gravar o conteúdo.
+        process.exit(0);
+      }
+    }
     const request = http.request(
       {
         host: url.hostname,
@@ -87,7 +121,7 @@ export function hookCommand(scriptPath: string): string {
 }
 
 /** Nome de um evento de hook que o app sabe gravar. */
-export type HookEventName = (typeof HOOK_EVENTS)[number];
+export type HookEventName = (typeof HOOK_EVENTS)[number] | (typeof PANEL_ONLY_HOOK_EVENTS)[number];
 
 /**
  * Configuração de hooks de uma execução: os eventos pedidos apontam todos para o mesmo script. Padrão: os
@@ -136,7 +170,11 @@ export function mapHookEntry(record: HookRecord): AgentEvent | undefined {
     typeof value === 'string' && value !== '' ? value : fallback;
   switch (payload['hook_event_name']) {
     case 'SessionStart':
-      return { type: 'session.started', sessionId: text(payload['session_id'], `sessao-${seq}`), at };
+      return {
+        type: 'session.started',
+        sessionId: text(payload['session_id'], `sessao-${seq}`),
+        at,
+      };
     case 'Notification':
       return {
         type: 'input.requested',

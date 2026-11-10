@@ -102,6 +102,11 @@ export type LaunchOptions = {
    */
   agentScript?: string;
   /**
+   * Caminho de um `.mjs` que faz o papel do `claude` aberto pelo menu "Abrir terminal" (`APP_PANEL_CLAUDE_SCRIPT`).
+   * Roda no Node do PATH. Sem esta opção, o Claude do painel é o da máquina, e nenhum teste o abre.
+   */
+  panelClaudeScript?: string;
+  /**
    * Caminho de um `.mjs` que faz o papel do `claude -p` na leitura dos limites da assinatura
    * (`APP_LIMITS_SCRIPT`). Sem esta opção a leitura fica desligada no app de teste: cada leitura real gasta
    * a cota da assinatura de quem roda a suíte, então nada a liga por acidente.
@@ -367,6 +372,10 @@ export const test = base.extend<Fixtures>({
       if (options.agentScript !== undefined) {
         env['APP_AGENT_SCRIPT'] = options.agentScript;
         env['CLAUDE_CONFIG_DIR'] = claudeConfigDir;
+      }
+      delete env['APP_PANEL_CLAUDE_SCRIPT'];
+      if (options.panelClaudeScript !== undefined) {
+        env['APP_PANEL_CLAUDE_SCRIPT'] = options.panelClaudeScript;
       }
       // Nenhum gancho dos limites vem da máquina de quem roda: só a opção do teste liga o CLI falso.
       delete env['APP_LIMITS_SCRIPT'];

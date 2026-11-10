@@ -1,7 +1,12 @@
 import { posix, win32 } from 'node:path';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 
-export type ProviderLaunch = { command: string; args: string[] };
+export type ProviderLaunch = {
+  command: string;
+  args: string[];
+  /** O que vem antes de tudo, inclusive do `--settings` do painel: o script do CLI falso. Só os testes usam. */
+  prefix?: string[];
+};
 
 export type ProviderResolution =
   { ok: true; launch: ProviderLaunch } | { ok: false; reason: string };
@@ -16,6 +21,12 @@ export type ProviderRegistryDeps = {
   env: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
   exists: (path: string) => boolean;
+  /**
+   * Gancho dos testes de ponta a ponta: um `.mjs` que faz o papel do `claude` do painel. Quem decide se ele vale é a
+   * composição (`resolvePanelClaudeScript`), a partir do ambiente já filtrado; o `env` daqui é o do processo, por
+   * causa do PATH, e não liga nada.
+   */
+  panelClaudeScript?: string;
 };
 
 /** Executável de cada agente. O shell não passa pela busca no PATH. */
@@ -107,6 +118,14 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
         launch: windows
           ? { command: 'powershell.exe', args: ['-NoLogo'] }
           : { command: env['SHELL'] ?? '/bin/bash', args: [] },
+      };
+    }
+    // O script de teste roda no Node do PATH, o mesmo que roda os hooks.
+    const fake = deps.panelClaudeScript;
+    if (id === 'claude' && fake !== undefined) {
+      return {
+        ok: true,
+        launch: { command: windows ? 'node.exe' : 'node', prefix: [fake], args: [] },
       };
     }
     const launch = findExecutable(EXECUTABLES[id], [...searchFolders(), ...installFolders(id)]);

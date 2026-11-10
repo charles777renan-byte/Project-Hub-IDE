@@ -26,6 +26,7 @@ import {
   createAppServices,
   platformOf,
   resolveAgentCommand,
+  resolvePanelClaudeScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolveLimitsCommand,
@@ -458,10 +459,13 @@ app
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);
+    const panelClaudeScript = resolvePanelClaudeScript(env);
     const providers = createProviderRegistry({
       env: process.env,
       platform: process.platform,
       exists: existsSync,
+      // Do ambiente filtrado (`env`), não do processo: empacotado, o gancho de teste não existe.
+      ...(panelClaudeScript === undefined ? {} : { panelClaudeScript }),
     });
     // Aba Sessões: os leitores dos três programas, o índice em disco e a mesma regra de retomada para a lista e para o
     // botão (ver resume-verdict.ts). O índice fica em `userData`, ou na pasta de teste.

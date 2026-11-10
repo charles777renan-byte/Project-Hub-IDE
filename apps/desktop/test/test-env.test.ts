@@ -4,6 +4,7 @@ import {
   applicationEnvironment,
   startsHidden,
   resolveAgentCommand,
+  resolvePanelClaudeScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolveLimitsCommand,
@@ -396,5 +397,27 @@ describe('janela escondida nos testes (PROJECT_HUB_E2E_HIDDEN)', () => {
 
     expect(env).toEqual({});
     expect(startsHidden(env)).toBe(false);
+  });
+});
+
+describe('gancho de teste do Claude do painel', () => {
+  it('só vale em teste, e vazio não conta', () => {
+    const script = '/e2e/fake-claude-pedido.mjs';
+    expect(
+      resolvePanelClaudeScript({ PROJECT_HUB_ENV: 'test', APP_PANEL_CLAUDE_SCRIPT: script }),
+    ).toBe(script);
+    expect(resolvePanelClaudeScript({ APP_PANEL_CLAUDE_SCRIPT: script })).toBeUndefined();
+    expect(
+      resolvePanelClaudeScript({ PROJECT_HUB_ENV: 'test', APP_PANEL_CLAUDE_SCRIPT: '' }),
+    ).toBeUndefined();
+    expect(resolvePanelClaudeScript({ PROJECT_HUB_ENV: 'test' })).toBeUndefined();
+  });
+
+  it('empacotado, o ambiente filtrado não traz o gancho', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', APP_PANEL_CLAUDE_SCRIPT: '/e2e/fake.mjs' },
+      true,
+    );
+    expect(resolvePanelClaudeScript(env)).toBeUndefined();
   });
 });

@@ -47,11 +47,11 @@ export type PaneViewProps = {
 
 /**
  * Fechar o painel mata um processo de verdade só no terminal avulso de um agente (Claude, Codex...) que está
- * rodando: o shell comum e a sessão que terminou fecham sem perguntar, e o terminal de missão só sai do painel
- * (a missão continua).
+ * vivo, rodando ou aguardando um pedido: o shell comum e a sessão que terminou fecham sem perguntar, e o terminal de
+ * missão só sai do painel (a missão continua).
  */
 export function needsCloseConfirmation(terminal: TerminalSummary): boolean {
-  return terminal.kind === 'shell' && terminal.provider !== 'shell' && terminal.state === 'running';
+  return terminal.kind === 'shell' && terminal.provider !== 'shell' && terminal.state !== 'exited';
 }
 
 /** Botão só de ícone que maximiza o painel ou o devolve à grade; o nome acessível diz o efeito. */
