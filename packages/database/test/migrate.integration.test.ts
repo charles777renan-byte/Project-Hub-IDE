@@ -83,6 +83,7 @@ describe('migrateDatabase', () => {
         '0008_configuracoes_do_app',
         '0009_tarefas_da_missao',
         '0010_programa_da_tarefa',
+        '0011_contexto_da_tentativa',
       ],
       alreadyUpToDate: false,
     });
@@ -122,6 +123,7 @@ describe('migrateDatabase', () => {
       '0008_configuracoes_do_app',
       '0009_tarefas_da_missao',
       '0010_programa_da_tarefa',
+      '0011_contexto_da_tentativa',
     ]);
     expect(existsSync(backupPath)).toBe(true);
     // O backup tem o estado de antes da migração: a tabela antiga e nenhuma projects.

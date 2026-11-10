@@ -12,6 +12,7 @@ import {
   MISSION_STEP_KINDS,
   MISSION_STEP_STATUSES,
   PROTECTED_ACTIONS,
+  type ContextUsage,
   type UsageSummary,
 } from '@project-hub/domain';
 import { sql } from 'drizzle-orm';
@@ -142,6 +143,8 @@ export const executions = sqliteTable(
     agentCursor: text('agent_cursor'),
     exitReason: text('exit_reason', { enum: EXIT_REASONS }),
     usage: text('usage', { mode: 'json' }).$type<UsageSummary>(),
+    /** Modelo e contexto da resposta principal mais recente. À parte do gasto: sobe e desce, e não entra nas somas. */
+    context: text('context', { mode: 'json' }).$type<ContextUsage>(),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),
   },

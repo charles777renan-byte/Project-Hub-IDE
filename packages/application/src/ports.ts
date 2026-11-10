@@ -165,6 +165,7 @@ export type ExecutionChanges = Partial<
     | 'startedAt'
     | 'exitReason'
     | 'usage'
+    | 'context'
     | 'finishedAt'
   >
 >;

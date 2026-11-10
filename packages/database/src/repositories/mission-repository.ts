@@ -146,6 +146,7 @@ function toExecution(row: ExecutionRow): Execution {
   if (row.agentCursor !== null) execution.agentCursor = row.agentCursor;
   if (row.exitReason !== null) execution.exitReason = row.exitReason;
   if (row.usage !== null) execution.usage = row.usage;
+  if (row.context !== null) execution.context = row.context;
   if (row.startedAt !== null) execution.startedAt = row.startedAt;
   if (row.finishedAt !== null) execution.finishedAt = row.finishedAt;
   return execution;
@@ -307,6 +308,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
           agentCursor: execution.agentCursor ?? null,
           exitReason: execution.exitReason ?? null,
           usage: execution.usage ?? null,
+          context: execution.context ?? null,
           startedAt: execution.startedAt ?? null,
           finishedAt: execution.finishedAt ?? null,
         })
@@ -323,6 +325,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
           startedAt: changes.startedAt,
           exitReason: changes.exitReason,
           usage: changes.usage,
+          context: changes.context,
           finishedAt: changes.finishedAt,
         })
         .where(eq(executions.id, id))
