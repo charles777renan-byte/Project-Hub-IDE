@@ -1,5 +1,5 @@
 import type { ErrorCode } from '@project-hub/contracts';
-import type { ProtectedAction, UsageSummary } from '@project-hub/domain';
+import type { ContextUsage, ProtectedAction, UsageSummary } from '@project-hub/domain';
 
 /** Configuração de um agente, como o perfil a guarda (seção 9.1). */
 export type AgentConfig = { model?: string; configuration: Record<string, unknown> };
@@ -74,7 +74,8 @@ export type AgentEvent =
   | { type: 'approval.requested'; request: ApprovalRequestDraft; at: string }
   | { type: 'input.requested'; request: InputRequest; at: string }
   | { type: 'input.received'; at: string }
-  | { type: 'usage.updated'; usage: UsageSummary; at: string }
+  /** `context` vem quando o agente informa a resposta principal mais recente; sem ela, falta (não é zero). */
+  | { type: 'usage.updated'; usage: UsageSummary; context?: ContextUsage; at: string }
   | ({ type: 'verification.completed'; at: string } & VerificationResult)
   | { type: 'session.completed'; result: AgentResult; at: string }
   | { type: 'session.failed'; error: AgentError; at: string };

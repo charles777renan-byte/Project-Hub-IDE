@@ -14,6 +14,7 @@ import {
   type UsageSummaryDto,
 } from '@project-hub/contracts';
 import type { TerminalSessionRepository } from '@project-hub/database';
+import { contextWindowOf } from '@project-hub/domain';
 import {
   claudeConfigDirOf,
   writeHookScript,
@@ -384,6 +385,16 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             ...(changedFiles === undefined ? {} : { changedFiles }),
             // O gasto da tentativa em curso, que o orquestrador já grava: nada é contado de novo aqui.
             ...(execution.usage === undefined ? {} : { usage: execution.usage }),
+            // O modelo e o contexto também vêm da tentativa; a janela sai da mesma tabela do painel avulso.
+            ...(execution.context === undefined
+              ? {}
+              : {
+                  model: execution.context.model,
+                  context: {
+                    usedTokens: execution.context.usedTokens,
+                    windowTokens: contextWindowOf(execution.context.model),
+                  },
+                }),
           });
         }
         for (const record of sessions.listOpen()) {

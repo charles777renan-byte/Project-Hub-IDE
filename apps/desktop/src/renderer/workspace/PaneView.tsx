@@ -239,7 +239,7 @@ export function PaneView(props: PaneViewProps) {
     const { glyph, label: markLabel } = MARKS[mark];
     const markTitle =
       terminal.origin === 'recovered' ? `${markLabel} · sessão recuperada` : markLabel;
-    // Sem modelo conhecido (terminal de missão, outro programa, id que a tabela não reconhece): o nome do programa.
+    // Sem modelo conhecido (sem resposta ainda, outro programa, id que a tabela não reconhece): o nome do programa.
     const model = (terminal.model === undefined ? undefined : modelLabel(terminal.model)) ?? label;
     // O que saiu do cabeçalho de uma linha vai na dica do título: projeto, modelo (ou programa), worktree e contexto.
     const details = [

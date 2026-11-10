@@ -350,10 +350,32 @@ describe('PaneView', () => {
       expect(screen.getByText(session.title)).toHaveAttribute('title', 'app · Sonnet');
     });
 
-    it('terminal de missão não recebe o fio de contexto', () => {
+    it('terminal de missão sem contexto não mostra o fio', () => {
       const { container } = setup({ terminal: { ...session, missionId: 'm1' } });
       expect(container.querySelector('.pane__context')).toBeNull();
       expect(screen.getByRole('button', { name: 'Mais ações do painel' })).toBeInTheDocument();
+    });
+
+    it('terminal de missão com contexto mostra o fio e diz o modelo e o contexto na dica', () => {
+      const { container } = setup({
+        terminal: {
+          ...session,
+          kind: 'agent',
+          missionId: 'm1',
+          title: 'Corrigir o clima',
+          projectName: 'meu-projeto',
+          worktreeName: 'missao-clima',
+          model: 'claude-opus-5-5',
+          context: { usedTokens: 850_000, windowTokens: 1_000_000 },
+        },
+      });
+      expect(container.querySelector('.pane__context-fill')).toHaveStyle({ width: '85%' });
+      // De 80% em diante o fio passa a violeta (`data-level="high"`), igual ao painel avulso.
+      expect(container.querySelector('.pane__context')).toHaveAttribute('data-level', 'high');
+      expect(screen.getByText('Corrigir o clima')).toHaveAttribute(
+        'title',
+        'meu-projeto · Opus · missao-clima · Contexto: 850.000 de 1.000.000 tokens (85%)',
+      );
     });
 
     it('com contexto, o fio é o último filho do cabeçalho, depois das ações', () => {

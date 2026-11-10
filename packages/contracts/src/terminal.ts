@@ -34,11 +34,15 @@ export const terminalSummarySchema = z.object({
    * (não é zero). No terminal de agente de missão, vem da tentativa em curso.
    */
   usage: usageSummaryDtoSchema.optional(),
-  /** Modelo da resposta mais recente do Claude Code deste terminal. Só o Claude informa; sem resposta, não vem. */
+  /**
+   * Modelo da resposta mais recente do Claude Code deste terminal. Só o Claude informa; sem resposta, não vem.
+   * No terminal de agente de missão, vem da tentativa em curso, como o gasto.
+   */
   model: z.string().optional(),
   /**
    * Quanto da janela de contexto a resposta mais recente ocupa (`usedTokens`) e o tamanho da janela do modelo
-   * (`windowTokens`). Só o painel avulso do Claude informa; sem resposta, não vem (não é zero).
+   * (`windowTokens`). Só o Claude informa, no painel avulso e no agente de missão; sem resposta, não vem
+   * (não é zero).
    */
   context: z.object({ usedTokens: tokenCount, windowTokens: tokenCount }).optional(),
 });

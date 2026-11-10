@@ -179,6 +179,41 @@ describe('execuções', () => {
       finishedAt: '2026-10-20T10:09:00.000Z',
     });
   });
+
+  it('updateExecution grava o modelo e o contexto da última resposta, e o gasto seguinte não os apaga', () => {
+    repo.insertMission(mission());
+    repo.insertExecution(execution());
+
+    repo.updateExecution('exec-1', {
+      usage: { inputTokens: 10, outputTokens: 4 },
+      context: { model: 'claude-opus-5-5', usedTokens: 76_000 },
+    });
+    expect(repo.getExecution('exec-1')?.context).toStrictEqual({
+      model: 'claude-opus-5-5',
+      usedTokens: 76_000,
+    });
+
+    // Um gasto sem contexto (adaptador que não informa) deixa o contexto como estava.
+    repo.updateExecution('exec-1', { usage: { inputTokens: 12, outputTokens: 5 } });
+    expect(repo.getExecution('exec-1')?.context).toStrictEqual({
+      model: 'claude-opus-5-5',
+      usedTokens: 76_000,
+    });
+  });
+
+  it('insertExecution guarda o contexto, e a tentativa sem ele volta sem o campo', () => {
+    repo.insertMission(mission());
+    repo.insertExecution(
+      execution({ id: 'exec-1', context: { model: 'claude-sonnet-5-5', usedTokens: 11 } }),
+    );
+    repo.insertExecution(execution({ id: 'exec-2', attempt: 2 }));
+
+    expect(repo.getExecution('exec-1')?.context).toStrictEqual({
+      model: 'claude-sonnet-5-5',
+      usedTokens: 11,
+    });
+    expect(repo.getExecution('exec-2')).not.toHaveProperty('context');
+  });
 });
 
 describe('aprovações', () => {
