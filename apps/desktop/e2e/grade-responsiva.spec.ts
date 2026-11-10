@@ -428,3 +428,52 @@ test('com o painel direito aberto numa janela menor, a linha do projeto não que
 
   await endShells(page, 1);
 });
+
+test('o menu "+N" das fichas fora da grade mostra a seta inteira, sem ficar por baixo do seletor de layout', async ({
+  launchApp,
+  gitRepo,
+}) => {
+  test.setTimeout(240_000);
+  const projectName = basename(gitRepo.path);
+  const { app, page } = await launchApp({ dialogPath: gitRepo.path });
+  await addProjectAndOpenWorkspace(page, projectName);
+  // Como na janela da pessoa: a barra lateral à vista, o painel direito escondido.
+  await page.getByRole('button', { name: 'Ocultar painel direito' }).click();
+  for (let index = 0; index < 5; index += 1) await openShell(page);
+
+  const header = page.locator('.project-header');
+  const more = header.getByRole('button', { name: /^Mais \d+ fora da grade$/ });
+  const layout = header.getByRole('group', { name: 'Layout dos painéis' });
+  // A janela encolhe até a faixa das fichas não comportar todas: aí o "+N" aparece.
+  let seen = 0;
+  for (const width of [1500, 1400, 1300, 1200, 1100, 1000, 940]) {
+    await app.evaluate(({ BrowserWindow }, size) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(size, 800);
+    }, width);
+    await page.waitForTimeout(600);
+    if ((await more.count()) === 0) continue;
+    seen += 1;
+    const button = await boxOf(more);
+    const arrow = await boxOf(more.locator('svg'));
+    const selector = await boxOf(layout);
+    // A seta cabe dentro do botão, e o botão termina antes do seletor Grade | Abas.
+    expect(arrow.right, `seta dentro do botão, janela de ${width}px`).toBeLessThanOrEqual(
+      button.right,
+    );
+    expect(arrow.left, `seta dentro do botão, janela de ${width}px`).toBeGreaterThanOrEqual(
+      button.left,
+    );
+    expect(arrow.bottom, `seta dentro do botão, janela de ${width}px`).toBeLessThanOrEqual(
+      button.bottom,
+    );
+    expect(button.right, `botão antes do seletor, janela de ${width}px`).toBeLessThanOrEqual(
+      selector.left + 1,
+    );
+  }
+  expect(seen, 'o "+N" apareceu em alguma largura').toBeGreaterThan(0);
+
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setSize(1600, 900);
+  });
+  await endShells(page, 5);
+});

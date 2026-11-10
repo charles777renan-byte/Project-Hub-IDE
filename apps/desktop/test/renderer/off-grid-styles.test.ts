@@ -7,6 +7,31 @@ import { mediaBlock, readCss, ruleDeclarations } from './css-rules';
  * ficha que acabou de chegar, que o "reduzir movimento" desliga. Só tokens: nenhuma cor literal.
  */
 
+describe('o "+N" no cabeçalho do projeto (terminal-tools.css)', () => {
+  // O gatilho de ícone do cabeçalho do projeto (project.css) tem 28px de largura e ícone de 16px. O "+N" tem texto
+  // e seta: com a largura fixa, a seta saía do botão e ficava por baixo do seletor Grade | Abas.
+  const tools = readCss('terminal-tools.css');
+
+  it('o botão tem a largura do conteúdo, e não os 28px do gatilho de ícone do cabeçalho', () => {
+    const trigger = ruleDeclarations(
+      tools,
+      '.project-header__tools .off-grid__more .menu-acoes__gatilho--icone',
+    );
+    expect(trigger.get('width')).toBe('auto');
+    expect(trigger.get('display')).toBe('inline-flex');
+    expect(trigger.get('padding')).toBe('0 var(--space-2)');
+  });
+
+  it('a seta fica com 12px, e não os 16px do ícone do cabeçalho', () => {
+    const arrow = ruleDeclarations(
+      tools,
+      '.project-header__tools .off-grid__more .menu-acoes__gatilho--icone svg',
+    );
+    expect(arrow.get('width')).toBe('12px');
+    expect(arrow.get('height')).toBe('12px');
+  });
+});
+
 describe('off-grid.css', () => {
   const css = readCss('off-grid.css');
   const rule = (selector: string): Map<string, string> => ruleDeclarations(css, selector);

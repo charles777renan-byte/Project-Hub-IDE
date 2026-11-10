@@ -32,6 +32,22 @@
   height: 28px;
 }
 
+/*
+ * O "+N" tem texto e seta. O gatilho de ícone do cabeçalho do projeto (project.css) é um quadrado de 28px com ícone
+ * de 16px: com essa largura a seta saía do botão e ficava por baixo do seletor Grade | Abas. Aqui o botão volta a
+ * ter a largura do conteúdo, como em off-grid.css.
+ */
+.project-header__tools .off-grid__more .menu-acoes__gatilho--icone {
+  display: inline-flex;
+  width: auto;
+  padding: 0 var(--space-2);
+}
+
+.project-header__tools .off-grid__more .menu-acoes__gatilho--icone svg {
+  width: 12px;
+  height: 12px;
+}
+
 .workspace__controls {
   display: flex;
   flex: none;
