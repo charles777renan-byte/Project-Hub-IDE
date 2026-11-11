@@ -15,6 +15,7 @@ import {
   LAYOUT_PRESETS,
   PRESET_SLOTS,
   presetLayout,
+  neighbourAt,
   removeLeaf,
   splitLeaf,
   type LayoutPreset,
@@ -51,6 +52,7 @@ import { PaneView, type SplitSide } from '../workspace/PaneView';
 import { layoutFits, PANE_MIN_HEIGHT, PANE_MIN_WIDTH, pickVisible } from '../workspace/layout-fit';
 import { useLeafHosts } from '../workspace/leaf-hosts';
 import { leavesOf } from '../workspace/layout-model';
+import { layoutShortcut } from '../workspace/layout-shortcuts';
 import {
   LEAVE_FALLBACK_MS,
   paneMotionOff,
@@ -776,12 +778,43 @@ function WorkspaceBody({
       workspace.undo();
       return;
     }
-    if (soloLeaf === undefined || !event.ctrlKey || !event.altKey) return;
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    // Os atalhos do layout (layout-shortcuts.ts). A tecla é sempre engolida, mesmo quando não há o que fazer (sem
+    // vizinho daquele lado, sem espaço para dividir): ela nunca chega ao terminal pela metade.
+    const action = layoutShortcut(event.nativeEvent);
+    if (action === null) return;
+    const activeId = soloLeaf?.id ?? workspace.activeLeafId;
+    const active = shownLeaves.find((leaf) => leaf.id === activeId);
+    if (active === undefined) return;
     event.preventDefault();
     event.stopPropagation();
-    const next = stepSolo(shownLeaves, soloLeaf.id, event.key === 'ArrowLeft' ? -1 : 1);
-    if (next !== null) showSolo(next);
+    if (action.type === 'close') {
+      // O mesmo caminho do X do painel: o agente avulso vivo pergunta antes, o resto fecha direto.
+      const close = hosts.hostOf(active.id).querySelector<HTMLButtonElement>('.pane__close');
+      if (close !== null && !close.disabled) close.click();
+      return;
+    }
+    if (soloLeaf !== undefined) {
+      // Com um painel por vez na tela só há a troca de aba: não há vizinho para trocar nem onde ver uma divisão.
+      if (action.type !== 'focus' || (action.side !== 'left' && action.side !== 'right')) return;
+      const next = stepSolo(shownLeaves, soloLeaf.id, action.side === 'left' ? -1 : 1);
+      if (next !== null) showSolo(next);
+      return;
+    }
+    if (action.type === 'focus' || action.type === 'swap') {
+      const neighbour = neighbourAt(shown, active.id, action.side);
+      if (neighbour === null) return;
+      if (action.type === 'focus') workspace.activateWithFocus(neighbour);
+      else workspace.swap(active.id, neighbour);
+      return;
+    }
+    const side =
+      action.type === 'split'
+        ? action.side
+        : splitBlocked(active.id, 'right') === undefined
+          ? 'right'
+          : 'bottom';
+    if (splitBlocked(active.id, side) !== undefined) return;
+    void splitPane(active.id, side, providerOf(active));
   };
 
   const renderLeaf = (leaf: LayoutLeaf) => {

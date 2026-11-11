@@ -1177,7 +1177,10 @@ describe('alça de arrastar o painel', () => {
     const { container } = setup({ onGripPointerDown });
     const alca = container.querySelector('.pane__grip') as HTMLElement;
     expect(container.querySelector('.pane__head')?.firstElementChild).toBe(alca);
-    expect(alca).toHaveAttribute('title', 'Arraste para mover o painel');
+    expect(alca).toHaveAttribute(
+      'title',
+      'Arraste para mover o painel (Alt+Shift+setas troca com o vizinho)',
+    );
     fireEvent.pointerDown(alca);
     expect(onGripPointerDown).toHaveBeenCalledTimes(1);
   });

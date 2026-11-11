@@ -2412,3 +2412,118 @@ describe('layouts prontos e desfazer', () => {
     }
   });
 });
+
+describe('atalhos do layout', () => {
+  const painel = (nome: string) => screen.getByRole('region', { name: `Painel ${nome}` });
+  const ativo = () =>
+    document.querySelector('.pane[data-active="true"]')?.getAttribute('aria-label');
+  const tecla = (
+    alvo: Element,
+    code: string,
+    mods: { ctrl?: boolean; alt?: boolean; shift?: boolean },
+  ) =>
+    fireEvent.keyDown(alvo, {
+      code,
+      key: code,
+      ctrlKey: mods.ctrl === true,
+      altKey: mods.alt === true,
+      shiftKey: mods.shift === true,
+    });
+  const ordem = () =>
+    Array.from(document.querySelectorAll('.pane-tree__leaf')).map((slot) =>
+      slot.getAttribute('data-leaf-id'),
+    );
+
+  it('Ctrl+Alt+setas leva o painel ativo ao vizinho daquele lado, e na borda não faz nada', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    // O layout padrão: Claude Code à esquerda; Codex em cima e PowerShell embaixo, à direita.
+    expect(ativo()).toBe('Painel Claude Code');
+    expect(tecla(painel('Claude Code'), 'ArrowRight', { ctrl: true, alt: true })).toBe(false);
+    expect(ativo()).toBe('Painel Codex');
+    tecla(painel('Codex'), 'ArrowDown', { ctrl: true, alt: true });
+    expect(ativo()).toBe('Painel PowerShell');
+    // Na borda de baixo não há vizinho: a tecla é engolida e o ativo fica.
+    expect(tecla(painel('PowerShell'), 'ArrowDown', { ctrl: true, alt: true })).toBe(false);
+    expect(ativo()).toBe('Painel PowerShell');
+    tecla(painel('PowerShell'), 'ArrowLeft', { ctrl: true, alt: true });
+    expect(ativo()).toBe('Painel Claude Code');
+  });
+
+  it('Alt+Shift+setas troca o painel ativo com o vizinho, com o aviso de desfazer', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(ordem()).toEqual(['a', 'b', 'c']);
+    tecla(painel('Claude Code'), 'ArrowRight', { alt: true, shift: true });
+    expect(ordem()).toEqual(['b', 'a', 'c']);
+    expect(ativo()).toBe('Painel Claude Code');
+    expect(await screen.findByText('Layout alterado')).toBeInTheDocument();
+  });
+
+  it('Alt+Shift+(−) divide abaixo e Alt+Shift+(+) divide à direita, só quando cabe', async () => {
+    api.workspaces.splitPane.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    // 1000 px não comportam uma terceira coluna: a tecla é engolida e nada é pedido.
+    expect(tecla(painel('Claude Code'), 'Equal', { alt: true, shift: true })).toBe(false);
+    expect(api.workspaces.splitPane).not.toHaveBeenCalled();
+    tecla(painel('Claude Code'), 'Minus', { alt: true, shift: true });
+    await waitFor(() =>
+      expect(api.workspaces.splitPane).toHaveBeenCalledWith(
+        expect.any(String),
+        'a',
+        'bottom',
+        'claude',
+      ),
+    );
+  });
+
+  it('Alt+Shift+D duplica o painel ativo: ao lado se couber, senão abaixo', async () => {
+    api.workspaces.splitPane.mockReturnValue(new Promise(() => {}));
+    areaSize = { width: 1200, height: 800 };
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    tecla(painel('Claude Code'), 'KeyD', { alt: true, shift: true });
+    await waitFor(() =>
+      expect(api.workspaces.splitPane).toHaveBeenCalledWith(
+        expect.any(String),
+        'a',
+        'right',
+        'claude',
+      ),
+    );
+  });
+
+  it('Alt+Shift+D sem largura para outra coluna duplica abaixo', async () => {
+    api.workspaces.splitPane.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    tecla(painel('Claude Code'), 'KeyD', { alt: true, shift: true });
+    await waitFor(() =>
+      expect(api.workspaces.splitPane).toHaveBeenCalledWith(
+        expect.any(String),
+        'a',
+        'bottom',
+        'claude',
+      ),
+    );
+  });
+
+  it('Ctrl+Shift+W fecha o painel ativo pelo mesmo caminho do X', async () => {
+    api.workspaces.removePane.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    tecla(painel('Claude Code'), 'ArrowRight', { ctrl: true, alt: true });
+    expect(tecla(painel('Codex'), 'KeyW', { ctrl: true, shift: true })).toBe(false);
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Painel Codex' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('Alt+setas, sem Shift nem Ctrl, passa para o terminal', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(tecla(painel('Claude Code'), 'ArrowRight', { alt: true })).toBe(true);
+    expect(ativo()).toBe('Painel Claude Code');
+  });
+});

@@ -108,6 +108,12 @@ const SPLIT_LABEL: Record<SplitSide, string> = {
   bottom: 'Dividir abaixo',
 };
 
+/** O atalho de cada lado (layout-shortcuts.ts), para a dica do botão. */
+const SPLIT_KEYS: Record<SplitSide, string> = {
+  right: 'Alt+Shift++',
+  bottom: 'Alt+Shift+−',
+};
+
 /**
  * Os dois botões de dividir. Bloqueado, o botão continua focável e a dica diz o motivo (um botão `disabled` não
  * mostra dica), então o bloqueio vai em `aria-disabled` e o clique não faz nada.
@@ -117,7 +123,10 @@ function SplitButtons({ split, busy }: { split: PaneSplit; busy: boolean }) {
     const reason = split.blocked[side];
     const Glyph = side === 'right' ? Columns2 : Rows2;
     return (
-      <Hint key={side} label={reason ?? `${SPLIT_LABEL[side]} (mesmo programa)`}>
+      <Hint
+        key={side}
+        label={reason ?? `${SPLIT_LABEL[side]} (mesmo programa · ${SPLIT_KEYS[side]})`}
+      >
         <button
           type="button"
           className="pane__split"
@@ -176,7 +185,7 @@ export function PaneView(props: PaneViewProps) {
     props.onGripPointerDown === undefined ? null : (
       <span
         className="pane__grip"
-        title="Arraste para mover o painel"
+        title="Arraste para mover o painel (Alt+Shift+setas troca com o vizinho)"
         onPointerDown={props.onGripPointerDown}
       >
         <GripVertical {...ICON_PROPS} />
