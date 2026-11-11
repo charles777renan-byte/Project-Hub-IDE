@@ -1,78 +1,77 @@
-import type { LayoutNode } from '@project-hub/contracts';
-import type { MarkKind } from '../state-mark';
+import {
+  leavesOf,
+  minExtent,
+  rectsOf,
+  splitLeaf,
+  type Side,
+} from '@project-hub/contracts/layout-ops';
+import type { LayoutLeaf, LayoutNode } from '@project-hub/contracts';
 
 /**
- * As decisões puras da grade responsiva: quantas colunas e linhas cabem na área, quem fica na grade quando não cabem
- * todos e em que ordem as fichas do dock aparecem. Nada daqui toca no layout guardado; a página deriva a árvore da tela
- * a partir destes números.
+ * As decisões puras de tamanho da área dos terminais: se o layout da pessoa cabe na área, onde um painel novo entra e
+ * quem o modo foco guarda montado. Nada daqui toca no layout guardado.
  */
 
 /** Mínimo de cada terminal mostrado, em px. */
 export const PANE_MIN_WIDTH = 340;
-export const PANE_MIN_HEIGHT = 260;
-/** Vão entre painéis, em px. */
+export const PANE_MIN_HEIGHT = 200;
+/** Vão entre painéis (a divisória), em px. */
 export const PANE_GAP = 8;
-/** Abaixo desta largura da área, o workspace vira o modo Abas. */
-export const SOLO_BELOW = 720;
-/** A partir desta largura da área, a grade vai a 3 colunas (antes disso, a 2). */
-export const THREE_FROM = 1100;
 
-export type GridFit = { mode: 'grid'; columns: number; rows: number } | { mode: 'solo' };
+export type AreaSize = { width: number; height: number };
 
-/**
- * O que cabe numa área de `width` × `height`: o modo Abas abaixo de 720 px; senão colunas = menor entre o máximo da
- * faixa (2, ou 3 a partir de 1100 px) e `floor((largura + vão) / (mínimo + vão))`, e linhas = `floor((altura + vão) /
- * (mínimo + vão))`, nunca abaixo de 1.
- */
-export function gridFit(width: number, height: number): GridFit {
-  if (width < SOLO_BELOW) return { mode: 'solo' };
-  const bandMax = width >= THREE_FROM ? 3 : 2;
-  const columns = Math.max(
-    1,
-    Math.min(bandMax, Math.floor((width + PANE_GAP) / (PANE_MIN_WIDTH + PANE_GAP))),
+/** Se a árvore cabe na área com todo painel no tamanho mínimo. Sem cabimento, a página entra no modo foco. */
+export function layoutFits(layout: LayoutNode, area: AreaSize): boolean {
+  return (
+    minExtent(layout, 'width', PANE_MIN_WIDTH, PANE_GAP) <= area.width &&
+    minExtent(layout, 'height', PANE_MIN_HEIGHT, PANE_GAP) <= area.height
   );
-  const rows = Math.max(1, Math.floor((height + PANE_GAP) / (PANE_MIN_HEIGHT + PANE_GAP)));
-  return { mode: 'grid', columns, rows };
-}
-
-/** Quantas colunas a árvore ocupa: folha 1; `row` soma os lados; `column` fica com o maior. */
-export function columnsOf(node: LayoutNode): number {
-  if (node.type === 'leaf') return 1;
-  const first = columnsOf(node.first);
-  const second = columnsOf(node.second);
-  return node.direction === 'row' ? first + second : Math.max(first, second);
-}
-
-/** Quantas linhas a árvore ocupa: o inverso de `columnsOf`. */
-export function rowsOf(node: LayoutNode): number {
-  if (node.type === 'leaf') return 1;
-  const first = rowsOf(node.first);
-  const second = rowsOf(node.second);
-  return node.direction === 'column' ? first + second : Math.max(first, second);
 }
 
 /**
- * O menor tamanho, no eixo dado, que a árvore pede: uma folha pede o mínimo de um painel (`leaf`, que por padrão é
- * 340 px de largura ou 260 de altura); uma divisão no próprio eixo soma os dois lados e o vão; no outro eixo, vale o
- * maior dos lados.
+ * Onde um painel novo entra quando a pessoa não escolhe: ao lado de uma folha, à direita ou abaixo. Entre os lugares em
+ * que o layout continua cabendo na área, vale o que deixa o painel novo maior (em px²); se nenhum cabe, vale o maior
+ * mesmo assim (a página passa ao modo foco). Sem medida da área, o quadrado de lado 1 serve de régua. `null` sem folhas.
  */
-export function minExtent(
-  node: LayoutNode,
-  axis: 'width' | 'height',
-  leaf: number = axis === 'width' ? PANE_MIN_WIDTH : PANE_MIN_HEIGHT,
-): number {
-  if (node.type === 'leaf') return leaf;
-  const first = minExtent(node.first, axis, leaf);
-  const second = minExtent(node.second, axis, leaf);
-  const splitsThisAxis = (axis === 'width') === (node.direction === 'row');
-  return splitsThisAxis ? first + second + PANE_GAP : Math.max(first, second);
+export function bestPlacement(
+  layout: LayoutNode | null,
+  area: AreaSize | null,
+): { leafId: string; side: Side } | null {
+  if (layout === null) return null;
+  const rects = rectsOf(layout);
+  // Sem medida, a área costuma ser mais larga que alta.
+  const width = area?.width ?? 1.6;
+  const height = area?.height ?? 1;
+  const probe: LayoutLeaf = { type: 'leaf', id: ' probe', provider: 'shell', terminalId: null };
+  let best: { leafId: string; side: Side; fits: boolean; size: number } | null = null;
+  for (const leaf of leavesOf(layout)) {
+    const rect = rects.get(leaf.id);
+    if (rect === undefined) continue;
+    for (const side of ['right', 'bottom'] as const) {
+      const size =
+        rect.width *
+        width *
+        (side === 'right' ? 0.5 : 1) *
+        (rect.height * height * (side === 'bottom' ? 0.5 : 1));
+      const fits =
+        area !== null &&
+        layoutFits(
+          splitLeaf(layout, leaf.id, side, probe, () => ' split'),
+          area,
+        );
+      const better =
+        best === null || (fits && !best.fits) || (fits === best.fits && size > best.size * 1.001);
+      if (better) best = { leafId: leaf.id, side, fits, size };
+    }
+  }
+  return best === null ? null : { leafId: best.leafId, side: best.side };
 }
 
 /**
- * Quem fica na grade quando há mais painéis que `capacity` (menos de 1 vale 1). Mantém os já mostrados que ainda
- * existem; se o ativo não estava entre eles, ele toma o lugar do último mostrado; se a capacidade encolheu, sai do fim
- * (nunca o ativo); os lugares livres são preenchidos pela ordem de `leafIds`. `shown` e `hidden` seguem sempre a ordem
- * de `leafIds`, para a grade nunca trocar painéis de lugar.
+ * Quem o modo foco guarda montado quando há mais painéis que `capacity` (menos de 1 vale 1). Mantém os já montados que
+ * ainda existem; se o ativo não estava entre eles, ele toma o lugar do último; se a capacidade encolheu, sai do fim
+ * (nunca o ativo); os lugares livres são preenchidos pela ordem de `leafIds`. `shown` e `hidden` seguem a ordem de
+ * `leafIds`.
  */
 export function pickVisible(
   leafIds: readonly string[],
@@ -105,10 +104,4 @@ export function pickVisible(
     shown: leafIds.filter((id) => shownSet.has(id)),
     hidden: leafIds.filter((id) => !shownSet.has(id)),
   };
-}
-
-/** A ordem das fichas do dock: quem espera por você (aguardando e erro) vem primeiro; o resto segue depois. Estável. */
-export function dockOrder<T extends { mark: MarkKind }>(items: readonly T[]): T[] {
-  const needsYou = (item: T): boolean => item.mark === 'waiting' || item.mark === 'error';
-  return [...items.filter(needsYou), ...items.filter((item) => !needsYou(item))];
 }

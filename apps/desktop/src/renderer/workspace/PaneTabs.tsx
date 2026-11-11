@@ -41,7 +41,7 @@ export function numerarRepetidos(rotulos: readonly string[]): string[] {
  * projeto (um destino num lugar só).
  * Se as abas não cabem, a lista rola, esmaece a borda do lado que tem aba escondida e ganha o botão "⌄", que lista só
  * as escondidas (`TabsOverflow`) e pede atenção se uma delas aguarda a pessoa. Com `auto` (o modo foi ligado pela
- * largura da janela, não por escolha), a faixa mostra o aviso "Janela estreita", que não é botão.
+ * largura da janela, não por escolha), a faixa mostra o aviso "Janela pequena", que não é botão.
  */
 export function PaneTabs({
   leaves,
@@ -217,10 +217,10 @@ export function PaneTabs({
         {auto ? (
           <span
             className="pane-tabs__auto"
-            title="Volta para a grade quando a janela passar de 720 px"
+            title="Volta para a grade quando o layout couber na janela"
           >
             <NarrowIcon />
-            Janela estreita
+            Janela pequena
           </span>
         ) : null}
       </div>

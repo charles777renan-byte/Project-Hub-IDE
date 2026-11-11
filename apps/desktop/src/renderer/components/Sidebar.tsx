@@ -568,7 +568,11 @@ function ProjectRow({
 function findLeaf(node: LayoutNode | null, terminalId: string): { id: string } | undefined {
   if (node === null) return undefined;
   if (node.type === 'leaf') return node.terminalId === terminalId ? { id: node.id } : undefined;
-  return findLeaf(node.first, terminalId) ?? findLeaf(node.second, terminalId);
+  for (const child of node.children) {
+    const found = findLeaf(child, terminalId);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 /**

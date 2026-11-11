@@ -8,7 +8,16 @@ import {
   type ProviderId,
   type WorkspaceDto,
 } from '@project-hub/contracts';
-import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import {
+  leavesOf,
+  mapLeaves,
+  normalize,
+  rectsOf,
+  removeLeaf,
+  splitLeaf,
+  upgradeLegacyLayout,
+  type Side,
+} from '@project-hub/contracts/layout-ops';
 import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database';
 import { resumeArgs } from './providers';
 import type { ResumeCheckInput, ResumeVerdict } from './resume-verdict';
@@ -42,14 +51,21 @@ export type WorkspaceService = {
   saveLayout(workspaceId: string, layout: LayoutNode | null): Promise<AppResult<undefined>>;
   startSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
-  /** Abre a sessão do provedor e cria o painel dela; os painéis se reorganizam. Sem sessão aberta, sem painel. */
+  /** Abre a sessão do provedor e cria o painel dela, dividindo o maior painel. Sem sessão aberta, sem painel. */
   addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
+  /** Como `addPane`, mas o painel novo entra no lado `side` do painel `leafId`, que cede metade do espaço. */
+  splitPane(
+    workspaceId: string,
+    leafId: string,
+    side: Side,
+    provider: ProviderId,
+  ): Promise<AppResult<WorkspaceDto>>;
   /**
    * Retoma uma sessão do histórico: abre o programa na pasta dela, já com a conversa retomada, e põe o painel no
    * workspace. Sessão fora do índice, ou que não pode ser retomada agora, não abre nada.
    */
   resumeSession(workspaceId: string, sessionId: string): Promise<AppResult<WorkspaceDto>>;
-  /** Encerra a sessão do painel (menos a de missão) e tira o painel; os que sobram se reorganizam. */
+  /** Encerra a sessão do painel (menos a de missão) e tira o painel; o vizinho fica com o espaço. */
   removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   /** Põe os workspaces abertos na ordem dada. A lista precisa ter todos os abertos, uma vez cada. */
   reorder(workspaceIds: string[]): Promise<AppResult<undefined>>;
@@ -72,11 +88,10 @@ function renameLegacyProviders(node: unknown): unknown {
     return item['provider'] === 'gemini' ? { ...item, provider: 'antigravity' } : item;
   }
   if (item['type'] === 'split') {
-    return {
-      ...item,
-      first: renameLegacyProviders(item['first']),
-      second: renameLegacyProviders(item['second']),
-    };
+    const children: unknown = item['children'];
+    return Array.isArray(children)
+      ? { ...item, children: children.map(renameLegacyProviders) }
+      : item;
   }
   return item;
 }
@@ -87,8 +102,12 @@ function renameLegacyProviders(node: unknown): unknown {
  */
 function validLayout(value: unknown): LayoutNode | null | undefined {
   try {
-    const parsed = workspaceLayoutSchema.safeParse(renameLegacyProviders(value));
-    return parsed.success ? parsed.data : undefined;
+    // O formato antigo de divisão (duas metades e um `ratio`) é convertido antes de valer.
+    const parsed = workspaceLayoutSchema.safeParse(
+      renameLegacyProviders(upgradeLegacyLayout(value)),
+    );
+    if (!parsed.success) return undefined;
+    return parsed.data === null ? null : normalize(parsed.data);
   } catch {
     return undefined;
   }
@@ -102,19 +121,18 @@ function parseStored(json: string): LayoutNode | null | undefined {
   }
 }
 
-function leavesOf(node: LayoutNode | null): LayoutLeaf[] {
-  if (node === null) return [];
-  return node.type === 'leaf' ? [node] : [...leavesOf(node.first), ...leavesOf(node.second)];
-}
-
-/** Uma cópia do layout em que cada folha passa por `change` (devolver a mesma folha a mantém). */
-function mapLeaves(node: LayoutNode, change: (leaf: LayoutLeaf) => LayoutLeaf): LayoutNode {
-  if (node.type === 'leaf') return change(node);
-  return {
-    ...node,
-    first: mapLeaves(node.first, change),
-    second: mapLeaves(node.second, change),
-  };
+/**
+ * Onde um painel novo entra quando ninguém diz: ao lado da maior folha, à direita se ela é mais larga que alta (a área
+ * dos terminais costuma ser mais larga que alta, então a largura conta 1,6 vez) e abaixo no outro caso.
+ */
+function defaultPlacement(layout: LayoutNode): { leafId: string; side: Side } | undefined {
+  let best: { leafId: string; side: Side; area: number } | undefined;
+  for (const [leafId, rect] of rectsOf(layout)) {
+    const area = rect.width * rect.height;
+    if (best !== undefined && area <= best.area + 1e-9) continue;
+    best = { leafId, side: rect.width * 1.6 >= rect.height ? 'right' : 'bottom', area };
+  }
+  return best;
 }
 
 function setTerminal(layout: LayoutNode, leafId: string, terminalId: string | null): LayoutNode {
@@ -271,8 +289,13 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     record: WorkspaceRecord,
     provider: ProviderId,
     options?: OpenSessionOptions,
+    placement?: { leafId: string; side: Side },
   ): Promise<AppResult<WorkspaceDto>> {
-    const leaves = leavesOf(storedLayout(record));
+    const layout = storedLayout(record);
+    const leaves = leavesOf(layout);
+    if (placement !== undefined && !leaves.some((leaf) => leaf.id === placement.leafId)) {
+      return failure('VALIDATION_FAILED', NO_PANE);
+    }
     // O limite vem antes: depois de aberta, a sessão teria de ser desfeita.
     if (leaves.length >= LAYOUT_LIMITS.maxLeaves) {
       return failure(
@@ -289,7 +312,17 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const { terminalId } = session.data;
     try {
       const pane: LayoutLeaf = { type: 'leaf', id: newId(), provider, terminalId };
-      return { ok: true, data: persist(record, arrangeLeaves([...leaves, pane], newId)) };
+      const where = placement ?? (layout === null ? undefined : defaultPlacement(layout));
+      const next =
+        layout === null || where === undefined
+          ? pane
+          : splitLeaf(layout, where.leafId, where.side, pane, newId);
+      // Os painéis ficam onde estão. Se a árvore passar do limite de profundidade, o pedido falha e a sessão é desfeita.
+      if (!workspaceLayoutSchema.safeParse(next).success) {
+        await terminals.closeSession(terminalId).catch(() => undefined);
+        return failure('VALIDATION_FAILED', 'Não há mais como dividir este painel.');
+      }
+      return { ok: true, data: persist(record, next) };
     } catch (error) {
       // Sem o painel no layout, a sessão aberta ficaria órfã: nenhuma tela a mostraria.
       await terminals.closeSession(terminalId).catch(() => undefined);
@@ -304,6 +337,17 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const record = repo.get(workspaceId);
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
     return openPane(record, provider);
+  }
+
+  async function splitPane(
+    workspaceId: string,
+    leafId: string,
+    side: Side,
+    provider: ProviderId,
+  ): Promise<AppResult<WorkspaceDto>> {
+    const record = repo.get(workspaceId);
+    if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
+    return openPane(record, provider, undefined, { leafId, side });
   }
 
   /**
@@ -343,8 +387,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
   async function removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>> {
     const record = repo.get(workspaceId);
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
-    const leaves = leavesOf(storedLayout(record));
-    const leaf = leaves.find((candidate) => candidate.id === leafId);
+    const layout = storedLayout(record);
+    const leaf = leavesOf(layout).find((candidate) => candidate.id === leafId);
     if (leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
 
     // A sessão de uma missão é da missão: o painel sai, o agente segue (cancelar é pela missão).
@@ -353,8 +397,8 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
       // Sessão que já não existe não impede de tirar o painel; qualquer outra falha o mantém.
       if (!closed.ok && closed.error.code !== 'TERMINAL_NOT_FOUND') return closed;
     }
-    const rest = leaves.filter((candidate) => candidate.id !== leafId);
-    return { ok: true, data: persist(record, arrangeLeaves(rest, newId)) };
+    // Só a folha sai: o vizinho fica com o espaço dela e os outros painéis não mudam de lugar nem de tamanho.
+    return { ok: true, data: persist(record, removeLeaf(layout, leafId)) };
   }
 
   return {
@@ -386,6 +430,9 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     addPane: (workspaceId, provider) => serial(() => addPane(workspaceId, provider)),
 
     resumeSession: (workspaceId, sessionId) => serial(() => resumeSession(workspaceId, sessionId)),
+
+    splitPane: (workspaceId, leafId, side, provider) =>
+      serial(() => splitPane(workspaceId, leafId, side, provider)),
 
     removePane: (workspaceId, leafId) => serial(() => removePane(workspaceId, leafId)),
 

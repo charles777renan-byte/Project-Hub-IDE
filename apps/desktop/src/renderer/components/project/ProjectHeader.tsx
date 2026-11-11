@@ -54,7 +54,7 @@ async function closeProjectWorkspace(projectId: string) {
 
 /**
  * Cabeçalho da aba do projeto, numa linha só: o nome (e o apelido, se houver), a barra de visões, o lugar das
- * ferramentas dos terminais (`toolsRef`: o workspace põe ali, por portal, "Fora da grade", o seletor de layout e
+ * ferramentas dos terminais (`toolsRef`: o workspace põe ali, por portal, o seletor de layout e
  * "+ Terminal", só na visão Terminais), o botão Nova missão e o menu Mais ações (arquivar e remover da lista, ambos com confirmação, e fechar todos os terminais, que
  * leva ao workspace); com uma missão aberta, os dois somem (a missão tem os seus controles). A visão ativa vem de
  * `?visao=` na rota; escolher uma aba troca só esse parâmetro, substituindo a entrada do histórico (cada seta de

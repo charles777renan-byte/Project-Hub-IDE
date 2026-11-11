@@ -1,9 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import type { LayoutLeaf, ProviderId, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { Hint } from '../components/Hint';
-import { Ellipsis, ICON_PROPS, Maximize2, Minimize2, SquareTerminal, X } from '../components/Icon';
+import {
+  Columns2,
+  Ellipsis,
+  GripVertical,
+  ICON_PROPS,
+  Maximize2,
+  Minimize2,
+  Rows2,
+  SquareTerminal,
+  X,
+} from '../components/Icon';
 import { MenuAcoes, type AcaoMenu } from '../components/MenuAcoes';
 import { PROJECT_UNAVAILABLE_NOTICE_ID } from '../components/project/ProjectHeader';
 import { ProviderIcon } from '../components/ProviderIcon';
@@ -14,6 +24,19 @@ import { contextDetailText, modelLabel } from '../terminal-context';
 import { clearTerminalFocus, setTerminalFocus } from '../terminal-focus';
 import { PaneContext } from './PaneContext';
 import { PaneUsage } from './PaneUsage';
+
+/** O lado em que o painel novo entra ao dividir. */
+export type SplitSide = 'right' | 'bottom';
+
+/** Dividir o painel em dois: o novo entra no lado pedido, com metade do espaço. */
+export type PaneSplit = {
+  /** Por que não dá para dividir daquele lado (limite de painéis, falta de espaço); sem o lado, dá. */
+  blocked: Partial<Record<SplitSide, string>>;
+  /** Os outros programas que podem abrir no painel novo; vão para o menu ⋯. */
+  others: readonly { id: ProviderId; label: string }[];
+  /** Sem `provider`, o painel novo abre com o mesmo programa deste. */
+  onSplit(side: SplitSide, provider?: ProviderId): void;
+};
 
 export type PaneViewProps = {
   leaf: LayoutLeaf;
@@ -43,6 +66,13 @@ export type PaneViewProps = {
   /** Mostrar só este painel (modo "um painel por vez"), ou, se `maximized`, voltar à grade. Duplo clique no cabeçalho faz o mesmo. */
   onMaximize?(): void;
   maximized?: boolean;
+  /**
+   * O ponteiro desceu na alça do cabeçalho: começa o arrasto do painel para outro lugar da grade. Sem ele (um painel
+   * só, ou um por vez na tela), a alça não aparece.
+   */
+  onGripPointerDown?: ((event: PointerEvent<HTMLElement>) => void) | undefined;
+  /** Dividir este painel. Sem ele (um painel por vez na tela), os botões de dividir não aparecem. */
+  split?: PaneSplit | undefined;
 };
 
 /**
@@ -71,6 +101,46 @@ function MaximizeButton({ maximized, onClick }: { maximized: boolean; onClick():
       </button>
     </Hint>
   );
+}
+
+const SPLIT_LABEL: Record<SplitSide, string> = {
+  right: 'Dividir à direita',
+  bottom: 'Dividir abaixo',
+};
+
+/** O atalho de cada lado (layout-shortcuts.ts), para a dica do botão. */
+const SPLIT_KEYS: Record<SplitSide, string> = {
+  right: 'Alt+Shift++',
+  bottom: 'Alt+Shift+−',
+};
+
+/**
+ * Os dois botões de dividir. Bloqueado, o botão continua focável e a dica diz o motivo (um botão `disabled` não
+ * mostra dica), então o bloqueio vai em `aria-disabled` e o clique não faz nada.
+ */
+function SplitButtons({ split, busy }: { split: PaneSplit; busy: boolean }) {
+  return (['right', 'bottom'] as const).map((side) => {
+    const reason = split.blocked[side];
+    const Glyph = side === 'right' ? Columns2 : Rows2;
+    return (
+      <Hint
+        key={side}
+        label={reason ?? `${SPLIT_LABEL[side]} (mesmo programa · ${SPLIT_KEYS[side]})`}
+      >
+        <button
+          type="button"
+          className="pane__split"
+          aria-label={SPLIT_LABEL[side]}
+          aria-disabled={reason !== undefined || busy}
+          onClick={() => {
+            if (reason === undefined && !busy) split.onSplit(side);
+          }}
+        >
+          <Glyph {...ICON_PROPS} />
+        </button>
+      </Hint>
+    );
+  });
 }
 
 /** Botão só de ícone que fecha o painel; o nome acessível é o texto, a dica descreve o efeito. */
@@ -108,10 +178,28 @@ export function PaneView(props: PaneViewProps) {
     ? { 'aria-describedby': PROJECT_UNAVAILABLE_NOTICE_ID }
     : {};
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
-  const maximize =
-    props.onMaximize === undefined ? null : (
-      <MaximizeButton maximized={props.maximized === true} onClick={props.onMaximize} />
+  const split = props.split;
+  // A alça não é botão (não faz nada ao clicar nem entra na ordem do Tab): quem usa o teclado move o painel pelos
+  // atalhos. O nome fica na dica.
+  const grip =
+    props.onGripPointerDown === undefined ? null : (
+      <span
+        className="pane__grip"
+        title="Arraste para mover o painel (Alt+Shift+setas troca com o vizinho)"
+        onPointerDown={props.onGripPointerDown}
+      >
+        <GripVertical {...ICON_PROPS} />
+      </span>
     );
+  // Maximizar fica ao lado do contador de uso, como sempre; os de dividir vêm logo depois.
+  const maximize = (
+    <>
+      {props.onMaximize === undefined ? null : (
+        <MaximizeButton maximized={props.maximized === true} onClick={props.onMaximize} />
+      )}
+      {split === undefined ? null : <SplitButtons split={split} busy={busy} />}
+    </>
+  );
 
   // Pergunta de "Fechar painel e encerrar…": guarda o id do terminal perguntado, e não um sim ou não, então ela
   // some sozinha se a sessão terminar (ou o painel mudar de sessão) enquanto está aberta.
@@ -164,6 +252,7 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head">
+          {grip}
           <span className="pane__title">{label}</span>
           <span className="pane__actions">
             {maximize}
@@ -213,6 +302,7 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head">
+          {grip}
           <div className="pane__notice">
             <span role="status">A sessão terminou.</span>
             <span className="pane__actions">
@@ -255,7 +345,19 @@ export function PaneView(props: PaneViewProps) {
     // O menu ⋯ guarda as ações do painel, e o X ao lado fecha com um clique. Ocupado (um pedido em curso), os itens
     // e o X ficam desabilitados.
     const askToClose = needsCloseConfirmation(terminal);
-    const actions: AcaoMenu[] =
+    // Dividir com outro programa: os botões do cabeçalho abrem o mesmo; a escolha de outro mora no menu.
+    const splitWithOther: AcaoMenu[] =
+      split === undefined
+        ? []
+        : (['right', 'bottom'] as const).flatMap((side) =>
+            split.others.map((other) => ({
+              rotulo: `${SPLIT_LABEL[side]} com ${other.label}`,
+              onSelecionar: () => split.onSplit(side, other.id),
+              desabilitada: busy || split.blocked[side] !== undefined,
+              ...(split.blocked[side] !== undefined ? { dica: split.blocked[side] } : {}),
+            })),
+          );
+    const closeActions: AcaoMenu[] =
       terminal.missionId !== undefined
         ? [
             { rotulo: 'Tirar do painel', onSelecionar: props.onDetach, desabilitada: busy },
@@ -290,6 +392,7 @@ export function PaneView(props: PaneViewProps) {
                 },
               ]
           : [{ rotulo: 'Fechar painel', onSelecionar: props.onClose, desabilitada: busy }];
+    const actions = [...splitWithOther, ...closeActions];
     const asking = askToClose && askingId === terminal.id;
     // O X faz o mesmo que o item de fechar do menu: no agente avulso vivo pergunta antes (se a pergunta estiver
     // ligada); no shell comum e no terminal de missão fecha direto (a missão continua).
@@ -310,6 +413,7 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head pane__head--live">
+          {grip}
           <span className="pane__provider">
             <ProviderIcon provider={terminal.provider} size={16} />
           </span>

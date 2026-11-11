@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import type { LayoutNode, WorkspaceDto } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import { arrangeLeaves } from '@project-hub/contracts/layout-ops';
 import { getToasts, notify } from '../../src/renderer/notify';
 import { leavesOf } from '../../src/renderer/workspace/layout-model';
 import { SAVE_DELAY_MS, useWorkspace } from '../../src/renderer/workspace/use-workspace';
@@ -12,9 +12,11 @@ function layoutOf(terminalA: string | null = null, terminalB: string | null = nu
     type: 'split',
     id: 'raiz',
     direction: 'row',
-    ratio: 0.5,
-    first: { type: 'leaf', id: 'a', provider: 'claude', terminalId: terminalA },
-    second: { type: 'leaf', id: 'b', provider: 'shell', terminalId: terminalB },
+    children: [
+      { type: 'leaf', id: 'a', provider: 'claude', terminalId: terminalA },
+      { type: 'leaf', id: 'b', provider: 'shell', terminalId: terminalB },
+    ],
+    sizes: [0.5, 0.5],
   };
 }
 
@@ -31,6 +33,9 @@ const api = {
   saveLayout: vi.fn(),
   startSession: vi.fn(),
   addPane: vi.fn(),
+  // Com painel na tela, o hook escolhe onde o novo entra e pede a divisão. O lugar é conferido em `splitPane`; o resto
+  // dos testes só olha o pedido de abrir, que aqui é repassado ao `addPane`.
+  splitPane: vi.fn(),
   removePane: vi.fn(),
 };
 
@@ -42,6 +47,11 @@ beforeEach(() => {
   api.saveLayout.mockReset().mockResolvedValue({ ok: true, data: undefined });
   api.startSession.mockReset();
   api.addPane.mockReset();
+  api.splitPane
+    .mockReset()
+    .mockImplementation((id: string, _leafId: string, _side: string, provider: string) =>
+      api.addPane(id, provider),
+    );
   api.removePane.mockReset();
   window.projectHub = { workspaces: api } as unknown as typeof window.projectHub;
 });
@@ -61,7 +71,7 @@ function ratioOf(state: ReturnType<typeof useWorkspace>['state']): number {
   if (state.status !== 'ready' || state.workspace.layout?.type !== 'split') {
     throw new Error('estado');
   }
-  return state.workspace.layout.ratio;
+  return state.workspace.layout.sizes[0] ?? Number.NaN;
 }
 
 describe('useWorkspace', () => {
@@ -84,12 +94,12 @@ describe('useWorkspace', () => {
     expect(result.current.state).toEqual({ status: 'error', message: 'Projeto sumiu' });
   });
 
-  it('setRatio muda na hora, limita a 0,1 a 0,9 e grava uma vez depois de 400 ms', async () => {
+  it('setSizes muda na hora, não deixa um lado abaixo de 2% e grava uma vez depois de 400 ms', async () => {
     const { result } = await mount();
-    act(() => result.current.setRatio('raiz', 0.6));
-    act(() => result.current.setRatio('raiz', 0.7));
-    act(() => result.current.setRatio('raiz', 0.99));
-    expect(ratioOf(result.current.state)).toBe(0.9);
+    act(() => result.current.setSizes('raiz', [0.6, 1 - 0.6]));
+    act(() => result.current.setSizes('raiz', [0.7, 1 - 0.7]));
+    act(() => result.current.setSizes('raiz', [0.99, 1 - 0.99]));
+    expect(ratioOf(result.current.state)).toBeCloseTo(0.98);
     expect(api.saveLayout).not.toHaveBeenCalled();
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS - 1);
@@ -100,12 +110,12 @@ describe('useWorkspace', () => {
     });
     expect(api.saveLayout).toHaveBeenCalledTimes(1);
     expect(api.saveLayout.mock.calls[0]![0]).toBe('w-p1');
-    expect((api.saveLayout.mock.calls[0]![1] as { ratio: number }).ratio).toBe(0.9);
+    expect((api.saveLayout.mock.calls[0]![1] as { sizes: number[] }).sizes[0]).toBeCloseTo(0.98);
   });
 
   it('flush grava na hora o que está pendente', async () => {
     const { result } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => result.current.flush());
     expect(api.saveLayout).toHaveBeenCalledTimes(1);
     await act(async () => {
@@ -116,7 +126,7 @@ describe('useWorkspace', () => {
 
   it('desmontar com gravação pendente grava', async () => {
     const { result, unmount } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     unmount();
     expect(api.saveLayout).toHaveBeenCalledTimes(1);
   });
@@ -132,7 +142,7 @@ describe('useWorkspace', () => {
       return { ok: true, data: dto(layoutOf('t1')) };
     });
     const { result } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     let outcome: string | null = 'x';
     await act(async () => {
       outcome = await result.current.startSession('a');
@@ -181,8 +191,10 @@ describe('useWorkspace', () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
     expect(api.saveLayout).toHaveBeenCalledTimes(1);
-    const saved = api.saveLayout.mock.calls[0]![1] as { second: { terminalId: string | null } };
-    expect(saved.second.terminalId).toBe('t5');
+    const saved = api.saveLayout.mock.calls[0]![1] as {
+      children: { terminalId: string | null }[];
+    };
+    expect(saved.children[1]!.terminalId).toBe('t5');
   });
 
   it('detach zera o terminalId e grava', async () => {
@@ -192,8 +204,10 @@ describe('useWorkspace', () => {
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
-    const saved = api.saveLayout.mock.calls[0]![1] as { first: { terminalId: string | null } };
-    expect(saved.first.terminalId).toBeNull();
+    const saved = api.saveLayout.mock.calls[0]![1] as {
+      children: { terminalId: string | null }[];
+    };
+    expect(saved.children[0]!.terminalId).toBeNull();
   });
 
   it('trocar o projectId reabre', async () => {
@@ -227,7 +241,7 @@ describe('useWorkspace', () => {
     expect(state.status === 'ready' && JSON.stringify(state.workspace.layout)).not.toContain('t1');
   });
 
-  it('setRatio durante o startSession é preservado e é o que grava', async () => {
+  it('setSizes durante o startSession é preservado e é o que grava', async () => {
     let resolve: (value: unknown) => void = () => {};
     api.startSession.mockImplementation(() => new Promise((r) => (resolve = r)));
     const { result } = await mount();
@@ -236,7 +250,7 @@ describe('useWorkspace', () => {
       pending = result.current.startSession('a');
     });
     await act(async () => {});
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => {
       resolve({ ok: true, data: dto(layoutOf('t1')) });
       await pending;
@@ -246,17 +260,17 @@ describe('useWorkspace', () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
     const saved = api.saveLayout.mock.calls.at(-1)![1] as {
-      ratio: number;
-      first: { terminalId: string | null };
+      sizes: number[];
+      children: { terminalId: string | null }[];
     };
-    expect(saved.ratio).toBe(0.3);
-    expect(saved.first.terminalId).toBe('t1');
+    expect(saved.sizes[0]).toBe(0.3);
+    expect(saved.children[0]!.terminalId).toBe('t1');
   });
 
   it('gravação que falha volta a ficar pendente e é tentada de novo', async () => {
     api.saveLayout.mockRejectedValueOnce(new Error('falhou'));
     const { result } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
@@ -296,7 +310,7 @@ describe('useWorkspace', () => {
     await act(async () => {
       pending = result.current.startSession('a');
     });
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
@@ -310,11 +324,11 @@ describe('useWorkspace', () => {
     });
     expect(api.saveLayout).toHaveBeenCalledTimes(1);
     const saved = api.saveLayout.mock.calls[0]![1] as {
-      ratio: number;
-      first: { terminalId: string };
+      sizes: number[];
+      children: { terminalId: string }[];
     };
-    expect(saved.ratio).toBe(0.3);
-    expect(saved.first.terminalId).toBe('t1');
+    expect(saved.sizes[0]).toBe(0.3);
+    expect(saved.children[0]!.terminalId).toBe('t1');
   });
 
   it('recusa VALIDATION_FAILED não é repetida e vira saveError', async () => {
@@ -323,7 +337,7 @@ describe('useWorkspace', () => {
       error: { code: 'VALIDATION_FAILED', message: 'inválido' },
     });
     const { result } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
@@ -340,7 +354,7 @@ describe('useWorkspace', () => {
       error: { code: 'VALIDATION_FAILED', message: 'inválido' },
     });
     const { result, unmount } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     unmount();
     await act(async () => {});
     expect(getToasts().map((toast) => toast.message)).toEqual([
@@ -354,12 +368,12 @@ describe('useWorkspace', () => {
       error: { code: 'VALIDATION_FAILED', message: 'inválido' },
     });
     const { result } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
     expect(getToasts()).toHaveLength(1);
-    act(() => result.current.setRatio('raiz', 0.4));
+    act(() => result.current.setSizes('raiz', [0.4, 1 - 0.4]));
     expect(getToasts()).toHaveLength(0);
   });
 
@@ -369,7 +383,7 @@ describe('useWorkspace', () => {
       error: { code: 'VALIDATION_FAILED', message: 'inválido' },
     });
     const { result, rerender } = await mount();
-    act(() => result.current.setRatio('raiz', 0.3));
+    act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
     await act(async () => {
       vi.advanceTimersByTime(SAVE_DELAY_MS);
     });
@@ -384,16 +398,20 @@ describe('useWorkspace', () => {
       type: 'split',
       id: 'raiz',
       direction: 'row',
-      ratio: 0.5,
-      first: { type: 'leaf', id: 'a', provider: 'claude', terminalId: null },
-      second: {
-        type: 'split',
-        id: 'meio',
-        direction: 'column',
-        ratio: 0.5,
-        first: { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
-        second: { type: 'leaf', id: 'c', provider: 'codex', terminalId: null },
-      },
+      children: [
+        { type: 'leaf', id: 'a', provider: 'claude', terminalId: null },
+        {
+          type: 'split',
+          id: 'meio',
+          direction: 'column',
+          children: [
+            { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
+            { type: 'leaf', id: 'c', provider: 'codex', terminalId: null },
+          ],
+          sizes: [0.5, 0.5],
+        },
+      ],
+      sizes: [0.5, 0.5],
     });
     const vazio = null as unknown as LayoutNode;
 
@@ -408,7 +426,7 @@ describe('useWorkspace', () => {
         return { ok: true, data: dto(tres()) };
       });
       const { result } = await mount();
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       let outcome: string | null = 'x';
       await act(async () => {
         outcome = await result.current.addPane('codex');
@@ -628,7 +646,7 @@ describe('useWorkspace', () => {
         pending = result.current.addPane('codex');
       });
       await act(async () => {});
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
       });
@@ -652,7 +670,7 @@ describe('useWorkspace', () => {
         pending = result.current.removePane('a');
       });
       await act(async () => {});
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS * 5);
       });
@@ -676,7 +694,7 @@ describe('useWorkspace', () => {
         pending = result.current.addPane('codex');
       });
       await act(async () => {});
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       // O debounce dispara durante o voo: a gravação bloqueada não envia nada.
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS * 2);
@@ -701,7 +719,7 @@ describe('useWorkspace', () => {
         pending = result.current.removePane('a');
       });
       await act(async () => {});
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       // O debounce dispara durante o voo: a gravação bloqueada não envia nada.
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS * 2);
@@ -723,7 +741,7 @@ describe('useWorkspace', () => {
         error: { code: 'VALIDATION_FAILED', message: 'inválido' },
       });
       const { result } = await mount();
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS);
       });
@@ -783,7 +801,7 @@ describe('useWorkspace', () => {
       await act(async () => {});
       rerender({ id: 'p2' });
       await act(async () => {});
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS);
       });
@@ -815,7 +833,7 @@ describe('useWorkspace', () => {
       api.saveLayout.mockReturnValueOnce(new Promise((r) => (resolveSave = r)));
       api.addPane.mockResolvedValue({ ok: true, data: dto(layoutOf('t1'), 'p1') });
       const { result, rerender } = await mount('p1');
-      act(() => result.current.setRatio('raiz', 0.3));
+      act(() => result.current.setSizes('raiz', [0.3, 1 - 0.3]));
       let pending: Promise<string | null> = Promise.resolve('x');
       act(() => {
         pending = result.current.addPane('codex');
@@ -828,7 +846,7 @@ describe('useWorkspace', () => {
         await pending;
       });
       api.saveLayout.mockClear();
-      act(() => result.current.setRatio('raiz', 0.7));
+      act(() => result.current.setSizes('raiz', [0.7, 1 - 0.7]));
       await act(async () => {
         vi.advanceTimersByTime(SAVE_DELAY_MS);
       });

@@ -223,17 +223,17 @@ describe('PaneTabs: janela estreita (modo ligado pela largura)', () => {
     setup(dois);
 
     expect(screen.queryByRole('button', { name: 'Grade' })).toBeNull();
-    expect(screen.queryByText('Janela estreita')).toBeNull();
+    expect(screen.queryByText('Janela pequena')).toBeNull();
   });
 
-  it('com auto, não há botão "Grade": há o aviso "Janela estreita" com a dica, que não é botão', () => {
+  it('com auto, não há botão "Grade": há o aviso "Janela pequena" com a dica, que não é botão', () => {
     setup(dois, [], true);
 
     expect(screen.queryByRole('button', { name: 'Grade' })).toBeNull();
-    const note = screen.getByText('Janela estreita');
+    const note = screen.getByText('Janela pequena');
     expect(note.closest('[title]')).toHaveAttribute(
       'title',
-      'Volta para a grade quando a janela passar de 720 px',
+      'Volta para a grade quando o layout couber na janela',
     );
     expect(note.closest('button')).toBeNull();
   });

@@ -1,22 +1,14 @@
-import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
+import { findLeaf, leavesOf, mapLeaves } from '@project-hub/contracts/layout-ops';
 import type { LayoutLeaf, LayoutNode } from '@project-hub/contracts';
 
 /**
- * Edições puras da árvore de layout do workspace. Nenhuma função muda a entrada: quando nada muda
- * devolvem o mesmo objeto (quem chama compara por referência para saber se precisa gravar), e quando
- * algo muda devolvem uma árvore nova que reaproveita os ramos intocados.
+ * As consultas e a edição de sessão da árvore de layout do workspace. As operações de estrutura (dividir, fechar,
+ * trocar, encaixar, redimensionar) ficam em `@project-hub/contracts/layout-ops`, que o processo principal também usa.
+ * Nenhuma função muda a entrada: quando nada muda devolvem o mesmo objeto (quem chama compara por referência para
+ * saber se precisa gravar).
  */
 
-/** As folhas da esquerda/cima para a direita/baixo. */
-export function leavesOf(node: LayoutNode | null): LayoutLeaf[] {
-  if (node === null) return [];
-  if (node.type === 'leaf') return [node];
-  return [...leavesOf(node.first), ...leavesOf(node.second)];
-}
-
-export function findLeaf(node: LayoutNode | null, leafId: string): LayoutLeaf | undefined {
-  return leavesOf(node).find((leaf) => leaf.id === leafId);
-}
+export { findLeaf, leavesOf };
 
 /** A folha que guarda a sessão de terminal, se alguma guarda. */
 export function leafHolding(node: LayoutNode | null, terminalId: string): LayoutLeaf | undefined {
@@ -26,32 +18,6 @@ export function leafHolding(node: LayoutNode | null, terminalId: string): Layout
 /** A primeira folha sem sessão aberta. */
 export function firstFreeLeaf(node: LayoutNode | null): LayoutLeaf | undefined {
   return leavesOf(node).find((leaf) => leaf.terminalId === null);
-}
-
-/** Muda o `ratio` de uma divisão, limitado a `LAYOUT_LIMITS`. Divisão inexistente não muda nada. */
-export function withRatio(node: LayoutNode, splitId: string, ratio: number): LayoutNode;
-export function withRatio(node: null, splitId: string, ratio: number): null;
-export function withRatio(
-  node: LayoutNode | null,
-  splitId: string,
-  ratio: number,
-): LayoutNode | null;
-export function withRatio(
-  node: LayoutNode | null,
-  splitId: string,
-  ratio: number,
-): LayoutNode | null {
-  if (node === null) return null;
-  if (node.type === 'leaf') return node;
-
-  if (node.id === splitId) {
-    const clamped = Math.min(LAYOUT_LIMITS.maxRatio, Math.max(LAYOUT_LIMITS.minRatio, ratio));
-    return clamped === node.ratio ? node : { ...node, ratio: clamped };
-  }
-
-  const first = withRatio(node.first, splitId, ratio);
-  const second = withRatio(node.second, splitId, ratio);
-  return first === node.first && second === node.second ? node : { ...node, first, second };
 }
 
 /**
@@ -76,22 +42,22 @@ export function withTerminal(
 ): LayoutNode | null {
   if (node === null) return null;
   if (findLeaf(node, leafId) === undefined) return node;
+  return mapLeaves(node, (leaf) => {
+    if (leaf.id === leafId) return leaf.terminalId === terminalId ? leaf : { ...leaf, terminalId };
+    return terminalId !== null && leaf.terminalId === terminalId
+      ? { ...leaf, terminalId: null }
+      : leaf;
+  });
+}
 
-  const apply = (current: LayoutNode): LayoutNode => {
-    if (current.type === 'leaf') {
-      if (current.id === leafId) {
-        return current.terminalId === terminalId ? current : { ...current, terminalId };
-      }
-      return terminalId !== null && current.terminalId === terminalId
-        ? { ...current, terminalId: null }
-        : current;
-    }
-    const first = apply(current.first);
-    const second = apply(current.second);
-    return first === current.first && second === current.second
-      ? current
-      : { ...current, first, second };
-  };
-
-  return apply(node);
+/**
+ * Um layout guardado de antes (`previous`) trazido para as sessões de agora (`current`), para desfazer um movimento:
+ * vale só se os dois têm exatamente as mesmas folhas, e cada folha fica com a sessão que tem hoje. `null` se as folhas
+ * mudaram (um painel abriu ou fechou depois): aquele layout não serve mais.
+ */
+export function restoreArrangement(previous: LayoutNode, current: LayoutNode): LayoutNode | null {
+  const now = new Map(leavesOf(current).map((leaf) => [leaf.id, leaf]));
+  const before = leavesOf(previous);
+  if (before.length !== now.size || before.some((leaf) => !now.has(leaf.id))) return null;
+  return mapLeaves(previous, (leaf) => now.get(leaf.id) ?? leaf);
 }

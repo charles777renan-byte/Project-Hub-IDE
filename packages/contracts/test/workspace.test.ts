@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrangeLeaves } from '../src/layout-arrange';
+import { arrangeLeaves } from '../src/layout-ops';
 import {
   LAYOUT_LIMITS,
   addPaneInputSchema,
@@ -26,7 +26,13 @@ const split = (
   second: LayoutNode,
   ratio = 0.5,
   direction: 'row' | 'column' = 'row',
-): LayoutNode => ({ type: 'split', id, direction, first, second, ratio });
+): LayoutNode => ({
+  type: 'split',
+  id,
+  direction,
+  children: [first, second],
+  sizes: [ratio, 1 - ratio],
+});
 
 const padrao = (): LayoutNode =>
   split(
@@ -67,7 +73,12 @@ describe('workspaceLayoutSchema', () => {
   });
 
   it('expõe os limites combinados', () => {
-    expect(LAYOUT_LIMITS).toEqual({ maxLeaves: 12, maxDepth: 6, minRatio: 0.1, maxRatio: 0.9 });
+    expect(LAYOUT_LIMITS).toEqual({
+      maxLeaves: 12,
+      maxDepth: 6,
+      minSize: 0.02,
+      sizeTolerance: 0.01,
+    });
   });
 
   it('aceita 12 folhas e recusa 13', () => {
@@ -107,45 +118,73 @@ describe('workspaceLayoutSchema', () => {
     expect(layoutIssue(profundo)).toEqual(expect.any(String));
   });
 
-  it.each([0, 0.05, 0.95, 1])('recusa ratio %s', (ratio) => {
-    const ruim = split('r', leaf('a'), leaf('b'), ratio);
+  it.each([0, 0.01, 0.99, 1])('recusa a divisão em que um lado fica com %s', (share) => {
+    const ruim = split('r', leaf('a'), leaf('b'), share);
     expect(workspaceLayoutSchema.safeParse(ruim).success).toBe(false);
     expect(layoutIssue(ruim)).toEqual(expect.any(String));
   });
 
-  it.each([0.1, 0.9])('aceita ratio %s', (ratio) => {
-    const bom = split('r', leaf('a'), leaf('b'), ratio);
+  it.each([0.02, 0.5, 0.98])('aceita a divisão em que um lado fica com %s', (share) => {
+    const bom = split('r', leaf('a'), leaf('b'), share);
     expect(workspaceLayoutSchema.safeParse(bom).success).toBe(true);
     expect(layoutIssue(bom)).toBeNull();
   });
 
-  it('recusa o ratio fora do limite numa divisão aninhada', () => {
-    const ruim = split('r', leaf('a'), split('s', leaf('b'), leaf('c'), 0.95));
+  it('recusa o tamanho fora do limite numa divisão aninhada', () => {
+    const ruim = split('r', leaf('a'), split('s', leaf('b'), leaf('c'), 0.99, 'column'));
     expect(layoutIssue(ruim)).toEqual(expect.any(String));
   });
 
-  it('recusa divisão sem first, sem second ou sem ratio', () => {
-    const semFirst = { type: 'split', id: 'r', direction: 'row', second: leaf('b'), ratio: 0.5 };
-    const semSecond = { type: 'split', id: 'r', direction: 'row', first: leaf('a'), ratio: 0.5 };
-    const semRatio = {
+  it('aceita três filhos numa divisão e recusa tamanhos que não somam 1', () => {
+    const tres = {
+      type: 'split',
+      id: 'r',
+      direction: 'row',
+      children: [leaf('a'), leaf('b'), leaf('c')],
+      sizes: [0.2, 0.3, 0.5],
+    };
+    expect(workspaceLayoutSchema.safeParse(tres).success).toBe(true);
+    expect(workspaceLayoutSchema.safeParse({ ...tres, sizes: [0.2, 0.3, 0.3] }).success).toBe(
+      false,
+    );
+  });
+
+  it('recusa divisão de um filho só, sem tamanhos ou com tamanhos a mais ou a menos', () => {
+    const base = { type: 'split', id: 'r', direction: 'row' };
+    const dois = [leaf('a'), leaf('b')];
+    expect(
+      workspaceLayoutSchema.safeParse({ ...base, children: [leaf('a')], sizes: [1] }).success,
+    ).toBe(false);
+    expect(workspaceLayoutSchema.safeParse({ ...base, children: dois }).success).toBe(false);
+    expect(workspaceLayoutSchema.safeParse({ ...base, sizes: [0.5, 0.5] }).success).toBe(false);
+    expect(workspaceLayoutSchema.safeParse({ ...base, children: dois, sizes: [1] }).success).toBe(
+      false,
+    );
+    expect(
+      workspaceLayoutSchema.safeParse({ ...base, children: dois, sizes: [0.4, 0.3, 0.3] }).success,
+    ).toBe(false);
+  });
+
+  it('recusa o formato de duas metades (first, second e ratio), que só entra convertido', () => {
+    const antigo = {
       type: 'split',
       id: 'r',
       direction: 'row',
       first: leaf('a'),
       second: leaf('b'),
+      ratio: 0.5,
     };
-    expect(workspaceLayoutSchema.safeParse(semFirst).success).toBe(false);
-    expect(workspaceLayoutSchema.safeParse(semSecond).success).toBe(false);
-    expect(workspaceLayoutSchema.safeParse(semRatio).success).toBe(false);
+    expect(workspaceLayoutSchema.safeParse(antigo).success).toBe(false);
   });
 
-  it('recusa direção desconhecida e ratio que não é número', () => {
-    const base = { type: 'split', id: 'r', first: leaf('a'), second: leaf('b') };
+  it('recusa direção desconhecida e tamanho que não é número', () => {
+    const base = { type: 'split', id: 'r', children: [leaf('a'), leaf('b')] };
     expect(
-      workspaceLayoutSchema.safeParse({ ...base, direction: 'diagonal', ratio: 0.5 }).success,
+      workspaceLayoutSchema.safeParse({ ...base, direction: 'diagonal', sizes: [0.5, 0.5] })
+        .success,
     ).toBe(false);
     expect(
-      workspaceLayoutSchema.safeParse({ ...base, direction: 'row', ratio: '0.5' }).success,
+      workspaceLayoutSchema.safeParse({ ...base, direction: 'row', sizes: ['0.5', 0.5] }).success,
     ).toBe(false);
   });
 
@@ -191,7 +230,7 @@ describe('workspaceLayoutSchema', () => {
     ).toBe(false);
   });
 
-  it('recusa o formato n-ário antigo', () => {
+  it('recusa tamanhos em porcentagem', () => {
     const antigo = {
       type: 'split',
       id: 'r',

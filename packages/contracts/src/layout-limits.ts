@@ -3,6 +3,8 @@
 export const LAYOUT_LIMITS = {
   maxLeaves: 12,
   maxDepth: 6,
-  minRatio: 0.1,
-  maxRatio: 0.9,
+  /** A menor fração que um filho de uma divisão pode ter. */
+  minSize: 0.02,
+  /** Quanto a soma dos tamanhos de uma divisão pode se afastar de 1. */
+  sizeTolerance: 0.01,
 } as const;

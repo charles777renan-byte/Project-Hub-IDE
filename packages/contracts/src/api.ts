@@ -169,9 +169,16 @@ export type ProjectHubApi = {
     startSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
     /** Encerra a sessão do painel. Terminal de missão não encerra por aqui. */
     endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
-    /** Abre uma sessão do programa e cria o painel dela; os painéis se reorganizam. Devolve o workspace inteiro. */
+    /** Abre uma sessão do programa e cria o painel dela, dividindo o maior painel. Devolve o workspace inteiro. */
     addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
-    /** Encerra a sessão do painel (a de missão segue) e o tira do layout. Devolve o workspace inteiro. */
+    /** Abre uma sessão do programa num painel novo, no lado `side` do painel `leafId`. Devolve o workspace inteiro. */
+    splitPane(
+      workspaceId: string,
+      leafId: string,
+      side: 'left' | 'right' | 'top' | 'bottom',
+      provider: ProviderId,
+    ): Promise<AppResult<WorkspaceDto>>;
+    /** Encerra a sessão do painel (a de missão segue) e o tira do layout; o vizinho fica com o espaço. Devolve o workspace inteiro. */
     removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
     /** Põe os workspaces abertos na ordem das abas. A lista precisa ter todos os abertos, uma vez cada. */
     reorder(workspaceIds: string[]): Promise<AppResult<void>>;

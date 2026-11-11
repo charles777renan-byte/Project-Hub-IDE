@@ -8,7 +8,7 @@ import {
 import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database';
 import { describe, expect, it, vi } from 'vitest';
 import type { TerminalService } from '../src/main/terminals';
-import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import { arrangeLeaves } from '@project-hub/contracts/layout-ops';
 import { createWorkspaceService } from '../src/main/workspaces';
 
 type ProjectRecord = NonNullable<ReturnType<ProjectRepository['get']>>;
@@ -97,7 +97,13 @@ const split = (
   second: LayoutNode,
   ratio = 0.5,
   direction: 'row' | 'column' = 'row',
-): LayoutNode => ({ type: 'split', id, direction, first, second, ratio });
+): LayoutNode => ({
+  type: 'split',
+  id,
+  direction,
+  children: [first, second],
+  sizes: [ratio, 1 - ratio],
+});
 
 /** Layout de duas folhas, com os terminais dados. */
 function pair(a: string | null, b: string | null): LayoutNode {
@@ -169,7 +175,7 @@ function stored(rows: Map<string, WorkspaceRecord>, id: string): LayoutNode | nu
 
 function leavesOf(node: LayoutNode | null): Extract<LayoutNode, { type: 'leaf' }>[] {
   if (node === null) return [];
-  return node.type === 'leaf' ? [node] : [...leavesOf(node.first), ...leavesOf(node.second)];
+  return node.type === 'leaf' ? [node] : node.children.flatMap(leavesOf);
 }
 
 describe('open', () => {
@@ -282,7 +288,8 @@ describe('open', () => {
     if (!result.ok) throw new Error('esperava sucesso');
     expect(result.data.layout).toMatchObject({
       type: 'split',
-      first: { type: 'leaf', id: 'l1', provider: 'antigravity' },
+      children: [{ type: 'leaf', id: 'l1', provider: 'antigravity' }, { id: 'l2' }],
+      sizes: [0.5, 0.5],
     });
   });
 
@@ -381,9 +388,8 @@ describe('saveLayout', () => {
         type: 'split',
         id: `s${n}`,
         direction: 'row',
-        first: deep,
-        second: { type: 'leaf', id: `f${n}`, provider: 'shell', terminalId: null },
-        ratio: 0.5,
+        children: [deep, { type: 'leaf', id: `f${n}`, provider: 'shell', terminalId: null }],
+        sizes: [0.5, 0.5],
       };
     }
     const { service, updateLayout } = setup({ records: [record({ layout: base })] });
@@ -631,7 +637,7 @@ describe('addPane', () => {
     expect(stored(rows, 'w1')).toEqual(result.data.layout);
   });
 
-  it('depois de 3 chamadas há 3 folhas na organização de arrangeLeaves', async () => {
+  it('cada chamada divide o maior painel: a segunda entra à direita e a terceira abaixo da primeira', async () => {
     const { service, rows } = setup({ records: [record({ layout: 'null' })], ...seq() });
 
     await service.addPane('w1', 'claude');
@@ -642,15 +648,15 @@ describe('addPane', () => {
     const layout = third.data.layout;
     expect(leavesOf(layout).map((l) => [l.provider, l.terminalId])).toEqual([
       ['claude', 't1'],
-      ['shell', 't2'],
       ['shell', 't3'],
+      ['shell', 't2'],
     ]);
-    // 3 folhas: uma à esquerda e duas empilhadas à direita.
+    // 3 folhas: duas empilhadas à esquerda (a primeira cedeu metade da altura) e uma à direita, que não mudou.
     expect(layout).toMatchObject({
       type: 'split',
       direction: 'row',
-      first: { type: 'leaf' },
-      second: { type: 'split', direction: 'column' },
+      children: [{ type: 'split', direction: 'column', sizes: [0.5, 0.5] }, { type: 'leaf' }],
+      sizes: [0.5, 0.5],
     });
     expect(workspaceLayoutSchema.safeParse(layout).success).toBe(true);
     expect(stored(rows, 'w1')).toEqual(layout);
@@ -724,7 +730,7 @@ describe('addPane', () => {
     expect(terminals.openSession).not.toHaveBeenCalled();
   });
 
-  it('em layout legado (3 folhas sem sessão) adiciona a quarta e reorganiza as 4', async () => {
+  it('em layout legado (3 folhas sem sessão) converte o formato e põe a quarta sob a maior, sem mexer nas outras', async () => {
     const legacy = split(
       's1',
       leaf('a', 'claude'),
@@ -741,16 +747,20 @@ describe('addPane', () => {
     if (!result.ok) throw new Error('esperava sucesso');
     expect(leavesOf(result.data.layout).map((l) => [l.id, l.terminalId])).toEqual([
       ['a', null],
+      [expect.any(String), 'nova'],
       ['b', null],
       ['c', null],
-      [expect.any(String), 'nova'],
     ]);
-    // 4 folhas: grade 2x2 (coluna de duas linhas).
+    // `a` era a maior (52% da largura, altura inteira) e cede metade da altura; `b` e `c` ficam como estavam.
     expect(result.data.layout).toMatchObject({
       type: 'split',
-      direction: 'column',
-      first: { type: 'split', direction: 'row' },
-      second: { type: 'split', direction: 'row' },
+      id: 's1',
+      direction: 'row',
+      children: [
+        { type: 'split', direction: 'column', sizes: [0.5, 0.5] },
+        { type: 'split', id: 's2', direction: 'column', sizes: [0.5, 0.5] },
+      ],
+      sizes: [0.52, 0.48],
     });
     expect(stored(rows, 'w1')).toEqual(result.data.layout);
   });
@@ -779,7 +789,7 @@ describe('removePane', () => {
       0.52,
     );
 
-  it('folha com sessão: fecha a sessão e remove a folha, reorganizando as restantes', async () => {
+  it('folha com sessão: fecha a sessão e remove a folha, e a divisão de um filho só vira esse filho', async () => {
     const { service, calls, rows } = setup({
       records: [record({ layout: JSON.stringify(three()) })],
     });
@@ -789,8 +799,13 @@ describe('removePane', () => {
     expect(calls).toEqual(['close:ta']);
     if (!result.ok) throw new Error('esperava sucesso');
     expect(leavesOf(result.data.layout).map((l) => l.id)).toEqual(['b', 'c']);
-    // 2 folhas: lado a lado, metade para cada.
-    expect(result.data.layout).toMatchObject({ type: 'split', direction: 'row', ratio: 0.5 });
+    // Sobrou a coluna de `b` e `c`, que passa a ocupar a área toda, com os tamanhos que tinha.
+    expect(result.data.layout).toMatchObject({
+      type: 'split',
+      id: 's2',
+      direction: 'column',
+      sizes: [0.5, 0.5],
+    });
     expect(stored(rows, 'w1')).toEqual(result.data.layout);
   });
 

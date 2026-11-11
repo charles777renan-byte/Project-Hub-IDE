@@ -6,6 +6,7 @@ import {
   paneInputSchema,
   reorderWorkspacesInputSchema,
   saveLayoutInputSchema,
+  splitPaneInputSchema,
   workspaceIdInputSchema,
   type AppResult,
 } from '@project-hub/contracts';
@@ -72,6 +73,18 @@ export function registerWorkspaceHandlers(
     return input.success
       ? service.addPane(input.data.workspaceId, input.data.provider)
       : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o workspace e o programa.'));
+  });
+
+  reg(CHANNELS.workspacesSplitPane, (payload) => {
+    const input = splitPaneInputSchema.safeParse(payload);
+    return input.success
+      ? service.splitPane(
+          input.data.workspaceId,
+          input.data.leafId,
+          input.data.side,
+          input.data.provider,
+        )
+      : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o painel, o lado e o programa.'));
   });
 
   reg(CHANNELS.workspacesReorder, (payload) => {

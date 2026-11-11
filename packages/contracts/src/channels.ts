@@ -67,6 +67,8 @@ export const CHANNELS = {
   workspacesEndSession: 'workspaces:end-session:v1',
   /** Abre a sessão do programa e cria o painel dela, num pedido só. */
   workspacesAddPane: 'workspaces:add-pane:v1',
+  /** Abre a sessão do programa e põe o painel dela ao lado de um painel que já existe, num pedido só. */
+  workspacesSplitPane: 'workspaces:split-pane:v1',
   /** Encerra a sessão do painel e o tira do layout, num pedido só. */
   workspacesRemovePane: 'workspaces:remove-pane:v1',
   /** Põe os workspaces abertos na ordem das abas. Recebe a lista inteira dos abertos, cada um uma vez. */

@@ -540,7 +540,7 @@
 .app-body > .pane-tree__separator[aria-orientation='vertical']:hover,
 .app-body > .pane-tree__separator[aria-orientation='vertical']:active,
 .app-body > .pane-tree__separator[aria-orientation='vertical']:focus-visible {
-  background: linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat;
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 1px 100% no-repeat;
 }
 
 /*
@@ -1406,8 +1406,8 @@
 
 /*
  * Divisória: o vão de 8px entre dois cartões. É transparente (o brilho da janela aparece nele) e é a própria
- * pegada de arrastar; ao passar o mouse, arrastar ou focar, um traço de 2px em --field-line surge no meio
- * dele. O anel de foco (--focus) contorna o vão.
+ * pegada de arrastar; ao passar o mouse, arrastar ou focar, um traço de 1px em --field-line surge no meio
+ * dele. Dois cliques igualam os dois lados. O anel de foco (--focus) contorna o vão.
  */
 .pane-tree__separator {
   position: relative;
@@ -1429,13 +1429,13 @@
 .pane-tree__separator[aria-orientation='vertical']:hover,
 .pane-tree__separator[aria-orientation='vertical']:active,
 .pane-tree__separator[aria-orientation='vertical']:focus-visible {
-  background: linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat;
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 1px 100% no-repeat;
 }
 
 .pane-tree__separator[aria-orientation='horizontal']:hover,
 .pane-tree__separator[aria-orientation='horizontal']:active,
 .pane-tree__separator[aria-orientation='horizontal']:focus-visible {
-  background: linear-gradient(var(--field-line), var(--field-line)) center / 100% 2px no-repeat;
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 100% 1px no-repeat;
 }
 
 .pane-tree__separator:focus-visible {
@@ -1624,11 +1624,12 @@
 }
 
 /*
- * Maximizar, o menu ⋯ e o fechar do lançador são botões só de ícone: a área é de 24px (o mínimo para acertar o
+ * Maximizar, dividir, o menu ⋯ e o fechar do lançador são botões só de ícone: a área é de 24px (o mínimo para acertar o
  * clique) e o passe do mouse só clareia o fundo.
  */
 .pane__actions .pane__close,
 .pane__actions .pane__maximize,
+.pane__actions .pane__split,
 .pane__actions .menu-acoes__gatilho--icone {
   display: inline-grid;
   place-items: center;
@@ -1644,6 +1645,7 @@
 
 .pane__actions .pane__close:hover:not(:disabled),
 .pane__actions .pane__maximize:hover:not(:disabled),
+.pane__actions .pane__split:hover:not([aria-disabled='true']),
 .pane__actions .menu-acoes__gatilho--icone:hover:not(:disabled),
 .pane__actions .menu-acoes__gatilho--icone[data-state='open'] {
   background: var(--line);
@@ -1652,9 +1654,94 @@
 
 .pane__close svg,
 .pane__maximize svg,
+.pane__split svg,
 .menu-acoes__gatilho--icone svg {
   display: block;
   flex: none;
+}
+
+/*
+ * A alça de arrastar o painel, no começo do cabeçalho. `touch-action: none` deixa o gesto com o app (sem rolagem
+ * do navegador no toque); a margem negativa come parte do respiro do cabeçalho, para o título não andar muito.
+ */
+.pane__grip {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 24px;
+  margin-left: calc(var(--space-1) * -1);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.pane__grip:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.pane__grip svg {
+  display: block;
+}
+
+/* O painel que está sendo arrastado fica apagado no lugar de origem até ser solto. */
+.pane-tree__leaf[data-drag-source] {
+  opacity: 0.45;
+}
+
+/* Com um arrasto em curso, o cursor é o de arrastar em toda a área, e nada de selecionar texto pelo caminho. */
+.workspace__area[data-dragging] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.workspace__area[data-dragging] .pane__grip {
+  cursor: grabbing;
+}
+
+/*
+ * A prévia do destino: a área que o painel vai ocupar ao ser solto, tracejada. Fica por cima dos painéis e não
+ * recebe o ponteiro (quem decide o destino é a posição do ponteiro, não o que está embaixo dele).
+ */
+.pane-drop {
+  position: absolute;
+  z-index: 5;
+  border: 2px dashed var(--focus);
+  border-radius: var(--radius-card, var(--radius));
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+  pointer-events: none;
+}
+
+/* O "fantasma": o número e o programa do painel arrastado, seguindo o ponteiro. */
+.pane-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pane-ghost__number {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sem como dividir (limite de painéis, falta de espaço): o botão fica, apagado, e a dica diz o motivo. */
+.pane__actions .pane__split[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .pane__actions {
@@ -1727,7 +1814,7 @@
  * A pergunta de "Fechar todos os terminais…" (workspace/WorkspacePage.tsx): uma faixa que flutua sobre o topo da área
  * da grade, com o visual da .pane__confirm (cartão --surface com contorno de 1px), que quebra linha. Fica fora do fluxo
  * (position: absolute dentro da .workspace__area, que é o contêiner posicionado): abrir a pergunta não tira altura da
- * área medida, então a grade não perde linha, ninguém vai para "Fora da grade" e os terminais não são redimensionados.
+ * área medida, então a grade não perde linha e os terminais não são redimensionados.
  */
 .workspace__confirm {
   position: absolute;
@@ -1755,6 +1842,37 @@
 .workspace__confirm .confirm-inline > span:first-child {
   flex: 1 1 12rem;
   min-width: 0;
+}
+
+/*
+ * "Layout alterado · Desfazer": o aviso que aparece por alguns segundos depois de mover painéis. Flutua embaixo, no
+ * meio da área, por cima dos painéis, e não tira espaço deles.
+ */
+.workspace__undo {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.workspace__undo button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  line-height: 22px;
 }
 
 .pane__body {
@@ -1937,6 +2055,30 @@
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+}
+
+/* O gatilho do menu "Layouts prontos" mora no seletor e tem a cara dos botões dele. */
+.workspace__layout .menu-acoes__gatilho--icone {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.workspace__layout .menu-acoes__gatilho--icone:hover,
+.workspace__layout .menu-acoes__gatilho--icone[data-state='open'] {
+  color: var(--text);
+}
+
+.workspace__layout .menu-acoes__gatilho--icone:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .workspace__layout-btn:hover:not(:disabled):not([aria-disabled='true']):not([aria-pressed='true']) {

@@ -11,12 +11,21 @@ import {
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
-import { arrangeLeaves, arrangeLeavesCapped } from '@project-hub/contracts/layout-arrange';
-import type { LayoutLeaf, LayoutNode, ProviderId, ProviderInfo } from '@project-hub/contracts';
+import {
+  LAYOUT_PRESETS,
+  PRESET_SLOTS,
+  presetLayout,
+  neighbourAt,
+  removeLeaf,
+  splitLeaf,
+  type LayoutPreset,
+} from '@project-hub/contracts/layout-ops';
+import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
-import { SquareTerminal } from '../components/Icon';
+import { ICON_PROPS, SquareTerminal, Undo2 } from '../components/Icon';
+import { ProviderIcon } from '../components/ProviderIcon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { PathText } from '../components/PathText';
 import { PROJECT_UNAVAILABLE_NOTICE_ID, ProjectHeader } from '../components/project/ProjectHeader';
@@ -30,28 +39,20 @@ import { projectPanelId, projectViewFromParams, type ProjectView } from '../proj
 import { projectViewPath, ROUTE_PATHS } from '../routes';
 import { useSidebarData } from '../use-sidebar-data';
 import { hideTerminal, unhideTerminal, useTerminals } from '../terminals-data';
-import { markOfTerminal } from '../state-mark';
 import {
   clearCloseAllRequest,
   closeAllQuestion,
   setPaneCount,
   useCloseAllRequest,
 } from '../workspace/close-all';
-import { numerarRepetidos, PaneTabs, paneTabId } from '../workspace/PaneTabs';
+import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
-import { PaneView } from '../workspace/PaneView';
-import {
-  columnsOf,
-  dockOrder,
-  gridFit,
-  PANE_MIN_HEIGHT,
-  PANE_MIN_WIDTH,
-  pickVisible,
-  rowsOf,
-} from '../workspace/layout-fit';
+import { dockedLayout } from '../workspace/pane-drag';
+import { PaneView, type SplitSide } from '../workspace/PaneView';
+import { layoutFits, PANE_MIN_HEIGHT, PANE_MIN_WIDTH, pickVisible } from '../workspace/layout-fit';
 import { useLeafHosts } from '../workspace/leaf-hosts';
 import { leavesOf } from '../workspace/layout-model';
-import { OffGridDock, type OffGridItem } from '../workspace/OffGridDock';
+import { layoutShortcut } from '../workspace/layout-shortcuts';
 import {
   LEAVE_FALLBACK_MS,
   paneMotionOff,
@@ -62,16 +63,71 @@ import { providerShortcutIndex } from '../workspace/provider-shortcuts';
 import { isIdle, useActivity } from '../sidebar-activity';
 import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useAreaSize } from '../workspace/use-area-size';
+import { usePaneDrag } from '../workspace/use-pane-drag';
 import { useWorkspace } from '../workspace/use-workspace';
-import { WorkspaceToolbar, type PaneLayoutMode } from '../workspace/WorkspaceToolbar';
+import {
+  LIMIT_HINT,
+  WorkspaceToolbar,
+  type PaneLayoutMode,
+  type PresetOption,
+} from '../workspace/WorkspaceToolbar';
+
+const NO_ROOM_HINT = 'Sem espaço para dividir este painel';
+const PRESET_NO_ROOM_HINT = 'Não cabe nesta janela com o mínimo de cada terminal';
+/** Quanto tempo o aviso "Layout alterado · Desfazer" fica na tela. */
+export const UNDO_NOTICE_MS = 6000;
+
+/** O nome de cada layout pronto, para `count` painéis depois de aplicado. */
+function presetLabel(preset: LayoutPreset, count: number): string {
+  switch (preset) {
+    case 'side-by-side':
+      return 'Lado a lado';
+    case 'main-stack':
+      return `1 grande + ${count - 1}`;
+    case 'grid':
+      return count <= 4 ? 'Grade 2 × 2' : 'Grade';
+    case 'three-columns':
+      return '3 colunas';
+  }
+}
+
+/**
+ * O aviso de que os painéis mudaram de lugar, com o botão que desfaz. `token` muda a cada movimento: o aviso some
+ * sozinho depois de `UNDO_NOTICE_MS` (o mouse em cima o segura) e volta no movimento seguinte. Desfazer pelo teclado
+ * (Ctrl+Z fora do terminal) continua valendo depois que ele some.
+ */
+function UndoNotice({ token, onUndo }: { token: number; onUndo(): void }) {
+  const [hiddenToken, setHiddenToken] = useState<number | null>(null);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (held) return;
+    const timer = window.setTimeout(() => setHiddenToken(token), UNDO_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [token, held]);
+  if (hiddenToken === token) return null;
+  return (
+    <div
+      className="workspace__undo"
+      role="status"
+      onPointerEnter={() => setHeld(true)}
+      onPointerLeave={() => setHeld(false)}
+    >
+      <span>Layout alterado</span>
+      <button type="button" onClick={onUndo}>
+        <Undo2 {...ICON_PROPS} />
+        Desfazer
+      </button>
+    </div>
+  );
+}
 
 const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.';
 const UNAVAILABLE_NOTICE =
   'A pasta deste projeto não está disponível. Ela pode ter sido movida ou apagada.';
 const UNAVAILABLE_REASON = 'A pasta do projeto não está disponível.';
 /**
- * Quantos painéis o modo Abas guarda montados quando a grade ainda não foi vista (a janela já abriu estreita). Com a
- * grade vista, vale o que cabia nela: os mesmos terminais, nem mais nem menos contextos WebGL.
+ * Quantos painéis o modo foco guarda montados quando a grade ainda não foi vista (a janela já abriu pequena). Com a
+ * grade vista, vale o que ela mostrava: os mesmos terminais, nem mais nem menos contextos WebGL.
  */
 const TABS_KEEP_DEFAULT = 4;
 
@@ -224,22 +280,6 @@ function ProjectPanel({
   );
 }
 
-/** Todas as folhas numa linha só (cada divisão leva `1/n` para a folha da esquerda); `newId` dá o id de cada divisão. */
-function singleRow(leaves: readonly LayoutLeaf[], newId: () => string): LayoutNode | null {
-  const [first, ...rest] = leaves;
-  if (first === undefined) return null;
-  const second = singleRow(rest, newId);
-  if (second === null) return first;
-  return {
-    type: 'split',
-    id: newId(),
-    direction: 'row',
-    first,
-    second,
-    ratio: 1 / leaves.length,
-  };
-}
-
 function WorkspaceBody({
   projectId,
   visible,
@@ -284,7 +324,7 @@ function WorkspaceBody({
   // Abrir um painel é um pedido por vez: a ref barra o segundo clique antes de o estado chegar.
   const [opening, setOpening] = useState(false);
   const openingRef = useRef(false);
-  // Modo "um painel por vez": só na tela, não muda o layout guardado (a arrumação automática segue valendo na grade).
+  // Modo foco ("um painel por vez", com os outros em abas): só na tela, não muda o layout guardado.
   const [soloOn, setSoloOn] = useState(false);
   // Os nós do conteúdo de cada painel (leaf-hosts.ts): a grade e o modo Abas mostram os mesmos, sem recriar o terminal.
   const hosts = useLeafHosts();
@@ -341,72 +381,47 @@ function WorkspaceBody({
   const lastSize = useRef<{ width: number; height: number } | null>(null);
   if (measured !== null && measured.width > 0 && measured.height > 0) lastSize.current = measured;
   const size = lastSize.current;
-  // Sem medida ainda, nada é decidido: vale a árvore guardada, nunca o modo Abas nem fichas.
-  const fit = size === null ? null : gridFit(size.width, size.height);
-  const soloAuto = fit?.mode === 'solo';
-  // O modo Abas da tela: o que a pessoa ligou ou o que a largura da janela pede. O `soloOn` dela não é tocado pelo
-  // automático, então alargar a janela devolve o que ela tinha.
-  const soloEffective = soloOn || soloAuto;
-  const columns = fit?.mode === 'grid' ? fit.columns : null;
-  const rows = fit?.mode === 'grid' ? fit.rows : null;
+  const { setArea } = workspace;
+  useEffect(() => {
+    setArea(size);
+  }, [setArea, size]);
 
-  // O arranjo inteiro, sem os painéis que estão fechando: o mesmo que o servidor vai devolver (arrangeLeaves). Os ids
-  // de divisão novos ficam guardados no `useMemo`, para não mudarem a cada renderização.
-  const shown = useMemo(
-    () =>
-      closing.size === 0 || !currentLayout
-        ? (currentLayout ?? null)
-        : arrangeLeaves(
-            leavesOf(currentLayout).filter((leaf) => !closing.has(leaf.id)),
-            () => crypto.randomUUID(),
-          ),
-    [currentLayout, closing],
-  );
-  const shownLeaves = useMemo(() => leavesOf(shown), [shown]);
-
-  // Quem fica na grade quando nem todos cabem. A memória do que já estava mostrado é do `pickVisible`: o conjunto só
-  // muda quando mudam os painéis, o ativo ou a capacidade. Em modo Abas ou sem medida a memória não é tocada.
-  const pickedBefore = useRef<string[]>([]);
-  const activeLeafId = workspace.activeLeafId;
-  const picked = useMemo(() => {
-    if (columns === null || rows === null) return null;
-    const result = pickVisible(
-      shownLeaves.map((leaf) => leaf.id),
-      pickedBefore.current,
-      activeLeafId,
-      columns * rows,
-    );
-    pickedBefore.current = result.shown;
-    return result;
-  }, [shownLeaves, activeLeafId, columns, rows]);
-  const gridLeaves = useMemo(
-    () => (picked === null ? [] : shownLeaves.filter((leaf) => picked.shown.includes(leaf.id))),
-    [shownLeaves, picked],
-  );
-
-  // A árvore da tela. Se cabe tudo e o arranjo de hoje respeita colunas e linhas, vale ele (o guardado, com os ajustes
-  // da pessoa). Senão, uma árvore derivada só da tela, com ids de divisão determinísticos: o mesmo conjunto mostrado
-  // dá os mesmos ids, e a árvore não é remontada a cada pixel da janela. Nunca é gravada.
-  const gridTree = useMemo<LayoutNode | null>(() => {
-    if (picked === null || columns === null || rows === null) return shown;
-    if (
-      shown !== null &&
-      picked.hidden.length === 0 &&
-      columnsOf(shown) <= columns &&
-      rowsOf(shown) <= rows
-    )
-      return shown;
-    const prefix = `fit:${columns}:${gridLeaves.map((leaf) => leaf.id).join(',')}`;
-    let count = 0;
-    const newId = () => `${prefix}:${count++}`;
-    const tree = arrangeLeavesCapped([...gridLeaves], columns, newId);
-    // Com 3 colunas e 1 linha, "um + dois empilhados" pede duas linhas: tudo numa linha só.
-    if (tree !== null && rowsOf(tree) > rows) {
-      count = 0;
-      return singleRow(gridLeaves, newId);
-    }
+  // O layout da pessoa, sem os painéis que estão fechando: o mesmo que o servidor vai devolver (o vizinho de quem sai
+  // fica com o espaço).
+  const shown = useMemo(() => {
+    let tree = currentLayout ?? null;
+    for (const leafId of closing) tree = removeLeaf(tree, leafId);
     return tree;
-  }, [picked, gridLeaves, shown, columns, rows]);
+  }, [currentLayout, closing]);
+  const shownLeaves = useMemo(() => leavesOf(shown), [shown]);
+  // A janela ficou pequena demais para o layout (algum painel ficaria abaixo do mínimo): modo foco, com um painel
+  // grande e os outros em abas. O layout guardado não muda, e volta sozinho quando couber. Sem medida, nada é decidido.
+  const soloAuto = size !== null && shown !== null && !layoutFits(shown, size);
+
+  // Arrastar um painel pela alça: no meio de outro, os dois trocam de lugar (cada um fica com o tamanho do lugar);
+  // junto de uma borda, o arrastado encaixa ali e o destino cede metade. O encaixe que deixaria algum painel abaixo
+  // do mínimo, ou que não mudaria nada, não é destino.
+  const paneDrag = usePaneDrag({
+    area: areaElement,
+    accepts: (sourceId, zone) => {
+      if (zone.spot === 'center') return true;
+      if (shown === null) return false;
+      const next = dockedLayout(shown, sourceId, zone.targetId, zone.spot, () => '\u0000dock');
+      return next !== null && (size === null || layoutFits(next, size));
+    },
+    onDrop: (sourceId, zone) => {
+      if (zone.spot === 'center') workspace.swap(sourceId, zone.targetId);
+      else workspace.dock(sourceId, zone.targetId, zone.spot);
+      workspace.activateWithFocus(sourceId);
+    },
+  });
+  const drag = paneDrag.drag;
+  const dragged = drag === null ? undefined : shownLeaves.find((leaf) => leaf.id === drag.sourceId);
+
+  // O modo foco da tela: o que a pessoa ligou (maximizar, "Abas") ou o que o tamanho da janela pede. O `soloOn` dela
+  // não é tocado pelo automático, então alargar a janela devolve o que ela tinha.
+  const soloEffective = soloOn || soloAuto;
+  const gridTree = shown;
 
   // Fechar todos: o cabeçalho publica o pedido num store (workspace/close-all.ts) e este workspace pergunta. Quantos
   // painéis há, quantas sessões avulsas vivas o fechamento encerra e quantos painéis são de missão (que só saem do
@@ -509,8 +524,8 @@ function WorkspaceBody({
   // não é recriado nem repete a saída guardada.
   let mountedLeaves: LayoutLeaf[];
   if (soloLeaf === undefined) {
-    mountedLeaves = gridTree === null ? [] : leavesOf(gridTree);
-    if (columns !== null && rows !== null) keptInTabs.current = columns * rows;
+    mountedLeaves = shownLeaves;
+    if (shownLeaves.length > 0) keptInTabs.current = shownLeaves.length;
   } else {
     const kept = pickVisible(
       shownLeaves.map((leaf) => leaf.id),
@@ -532,33 +547,6 @@ function WorkspaceBody({
   };
   // A escolha no seletor é da pessoa: "Abas" com a janela estreita vale quando a janela alargar.
   const chooseLayout = (mode: PaneLayoutMode) => setSoloOn(mode === 'abas');
-
-  // O nome e o estado de cada painel, como nas abas. O número de ordem dos repetidos vale para todos os painéis
-  // ("Claude Code 5" é o quinto Claude Code do layout, esteja ele na grade ou fora dela).
-  const sessionOf = (leaf: LayoutLeaf) =>
-    leaf.terminalId === null ? undefined : terminals.find((item) => item.id === leaf.terminalId);
-  const labelOf = (leaf: LayoutLeaf) => {
-    const providerId = sessionOf(leaf)?.provider ?? leaf.provider;
-    return providers.find((item) => item.id === providerId)?.label ?? providerId;
-  };
-  const numbered = numerarRepetidos(shownLeaves.map(labelOf));
-  // "Fora da grade" só existe com a grade à vista: no modo Abas (manual ou automático) todos os painéis são abas.
-  const hiddenIds = new Set(soloLeaf === undefined ? (picked?.hidden ?? []) : []);
-  const offGrid: OffGridItem[] = shownLeaves.flatMap((leaf, index) => {
-    if (!hiddenIds.has(leaf.id)) return [];
-    const session = sessionOf(leaf);
-    return [
-      {
-        id: leaf.id,
-        label: numbered[index] ?? labelOf(leaf),
-        provider: session?.provider ?? leaf.provider,
-        mark:
-          session === undefined
-            ? 'disconnected'
-            : markOfTerminal(session.state, idleIds.has(session.id)),
-      },
-    ];
-  });
 
   const run = async (leafId: string, action: (id: string) => Promise<string | null>) => {
     setBusy((previous) => new Set(previous).add(leafId));
@@ -592,6 +580,36 @@ function WorkspaceBody({
       openingRef.current = false;
       setOpening(false);
     }
+  };
+
+  // Dividir pelo cabeçalho do painel: o novo entra no lado pedido, com metade do espaço daquele painel.
+  const splitPane = async (leafId: string, side: SplitSide, provider: ProviderId) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
+    try {
+      const message = await workspace.splitPane(leafId, side, provider);
+      if (message !== null) notify.error(message);
+      else await reload();
+    } finally {
+      openingRef.current = false;
+      setOpening(false);
+    }
+  };
+  // Por que o painel não pode ser dividido daquele lado; indefinido quando pode. A falta de espaço é medida com o
+  // layout que resultaria: dividir nunca joga a tela no modo de um painel por vez.
+  const splitBlocked = (leafId: string, side: SplitSide): string | undefined => {
+    if (unavailableReason !== undefined) return unavailableReason;
+    if (shownLeaves.length >= LAYOUT_LIMITS.maxLeaves) return LIMIT_HINT;
+    if (shown === null || size === null) return undefined;
+    const probe = splitLeaf(
+      shown,
+      leafId,
+      side,
+      { type: 'leaf', id: '\u0000probe', provider: 'shell', terminalId: null },
+      () => '\u0000split',
+    );
+    return layoutFits(probe, size) ? undefined : NO_ROOM_HINT;
   };
 
   // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
@@ -667,6 +685,47 @@ function WorkspaceBody({
   };
   // As ferramentas dos terminais, no cabeçalho do projeto (ver `toolsHost`). Os eventos seguem a árvore do React, então
   // os atalhos capturados no `.workspace` continuam valendo com o foco nelas.
+  // O programa de um painel: o da sessão dele, se há uma; senão, o que o painel abre.
+  const providerOf = (leaf: LayoutLeaf): ProviderId =>
+    (leaf.terminalId === null
+      ? undefined
+      : terminals.find((item) => item.id === leaf.terminalId)?.provider) ?? leaf.provider;
+  const labelOfProvider = (id: ProviderId) => providers.find((item) => item.id === id)?.label ?? id;
+
+  // Os layouts prontos rearrumam os painéis abertos; os lugares que sobram viram painéis vazios do programa do painel
+  // ativo, cada um com o botão de iniciar. O que não cabe na área com o mínimo de cada terminal fica desabilitado.
+  const activeLeaf = shownLeaves.find((leaf) => leaf.id === workspace.activeLeafId);
+  const presets: PresetOption[] =
+    shownLeaves.length === 0
+      ? []
+      : LAYOUT_PRESETS.map((id) => {
+          const count = Math.min(
+            Math.max(shownLeaves.length, PRESET_SLOTS[id]),
+            LAYOUT_LIMITS.maxLeaves,
+          );
+          const leaves: LayoutLeaf[] = Array.from(
+            { length: count },
+            (_, i) =>
+              shownLeaves[i] ?? {
+                type: 'leaf',
+                id: `\u0000${i}`,
+                provider: 'shell',
+                terminalId: null,
+              },
+          );
+          const next = presetLayout(id, leaves, () => '\u0000preset');
+          const fits = size === null || next === null || layoutFits(next, size);
+          return {
+            id,
+            label: presetLabel(id, count),
+            ...(fits ? {} : { blocked: PRESET_NO_ROOM_HINT }),
+          };
+        });
+  const choosePreset = (preset: LayoutPreset) => {
+    setSoloOn(false);
+    workspace.applyPreset(preset, activeLeaf === undefined ? 'shell' : providerOf(activeLeaf));
+  };
+
   const toolbar = (
     <WorkspaceToolbar
       providers={providers}
@@ -677,13 +736,9 @@ function WorkspaceBody({
       soloMode={soloLeaf !== undefined}
       soloAuto={soloAuto}
       canSolo={shownLeaves.length > 0}
+      presets={presets}
+      onPreset={choosePreset}
       onLayout={chooseLayout}
-      dock={
-        <OffGridDock
-          items={dockOrder(offGrid)}
-          onBring={(leafId) => workspace.activateWithFocus(leafId)}
-        />
-      }
       onOpen={(provider) => void openPane(provider)}
     />
   );
@@ -705,12 +760,61 @@ function WorkspaceBody({
       if (!blocked && target.available !== false) void openPane(target.id);
       return;
     }
-    if (soloLeaf === undefined || !event.ctrlKey || !event.altKey) return;
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    // Ctrl+Z desfaz o último movimento de painéis, só com o foco fora do terminal e de campos de texto (lá o Ctrl+Z é
+    // do programa ou do campo).
+    if (
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      event.nativeEvent.code === 'KeyZ' &&
+      workspace.undoToken !== null &&
+      !(event.target as Element).closest(
+        '.terminal-view, input, textarea, [contenteditable="true"]',
+      )
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      workspace.undo();
+      return;
+    }
+    // Os atalhos do layout (layout-shortcuts.ts). A tecla é sempre engolida, mesmo quando não há o que fazer (sem
+    // vizinho daquele lado, sem espaço para dividir): ela nunca chega ao terminal pela metade.
+    const action = layoutShortcut(event.nativeEvent);
+    if (action === null) return;
+    const activeId = soloLeaf?.id ?? workspace.activeLeafId;
+    const active = shownLeaves.find((leaf) => leaf.id === activeId);
+    if (active === undefined) return;
     event.preventDefault();
     event.stopPropagation();
-    const next = stepSolo(shownLeaves, soloLeaf.id, event.key === 'ArrowLeft' ? -1 : 1);
-    if (next !== null) showSolo(next);
+    if (action.type === 'close') {
+      // O mesmo caminho do X do painel: o agente avulso vivo pergunta antes, o resto fecha direto.
+      const close = hosts.hostOf(active.id).querySelector<HTMLButtonElement>('.pane__close');
+      if (close !== null && !close.disabled) close.click();
+      return;
+    }
+    if (soloLeaf !== undefined) {
+      // Com um painel por vez na tela só há a troca de aba: não há vizinho para trocar nem onde ver uma divisão.
+      if (action.type !== 'focus' || (action.side !== 'left' && action.side !== 'right')) return;
+      const next = stepSolo(shownLeaves, soloLeaf.id, action.side === 'left' ? -1 : 1);
+      if (next !== null) showSolo(next);
+      return;
+    }
+    if (action.type === 'focus' || action.type === 'swap') {
+      const neighbour = neighbourAt(shown, active.id, action.side);
+      if (neighbour === null) return;
+      if (action.type === 'focus') workspace.activateWithFocus(neighbour);
+      else workspace.swap(active.id, neighbour);
+      return;
+    }
+    const side =
+      action.type === 'split'
+        ? action.side
+        : splitBlocked(active.id, 'right') === undefined
+          ? 'right'
+          : 'bottom';
+    if (splitBlocked(active.id, side) !== undefined) return;
+    void splitPane(active.id, side, providerOf(active));
   };
 
   const renderLeaf = (leaf: LayoutLeaf) => {
@@ -754,6 +858,31 @@ function WorkspaceBody({
         onDetach={() => workspace.detach(leaf.id)}
         onClose={() => void closePane(leaf.id)}
         maximized={soloLeaf?.id === leaf.id}
+        // Mover só faz sentido com outro painel na grade.
+        onGripPointerDown={
+          soloLeaf !== undefined || shownLeaves.length < 2
+            ? undefined
+            : (event) => paneDrag.onGripPointerDown(leaf.id, event)
+        }
+        // Com um painel só na tela (maximizado ou em abas) não há onde ver a divisão: os botões somem.
+        split={
+          soloLeaf !== undefined
+            ? undefined
+            : {
+                blocked: {
+                  ...(splitBlocked(leaf.id, 'right') !== undefined
+                    ? { right: splitBlocked(leaf.id, 'right') as string }
+                    : {}),
+                  ...(splitBlocked(leaf.id, 'bottom') !== undefined
+                    ? { bottom: splitBlocked(leaf.id, 'bottom') as string }
+                    : {}),
+                },
+                others: providers
+                  .filter((item) => item.id !== providerId && item.available !== false)
+                  .map((item) => ({ id: item.id, label: item.label })),
+                onSplit: (side, other) => void splitPane(leaf.id, side, other ?? providerId),
+              }
+        }
         // Com a janela estreita o modo Abas não é escolha da pessoa: não há "maximizar" nem "voltar à grade".
         {...(soloAuto
           ? {}
@@ -767,7 +896,36 @@ function WorkspaceBody({
   return (
     <div className="workspace" onKeyDownCapture={onKeyDownCapture}>
       {visible ? createPortal(toolbar, toolsHost) : null}
-      <div className="workspace__area" ref={setAreaElement}>
+      <div
+        className="workspace__area"
+        ref={setAreaElement}
+        data-dragging={drag !== null ? 'true' : undefined}
+      >
+        {drag?.preview != null ? (
+          <div
+            className="pane-drop"
+            data-spot={drag.zone?.spot}
+            style={{
+              left: drag.preview.left,
+              top: drag.preview.top,
+              width: drag.preview.width,
+              height: drag.preview.height,
+            }}
+          />
+        ) : null}
+        {drag !== null && dragged !== undefined
+          ? createPortal(
+              <div
+                className="pane-ghost"
+                style={{ transform: `translate(${drag.x + 14}px, ${drag.y + 14}px)` }}
+              >
+                <ProviderIcon provider={providerOf(dragged)} size={14} />
+                <span className="pane-ghost__number">{shownLeaves.indexOf(dragged) + 1}</span>
+                <span>{labelOfProvider(providerOf(dragged))}</span>
+              </div>,
+              document.body,
+            )
+          : null}
         {/* Flutua sobre o topo da área (position: absolute): não tira altura da área medida, e a grade não reflui. */}
         {askingCloseAll ? (
           <div className="workspace__confirm" onKeyDown={onCloseAllKeyDown}>
@@ -779,6 +937,9 @@ function WorkspaceBody({
               onCancel={cancelCloseAll}
             />
           </div>
+        ) : null}
+        {workspace.undoToken !== null && soloLeaf === undefined ? (
+          <UndoNotice token={workspace.undoToken} onUndo={workspace.undo} />
         ) : null}
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">
@@ -822,9 +983,8 @@ function WorkspaceBody({
         ) : (
           <PaneTree
             layout={gridTree}
-            // A árvore derivada só existe na tela: os ids das divisões não estão no layout guardado, então arrastar
-            // uma divisória vale enquanto ela vive e não grava.
-            {...(gridTree === shown ? { onRatio: workspace.setRatio } : {})}
+            onSizes={workspace.setSizes}
+            onEqualize={workspace.equalize}
             minWidth={PANE_MIN_WIDTH}
             minHeight={PANE_MIN_HEIGHT}
             renderLeaf={renderLeaf}

@@ -2,10 +2,9 @@
  * Ferramentas dos terminais na faixa do projeto (WorkspaceToolbar, posta no cabeçalho por portal, só na visão
  * Terminais). Grade | Abas e "+ Terminal" formam a cápsula (`.workspace__controls`): um cartão de 32px com fio, os
  * controles na régua de 28px da faixa e um fio entre o seletor e o gatilho. O + de Terminal é ciano, a cor de
- * terminal da identidade; o lima fica com Nova missão (project.css). As fichas "Fora da grade" ficam à esquerda da
- * cápsula, sem fundo: a faixa delas cresce no espaço livre e mede a própria largura (off-grid.css).
+ * terminal da identidade; o lima fica com Nova missão (project.css).
  *
- * Ligado depois do off-grid.css, para vencer as medidas da antiga barra própria (workspace.css). Só tokens.
+ * Ligado depois do workspace.css, para vencer as medidas da antiga barra própria. Só tokens.
  */
 
 .project-header__tools .workspace__toolbar {
@@ -14,38 +13,6 @@
   padding: 0;
   background: none;
   box-shadow: none;
-}
-
-/* Com terminais fora da grade, a barra toma o espaço livre e a faixa das fichas o preenche. */
-.project-header__tools .workspace__toolbar:has(.off-grid) {
-  flex: 1 1 auto;
-}
-
-/* A faixa tem contenção de tamanho e não informa largura mínima: a contagem e o "+N" precisam caber. */
-.project-header__tools .off-grid {
-  min-width: 6rem;
-  padding-left: 0;
-}
-
-.project-header__tools .off-grid__chip,
-.project-header__tools .off-grid__more .menu-acoes__gatilho--icone {
-  height: 28px;
-}
-
-/*
- * O "+N" tem texto e seta. O gatilho de ícone do cabeçalho do projeto (project.css) é um quadrado de 28px com ícone
- * de 16px: com essa largura a seta saía do botão e ficava por baixo do seletor Grade | Abas. Aqui o botão volta a
- * ter a largura do conteúdo, como em off-grid.css.
- */
-.project-header__tools .off-grid__more .menu-acoes__gatilho--icone {
-  display: inline-flex;
-  width: auto;
-  padding: 0 var(--space-2);
-}
-
-.project-header__tools .off-grid__more .menu-acoes__gatilho--icone svg {
-  width: 12px;
-  height: 12px;
 }
 
 .workspace__controls {
