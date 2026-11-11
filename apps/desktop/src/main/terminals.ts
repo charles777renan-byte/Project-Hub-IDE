@@ -424,6 +424,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           const tokens = provider.data === 'claude' ? await usageOfClaude(record.id) : undefined;
           // Lido junto do gasto, na mesma passada: só existe depois de `usageOfClaude` e sem ler de novo.
           const context = provider.data === 'claude' ? usage.contextOf(record.id) : undefined;
+          const startModel = provider.data === 'claude' ? usage.modelOf(record.id) : undefined;
           out.push({
             id: record.id,
             kind: 'shell',
@@ -438,8 +439,11 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             ...(outputBytes === undefined ? {} : { outputBytes }),
             ...(changedFiles === undefined ? {} : { changedFiles }),
             ...(tokens === undefined ? {} : { usage: tokens }),
+            // Antes da primeira resposta só há o modelo que o Claude disse ao começar; depois, vale o da resposta.
             ...(context === undefined
-              ? {}
+              ? startModel === undefined
+                ? {}
+                : { model: startModel }
               : {
                   model: context.model,
                   context: { usedTokens: context.usedTokens, windowTokens: context.windowTokens },

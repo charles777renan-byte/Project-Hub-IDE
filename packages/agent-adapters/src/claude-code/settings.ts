@@ -39,6 +39,7 @@ export const SLIM_HOOK_FIELDS = [
   'notification_type',
   'reason',
   'source',
+  'model',
 ] as const;
 
 /**
