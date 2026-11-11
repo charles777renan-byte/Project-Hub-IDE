@@ -15,14 +15,14 @@ import {
   setActive,
   TREE_TAB,
 } from '../../src/renderer/open-files';
-import { stubLayoutForCodeMirror } from './codemirror-jsdom';
+import { CODEMIRROR_LOAD_MS, prepareCodeMirror } from './codemirror-jsdom';
 
 /**
  * A aba Arquivos com um arquivo aberto: a faixa (a Árvore e os arquivos) fica no topo da aba, e o editor do arquivo
  * ativo toma o lugar da árvore. A árvore não some: volta quando a pessoa escolhe a aba Árvore.
  */
 
-beforeAll(stubLayoutForCodeMirror);
+beforeAll(prepareCodeMirror, CODEMIRROR_LOAD_MS);
 
 const VERSION: FileVersionDto = { size: 5, mtimeMs: 10, hash: 'a'.repeat(64) };
 
@@ -70,9 +70,17 @@ beforeEach(() => {
     },
     git: {
       status: vi.fn(() => Promise.resolve({ ok: true as const, data: status() })),
-      diff: vi.fn(() => Promise.resolve({ ok: false as const, error: { code: 'UNKNOWN', message: 'x', retryable: false } })),
+      diff: vi.fn(() =>
+        Promise.resolve({
+          ok: false as const,
+          error: { code: 'UNKNOWN', message: 'x', retryable: false },
+        }),
+      ),
       branchChanges: vi.fn(() =>
-        Promise.resolve({ ok: true as const, data: { baseRef: 'origin/main', mergeBase: 'abc', files: [] } }),
+        Promise.resolve({
+          ok: true as const,
+          data: { baseRef: 'origin/main', mergeBase: 'abc', files: [] },
+        }),
       ),
       log: vi.fn(() => Promise.resolve({ ok: true as const, data: [] })),
     },
