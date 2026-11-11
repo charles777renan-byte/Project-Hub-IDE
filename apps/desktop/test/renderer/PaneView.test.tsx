@@ -136,9 +136,9 @@ describe('PaneView', () => {
     expect(screen.getByText('Ativo')).toHaveClass('state-mark__sr');
     expect(screen.queryByText('recuperada')).not.toBeInTheDocument();
     expect(container.querySelector('.pane__light')).toBeNull();
-    // Fechar e tirar do painel moraram em botões soltos; agora são itens do menu ⋯.
+    // Tirar do painel é item do menu ⋯; fechar tem o X solto, além do item do menu.
     expect(screen.getByRole('button', { name: 'Mais ações do painel' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Fechar painel' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fechar painel' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Tirar do painel' })).not.toBeInTheDocument();
     const terminal = screen.getByTestId('terminal-view');
     expect(terminal).toHaveTextContent('t1');
@@ -614,7 +614,7 @@ describe('menu ⋯ do painel e confirmação ao fechar', () => {
   const abrirMenu = () =>
     userEvent.click(screen.getByRole('button', { name: 'Mais ações do painel' }));
 
-  it('o cabeçalho vivo tem só o menu ⋯ e o maximizar soltos: nem Fechar nem Tirar do painel', () => {
+  it('o cabeçalho vivo tem o maximizar, o menu ⋯ e o X, nessa ordem; Tirar do painel fica no menu', () => {
     const { container } = setup({ terminal: avulsoClaude, onMaximize: vi.fn() });
     const actions = container.querySelector('.pane__actions') as HTMLElement;
     expect(within(actions).getByRole('button', { name: 'Maximizar painel' })).toBeInTheDocument();
@@ -622,8 +622,11 @@ describe('menu ⋯ do painel e confirmação ao fechar', () => {
     // Só ícone: o rótulo é o nome acessível, e o botão não traz texto.
     expect(menu).toHaveTextContent('');
     expect(menu.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-    expect(within(actions).getAllByRole('button')).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: 'Fechar painel' })).not.toBeInTheDocument();
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Maximizar painel', 'Mais ações do painel', 'Fechar painel']);
     expect(screen.queryByRole('button', { name: 'Tirar do painel' })).not.toBeInTheDocument();
   });
 
@@ -1024,5 +1027,72 @@ describe('foco do teclado publicado para a barra de status', () => {
     await userEvent.keyboard('{Escape}');
     expect(menuButton()).toHaveFocus();
     expect(focus.result.current).toEqual({ key: 'a', title: 'Corrigir login', inTerminal: false });
+  });
+});
+
+describe('X do painel com sessão viva', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  const avulsoClaude: TerminalSummary = {
+    ...session,
+    kind: 'shell',
+    provider: 'claude',
+    state: 'running',
+  };
+  const x = () => screen.getByRole('button', { name: 'Fechar painel' });
+
+  it('shell comum: o X fecha direto, sem pergunta', async () => {
+    const { props } = setup({ terminal: { ...avulsoClaude, provider: 'shell' } });
+    await userEvent.click(x());
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('agente avulso vivo: o X faz a mesma pergunta do menu, e só confirmar fecha', async () => {
+    const { props } = setup({ terminal: avulsoClaude });
+    await userEvent.click(x());
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('group', {
+        name: 'Encerrar o Claude Code e fechar o painel? O processo para.',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar e encerrar' }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('agente avulso vivo: "Voltar" depois do X devolve o foco ao X', async () => {
+    const { props } = setup({ terminal: avulsoClaude });
+    await userEvent.click(x());
+    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(x()).toHaveFocus();
+  });
+
+  it('agente avulso com a pergunta desligada: o X fecha direto', async () => {
+    setAskBeforeClosing(false);
+    const { props } = setup({ terminal: avulsoClaude });
+    await userEvent.click(x());
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('terminal de missão: o X fecha o painel sem tirar a sessão nem perguntar', async () => {
+    const { props } = setup({ terminal: { ...session, missionId: 'm1' } });
+    await userEvent.click(x());
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onDetach).not.toHaveBeenCalled();
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('ocupado, o X fica desligado', () => {
+    setup({ terminal: avulsoClaude, busy: true });
+    expect(x()).toBeDisabled();
   });
 });

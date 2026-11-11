@@ -199,3 +199,14 @@ describe('StatusBar', () => {
     expect(await within(footer).findByRole('button', { name: 'Parar todos' })).toBeInTheDocument();
   });
 });
+
+describe('StatusBar: limites da assinatura', () => {
+  it('traz o indicador de limites antes do uso do computador', () => {
+    installApi([]);
+    renderBar();
+    const footer = screen.getByRole('contentinfo', { name: 'Barra de status' });
+    const limits = within(footer).getByRole('button', { name: /^Limites do Claude/ });
+    const system = within(footer).getByRole('group', { name: 'Uso do computador' });
+    expect(limits.compareDocumentPosition(system) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
