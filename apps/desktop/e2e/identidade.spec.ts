@@ -98,8 +98,9 @@ async function tabThroughControls(page: Page): Promise<FocusReport> {
         style.outlineStyle !== 'none' && style.outlineStyle !== 'hidden' && outlineWidth > 0;
       let ringOk = outlineOk;
       let nextXterm = false;
-      if (!outlineOk && element.classList.contains('xterm-helper-textarea')) {
-        // O cartão do painel com foco dentro: 2px na cor do foco (uma sombra inset, sem desfoque).
+      if (element.classList.contains('xterm-helper-textarea')) {
+        // O textarea do xterm fica fora da tela e invisível: o contorno calculado dele não marca nada. Quem marca
+        // o foco é o cartão do painel com foco dentro: 2px na cor do foco (uma sombra inset, sem desfoque).
         const card = element.closest('.pane');
         const shadow = card === null ? '' : getComputedStyle(card).boxShadow;
         ringOk = shadow.includes(focusColor) && shadow.includes('2px') && shadow.includes('inset');
