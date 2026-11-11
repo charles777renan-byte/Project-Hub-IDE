@@ -23,14 +23,18 @@ test('Limites do Claude: o cartão do Início mostra as duas janelas lidas pela 
   await expect(panel).toContainText(/Lido às \d{2}:\d{2}/);
   // Não existe janela por modelo nessa fonte: o cartão não inventa a linha.
   await expect(panel).not.toContainText('por modelo');
-  // Codex e Antigravity ainda não têm fonte.
+  // O Codex tem cartão próprio (limites-do-codex.spec.ts); só o Antigravity ainda não tem fonte.
+  await expect(panel).toContainText('Antigravity CLI');
   await expect(panel).toContainText('Em breve');
 
   // As barras são medidores acessíveis, com o nome da janela e o número.
   await expect(panel.getByRole('meter', { name: /Sessão atual/ })).toHaveCount(1);
 
   // Atualizar logo depois da leitura é aceito (o processo principal limita a frequência e devolve o estado).
-  const refresh = panel.getByRole('button', { name: 'Atualizar' });
+  // Há um cartão por programa, cada um com o seu botão: escopa no cartão do Claude.
+  const refresh = panel
+    .getByRole('group', { name: 'Uso do Claude' })
+    .getByRole('button', { name: 'Atualizar' });
   await expect(refresh).toBeEnabled();
   await refresh.click();
   await expect(panel).toContainText('16% usado · 84% restante');
@@ -52,6 +56,21 @@ test('Limites do Claude: a barra de status resume as janelas e abre o painel', a
   );
   await expect(indicator).toContainText('16%');
 
+  // Duas janelas empilhadas dentro da barra: a de 5h em cima, a semanal embaixo, ambas na altura da barra.
+  const rows = indicator.locator('.limits-indicator__part');
+  await expect(rows).toHaveCount(2);
+  const barBox = await footer.boundingBox();
+  const topBox = await rows.nth(0).locator('.limits-indicator__label').boundingBox();
+  const bottomBox = await rows.nth(1).locator('.limits-indicator__label').boundingBox();
+  const buttonBox = await indicator.boundingBox();
+  if (barBox === null || topBox === null || bottomBox === null || buttonBox === null) {
+    throw new Error('barra, botão ou linhas sem medida');
+  }
+  expect(topBox.y).toBeLessThan(bottomBox.y);
+  expect(buttonBox.y).toBeGreaterThanOrEqual(barBox.y);
+  expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(barBox.y + barBox.height);
+  expect(bottomBox.y + bottomBox.height).toBeLessThanOrEqual(buttonBox.y + buttonBox.height);
+
   await indicator.click();
   const panel = page.getByRole('dialog', { name: 'Limites da assinatura' });
   await expect(panel).toBeVisible();
@@ -62,6 +81,7 @@ test('Limites do Claude: a barra de status resume as janelas e abre o painel', a
   await expect(session.getByRole('meter')).toHaveAttribute('aria-valuenow', '16');
   await expect(panel.getByRole('listitem', { name: /Semanal/ })).toContainText('13%');
   await expect(panel.getByRole('button', { name: 'Atualizar limites' })).toBeVisible();
+  // Só o Antigravity segue sem fonte; o Codex tem a própria seção no painel.
   await expect(panel.getByRole('list', { name: 'Outros programas' })).toContainText('Em breve');
 
   // O painel fica inteiro dentro da janela e acima da barra (a barra corta o que passa da borda dela).

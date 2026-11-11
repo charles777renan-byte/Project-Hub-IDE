@@ -7,6 +7,7 @@ import {
   resolvePanelClaudeScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
+  resolveCodexLimitsHome,
   resolveLimitsCommand,
   resolvePlannerCommand,
   resolveWorktreesRoot,
@@ -419,5 +420,45 @@ describe('gancho de teste do Claude do painel', () => {
       true,
     );
     expect(resolvePanelClaudeScript(env)).toBeUndefined();
+  });
+});
+
+describe('pasta do Codex para os limites (resolveCodexLimitsHome)', () => {
+  it('em produção, sem CODEX_HOME vale ~/.codex', () => {
+    expect(resolveCodexLimitsHome({}, {})).toMatch(/[\\/]\.codex$/);
+  });
+
+  it('em produção, CODEX_HOME do processo vale (o filtro dos terminais não entra)', () => {
+    expect(resolveCodexLimitsHome({}, { CODEX_HOME: '/outra/pasta' })).toBe('/outra/pasta');
+  });
+
+  it('em produção, PROJECT_HUB_CODEX_HOME não vale', () => {
+    expect(resolveCodexLimitsHome({}, { PROJECT_HUB_CODEX_HOME: '/teste' })).toMatch(
+      /[\\/]\.codex$/,
+    );
+  });
+
+  it('com PROJECT_HUB_ENV=test, só PROJECT_HUB_CODEX_HOME vale', () => {
+    const env = { PROJECT_HUB_ENV: 'test', PROJECT_HUB_CODEX_HOME: '/temp/codex' };
+
+    expect(resolveCodexLimitsHome(env, env)).toBe('/temp/codex');
+  });
+
+  it('em teste sem PROJECT_HUB_CODEX_HOME (ou vazia), fica inerte e nunca cai na pasta real', () => {
+    expect(
+      resolveCodexLimitsHome({ PROJECT_HUB_ENV: 'test' }, { CODEX_HOME: '/real' }),
+    ).toBeUndefined();
+    expect(
+      resolveCodexLimitsHome({ PROJECT_HUB_ENV: 'test', PROJECT_HUB_CODEX_HOME: '' }, {}),
+    ).toBeUndefined();
+  });
+
+  it('empacotado, applicationEnvironment já removeu PROJECT_HUB_*: a pasta é a de produção', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', PROJECT_HUB_CODEX_HOME: '/teste' },
+      true,
+    );
+
+    expect(resolveCodexLimitsHome(env, {})).toMatch(/[\\/]\.codex$/);
   });
 });

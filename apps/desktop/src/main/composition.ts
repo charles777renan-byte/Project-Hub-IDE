@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { codexHomeOf } from '@project-hub/agent-adapters';
 import {
   createOrchestrator,
   type MissionRepository,
@@ -323,6 +324,24 @@ export function resolveLimitsCommand(
     };
   }
   return { command: defaultCommand, commandPrefix: [], extraEnv: {}, enabled: false };
+}
+
+/**
+ * Pasta do Codex de onde os limites são lidos. Fora de teste, `CODEX_HOME` do ambiente do processo (é um
+ * caminho, não um segredo; o filtro dos terminais o descarta), ou `~/.codex`. Com `PROJECT_HUB_ENV=test`, só `PROJECT_HUB_CODEX_HOME`
+ * (não vazia) vale; sem ela devolve `undefined` e o serviço do Codex fica inerte, para a suíte nunca ler a pasta
+ * real da pessoa. `env` é o de `applicationEnvironment` (empacotado, `PROJECT_HUB_*` já não existe);
+ * `processEnv` é o do processo.
+ */
+export function resolveCodexLimitsHome(
+  env: NodeJS.ProcessEnv,
+  processEnv: NodeJS.ProcessEnv,
+): string | undefined {
+  if (env['PROJECT_HUB_ENV'] === 'test') {
+    const home = env['PROJECT_HUB_CODEX_HOME'];
+    return home !== undefined && home !== '' ? home : undefined;
+  }
+  return codexHomeOf(processEnv);
 }
 
 /**

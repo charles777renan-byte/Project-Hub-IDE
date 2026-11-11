@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { LimitWindowDto } from '@project-hub/contracts';
+import type { LimitProviderId, LimitWindowDto, ProviderLimitsDto } from '@project-hub/contracts';
 import {
   type LimitLevel,
+  LIMIT_PROVIDERS,
   formatDaysLeft,
   isWindowExhausted,
   isWindowExpired,
   limitLevel,
+  presentProviders,
   shortWindowLabel,
   usedPercent,
+  windowDurationMs,
 } from '../limits-format';
 import { useLimits } from '../use-limits';
 import { LimitsPanel } from './LimitsPanel';
@@ -21,22 +24,25 @@ const LEVEL_ORDER: Record<LimitLevel, number> = { normal: 0, aviso: 1, critico: 
  */
 type Part = { label: string; value: string; spoken: string; level: LimitLevel; fill?: number };
 
-/** A semanal aparece pelo tempo que falta para renovar ("3d"), e não por um nome: é o que muda de um dia para o outro. */
-const WEEKLY = 'seven_day';
+/**
+ * A semanal e a mensal aparecem pelo tempo que falta para renovar ("3d"), e não por um nome: é o que muda de um dia
+ * para o outro. O valor é o nome por extenso, para o botão.
+ */
+const BY_DAYS: Record<string, string> = { seven_day: 'semanal', thirty_day: 'mensal' };
 
 /**
  * O resumo de uma janela para a barra: "16%", "esgotada" ou um traço quando a janela já renovou e o número guardado
  * não vale mais. A janela renovada não pesa no nível: o que se sabe dela é só que zerou.
  */
-function partOf(window: LimitWindowDto, now: Date): Part | null {
-  const short = shortWindowLabel(window.id);
+function partOf(window: LimitWindowDto, provider: LimitProviderId, now: Date): Part | null {
+  const short = shortWindowLabel(window.id, provider);
   if (short === undefined) return null;
-  const weekly = window.id === WEEKLY;
-  const name = weekly ? 'semanal' : short;
+  const byDays = BY_DAYS[window.id] !== undefined;
+  const name = BY_DAYS[window.id] ?? short;
   if (isWindowExpired(window, now)) {
     return { label: short, value: '—', spoken: `${name} —`, level: 'normal' };
   }
-  const daysLeft = weekly ? formatDaysLeft(window.resetsAt, now) : '';
+  const daysLeft = byDays ? formatDaysLeft(window.resetsAt, now) : '';
   const label = daysLeft === '' ? short : daysLeft;
   const renewal = daysLeft === '' ? '' : `, renova em ${daysLeft}`;
   if (isWindowExhausted(window)) {
@@ -59,38 +65,67 @@ function partOf(window: LimitWindowDto, now: Date): Part | null {
 }
 
 /**
- * Limites da assinatura na barra de status: o resumo das janelas do Claude fica sempre à vista (rótulo, barrinha e
- * número de cada uma; a semanal leva como rótulo os dias que faltam para renovar) e o clique abre o painel (LimitsPanel). Sem leitura, um traço, nunca um zero. O número vem
- * sempre em texto; a cor do nível só reforça. O painel fecha com Esc (o foco volta ao botão), com um clique fora ou
- * com outro clique no botão.
+ * O resumo de um programa para a barra: as partes das janelas que ela resume, o pior nível e o texto por extenso.
+ * As partes saem da janela mais curta para a mais longa, e a barra tem só duas linhas: com mais de duas, ficam a
+ * mais curta (em cima) e a mais longa (embaixo). Com uma só, é uma linha só.
  */
-export function LimitsIndicator() {
-  const { limits, refresh } = useLimits();
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  const panelId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node && root.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
-
-  const now = new Date();
-  const claude = limits?.providers.find((entry) => entry.provider === 'claude');
-  const parts = (claude?.windows ?? [])
-    .map((window) => partOf(window, now))
+function summaryOf(entry: ProviderLimitsDto | undefined, provider: LimitProviderId, now: Date) {
+  const ordered = [...(entry?.windows ?? [])].sort(
+    (a, b) => windowDurationMs(a) - windowDurationMs(b),
+  );
+  const all = ordered
+    .map((window) => partOf(window, provider, now))
     .filter((part): part is Part => part !== null);
+  const parts = all.length > 2 ? [all[0]!, all[all.length - 1]!] : all;
   const level = parts.reduce<LimitLevel>(
     (worst, part) => (LEVEL_ORDER[part.level] > LEVEL_ORDER[worst] ? part.level : worst),
     'normal',
   );
-  const summary = parts.length === 0 ? 'sem leitura' : parts.map((part) => part.spoken).join(', ');
+  const spoken = parts.length === 0 ? 'sem leitura' : parts.map((part) => part.spoken).join(', ');
+  return { parts, level, spoken };
+}
+
+/**
+ * Limites da assinatura na barra de status: um botão por programa com dados (o do Claude fica sempre à vista; o do
+ * Codex só aparece com ao menos uma janela), cada um com o resumo das janelas (rótulo, barrinha e número; a semanal
+ * e a mensal levam como rótulo os dias que faltam para renovar). O clique em qualquer um abre o mesmo painel
+ * (LimitsPanel). Sem leitura, um traço, nunca um zero. O número vem sempre em texto; a cor do nível só reforça. O
+ * painel fecha com Esc (o foco volta ao botão que o abriu), com um clique fora ou com outro clique no botão.
+ */
+export function LimitsIndicator() {
+  const { limits, refresh } = useLimits();
+  // Qual botão abriu o painel: só ele anuncia "expandido" e controla o painel.
+  const [openByState, setOpenBy] = useState<LimitProviderId | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const panelId = useId();
+
+  const listening = openByState !== null;
+  useEffect(() => {
+    if (!listening) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && root.current?.contains(event.target)) return;
+      setOpenBy(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [listening]);
+
+  const now = new Date();
+  const providers = limits?.providers ?? [];
+  // Um botão por programa do estado com parte resumível; o do Claude fica sempre (mesmo sem leitura, com um traço).
+  const buttons = presentProviders(providers)
+    .map((provider) => ({ provider, entry: providers.find((item) => item.provider === provider) }))
+    .filter(
+      ({ provider, entry }) =>
+        provider === 'claude' || summaryOf(entry, provider, now).parts.length > 0,
+    );
+  // O dono do painel que perdeu o botão (ex.: o Codex ficou sem janelas) deixa o painel fechado.
+  const openBy = buttons.some(({ provider }) => provider === openByState) ? openByState : null;
+  const open = openBy !== null;
+  useEffect(() => {
+    if (openByState !== null && openBy === null) setOpenBy(null);
+  }, [openByState, openBy]);
 
   return (
     <div
@@ -99,42 +134,57 @@ export function LimitsIndicator() {
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || !open) return;
         event.stopPropagation();
-        setOpen(false);
-        button.current?.focus();
+        setOpenBy(null);
+        opener.current?.focus();
       }}
     >
-      <button
-        ref={button}
-        type="button"
-        className="limits-indicator__button"
-        aria-label={`Limites do Claude: ${summary}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        data-nivel={level}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <ProviderIcon provider="claude" size={12} />
-        {parts.length === 0 ? (
-          <span>—</span>
-        ) : (
-          parts.map((part) => (
-            <span key={part.spoken} className="limits-indicator__part" data-nivel={part.level}>
-              <span className="limits-indicator__label">{part.label}</span>
-              {part.fill === undefined ? null : (
-                <span className="limits-indicator__mini">
+      {buttons.map(({ provider, entry }) => {
+        const { parts, level, spoken } = summaryOf(entry, provider, now);
+        return (
+          <button
+            key={provider}
+            type="button"
+            className="limits-indicator__button"
+            aria-label={`Limites do ${LIMIT_PROVIDERS[provider].label}: ${spoken}`}
+            aria-haspopup="dialog"
+            aria-expanded={openBy === provider}
+            aria-controls={openBy === provider ? panelId : undefined}
+            data-nivel={level}
+            onClick={(event) => {
+              opener.current = event.currentTarget;
+              setOpenBy((current) => (current === provider ? null : provider));
+            }}
+          >
+            <ProviderIcon provider={provider} size={parts.length > 1 ? 18 : 14} />
+            {parts.length === 0 ? (
+              <span>—</span>
+            ) : (
+              <span className="limits-indicator__parts" data-linhas={parts.length}>
+                {parts.map((part) => (
                   <span
-                    className="limits-indicator__mini-fill"
-                    style={{ width: `${part.fill}%` }}
-                  />
-                </span>
-              )}
-              <span className="limits-indicator__value">{part.value}</span>
-            </span>
-          ))
-        )}
-      </button>
-      {open ? <LimitsPanel id={panelId} claude={claude} onRefresh={refresh} /> : null}
+                    key={part.spoken}
+                    className="limits-indicator__part"
+                    data-nivel={part.level}
+                  >
+                    <span className="limits-indicator__label">{part.label}</span>
+                    {/* A janela já renovada fica com o trilho vazio: as colunas não saem do lugar. */}
+                    <span className="limits-indicator__mini">
+                      {part.fill === undefined || part.fill === 0 ? null : (
+                        <span
+                          className="limits-indicator__mini-fill"
+                          style={{ width: `${part.fill}%` }}
+                        />
+                      )}
+                    </span>
+                    <span className="limits-indicator__value">{part.value}</span>
+                  </span>
+                ))}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {open ? <LimitsPanel id={panelId} providers={providers} onRefresh={refresh} /> : null}
     </div>
   );
 }

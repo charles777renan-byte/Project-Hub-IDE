@@ -26,6 +26,7 @@ import {
   createAppServices,
   platformOf,
   resolveAgentCommand,
+  resolveCodexLimitsHome,
   resolvePanelClaudeScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
@@ -37,6 +38,7 @@ import {
 import { createClaudeAgent, createTerminalBackend, resolveExecutable } from './claude-agent';
 import { createClaudeLimitsProbe } from './claude-limits';
 import { createClaudePlanner } from './claude-planner';
+import { createCodexLimitsReader } from './codex-limits';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
@@ -55,6 +57,7 @@ import {
 } from './agent-activity';
 import { registerProfileHandlers } from './ipc/profile';
 import { createLimitsService } from './limits';
+import { createLimitsHub } from './limits-hub';
 import { createLimitsStore } from './limits-store';
 import { registerSystemHandlers } from './ipc/system';
 import { createSystemUsageSampler } from './system-usage';
@@ -360,7 +363,7 @@ app
             env: buildTerminalEnv(process.env),
             extraEnv: plannerCommand.extraEnv,
             // Cota esgotada: a falha do planejador diz a hora da renovação, lida do último estado dos limites.
-            quotaMessage: () => quotaExhaustedMessage(limits.get(), new Date()),
+            quotaMessage: () => quotaExhaustedMessage(claudeLimits.get(), new Date()),
           })
         : undefined;
     // Agente das missões: o Claude Code real com `APP_AGENT_ADAPTER=claude-code`. Em teste, um CLI falso
@@ -398,9 +401,12 @@ app
     // Limites da assinatura: lidos rodando o próprio `claude` do usuário, com o ambiente filtrado dos terminais
     // (que passa o login). Em teste, sem o gancho `APP_LIMITS_SCRIPT`, a sonda nem é criada: cada leitura gasta
     // cota real, e o serviço fica inerte. A leitura automática só roda com a janela principal à vista.
+    const limitsWindowActive = (): boolean =>
+      mainWindow !== undefined && !mainWindow.isDestroyed() && !mainWindow.isMinimized();
     const limitsDir = testDataDir ?? app.getPath('userData');
     const limitsCommand = resolveLimitsCommand(env, resolveExecutable('claude', process.env));
-    const limits = createLimitsService({
+    // Cada subserviço publica pelo agregador, que emite o estado inteiro (o renderer troca tudo a cada evento).
+    const claudeLimits = createLimitsService({
       probe: limitsCommand.enabled
         ? createClaudeLimitsProbe({
             command: limitsCommand.command,
@@ -411,11 +417,32 @@ app
           })
         : undefined,
       store: createLimitsStore(join(limitsDir, 'limits.json')),
-      publish: publishLimitsEvent,
-      isActive: () =>
-        mainWindow !== undefined && !mainWindow.isDestroyed() && !mainWindow.isMinimized(),
+      publish: () => limits.emit(),
+      isActive: limitsWindowActive,
     });
-    // Para o timer e mata a leitura em andamento, para o `claude` filho não sobreviver ao app.
+    // Codex: lê só os arquivos de sessão dele (sem rede, sem cota, sem credencial) e não guarda nada em
+    // `limits.json`. Em teste, sem `PROJECT_HUB_CODEX_HOME`, não há pasta e o serviço nem entra no estado.
+    const codexHome = resolveCodexLimitsHome(env, process.env);
+    const codexLimits =
+      codexHome === undefined
+        ? undefined
+        : createLimitsService({
+            provider: 'codex',
+            probe: createCodexLimitsReader({ codexHome }),
+            publish: () => limits.emit(),
+            isActive: limitsWindowActive,
+            firstReadDelayMs: 1_000,
+            intervalMs: 2 * 60_000,
+            cooldownMs: 5_000,
+          });
+    const limits = createLimitsHub({
+      services: {
+        claude: claudeLimits,
+        ...(codexLimits === undefined ? {} : { codex: codexLimits }),
+      },
+      publish: publishLimitsEvent,
+    });
+    // Para os timers e mata a leitura em andamento, para o `claude` filho não sobreviver ao app.
     app.once('will-quit', () => {
       limits.dispose();
     });

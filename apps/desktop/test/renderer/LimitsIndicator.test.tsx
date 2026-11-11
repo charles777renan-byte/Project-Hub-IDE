@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LimitsDto, ProviderLimitsDto } from '@project-hub/contracts';
 import { LimitsIndicator } from '../../src/renderer/components/LimitsIndicator';
@@ -25,6 +25,22 @@ function claude(overrides: Partial<ProviderLimitsDto> = {}): LimitsDto {
       },
     ],
   };
+}
+
+function codexProvider(overrides: Partial<ProviderLimitsDto> = {}): ProviderLimitsDto {
+  return {
+    provider: 'codex',
+    windows: [
+      { id: 'thirty_day', usedPercent: 47, resetsAt: iso(31, 6, 0), durationMinutes: 43200 },
+    ],
+    capturedAt: iso(28, 13, 58),
+    refreshing: false,
+    ...overrides,
+  };
+}
+
+function withCodex(base: LimitsDto, overrides: Partial<ProviderLimitsDto> = {}): LimitsDto {
+  return { providers: [...base.providers, codexProvider(overrides)] };
 }
 
 function install(initial: LimitsDto) {
@@ -73,6 +89,52 @@ describe('LimitsIndicator: o resumo na barra', () => {
     const fills = container.querySelectorAll<HTMLElement>('.limits-indicator__mini-fill');
     expect([...fills].map((fill) => fill.style.width)).toEqual(['16%', '14%']);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('empilha as janelas: a curta em cima, a longa embaixo, mesmo com o DTO ao contrário', async () => {
+    install(
+      claude({
+        windows: [
+          { id: 'seven_day', usedPercent: 50, resetsAt: iso(29, 14, 0) },
+          { id: 'five_hour', usedPercent: 12, resetsAt: iso(28, 18, 0) },
+        ],
+      }),
+    );
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Claude/ });
+
+    const rows = [...container.querySelectorAll('.limits-indicator__part')];
+    expect(rows.map((row) => row.textContent)).toEqual(['5h12%', '1d50%']);
+  });
+
+  it('com uma janela só, há uma linha só, marcada para a folha de estilo centrar', async () => {
+    install(withCodex({ providers: [] }));
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Codex/ });
+
+    const rows = container.querySelectorAll('.limits-indicator__part');
+    expect(rows).toHaveLength(1);
+    expect(container.querySelector('.limits-indicator__parts')).toHaveAttribute('data-linhas', '1');
+  });
+
+  it('com mais de duas janelas, mostra só a mais curta e a mais longa', async () => {
+    install(
+      withCodex(
+        { providers: [] },
+        {
+          windows: [
+            { id: 'five_hour', usedPercent: 10, resetsAt: iso(28, 18, 0) },
+            { id: 'seven_day', usedPercent: 20, resetsAt: iso(30, 18, 0) },
+            { id: 'thirty_day', usedPercent: 30, resetsAt: iso(31, 18, 0) },
+          ],
+        },
+      ),
+    );
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Codex/ });
+
+    const rows = [...container.querySelectorAll('.limits-indicator__part')];
+    expect(rows.map((row) => row.textContent)).toEqual(['5h10%', '3d30%']);
   });
 
   it('sem leitura, mostra um traço e nunca um zero', () => {
@@ -224,14 +286,24 @@ describe('LimitsIndicator: o painel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Ainda sem leitura.');
   });
 
-  it('Codex e Antigravity aparecem como programas ainda sem fonte de dados', async () => {
+  it('o Antigravity aparece como programa ainda sem fonte de dados', async () => {
+    install(withCodex(claude()));
+    render(<LimitsIndicator />);
+    const { dialog } = await openPanel();
+
+    const others = within(dialog).getByRole('list', { name: 'Outros programas' });
+    expect(within(others).getByText('Antigravity CLI')).toBeInTheDocument();
+    expect(within(others).queryByText('Codex')).not.toBeInTheDocument();
+    expect(within(others).getAllByText('Em breve')).toHaveLength(1);
+  });
+
+  it('sem o Codex no DTO, ele também fica como "Em breve"', async () => {
     install(claude());
     render(<LimitsIndicator />);
     const { dialog } = await openPanel();
 
     const others = within(dialog).getByRole('list', { name: 'Outros programas' });
     expect(within(others).getByText('Codex')).toBeInTheDocument();
-    expect(within(others).getByText('Antigravity')).toBeInTheDocument();
     expect(within(others).getAllByText('Em breve')).toHaveLength(2);
   });
 });
@@ -293,5 +365,210 @@ describe('LimitsIndicator: a semanal pelo tempo que falta', () => {
 
     const button = await screen.findByRole('button', { name: 'Limites do Claude: semanal —' });
     expect(button).toHaveTextContent('sem');
+  });
+});
+
+describe('LimitsIndicator: Codex', () => {
+  it('um botão por provedor com dados; o do Claude fica como era', async () => {
+    install(withCodex(claude()));
+    render(<LimitsIndicator />);
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Limites do Claude: 5h 16%, semanal 14%, renova em 1d',
+      }),
+    ).toBeInTheDocument();
+    const button = screen.getByRole('button', {
+      name: 'Limites do Codex: mensal 47%, renova em 2d',
+    });
+    expect(button).toHaveTextContent('2d');
+    expect(button).toHaveTextContent('47%');
+    expect(button).toHaveAttribute('data-nivel', 'normal');
+  });
+
+  it('a barrinha do Codex acompanha o uso', async () => {
+    install(withCodex(claude()));
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Codex/ });
+    const fills = container.querySelectorAll<HTMLElement>('.limits-indicator__mini-fill');
+    expect([...fills].map((fill) => fill.style.width)).toEqual(['16%', '14%', '47%']);
+  });
+
+  it('Codex sem janelas não mostra botão', async () => {
+    install(withCodex(claude(), { windows: [], capturedAt: undefined, problem: 'no-data' }));
+    render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Claude: 5h/ });
+    expect(screen.queryByRole('button', { name: /^Limites do Codex/ })).not.toBeInTheDocument();
+  });
+
+  it('mês esgotado e mês já renovado', async () => {
+    install(
+      withCodex(claude(), {
+        windows: [{ id: 'thirty_day', usedPercent: 100, resetsAt: iso(31, 6, 0) }],
+      }),
+    );
+    render(<LimitsIndicator />);
+    const exhausted = await screen.findByRole('button', {
+      name: 'Limites do Codex: mensal esgotada, renova em 2d',
+    });
+    expect(exhausted).toHaveAttribute('data-nivel', 'critico');
+
+    cleanup();
+    install(
+      withCodex(claude(), {
+        windows: [{ id: 'thirty_day', usedPercent: 47, resetsAt: iso(27, 6, 0) }],
+      }),
+    );
+    render(<LimitsIndicator />);
+    const expired = await screen.findByRole('button', { name: 'Limites do Codex: mensal —' });
+    expect(expired).toHaveTextContent('mês');
+  });
+
+  it('qualquer botão abre o mesmo painel, com uma seção por provedor', async () => {
+    install(withCodex(claude()));
+    render(<LimitsIndicator />);
+    const button = await screen.findByRole('button', { name: /^Limites do Codex/ });
+    fireEvent.click(button);
+
+    const dialog = screen.getByRole('dialog', { name: 'Limites da assinatura' });
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    const claudeSection = within(dialog).getByRole('region', { name: 'Claude' });
+    const codexSection = within(dialog).getByRole('region', { name: 'Codex' });
+    expect(within(claudeSection).getByRole('listitem', { name: 'Sessão atual' })).toBeVisible();
+
+    const month = within(codexSection).getByRole('listitem', { name: 'Mensal' });
+    expect(within(month).getByText('47%')).toBeInTheDocument();
+    expect(within(month).getByText('renova em 2d 16h · sáb, 06:00')).toBeInTheDocument();
+    const meter = within(month).getByRole('meter', { name: 'Mensal, 47% usado' });
+    expect(meter).toHaveAttribute('aria-valuenow', '47');
+  });
+
+  it('Esc devolve o foco ao botão que abriu o painel', async () => {
+    install(withCodex(claude()));
+    render(<LimitsIndicator />);
+    const button = await screen.findByRole('button', { name: /^Limites do Codex/ });
+    fireEvent.click(button);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it('seção do Codex sem janelas mostra o texto do problema', async () => {
+    install(withCodex(claude(), { windows: [], capturedAt: undefined, problem: 'no-data' }));
+    render(<LimitsIndicator />);
+    const { dialog } = await openPanel();
+
+    const codexSection = within(dialog).getByRole('region', { name: 'Codex' });
+    expect(within(codexSection).getByRole('status')).toHaveTextContent(
+      'O Codex ainda não registrou o limite. Ele aparece depois da primeira resposta.',
+    );
+  });
+
+  it('o painel diz a idade da leitura de cada provedor', async () => {
+    install(withCodex(claude()));
+    render(<LimitsIndicator />);
+    const { dialog } = await openPanel();
+
+    expect(within(dialog).getByText('Lido há 2 min')).toBeInTheDocument();
+    expect(within(dialog).getByText('Visto há 2 min')).toBeInTheDocument();
+  });
+
+  it('janela vencida do Codex usa o texto do Codex', async () => {
+    install(
+      withCodex(claude(), {
+        windows: [{ id: 'thirty_day', usedPercent: 47, resetsAt: iso(27, 6, 0) }],
+      }),
+    );
+    render(<LimitsIndicator />);
+    const { dialog } = await openPanel();
+    expect(
+      within(dialog).getByText(
+        'Janela renovada. O número novo aparece depois da próxima resposta do Codex.',
+      ),
+    ).toBeVisible();
+  });
+});
+
+describe('LimitsIndicator: Codex Plus e botão dono do painel', () => {
+  const plus = {
+    windows: [
+      { id: 'five_hour', usedPercent: 20, resetsAt: iso(28, 18, 0), durationMinutes: 300 },
+      { id: 'seven_day', usedPercent: 35, resetsAt: iso(30, 5, 59), durationMinutes: 10080 },
+    ],
+  };
+
+  it('botão do Codex Plus: 5h e semanal, com a renovação em dias', async () => {
+    install(withCodex(claude(), plus));
+    render(<LimitsIndicator />);
+    expect(
+      await screen.findByRole('button', {
+        name: 'Limites do Codex: 5h 20%, semanal 35%, renova em 1d',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('painel do Codex Plus: "Sessão atual" e "Semanal", sem "(todos os modelos)"', async () => {
+    install(withCodex(claude(), plus));
+    render(<LimitsIndicator />);
+    const button = await screen.findByRole('button', { name: /^Limites do Codex/ });
+    fireEvent.click(button);
+    const dialog = screen.getByRole('dialog', { name: 'Limites da assinatura' });
+    const codexSection = within(dialog).getByRole('region', { name: 'Codex' });
+    expect(within(codexSection).getByRole('listitem', { name: 'Sessão atual' })).toBeVisible();
+    expect(within(codexSection).getByRole('listitem', { name: 'Semanal' })).toBeVisible();
+    expect(within(codexSection).queryByText('Semanal (todos os modelos)')).not.toBeInTheDocument();
+  });
+
+  it('se o botão dono some, o painel fecha em vez de ficar órfão', async () => {
+    const withData = withCodex(claude());
+    const without = withCodex(claude(), { windows: [], problem: 'no-limits' });
+    let push: ((limits: LimitsDto) => void) | undefined;
+    const api = {
+      get: vi.fn(() => Promise.resolve({ ok: true as const, data: withData })),
+      refresh: vi.fn(() => Promise.resolve({ ok: true as const, data: withData })),
+      subscribe: vi.fn((listener: (limits: LimitsDto) => void) => {
+        push = listener;
+        return () => {};
+      }),
+    };
+    window.projectHub = { limits: api } as unknown as typeof window.projectHub;
+    render(<LimitsIndicator />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Limites do Codex/ }));
+    expect(screen.getByRole('dialog', { name: 'Limites da assinatura' })).toBeInTheDocument();
+
+    act(() => push?.(without));
+
+    expect(screen.queryByRole('button', { name: /^Limites do Codex/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Limites do Claude/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('só o botão que abriu o painel anuncia aria-expanded e aria-controls', async () => {
+    install(withCodex(claude()));
+    render(<LimitsIndicator />);
+    const claudeButton = await screen.findByRole('button', { name: /^Limites do Claude/ });
+    const codexButton = screen.getByRole('button', { name: /^Limites do Codex/ });
+
+    fireEvent.click(codexButton);
+    const dialog = screen.getByRole('dialog', { name: 'Limites da assinatura' });
+    expect(codexButton).toHaveAttribute('aria-expanded', 'true');
+    expect(codexButton).toHaveAttribute('aria-controls', dialog.id);
+    expect(claudeButton).toHaveAttribute('aria-expanded', 'false');
+    expect(claudeButton).not.toHaveAttribute('aria-controls');
+
+    // Clicar no outro botão troca o dono; o painel continua um só.
+    fireEvent.click(claudeButton);
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(claudeButton).toHaveAttribute('aria-expanded', 'true');
+    expect(codexButton).toHaveAttribute('aria-expanded', 'false');
+
+    // Clicar de novo no dono fecha.
+    fireEvent.click(claudeButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(claudeButton).toHaveAttribute('aria-expanded', 'false');
   });
 });
