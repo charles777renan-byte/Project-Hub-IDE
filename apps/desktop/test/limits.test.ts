@@ -497,3 +497,74 @@ describe('serviço inerte (sem sonda)', () => {
     expect(store.save).not.toHaveBeenCalled();
   });
 });
+
+describe('serviço de outro provedor (Codex)', () => {
+  it('provider: "codex" rotula o estado e snapshot() devolve só o provedor', () => {
+    const probe = controlledProbe();
+    const service = createLimitsService({
+      provider: 'codex',
+      probe: probe.probe,
+      publish: vi.fn(),
+      isActive: () => true,
+    });
+
+    expect(service.snapshot()).toEqual({ provider: 'codex', windows: [], refreshing: false });
+    expect(service.get()).toEqual({ providers: [service.snapshot()] });
+  });
+
+  it('o padrão continua sendo o Claude', () => {
+    const service = createLimitsService({ publish: vi.fn(), isActive: () => true });
+
+    expect(service.snapshot().provider).toBe('claude');
+  });
+
+  it('usa o capturedAt que vem da leitura (hora do evento), não o relógio', async () => {
+    const probe = controlledProbe();
+    const service = createLimitsService({
+      provider: 'codex',
+      probe: probe.probe,
+      publish: vi.fn(),
+      isActive: () => true,
+    });
+    const refreshing = service.refresh();
+    probe.finish(
+      good(
+        [
+          {
+            id: 'thirty_day',
+            usedPercent: 47,
+            resetsAt: '2026-11-28T00:00:00.000Z',
+            durationMinutes: 43200,
+          },
+        ],
+        '2026-10-28T09:15:00.000Z',
+      ),
+    );
+    await refreshing;
+
+    expect(service.snapshot()).toMatchObject({
+      provider: 'codex',
+      capturedAt: '2026-10-28T09:15:00.000Z',
+      windows: [{ id: 'thirty_day', usedPercent: 47, durationMinutes: 43200 }],
+    });
+  });
+
+  it('o problema "no-data" mantém as janelas da última leitura boa', async () => {
+    const probe = controlledProbe();
+    const service = createLimitsService({
+      provider: 'codex',
+      probe: probe.probe,
+      publish: vi.fn(),
+      isActive: () => true,
+      cooldownMs: 0,
+    });
+    const first = service.refresh();
+    probe.finish(good());
+    await first;
+    const second = service.refresh();
+    probe.finish({ ok: false, problem: 'no-data' });
+    await second;
+
+    expect(service.snapshot()).toMatchObject({ problem: 'no-data', windows: WINDOWS });
+  });
+});

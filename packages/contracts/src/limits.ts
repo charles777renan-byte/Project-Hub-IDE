@@ -5,15 +5,23 @@ import { z } from 'zod';
  * as suas janelas (o Claude tem a de 5 horas e a semanal). O programa que ainda não tem fonte de dados não
  * entra na lista: a tela mostra "em breve" para ele.
  */
-export const LIMIT_PROVIDER_VALUES = ['claude'] as const;
+export const LIMIT_PROVIDER_VALUES = ['claude', 'codex'] as const;
 export type LimitProviderId = (typeof LIMIT_PROVIDER_VALUES)[number];
 
 /**
  * Por que não há número para o programa. `not-installed`: o executável não foi achado. `not-logged-in`: o
  * programa pediu login. `no-limits`: a conta não tem limite de uso por janela (chave de API, por exemplo).
- * `failed`: a leitura falhou ou veio fora do formato (a mensagem do programa não sai do processo principal).
+ * `no-data`: o programa existe, mas ainda não há leitura do limite (o Codex só grava o limite depois de
+ * uma resposta). `failed`: a leitura falhou ou veio fora do formato (a mensagem do programa não sai do
+ * processo principal).
  */
-export const LIMIT_PROBLEM_VALUES = ['not-installed', 'not-logged-in', 'no-limits', 'failed'] as const;
+export const LIMIT_PROBLEM_VALUES = [
+  'not-installed',
+  'not-logged-in',
+  'no-limits',
+  'no-data',
+  'failed',
+] as const;
 export type LimitProblem = (typeof LIMIT_PROBLEM_VALUES)[number];
 
 /**
@@ -24,6 +32,8 @@ export const limitWindowDtoSchema = z.object({
   id: z.string().min(1).max(64),
   usedPercent: z.number().min(0).max(100),
   resetsAt: z.string(),
+  /** Duração da janela em minutos, quando o programa a informa (o Codex). Falta no `limits.json` antigo. */
+  durationMinutes: z.number().int().positive().max(527040).optional(),
 });
 export type LimitWindowDto = z.infer<typeof limitWindowDtoSchema>;
 

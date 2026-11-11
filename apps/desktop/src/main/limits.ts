@@ -1,5 +1,6 @@
 import type {
   LimitProblem,
+  LimitProviderId,
   LimitsDto,
   LimitWindowDto,
   ProviderLimitsDto,
@@ -20,6 +21,8 @@ export type LimitsProbePort = {
 };
 
 export type LimitsServiceOptions = {
+  /** De qual programa é o estado deste serviço. O padrão é o Claude. */
+  provider?: LimitProviderId | undefined;
   /**
    * Sonda do Claude. Sem ela o serviço fica inerte: `get()` devolve o estado vazio, `refresh()` não lê nada e
    * nenhum timer é armado. É o estado dos testes de ponta a ponta sem o CLI falso, para a suíte não gastar a
@@ -43,6 +46,8 @@ export type LimitsServiceOptions = {
 };
 
 export type LimitsService = {
+  /** O estado só deste provedor, da memória. Nunca lê. O agregador junta os `snapshot()` de cada serviço. */
+  snapshot(): ProviderLimitsDto;
   /** O estado de agora, da memória. Nunca lê. */
   get(): LimitsDto;
   /**
@@ -61,12 +66,13 @@ export type LimitsService = {
 };
 
 /**
- * Serviço dos limites da assinatura: guarda o estado do Claude, lê pela sonda, publica as mudanças e agenda
+ * Serviço dos limites da assinatura: guarda o estado de um provedor (o Claude, ou o Codex), lê pela sonda, publica as mudanças e agenda
  * as leituras automáticas. A leitura que falha mantém as janelas da última boa e põe o `problem`; só a
  * leitura boa (ou "conta sem limite") troca os números.
  */
 export function createLimitsService(options: LimitsServiceOptions): LimitsService {
   const { probe, store } = options;
+  const provider = options.provider ?? 'claude';
   const now = options.now ?? (() => new Date());
   const firstReadDelayMs = options.firstReadDelayMs ?? FIRST_READ_DELAY_MS;
   const intervalMs = options.intervalMs ?? READ_INTERVAL_MS;
@@ -87,7 +93,7 @@ export function createLimitsService(options: LimitsServiceOptions): LimitsServic
 
   function snapshot(): ProviderLimitsDto {
     return {
-      provider: 'claude',
+      provider,
       windows: windows.map((window) => ({ ...window })),
       ...(capturedAt === undefined ? {} : { capturedAt }),
       refreshing,
@@ -184,6 +190,7 @@ export function createLimitsService(options: LimitsServiceOptions): LimitsServic
   }
 
   return {
+    snapshot,
     get,
     refresh,
     start() {

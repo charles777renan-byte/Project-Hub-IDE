@@ -16,6 +16,12 @@ import {
   usageText,
   windowElapsedPercent,
   windowLabel,
+  LIMIT_PROVIDERS,
+  LIMIT_PROVIDER_ORDER,
+  expiredText,
+  problemText,
+  pendingPrograms,
+  presentProviders,
 } from '../../src/renderer/limits-format';
 
 /** Instantes no fuso local, como a tela os mostra. */
@@ -41,6 +47,26 @@ describe('limits-format', () => {
   it('renovação em dias: dia da semana abreviado e hora', () => {
     // 30/10/2026 é uma sexta-feira.
     expect(formatRenewal(at(30, 5, 59), NOW)).toBe('Renova sex, 05:59');
+  });
+
+  it('renovação a 6 dias ou mais: inclui a data, para não confundir com o dia da semana desta semana', () => {
+    // 14/11/2026 é um sábado, a 16 dias; 03/11 às 14:00 é exatamente 6 dias à frente.
+    expect(formatRenewal(new Date(2026, 10, 14, 5, 59).toISOString(), NOW)).toBe(
+      'Renova sáb, 14/11, 05:59',
+    );
+    expect(formatRenewal(new Date(2026, 10, 3, 14, 0).toISOString(), NOW)).toBe(
+      'Renova ter, 03/11, 14:00',
+    );
+    // Faltando menos de 6 dias, continua só o dia da semana.
+    expect(formatRenewal(new Date(2026, 10, 3, 13, 59).toISOString(), NOW)).toBe(
+      'Renova ter, 13:59',
+    );
+  });
+
+  it('janela esgotada que volta daqui a 6 dias ou mais também leva a data', () => {
+    expect(formatReturn(new Date(2026, 10, 14, 5, 59).toISOString(), NOW)).toBe(
+      'Esgotada · volta sáb, 14/11, 05:59',
+    );
   });
 
   it('instante inválido não quebra', () => {
@@ -154,5 +180,106 @@ describe('limits-format: dias até a renovação, para o rodapé', () => {
     expect(formatDaysLeft(at(28, 20, 49), NOW)).toBe('<1d');
     expect(formatDaysLeft(at(28, 13, 0), NOW)).toBe('');
     expect(formatDaysLeft('não é data', NOW)).toBe('');
+  });
+});
+
+describe('limits-format: Codex', () => {
+  it('dá rótulo às janelas do Codex e mantém o do Claude', () => {
+    expect(windowLabel('five_hour', 'codex')).toBe('Sessão atual');
+    expect(windowLabel('seven_day', 'codex')).toBe('Semanal');
+    expect(windowLabel('thirty_day', 'codex')).toBe('Mensal');
+    expect(windowLabel('seven_day', 'claude')).toBe('Semanal (todos os modelos)');
+    expect(windowLabel('seven_day')).toBe('Semanal (todos os modelos)');
+  });
+
+  it('janela desconhecida com duração vira "Janela de N h" ou "Janela de N dias"', () => {
+    expect(windowLabel('window_480m', 'codex', 480)).toBe('Janela de 8 h');
+    expect(windowLabel('window_20160m', 'codex', 20160)).toBe('Janela de 14 dias');
+    expect(windowLabel('window_1440m', 'codex', 1440)).toBe('Janela de 1 dia');
+    expect(windowLabel('window_90m', 'codex')).toBe('window_90m');
+    // Abaixo de 1 h, em minutos; entre 1 h e 24 h sem hora cheia, também em minutos (nada de "0 h" nem de 90 min virando 2 h).
+    expect(windowLabel('window_30m', 'codex', 30)).toBe('Janela de 30 min');
+    expect(windowLabel('window_90m', 'codex', 90)).toBe('Janela de 90 min');
+    expect(windowLabel('window_60m', 'codex', 60)).toBe('Janela de 1 h');
+    expect(windowLabel('extra', 'claude')).toBe('extra');
+  });
+
+  it('rótulo curto do Codex inclui o mês; o do Claude continua sem ele', () => {
+    expect(shortWindowLabel('five_hour', 'codex')).toBe('5h');
+    expect(shortWindowLabel('seven_day', 'codex')).toBe('sem');
+    expect(shortWindowLabel('thirty_day', 'codex')).toBe('mês');
+    expect(shortWindowLabel('window_480m', 'codex')).toBeUndefined();
+    expect(shortWindowLabel('thirty_day', 'claude')).toBeUndefined();
+  });
+
+  it('a duração informada vale mais que a tabela e permite a marca do tempo no mês', () => {
+    // 30 dias, renova em 15: metade passou.
+    const half = new Date(NOW.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString();
+    expect(
+      windowElapsedPercent({ id: 'thirty_day', resetsAt: half, durationMinutes: 43200 }, NOW),
+    ).toBe(50);
+    expect(
+      windowElapsedPercent({ id: 'five_hour', resetsAt: at(28, 18, 0), durationMinutes: 600 }, NOW),
+    ).toBe(60);
+    // Duração menor que o que falta: dado que não fecha.
+    expect(
+      windowElapsedPercent({ id: 'thirty_day', resetsAt: half, durationMinutes: 1440 }, NOW),
+    ).toBeUndefined();
+  });
+
+  it('textos de problema por provedor', () => {
+    expect(problemText('claude', 'not-installed')).toBe('O Claude Code não foi encontrado.');
+    expect(problemText('claude', 'no-data')).toBe('O limite ainda não foi registrado.');
+    expect(problemText('codex', 'not-installed')).toBe('Codex não encontrado neste computador.');
+    expect(problemText('codex', 'no-data')).toBe(
+      'O Codex ainda não registrou o limite. Ele aparece depois da primeira resposta.',
+    );
+    expect(problemText('codex', 'no-limits')).toMatch(/Codex/);
+    expect(problemText('codex', 'not-logged-in')).toMatch(/Codex/);
+    expect(problemText('codex', 'failed')).toBe('Não foi possível ler os limites agora.');
+  });
+
+  it('texto de janela vencida por provedor', () => {
+    expect(expiredText('claude')).toBe('Janela renovada · aguardando nova leitura');
+    expect(expiredText('codex')).toBe(
+      'Janela renovada. O número novo aparece depois da próxima resposta do Codex.',
+    );
+  });
+
+  it('a idade da leitura do Codex diz "Visto"', () => {
+    expect(formatAge(at(28, 13, 58), NOW, 'codex')).toBe('Visto há 2 min');
+    expect(formatAge(new Date(NOW.getTime() - 20_000).toISOString(), NOW, 'codex')).toBe(
+      'Visto agora',
+    );
+    expect(formatAge(at(28, 12, 0), NOW, 'codex')).toBe('Visto há 2 h');
+    expect(formatAge(at(26, 14, 0), NOW, 'codex')).toBe('Visto há 2 d');
+  });
+
+  it('descritores dos provedores, na ordem fixa', () => {
+    expect(LIMIT_PROVIDER_ORDER).toEqual(['claude', 'codex', 'antigravity']);
+    expect(LIMIT_PROVIDERS.claude.label).toBe('Claude');
+    expect(LIMIT_PROVIDERS.codex.label).toBe('Codex');
+    expect(LIMIT_PROVIDERS.antigravity.label).toBe('Antigravity CLI');
+  });
+});
+
+describe('limits-format: programas presentes e pendentes', () => {
+  const entry = (provider: string) => ({ provider }) as never;
+
+  it('o Claude sempre tem cartão; os outros só quando o DTO os traz', () => {
+    expect(presentProviders([])).toEqual(['claude']);
+    expect(presentProviders([entry('claude')])).toEqual(['claude']);
+    expect(presentProviders([entry('codex'), entry('claude')])).toEqual(['claude', 'codex']);
+  });
+
+  it('"Em breve" são os programas ausentes do DTO, na ordem fixa', () => {
+    expect(pendingPrograms([entry('claude')])).toEqual(['codex', 'antigravity']);
+    expect(pendingPrograms([entry('claude'), entry('codex')])).toEqual(['antigravity']);
+  });
+
+  it('um terceiro programa que entra no DTO sai sozinho de "Em breve" e ganha cartão', () => {
+    const all = [entry('claude'), entry('codex'), entry('antigravity')];
+    expect(pendingPrograms(all)).toEqual([]);
+    expect(presentProviders(all)).toEqual(['claude', 'codex', 'antigravity']);
   });
 });

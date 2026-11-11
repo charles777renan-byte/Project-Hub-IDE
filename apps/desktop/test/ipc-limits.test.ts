@@ -33,10 +33,26 @@ const LIMITS: LimitsDto = {
       capturedAt: '2026-10-28T12:00:00.000Z',
       refreshing: false,
     },
+    {
+      provider: 'codex',
+      windows: [
+        {
+          id: 'thirty_day',
+          usedPercent: 47,
+          resetsAt: '2026-11-28T00:00:00.000Z',
+          durationMinutes: 43200,
+        },
+      ],
+      capturedAt: '2026-10-28T11:50:00.000Z',
+      refreshing: false,
+    },
   ],
 };
 const REFRESHED: LimitsDto = {
-  providers: [{ ...LIMITS.providers[0]!, capturedAt: '2026-10-28T12:30:00.000Z' }],
+  providers: [
+    { ...LIMITS.providers[0]!, capturedAt: '2026-10-28T12:30:00.000Z' },
+    LIMITS.providers[1]!,
+  ],
 };
 
 describe('limits:get:v1 e limits:refresh:v1', () => {

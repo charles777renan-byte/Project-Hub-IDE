@@ -33,8 +33,21 @@ function mission(id: string, status: MissionDto['status']): MissionDto {
   };
 }
 
-function installApi(projects: ProjectSummary[], missions: MissionDto[] = []) {
+function installApi(
+  projects: ProjectSummary[],
+  missions: MissionDto[] = [],
+  limits?: unknown,
+) {
   window.projectHub = {
+    ...(limits === undefined
+      ? {}
+      : {
+          limits: {
+            get: vi.fn(() => Promise.resolve({ ok: true as const, data: limits })),
+            refresh: vi.fn(),
+            subscribe: vi.fn(() => () => {}),
+          },
+        }),
     projects: {
       list: vi.fn(() => Promise.resolve<AppResult<ProjectSummary[]>>({ ok: true, data: projects })),
     },
@@ -208,5 +221,30 @@ describe('StatusBar: limites da assinatura', () => {
     const limits = within(footer).getByRole('button', { name: /^Limites do Claude/ });
     const system = within(footer).getByRole('group', { name: 'Uso do computador' });
     expect(limits.compareDocumentPosition(system) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('mostra um botão do Codex depois do Claude e antes do uso do computador', async () => {
+    const inFuture = new Date(Date.now() + 17 * 24 * 3600_000 + 3600_000).toISOString();
+    installApi([], [], {
+      providers: [
+        { provider: 'claude', windows: [], refreshing: false },
+        {
+          provider: 'codex',
+          windows: [
+            { id: 'thirty_day', usedPercent: 47, resetsAt: inFuture, durationMinutes: 43200 },
+          ],
+          refreshing: false,
+        },
+      ],
+    });
+    renderBar();
+    const footer = screen.getByRole('contentinfo', { name: 'Barra de status' });
+    const claude = within(footer).getByRole('button', { name: /^Limites do Claude/ });
+    const codex = await within(footer).findByRole('button', {
+      name: 'Limites do Codex: mensal 47%, renova em 17d',
+    });
+    const system = within(footer).getByRole('group', { name: 'Uso do computador' });
+    expect(claude.compareDocumentPosition(codex) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(codex.compareDocumentPosition(system) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

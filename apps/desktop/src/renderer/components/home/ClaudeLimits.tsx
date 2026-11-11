@@ -1,16 +1,18 @@
 import { useId } from 'react';
-import type { LimitWindowDto } from '@project-hub/contracts';
+import type { LimitProviderId, LimitWindowDto, LimitsDto } from '@project-hub/contracts';
 import {
   LIMIT_CRITICAL_ABOVE,
-  LIMIT_EXPIRED_TEXT,
-  LIMIT_PROBLEM_TEXT,
+  LIMIT_PROVIDERS,
   LIMIT_WARN_FROM,
+  expiredText,
   formatClock,
+  formatSeenAt,
   formatRenewal,
   formatReturn,
   isWindowExhausted,
   isWindowExpired,
   limitLevel,
+  problemText,
   usageText,
   usedPercent,
   windowLabel,
@@ -18,8 +20,16 @@ import {
 import { useLimits } from '../../use-limits';
 import { ProviderIcon } from '../ProviderIcon';
 
-function LimitRow({ window, now }: { window: LimitWindowDto; now: Date }) {
-  const label = windowLabel(window.id);
+function LimitRow({
+  window,
+  now,
+  provider,
+}: {
+  window: LimitWindowDto;
+  now: Date;
+  provider: LimitProviderId;
+}) {
+  const label = windowLabel(window.id, provider, window.durationMinutes);
   const expired = isWindowExpired(window, now);
   return (
     <li className="claude-limits__row">
@@ -34,7 +44,7 @@ function LimitRow({ window, now }: { window: LimitWindowDto; now: Date }) {
         )}
       </div>
       {expired ? (
-        <p className="claude-limits__note">{LIMIT_EXPIRED_TEXT}</p>
+        <p className="claude-limits__note">{expiredText(provider)}</p>
       ) : (
         <>
           {/*
@@ -60,35 +70,44 @@ function LimitRow({ window, now }: { window: LimitWindowDto; now: Date }) {
   );
 }
 
+type LimitsCardProps = {
+  provider: LimitProviderId;
+  limits: LimitsDto | null;
+  refresh: () => void;
+};
+
 /**
- * Cartão "Uso do Claude": quanto de cada janela da assinatura já foi usado, lido pelo processo principal.
- * O número sempre vem em texto ao lado da barra; a cor sozinha não diz nada.
+ * Cartão "Uso do <programa>": quanto de cada janela da assinatura já foi usado, a partir do estado dos limites
+ * que a tela já tem. O número sempre vem em texto ao lado da barra; a cor sozinha não diz nada.
  */
-export function ClaudeLimits() {
-  const { limits, refresh } = useLimits();
+export function LimitsCard({ provider, limits, refresh }: LimitsCardProps) {
   const titleId = useId();
-  const claude = limits?.providers.find((entry) => entry.provider === 'claude');
-  const windows = claude?.windows ?? [];
-  const refreshing = claude?.refreshing ?? false;
+  const entry = limits?.providers.find((item) => item.provider === provider);
+  const windows = entry?.windows ?? [];
+  const refreshing = entry?.refreshing ?? false;
+  // O Atualizar não tem parâmetro: lê todos os programas, então espera qualquer leitura em andamento.
+  const anyRefreshing = limits?.providers.some((item) => item.refreshing) ?? false;
   const now = new Date();
+  const name = LIMIT_PROVIDERS[provider].label;
 
   let status: string | null = null;
-  if (claude?.problem) status = LIMIT_PROBLEM_TEXT[claude.problem];
+  if (entry?.problem) status = problemText(provider, entry.problem);
   else if (windows.length === 0) status = refreshing ? 'Lendo os limites…' : 'Ainda sem leitura.';
-  const capturedClock = claude?.capturedAt ? formatClock(claude.capturedAt) : '';
+  const capturedClock = entry?.capturedAt ? formatClock(entry.capturedAt) : '';
 
   return (
     <div className="claude-limits" role="group" aria-labelledby={titleId}>
       <div className="claude-limits__title-row">
         <h3 id={titleId} className="claude-limits__title">
-          <ProviderIcon provider="claude" size={16} />
-          Uso do Claude
+          <ProviderIcon provider={provider} size={16} />
+          Uso do {name}
         </h3>
         <button
           type="button"
           className="claude-limits__refresh"
           onClick={refresh}
-          disabled={refreshing}
+          disabled={anyRefreshing}
+          title="Atualiza os limites de todos os programas"
         >
           Atualizar
         </button>
@@ -96,7 +115,7 @@ export function ClaudeLimits() {
       {windows.length > 0 && (
         <ul className="claude-limits__list">
           {windows.map((window) => (
-            <LimitRow key={window.id} window={window} now={now} />
+            <LimitRow key={window.id} window={window} now={now} provider={provider} />
           ))}
         </ul>
       )}
@@ -105,7 +124,19 @@ export function ClaudeLimits() {
           {status}
         </p>
       )}
-      {capturedClock && <p className="claude-limits__note">Lido às {capturedClock}</p>}
+      {capturedClock && (
+        <p className="claude-limits__note">
+          {provider === 'codex'
+            ? `Visto ${formatSeenAt(entry?.capturedAt ?? '', now)}, na última resposta do Codex.`
+            : `Lido às ${capturedClock}`}
+        </p>
+      )}
     </div>
   );
+}
+
+/** Cartão de limites de um programa (o Claude, por padrão) que busca o próprio estado. */
+export function ClaudeLimits({ provider = 'claude' }: { provider?: LimitProviderId }) {
+  const { limits, refresh } = useLimits();
+  return <LimitsCard provider={provider} limits={limits} refresh={refresh} />;
 }

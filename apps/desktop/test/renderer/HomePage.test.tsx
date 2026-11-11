@@ -168,6 +168,18 @@ function installApi({
                 ],
                 refreshing: false,
               },
+              {
+                provider: 'codex',
+                windows: [
+                  {
+                    id: 'thirty_day',
+                    usedPercent: 47,
+                    resetsAt: new Date(Date.now() + 17 * 24 * 3600_000).toISOString(),
+                    durationMinutes: 43200,
+                  },
+                ],
+                refreshing: false,
+              },
             ],
           },
         }),
@@ -725,7 +737,7 @@ describe('HomePage', () => {
     ).toHaveLength(1);
   });
 
-  it('Uso dos agentes mostra o cartão do Claude e "Em breve" para os outros programas', async () => {
+  it('Uso dos agentes mostra os cartões do Claude e do Codex e "Em breve" só para o Antigravity', async () => {
     installApi({ projects: [project('p1')] });
 
     renderHome();
@@ -734,7 +746,40 @@ describe('HomePage', () => {
     expect(await within(usage).findByText('Uso do Claude')).toBeInTheDocument();
     expect(await within(usage).findByText('16% usado · 84% restante')).toBeInTheDocument();
     expect(within(usage).getByLabelText('Sessão atual, 16% usado')).toBeInTheDocument();
-    expect(within(usage).getByText('Codex e Antigravity CLI: Em breve.')).toBeInTheDocument();
+    expect(await within(usage).findByText('Uso do Codex')).toBeInTheDocument();
+    expect(within(usage).getByText('Mensal')).toBeInTheDocument();
+    expect(within(usage).getByText('47% usado · 53% restante')).toBeInTheDocument();
+    expect(within(usage).getByText('Antigravity CLI: Em breve.')).toBeInTheDocument();
+    expect(within(usage).queryByText(/Codex e Antigravity/)).not.toBeInTheDocument();
+  });
+
+  it('cada cartão de uso é um grupo com o nome e o conteúdo do próprio programa', async () => {
+    installApi({ projects: [project('p1')] });
+
+    renderHome();
+
+    const usage = panel('Uso dos agentes');
+    const claudeGroup = await within(usage).findByRole('group', { name: 'Uso do Claude' });
+    const codexGroup = await within(usage).findByRole('group', { name: 'Uso do Codex' });
+    expect(within(claudeGroup).getByText('Sessão atual')).toBeInTheDocument();
+    expect(within(claudeGroup).queryByText('Mensal')).not.toBeInTheDocument();
+    expect(within(codexGroup).getByText('Mensal')).toBeInTheDocument();
+    expect(within(codexGroup).queryByText('Sessão atual')).not.toBeInTheDocument();
+    // A janela mensal do Codex renova a 17 dias: o cartão mostra a data, não só o dia da semana.
+    expect(
+      within(codexGroup).getByText(/^Renova \S+, \d{2}\/\d{2}, \d{2}:\d{2}$/),
+    ).toBeInTheDocument();
+  });
+
+  it('antes da primeira resposta dos limites não aparece "Em breve" (nada de texto falso que logo troca)', async () => {
+    installApi({ projects: [project('p1')] });
+    window.projectHub.limits.get = vi.fn(() => new Promise<never>(() => {}));
+
+    renderHome();
+
+    const usage = panel('Uso dos agentes');
+    expect(await within(usage).findByRole('group', { name: 'Uso do Claude' })).toBeInTheDocument();
+    expect(within(usage).queryByText(/Em breve/)).not.toBeInTheDocument();
   });
 
   it('a saudação não tem mais o botão de alterar o nome', async () => {
