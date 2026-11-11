@@ -26,6 +26,20 @@ export function stubLayoutForCodeMirror(): void {
   Range.prototype.getBoundingClientRect = () => empty;
 }
 
+/** Folga do `beforeAll` que carrega o CodeMirror: a primeira leitura, com a máquina ocupada, passa de 15 s. */
+export const CODEMIRROR_LOAD_MS = 60_000;
+
+/**
+ * Prepara o arquivo de teste para montar o `CodeEditor`: põe o stub de layout e carrega o núcleo do editor, o mesmo
+ * módulo que o componente pede por `import()`. Sem isso, o primeiro teste do arquivo paga a leitura do CodeMirror
+ * dentro do próprio tempo limite e falha quando a rodada completa disputa a máquina. Use como
+ * `beforeAll(prepareCodeMirror, CODEMIRROR_LOAD_MS)`.
+ */
+export async function prepareCodeMirror(): Promise<void> {
+  stubLayoutForCodeMirror();
+  await import('../../src/renderer/components/editor/editor-core');
+}
+
 /** O Shadow Root onde o editor mora: o `host` do `CodeEditor` é o filho `.code-editor__host` do `container`. */
 export function shadowOf(container: HTMLElement): ShadowRoot {
   const host = container.querySelector('.code-editor__host');

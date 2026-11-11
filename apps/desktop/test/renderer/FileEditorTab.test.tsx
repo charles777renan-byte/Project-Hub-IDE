@@ -10,11 +10,11 @@ import {
   updateText,
   useOpenFiles,
 } from '../../src/renderer/open-files';
-import { shadowOf, stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
+import { CODEMIRROR_LOAD_MS, prepareCodeMirror, shadowOf, viewOf } from './codemirror-jsdom';
 
 /** A aba de um arquivo aberto: a barra do caminho, o botão Salvar e o editor, ou o aviso de que não abre aqui. */
 
-beforeAll(stubLayoutForCodeMirror);
+beforeAll(prepareCodeMirror, CODEMIRROR_LOAD_MS);
 
 const VERSION: FileVersionDto = { size: 5, mtimeMs: 10, hash: 'a'.repeat(64) };
 const NEXT_VERSION: FileVersionDto = { size: 9, mtimeMs: 20, hash: 'b'.repeat(64) };

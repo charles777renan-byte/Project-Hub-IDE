@@ -2,14 +2,14 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { insertNewlineAndIndent, undo } from '@codemirror/commands';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeEditor } from '../../src/renderer/components/editor/CodeEditor';
-import { shadowOf, stubLayoutForCodeMirror, viewOf } from './codemirror-jsdom';
+import { CODEMIRROR_LOAD_MS, prepareCodeMirror, shadowOf, viewOf } from './codemirror-jsdom';
 
 /**
  * O editor de arquivos sobre o CodeMirror. Ele monta num Shadow Root (a CSP bloqueia o <style> que o CodeMirror
  * injeta no documento), então o que ele desenha se procura em `host.shadowRoot`, não na tela da Testing Library.
  */
 
-beforeAll(stubLayoutForCodeMirror);
+beforeAll(prepareCodeMirror, CODEMIRROR_LOAD_MS);
 
 /** Espera o CodeMirror carregar (import dinâmico) e devolve o `container`. */
 async function mounted(container: HTMLElement) {
