@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -32,7 +32,9 @@ describe('main.tsx', () => {
     });
 
     const footer = screen.getByRole('contentinfo', { name: 'Barra de status' });
-    expect(footer).toHaveTextContent('executando');
+    expect(
+      within(footer as HTMLElement).getByRole('link', { name: /executando/ }),
+    ).toBeInTheDocument();
     expect(document.querySelector('header.topbar')).not.toHaveTextContent('executando');
   });
 

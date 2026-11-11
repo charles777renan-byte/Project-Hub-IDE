@@ -55,9 +55,23 @@
   overflow: hidden;
 }
 
-/* Cada contador é um link para o filtro: alvo de ao menos 24px de altura. */
+/* Compactos na barra: os três contadores ficam juntos, como um grupo só. */
+.statusbar .overview-counters {
+  gap: var(--space-1);
+}
+
+/*
+ * Cada contador é um link para o filtro, só com o ícone e o número: alvo de ao menos 24px de altura e de largura,
+ * e o número com largura fixa por algarismo, para o selo não tremer quando a contagem muda.
+ */
 .statusbar .overview-counter {
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 24px;
   min-height: 24px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 /*

@@ -510,7 +510,7 @@ describe('HomePage', () => {
     const missions = panel('Missões');
     await within(missions).findByRole('link', { name: 'Missão m3' });
     await waitFor(() =>
-      expect(screen.getByText(/aguarda você/)).toHaveTextContent('2 aguarda você'),
+      expect(screen.getByRole('link', { name: '2 aguarda você' })).toBeInTheDocument(),
     );
     expect(
       within(missions)

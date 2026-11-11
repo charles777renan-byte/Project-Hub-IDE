@@ -122,8 +122,8 @@ describe('OverviewCounters', () => {
 
     renderCounters();
 
-    expect(await screen.findByText('1 executando')).toBeInTheDocument();
-    expect(screen.getByText('2 aguarda você')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '2 aguarda você' })).toBeInTheDocument();
   });
 
   it.each(['planned', 'waiting_approval', 'waiting_input'] as const)(
@@ -137,8 +137,8 @@ describe('OverviewCounters', () => {
       renderCounters();
 
       // A missão em execução serve de marca: quando ela aparece, a leitura já chegou.
-      expect(await screen.findByText('1 executando')).toBeInTheDocument();
-      expect(screen.getByText('1 aguarda você')).toBeInTheDocument();
+      expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: '1 aguarda você' })).toBeInTheDocument();
     },
   );
 
@@ -152,8 +152,8 @@ describe('OverviewCounters', () => {
 
       renderCounters();
 
-      expect(await screen.findByText('1 executando')).toBeInTheDocument();
-      expect(screen.getByText('0 aguarda você')).toBeInTheDocument();
+      expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: '0 aguarda você' })).toBeInTheDocument();
     },
   );
 
@@ -162,15 +162,15 @@ describe('OverviewCounters', () => {
     const { api, emit } = installApi([project('p1')], () => ({ ok: true, data: current }));
 
     renderCounters();
-    expect(await screen.findByText('1 aguarda você')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 aguarda você' })).toBeInTheDocument();
 
     current = [mission('m1', 'p1', 'running')];
     act(() => {
       emit('m1');
     });
 
-    expect(await screen.findByText('1 executando')).toBeInTheDocument();
-    expect(screen.getByText('0 aguarda você')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '0 aguarda você' })).toBeInTheDocument();
     expect(api.missions.list).toHaveBeenCalledTimes(2);
   });
 
@@ -186,8 +186,8 @@ describe('OverviewCounters', () => {
 
     renderCounters();
 
-    expect(await screen.findByText('1 executando')).toBeInTheDocument();
-    expect(screen.getByText('1 aguarda você')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '1 aguarda você' })).toBeInTheDocument();
   });
 
   it('uma chamada que quebra num projeto não zera os contadores dos outros', async () => {
@@ -197,8 +197,8 @@ describe('OverviewCounters', () => {
 
     renderCounters();
 
-    expect(await screen.findByText('1 executando')).toBeInTheDocument();
-    expect(screen.getByText('0 aguarda você')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '0 aguarda você' })).toBeInTheDocument();
   });
 
   it('cancela a assinatura quando sai da tela', async () => {
@@ -208,7 +208,7 @@ describe('OverviewCounters', () => {
     }));
 
     const { unmount } = renderCounters();
-    expect(await screen.findByText('1 executando')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 executando' })).toBeInTheDocument();
     expect(unsubscribe).not.toHaveBeenCalled();
 
     unmount();
@@ -224,16 +224,45 @@ describe('OverviewCounters', () => {
 
     renderCounters();
 
-    const running = await screen.findByText('1 executando');
+    const running = await screen.findByRole('link', { name: '1 executando' });
     expect(running.closest('.overview-counters')).toHaveAttribute('aria-live', 'polite');
     // Selos de pílula (Tarefa 6): as classes .chip dão a forma e a cor do estado.
     expect(running).toHaveClass('overview-counter', 'overview-counter--lime', 'chip', 'chip--lime');
-    expect(screen.getByText('1 aguarda você')).toHaveClass(
+    expect(screen.getByRole('link', { name: '1 aguarda você' })).toHaveClass(
       'overview-counter',
       'overview-counter--warn',
       'chip',
       'chip--warn',
     );
+  });
+
+  it('compacto: o ícone e o número; o nome do estado vem num rótulo que a folha de estilo abre no mouse', async () => {
+    installApi([project('p1')], () => ({
+      ok: true,
+      data: [mission('m1', 'p1', 'running'), mission('m2', 'p1', 'failed')],
+    }));
+
+    renderCounters();
+
+    const running = await screen.findByRole('link', { name: '1 executando' });
+    const attention = screen.getByRole('link', { name: '0 aguarda você' });
+    const failed = screen.getByRole('link', { name: '1 falhou' });
+    for (const [link, label] of [
+      [running, 'executando'],
+      [attention, 'aguarda você'],
+      [failed, 'falhou'],
+    ] as const) {
+      // O ícone toma o lugar do ponto do selo e diz o estado sem depender da cor.
+      expect(link).toHaveClass('chip--icon');
+      expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      expect(link.querySelector('.overview-counter__count')).toBeVisible();
+      // O rótulo está no link (fechado pela folha de estilo); sem `title`, para a dica não repetir o que abre.
+      expect(link.querySelector('.overview-counter__label')).toHaveTextContent(label);
+      expect(link).not.toHaveAttribute('title');
+    }
+    // Um ícone por estado: nenhum repete.
+    const shapes = [running, attention, failed].map((link) => link.querySelector('svg')?.innerHTML);
+    expect(new Set(shapes).size).toBe(3);
   });
 
   it('cada contador é um link para o Início filtrado por estado, e o de falhas conta as missões que falharam', async () => {
@@ -288,8 +317,8 @@ describe('OverviewCounters', () => {
 
     renderCounters();
 
-    expect(await screen.findByText('1 aguarda você')).toBeInTheDocument();
-    expect(screen.getByText('1 executando')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '1 aguarda você' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '1 executando' })).toBeInTheDocument();
   });
 
   it('antes da primeira leitura, mostra traço e não zero, que pareceria um dado', () => {
@@ -301,16 +330,16 @@ describe('OverviewCounters', () => {
 
     renderCounters();
 
-    expect(screen.getByText('— executando')).toBeInTheDocument();
-    expect(screen.getByText('— aguarda você')).toBeInTheDocument();
-    expect(screen.getByText('— falharam')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '— executando' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '— aguarda você' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '— falharam' })).toBeInTheDocument();
   });
 
   it('sem a API do preload, mostra traço e não quebra', () => {
     renderCounters();
 
-    expect(screen.getByText('— executando')).toBeInTheDocument();
-    expect(screen.getByText('— aguarda você')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '— executando' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '— aguarda você' })).toBeInTheDocument();
   });
 });
 
