@@ -128,8 +128,16 @@ test('arrastar um terminal para a borda de baixo de outro empilha os dois, sem r
   await page.keyboard.press('Enter');
   await expectTerminalToContain(slotOf(page, first).locator('.terminal-view'), 'depois-2');
 
-  // O aviso de desfazer devolve o layout de antes, de novo sem mexer nos terminais.
-  // (A etapa de desfazer liga este trecho.)
+  // O aviso de desfazer devolve o layout de antes (lado a lado), de novo sem mexer nos terminais.
+  await page.getByRole('button', { name: 'Desfazer' }).click();
+  await expect
+    .poll(async () =>
+      Math.abs((await boxOf(slotOf(page, first))).y - (await boxOf(slotOf(page, second))).y),
+    )
+    .toBeLessThanOrEqual(1);
+  expect((await boxOf(slotOf(page, first))).x).toBeLessThan((await boxOf(slotOf(page, second))).x);
+  await expectTerminalToContain(slotOf(page, first).locator('.terminal-view'), 'depois-2');
+  await expectOpenSessions(page, 2);
 
   // Fechar os painéis encerra as sessões: um shell vivo seguraria a pasta do projeto e o fechamento do app.
   for (let left = 2; left > 0; left -= 1) {

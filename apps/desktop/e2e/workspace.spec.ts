@@ -134,7 +134,7 @@ test('o workspace novo abre vazio, com a barra para abrir um terminal de cada pr
   await expect(page.getByRole('menu')).toHaveCount(0);
 });
 
-test('abrir três terminais pela barra: um painel à esquerda e dois empilhados à direita, cada um com sessão viva', async ({
+test('abrir três terminais pela barra: cada novo divide um painel, os três cobrem a área e cada um tem sessão viva', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -156,20 +156,21 @@ test('abrir três terminais pela barra: um painel à esquerda e dois empilhados 
   await expect(panes).toHaveCount(3);
   await expect(page.locator('.terminal-view')).toHaveCount(3);
 
-  const left = await panes.nth(0).boundingBox();
-  const topRight = await panes.nth(1).boundingBox();
-  const bottomRight = await panes.nth(2).boundingBox();
-  if (left === null || topRight === null || bottomRight === null) {
-    throw new Error('Um painel não tem caixa na tela.');
+  // O primeiro terminal cedeu espaço aos outros dois: os três cobrem a área (fora os vãos) e nenhum fica abaixo do
+  // mínimo de 340 x 200 px.
+  const boxes = await panes.evaluateAll((items) =>
+    items.map((item) => {
+      const box = item.getBoundingClientRect();
+      return { width: box.width, height: box.height };
+    }),
+  );
+  expect(boxes).toHaveLength(3);
+  for (const box of boxes) {
+    expect(box.width).toBeGreaterThanOrEqual(339);
+    expect(box.height).toBeGreaterThanOrEqual(199);
   }
-  // O primeiro fica à esquerda e ocupa a altura toda; o segundo e o terceiro dividem a coluna da direita.
-  expect(left.x).toBeLessThan(topRight.x);
-  expect(left.x + left.width).toBeLessThanOrEqual(topRight.x + 2);
-  expect(Math.abs(topRight.x - bottomRight.x)).toBeLessThan(2);
-  expect(Math.abs(topRight.width - bottomRight.width)).toBeLessThan(2);
-  expect(topRight.y + topRight.height).toBeLessThanOrEqual(bottomRight.y + 2);
-  expect(left.height).toBeGreaterThan(topRight.height + bottomRight.height - 4);
-  expect(Math.abs(left.y - topRight.y)).toBeLessThan(2);
+  const covered = boxes.reduce((sum, box) => sum + box.width * box.height, 0);
+  expect(covered).toBeGreaterThan(area.width * area.height * 0.85);
 
   // Cada painel tem uma sessão viva: o comando digitado nele responde.
   for (let index = 0; index < 3; index += 1) {
@@ -199,17 +200,23 @@ test('fechar um painel na hora encerra a sessão e os outros ocupam o espaço; f
   const sessions = bar.locator('.sidebar__card');
   await expect(sessions).toHaveCount(3);
 
-  // Fechar sai na hora, sem confirmação: o painel some, a sessão dele termina e os dois restantes ficam lado a lado.
+  // Fechar sai na hora, sem confirmação: o painel some, a sessão dele termina e o vizinho fica com o espaço dele (os
+  // dois restantes cobrem a área, fora o vão).
   await closePane(page, 2);
   await expect(sessions).toHaveCount(2, { timeout: 15_000 });
   const area = await page.locator('.workspace__area').boundingBox();
-  const first = await panes.nth(0).boundingBox();
-  const second = await panes.nth(1).boundingBox();
-  if (area === null || first === null || second === null) throw new Error('Sem caixa na tela.');
-  expect(Math.abs(first.y - second.y)).toBeLessThan(2);
-  expect(Math.abs(first.height - second.height)).toBeLessThan(2);
-  expect(first.x + first.width).toBeLessThanOrEqual(second.x + 2);
-  expect(first.width + second.width).toBeGreaterThan(area.width * 0.9);
+  if (area === null) throw new Error('Sem caixa na tela.');
+  await expect
+    .poll(async () => {
+      const boxes = await panes.evaluateAll((items) =>
+        items.map((item) => {
+          const box = item.getBoundingClientRect();
+          return box.width * box.height;
+        }),
+      );
+      return boxes.reduce((sum, size) => sum + size, 0);
+    })
+    .toBeGreaterThan(area.width * area.height * 0.85);
 
   // Fechando o primeiro, o que sobra ocupa a área inteira.
   await closePane(page, 0);
@@ -800,7 +807,7 @@ test('se o contexto WebGL se perde, o terminal volta ao DOM, ajusta as colunas �
   await endShell(page);
 });
 
-test('abrir muitos painéis e trocá-los pelas fichas não gera o aviso "Too many active WebGL contexts" do Chromium', async ({
+test('abrir muitos painéis e passar por todos nas abas não gera o aviso "Too many active WebGL contexts" do Chromium', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -809,8 +816,7 @@ test('abrir muitos painéis e trocá-los pelas fichas não gera o aviso "Too man
   const { page } = await launchApp({ dialogPath: gitRepo.path });
   const messages: string[] = [];
   page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
-  // O teste guarda cada contexto WebGL que a página cria, para provar que as montagens passaram do limite de 16 do
-  // Chromium (a grade responsiva só mostra ~4 terminais por vez, então abrir painéis sozinho não chega lá).
+  // O teste guarda cada contexto WebGL que a página cria, para contar quantos seguem vivos (o limite do Chromium é 16).
   await page.addInitScript(() => {
     const contexts = new Set<WebGL2RenderingContext>();
     Object.assign(window, { webglContexts: contexts });
@@ -837,57 +843,31 @@ test('abrir muitos painéis e trocá-los pelas fichas não gera o aviso "Too man
     });
   await addProjectAndOpenWorkspace(page, projectName);
 
-  // A grade responsiva só mostra o que cabe (ao menos 340 x 260 px por terminal); os outros ficam como fichas em
-  // "Fora da grade", sem terminal montado. Abrir os 10 já remonta os mostrados a cada abertura.
+  // Dez terminais não cabem na janela do teste com o mínimo de cada um: em algum ponto o layout deixa de caber e a
+  // faixa de abas mostra um por vez. Os terminais só mudam de lugar (da grade para a aba e de volta), sem remontar.
   const total = 10;
-  const onGrid = shellPanes(page);
-  const chips = page
-    .getByRole('group', { name: 'Terminais fora da grade' })
-    .locator('.off-grid__chip');
   for (let index = 0; index < total; index += 1) {
     await page.getByRole('button', { name: 'Abrir terminal' }).click();
     await page.getByRole('menuitem', { name: /PowerShell/ }).click();
-    await expect
-      .poll(async () => (await onGrid.count()) + (await chips.count()), { timeout: 30_000 })
-      .toBe(index + 1);
     await expectOpenSessions(page, index + 1);
   }
+  const tabs = page.getByRole('tablist', { name: 'Painéis abertos' }).getByRole('tab');
+  await expect(tabs).toHaveCount(total);
   const views = page.locator('.terminal-view');
-  const shown = await onGrid.count();
-  expect(shown, 'a grade mostra alguns painéis e deixa os outros como fichas').toBeLessThan(total);
-  expect(await chips.count()).toBe(total - shown);
-  await expect(views).toHaveCount(shown);
   await expectWebglCanvas(views);
 
-  // O que protege este teste: o contexto WebGL de um terminal precisa ser solto quando o painel sai da grade (vira
-  // ficha) e o do painel que uma ficha traz de volta é um contexto novo. Cada troca desmonta um terminal e monta
-  // outro. Com 20 trocas as montagens passam folgadas de 16: se o app deixasse os contextos descartados vivos, o
-  // Chromium avisaria ("Too many active WebGL contexts") e perderia o mais antigo, e as asserções abaixo pegariam.
-  const swaps = 20;
-  const before = (await contexts()).created;
+  // Duas voltas por todas as abas: cada troca tira um terminal da tela e põe outro.
+  const swaps = 2 * total;
   for (let round = 0; round < swaps; round += 1) {
-    const chip = chips.first();
-    const label = (await chip.locator('.off-grid__chip-label').textContent()) ?? '';
-    await chip.click();
-    // A troca assentou: a ficha trazida saiu da faixa, o total de painéis não mudou e a grade tem os mesmos terminais.
-    await expect(
-      page
-        .getByRole('group', { name: 'Terminais fora da grade' })
-        .locator('.off-grid__chip-label')
-        .getByText(label, { exact: true }),
-    ).toHaveCount(0);
-    await expect(onGrid).toHaveCount(shown);
-    await expect(chips).toHaveCount(total - shown);
-    await expect(views).toHaveCount(shown);
+    await tabs.nth(round % total).click();
+    await expect(tabs.nth(round % total)).toHaveAttribute('aria-selected', 'true');
+    await expect(shellPanes(page)).toHaveCount(1);
   }
   const after = await contexts();
-  console.log(
-    `[medida] contextos WebGL: ${before} antes das trocas, ${JSON.stringify(after)} depois`,
-  );
-  // A guarda de que o teste montou o que disse: as trocas sozinhas criaram mais contextos que o limite do Chromium.
-  expect(after.created - before, 'contextos criados pelas trocas').toBeGreaterThan(16);
-  // Só os terminais da grade têm contexto vivo: os de todas as montagens anteriores foram liberados pelo app.
-  expect.soft(after.alive, 'contextos WebGL vivos com a grade cheia').toBeLessThanOrEqual(shown);
+  const shown = await views.count();
+  console.log(`[medida] contextos WebGL depois das trocas: ${JSON.stringify(after)}`);
+  // Um contexto vivo por terminal aberto, no máximo: nada acumula a cada troca, e o total fica abaixo de 16.
+  expect.soft(after.alive, 'contextos WebGL vivos').toBeLessThanOrEqual(total);
   await expectWebglCanvas(views);
   // Um contexto perdido só devolve o painel ao DOM depois de o xterm esperar 3 s por uma restauração.
   await page.waitForTimeout(4_000);
@@ -901,10 +881,10 @@ test('abrir muitos painéis e trocá-los pelas fichas não gera o aviso "Too man
   // A asserção que reprova sem a correção: o Chromium avisa quando passa de 16 contextos vivos.
   const loss = messages.filter((text) => WEBGL_LOSS.test(text));
   console.log(
-    `[medida] ${total} painéis, ${shown} na grade, ${swaps} trocas, avisos de contexto: ${loss.length}`,
+    `[medida] ${total} painéis, ${shown} terminais montados, ${swaps} trocas, avisos de contexto: ${loss.length}`,
   );
   expect(loss, 'avisos de contexto WebGL perdido ou em excesso').toEqual([]);
-  // Fechar um painel traz a primeira ficha para a grade: o laço fecha o primeiro painel até não sobrar sessão.
+  // O laço fecha o painel mostrado até não sobrar sessão.
   for (let left = total; left > 0; left -= 1) {
     await fecharPainel(page, 'PowerShell');
     await expectOpenSessions(page, left - 1);
