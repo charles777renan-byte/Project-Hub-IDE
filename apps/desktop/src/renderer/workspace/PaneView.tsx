@@ -118,6 +118,8 @@ export function PaneView(props: PaneViewProps) {
   const [askingId, setAskingId] = useState<string | null>(null);
   // A caixa "Não perguntar de novo" da pergunta: só vale se a pessoa confirmar o fechamento; "Voltar" a esquece.
   const [skipNextTime, setSkipNextTime] = useState(false);
+  // De onde a pergunta foi aberta (o X ou o menu ⋯): é para lá que o foco volta se a pessoa escolher "Voltar".
+  const askedFrom = useRef<'close' | 'menu'>('menu');
   // Preferência do app inteiro: desligada, o item do menu fecha direto, sem a pergunta.
   const ask = useAskBeforeClosing();
 
@@ -250,7 +252,8 @@ export function PaneView(props: PaneViewProps) {
     ]
       .filter((part): part is string => part !== undefined && part !== '')
       .join(' · ');
-    // O menu ⋯ guarda o que fecha o painel. Ocupado (um pedido em curso), os itens ficam desabilitados.
+    // O menu ⋯ guarda as ações do painel, e o X ao lado fecha com um clique. Ocupado (um pedido em curso), os itens
+    // e o X ficam desabilitados.
     const askToClose = needsCloseConfirmation(terminal);
     const actions: AcaoMenu[] =
       terminal.missionId !== undefined
@@ -269,6 +272,7 @@ export function PaneView(props: PaneViewProps) {
                   rotulo: 'Fechar painel e encerrar…',
                   // O menu fecha e desmonta ao escolher: a pergunta vive aqui, fora dele.
                   onSelecionar: () => {
+                    askedFrom.current = 'menu';
                     setSkipNextTime(false);
                     setAskingId(terminal.id);
                   },
@@ -287,6 +291,22 @@ export function PaneView(props: PaneViewProps) {
               ]
           : [{ rotulo: 'Fechar painel', onSelecionar: props.onClose, desabilitada: busy }];
     const asking = askToClose && askingId === terminal.id;
+    // O X faz o mesmo que o item de fechar do menu: no agente avulso vivo pergunta antes (se a pergunta estiver
+    // ligada); no shell comum e no terminal de missão fecha direto (a missão continua).
+    const closeHint =
+      terminal.missionId !== undefined
+        ? 'Fecha o painel (a missão continua)'
+        : askToClose
+          ? `Fecha o painel e encerra o ${label}`
+          : 'Fecha o painel';
+    const closeFromButton =
+      terminal.missionId === undefined && askToClose && ask
+        ? () => {
+            askedFrom.current = 'close';
+            setSkipNextTime(false);
+            setAskingId(terminal.id);
+          }
+        : props.onClose;
     content = (
       <>
         <div className="pane__head pane__head--live">
@@ -310,6 +330,7 @@ export function PaneView(props: PaneViewProps) {
               icone={<Ellipsis {...ICON_PROPS} />}
               acoes={actions}
             />
+            <CloseButton disabled={busy} onClick={closeFromButton} hint={closeHint} />
           </span>
           <PaneContext context={terminal.context} />
         </div>
@@ -340,8 +361,12 @@ export function PaneView(props: PaneViewProps) {
               onCancel={() => {
                 setAskingId(null);
                 setSkipNextTime(false);
-                // O item do menu já sumiu: o foco volta ao menu ⋯ em vez de se perder no corpo da página.
-                section.current?.querySelector<HTMLElement>('.menu-acoes__gatilho')?.focus();
+                // O foco volta para onde a pergunta nasceu (o X ou o menu ⋯), em vez de se perder no corpo da página.
+                section.current
+                  ?.querySelector<HTMLElement>(
+                    askedFrom.current === 'close' ? '.pane__close' : '.menu-acoes__gatilho',
+                  )
+                  ?.focus();
               }}
             />
           </div>
