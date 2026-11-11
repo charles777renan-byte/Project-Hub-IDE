@@ -110,6 +110,8 @@
   );
 
   /* Escala tipográfica. */
+  /* Só para as duas linhas empilhadas dos limites na barra de status (12px de linha cada). */
+  --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-md: 0.9375rem;

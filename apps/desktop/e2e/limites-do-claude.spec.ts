@@ -56,6 +56,21 @@ test('Limites do Claude: a barra de status resume as janelas e abre o painel', a
   );
   await expect(indicator).toContainText('16%');
 
+  // Duas janelas empilhadas dentro da barra: a de 5h em cima, a semanal embaixo, ambas na altura da barra.
+  const rows = indicator.locator('.limits-indicator__part');
+  await expect(rows).toHaveCount(2);
+  const barBox = await footer.boundingBox();
+  const topBox = await rows.nth(0).locator('.limits-indicator__label').boundingBox();
+  const bottomBox = await rows.nth(1).locator('.limits-indicator__label').boundingBox();
+  const buttonBox = await indicator.boundingBox();
+  if (barBox === null || topBox === null || bottomBox === null || buttonBox === null) {
+    throw new Error('barra, botão ou linhas sem medida');
+  }
+  expect(topBox.y).toBeLessThan(bottomBox.y);
+  expect(buttonBox.y).toBeGreaterThanOrEqual(barBox.y);
+  expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(barBox.y + barBox.height);
+  expect(bottomBox.y + bottomBox.height).toBeLessThanOrEqual(buttonBox.y + buttonBox.height);
+
   await indicator.click();
   const panel = page.getByRole('dialog', { name: 'Limites da assinatura' });
   await expect(panel).toBeVisible();

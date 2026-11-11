@@ -247,6 +247,17 @@ const WINDOW_DURATION_MS: Record<string, number> = {
 };
 
 /**
+ * Quanto dura a janela, só para ordenar: a duração informada pelo programa, ou a da tabela do app (a mensal inclusa).
+ * `Infinity` para a janela de duração desconhecida, que fica depois das outras.
+ */
+export function windowDurationMs(
+  window: Pick<LimitWindowDto, 'id'> & Partial<Pick<LimitWindowDto, 'durationMinutes'>>,
+): number {
+  if (window.durationMinutes !== undefined) return window.durationMinutes * MINUTE_MS;
+  return WINDOW_DURATION_MS[window.id] ?? (window.id === 'thirty_day' ? 30 * DAY_MS : Infinity);
+}
+
+/**
  * Quanto do tempo da janela já passou, de 0 a 100, contando do começo (a renovação menos a duração) até agora.
  * A duração informada pelo programa (`durationMinutes`) vale mais que a tabela do app.
  * `undefined` para janela de duração desconhecida, já renovada, com instante inválido ou com a renovação mais longe

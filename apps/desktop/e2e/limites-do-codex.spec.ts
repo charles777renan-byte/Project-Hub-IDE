@@ -70,16 +70,21 @@ test('Limites do Codex: o cartão, a barra de status e o painel mostram a janela
   await expect(card).toContainText(/Visto às \d{2}:\d{2}, na última resposta do Codex\./);
   await expect(card.getByRole('meter', { name: /Mensal/ })).toHaveCount(1);
   // O Claude está inerte neste teste: o cartão dele não ganha número.
-  await expect(panel.getByRole('group', { name: 'Uso do Claude' })).not.toContainText(
-    '% usado',
-  );
+  await expect(panel.getByRole('group', { name: 'Uso do Claude' })).not.toContainText('% usado');
 
   const footer = page.getByRole('contentinfo', { name: 'Barra de status' });
   const indicator = footer.getByRole('button', { name: /^Limites do Codex/ });
-  await expect(indicator).toHaveAccessibleName(
-    /^Limites do Codex: mensal 47%, renova em 1[67]d$/,
-  );
+  await expect(indicator).toHaveAccessibleName(/^Limites do Codex: mensal 47%, renova em 1[67]d$/);
   await expect(indicator).toContainText('47%');
+
+  // Uma janela só: uma linha, no meio da altura do botão.
+  const rows = indicator.locator('.limits-indicator__part');
+  await expect(rows).toHaveCount(1);
+  const buttonBox = await indicator.boundingBox();
+  const rowBox = await rows.first().locator('.limits-indicator__label').boundingBox();
+  if (buttonBox === null || rowBox === null) throw new Error('botão ou linha sem medida');
+  const rowMiddle = rowBox.y + rowBox.height / 2;
+  expect(Math.abs(rowMiddle - (buttonBox.y + buttonBox.height / 2))).toBeLessThanOrEqual(1.5);
 
   await indicator.click();
   const dialog = page.getByRole('dialog', { name: 'Limites da assinatura' });

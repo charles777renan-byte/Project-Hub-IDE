@@ -91,6 +91,52 @@ describe('LimitsIndicator: o resumo na barra', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('empilha as janelas: a curta em cima, a longa embaixo, mesmo com o DTO ao contrário', async () => {
+    install(
+      claude({
+        windows: [
+          { id: 'seven_day', usedPercent: 50, resetsAt: iso(29, 14, 0) },
+          { id: 'five_hour', usedPercent: 12, resetsAt: iso(28, 18, 0) },
+        ],
+      }),
+    );
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Claude/ });
+
+    const rows = [...container.querySelectorAll('.limits-indicator__part')];
+    expect(rows.map((row) => row.textContent)).toEqual(['5h12%', '1d50%']);
+  });
+
+  it('com uma janela só, há uma linha só, marcada para a folha de estilo centrar', async () => {
+    install(withCodex({ providers: [] }));
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Codex/ });
+
+    const rows = container.querySelectorAll('.limits-indicator__part');
+    expect(rows).toHaveLength(1);
+    expect(container.querySelector('.limits-indicator__parts')).toHaveAttribute('data-linhas', '1');
+  });
+
+  it('com mais de duas janelas, mostra só a mais curta e a mais longa', async () => {
+    install(
+      withCodex(
+        { providers: [] },
+        {
+          windows: [
+            { id: 'five_hour', usedPercent: 10, resetsAt: iso(28, 18, 0) },
+            { id: 'seven_day', usedPercent: 20, resetsAt: iso(30, 18, 0) },
+            { id: 'thirty_day', usedPercent: 30, resetsAt: iso(31, 18, 0) },
+          ],
+        },
+      ),
+    );
+    const { container } = render(<LimitsIndicator />);
+    await screen.findByRole('button', { name: /^Limites do Codex/ });
+
+    const rows = [...container.querySelectorAll('.limits-indicator__part')];
+    expect(rows.map((row) => row.textContent)).toEqual(['5h10%', '3d30%']);
+  });
+
   it('sem leitura, mostra um traço e nunca um zero', () => {
     install({ providers: [] });
     render(<LimitsIndicator />);

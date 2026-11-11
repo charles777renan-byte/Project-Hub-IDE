@@ -893,14 +893,15 @@ button:disabled {
 }
 
 /*
- * Limites da assinatura (components/LimitsIndicator.tsx): um botão de 24px com o resumo das janelas e, aberto, um
+ * Limites da assinatura (components/LimitsIndicator.tsx): um botão de 24px com o ícone do programa e, ao lado, até
+ * duas linhas de janela empilhadas (a mais curta em cima, a mais longa embaixo; uma só fica em cima) e, aberto, um
  * painel por cima do corpo, ancorado no canto direito logo acima da barra. O painel é `fixed` porque a barra corta o
  * que passa da borda (overflow: hidden). O número vem sempre em texto; âmbar e vermelho só reforçam o nível.
  */
 .limits-indicator__button {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   height: 24px;
   padding: 0 var(--space-2);
   border: 0;
@@ -918,32 +919,64 @@ button:disabled {
   color: var(--text);
 }
 
-.limits-indicator__part[data-nivel='aviso'] {
-  color: var(--warn);
+/*
+ * As linhas do botão são uma grade de três colunas (rótulo, barrinha, número) em que cada janela é uma linha
+ * (`display: contents`): as colunas alinham de uma linha para a outra. Com duas janelas, duas linhas de 12px em
+ * fonte menor, centradas na altura do botão. Com uma só, a linha fica no meio, na fonte normal da barra e com a
+ * barrinha um pouco maior: o bloco não parece faltar um pedaço.
+ */
+.limits-indicator__parts {
+  display: grid;
+  grid-template-columns: auto 44px auto;
+  align-content: center;
+  align-items: center;
+  column-gap: 6px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
 }
 
-.limits-indicator__part[data-nivel='critico'] {
-  color: var(--danger);
+.limits-indicator__parts[data-linhas='1'] {
+  grid-template-columns: auto 48px auto;
+  font-size: var(--text-xs);
+  line-height: 16px;
 }
 
 .limits-indicator__part {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+  display: contents;
 }
 
-/* A barrinha de cada janela no rodapé: 20px de trilho, preenchida pelo uso e pintada pelo nível. */
+/* O número é o dado: sai na cor do texto. O rótulo fica apagado. A cor do nível vale para os dois. */
+.limits-indicator__value {
+  min-width: 3ch;
+  color: var(--text);
+  text-align: right;
+}
+
+.limits-indicator__part[data-nivel='aviso'] > * {
+  color: var(--warn);
+}
+
+.limits-indicator__part[data-nivel='critico'] > * {
+  color: var(--danger);
+}
+
+/* A barrinha de cada janela: o trilho ocupa a coluna do meio, preenchido pelo uso e pintado pelo nível. */
 .limits-indicator__mini {
   display: block;
-  width: 20px;
   height: 4px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--fill);
 }
 
+.limits-indicator__parts[data-linhas='1'] .limits-indicator__mini {
+  height: 5px;
+}
+
 .limits-indicator__mini-fill {
   display: block;
+  min-width: 2px;
   height: 100%;
   border-radius: var(--radius-pill);
   background: var(--brand);
@@ -2557,7 +2590,7 @@ button:disabled {
 .limits-indicator {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .limits-panel__provider-head {

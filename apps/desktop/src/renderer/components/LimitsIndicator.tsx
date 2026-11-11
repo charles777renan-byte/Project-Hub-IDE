@@ -10,6 +10,7 @@ import {
   presentProviders,
   shortWindowLabel,
   usedPercent,
+  windowDurationMs,
 } from '../limits-format';
 import { useLimits } from '../use-limits';
 import { LimitsPanel } from './LimitsPanel';
@@ -63,11 +64,19 @@ function partOf(window: LimitWindowDto, provider: LimitProviderId, now: Date): P
   };
 }
 
-/** O resumo de um programa para a barra: as partes das janelas que ela resume, o pior nível e o texto por extenso. */
+/**
+ * O resumo de um programa para a barra: as partes das janelas que ela resume, o pior nível e o texto por extenso.
+ * As partes saem da janela mais curta para a mais longa, e a barra tem só duas linhas: com mais de duas, ficam a
+ * mais curta (em cima) e a mais longa (embaixo). Com uma só, é uma linha só.
+ */
 function summaryOf(entry: ProviderLimitsDto | undefined, provider: LimitProviderId, now: Date) {
-  const parts = (entry?.windows ?? [])
+  const ordered = [...(entry?.windows ?? [])].sort(
+    (a, b) => windowDurationMs(a) - windowDurationMs(b),
+  );
+  const all = ordered
     .map((window) => partOf(window, provider, now))
     .filter((part): part is Part => part !== null);
+  const parts = all.length > 2 ? [all[0]!, all[all.length - 1]!] : all;
   const level = parts.reduce<LimitLevel>(
     (worst, part) => (LEVEL_ORDER[part.level] > LEVEL_ORDER[worst] ? part.level : worst),
     'normal',
@@ -146,24 +155,31 @@ export function LimitsIndicator() {
               setOpenBy((current) => (current === provider ? null : provider));
             }}
           >
-            <ProviderIcon provider={provider} size={12} />
+            <ProviderIcon provider={provider} size={parts.length > 1 ? 18 : 14} />
             {parts.length === 0 ? (
               <span>—</span>
             ) : (
-              parts.map((part) => (
-                <span key={part.spoken} className="limits-indicator__part" data-nivel={part.level}>
-                  <span className="limits-indicator__label">{part.label}</span>
-                  {part.fill === undefined ? null : (
+              <span className="limits-indicator__parts" data-linhas={parts.length}>
+                {parts.map((part) => (
+                  <span
+                    key={part.spoken}
+                    className="limits-indicator__part"
+                    data-nivel={part.level}
+                  >
+                    <span className="limits-indicator__label">{part.label}</span>
+                    {/* A janela já renovada fica com o trilho vazio: as colunas não saem do lugar. */}
                     <span className="limits-indicator__mini">
-                      <span
-                        className="limits-indicator__mini-fill"
-                        style={{ width: `${part.fill}%` }}
-                      />
+                      {part.fill === undefined || part.fill === 0 ? null : (
+                        <span
+                          className="limits-indicator__mini-fill"
+                          style={{ width: `${part.fill}%` }}
+                        />
+                      )}
                     </span>
-                  )}
-                  <span className="limits-indicator__value">{part.value}</span>
-                </span>
-              ))
+                    <span className="limits-indicator__value">{part.value}</span>
+                  </span>
+                ))}
+              </span>
             )}
           </button>
         );
