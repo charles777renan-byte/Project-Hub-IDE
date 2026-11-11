@@ -5,7 +5,7 @@ import {
   type TranscriptUsageTracker,
 } from '@project-hub/agent-adapters';
 import type { UsageSummaryDto } from '@project-hub/contracts';
-import { contextWindowOf } from '@project-hub/domain';
+import { contextWindowOf, MODEL_NAME_MAX_LENGTH } from '@project-hub/domain';
 
 /** Intervalo mínimo entre duas leituras do mesmo terminal, em ms. É o mesmo da missão. */
 export const TERMINAL_USAGE_INTERVAL_MS = 1500;
@@ -40,6 +40,12 @@ export type TerminalUsageService = {
   contextOf(terminalId: string): TerminalContext | undefined;
   /** Se o Claude do terminal pediu algo à pessoa e ainda espera, como a última leitura deixou. Não lê de novo. */
   waitingOf(terminalId: string): boolean;
+  /**
+   * O modelo que o Claude disse ao começar a sessão (`SessionStart`), como a última leitura deixou. Serve antes da
+   * primeira resposta, quando o transcript ainda não tem modelo. O Claude Code nem sempre manda o campo: sem ele,
+   * `undefined`. Uma troca de modelo no meio da sessão só aparece pela resposta seguinte (`contextOf`).
+   */
+  modelOf(terminalId: string): string | undefined;
 };
 
 export type TerminalContext = { model: string; usedTokens: number; windowTokens: number };
@@ -78,6 +84,8 @@ type Entry = {
   context: TerminalContext | undefined;
   /** O hook mais recente que fala da espera é um pedido. Refeito do zero pelo log, como o resto. */
   waiting: boolean;
+  /** Modelo do `SessionStart` mais recente que trouxe um. */
+  startModel: string | undefined;
   nextReadAt: number;
   reading: Promise<void> | undefined;
 };
@@ -100,6 +108,15 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
     if (attention !== undefined) entry.waiting = attention;
     // Registro grande demais chega sem o conteúdo: não aponta transcript nenhum.
     if (record.payload['truncated'] === true) return;
+    const model = record.payload['model'];
+    if (
+      record.payload['hook_event_name'] === 'SessionStart' &&
+      typeof model === 'string' &&
+      model !== '' &&
+      model.length <= MODEL_NAME_MAX_LENGTH
+    ) {
+      entry.startModel = model;
+    }
     const path = record.payload['transcript_path'];
     const sessionId = record.payload['session_id'];
     if (typeof path === 'string' && typeof sessionId === 'string') {
@@ -149,6 +166,7 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
         last: undefined,
         context: undefined,
         waiting: false,
+        startModel: undefined,
         nextReadAt: 0,
         reading: undefined,
       });
@@ -178,5 +196,7 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
     contextOf: (terminalId) => entries.get(terminalId)?.context,
 
     waitingOf: (terminalId) => entries.get(terminalId)?.waiting ?? false,
+
+    modelOf: (terminalId) => entries.get(terminalId)?.startModel,
   };
 }

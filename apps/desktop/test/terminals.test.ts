@@ -862,6 +862,31 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     expect(byId.get('sessao-agente')).not.toHaveProperty('context');
   });
 
+  it('painel do Claude sem resposta, mas com o modelo dito pelo SessionStart, traz o modelo e não o contexto', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+    h.hooks.push('shell-1', { hook_event_name: 'SessionStart', model: 'claude-haiku-5-5' });
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).toMatchObject({ id: 'shell-1', model: 'claude-haiku-5-5' });
+    expect(result.data[0]).not.toHaveProperty('context');
+  });
+
+  it('com resposta, o modelo da resposta vence o do SessionStart', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'claude');
+    h.hooks.push('shell-1', { hook_event_name: 'SessionStart', model: 'claude-haiku-5-5' });
+    h.hooks.sessionStart('shell-1', writeAnswer(120));
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).toMatchObject({ id: 'shell-1', model: 'claude-sonnet-5-5' });
+    expect(result.data[0]).toHaveProperty('context');
+  });
+
   it('painel do Claude sem resposta ainda não tem modelo nem contexto', async () => {
     const h = setup();
     await h.service.openSession('p1', 'claude');

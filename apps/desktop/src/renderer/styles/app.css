@@ -2469,3 +2469,86 @@ button:disabled {
 .activity--exited .activity__bar {
   opacity: 0.35;
 }
+
+/*
+ * Faixa de abas dos terminais (workspace/PaneTabs.tsx): o que leva cor de estado ou de marca fica aqui, porque a seção
+ * de chrome de workspace.css só leva neutras. A aba que aguarda a pessoa ganha contorno âmbar (o texto "Aguardando"
+ * vem junto: a cor não é a única pista). O X fica por cima do canto direito da aba, que reserva o espaço dele, e só
+ * aparece na aba ativa, com o mouse em cima ou com o foco dentro.
+ */
+.pane-tabs__tab {
+  position: relative;
+}
+
+.pane-tabs__tab[data-waiting='true'] {
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+
+.pane-tabs__tab[data-waiting='true'][aria-selected='true'] {
+  box-shadow:
+    inset 0 0 0 1px var(--warn),
+    inset 0 -2px 0 var(--text);
+}
+
+.pane-tabs__tab .state-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.pane-tabs__item {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.pane-tabs__tab[data-closable='true'] {
+  padding-right: calc(var(--space-2) + 20px);
+}
+
+.pane-tabs__close {
+  position: absolute;
+  top: 4px;
+  right: var(--space-1);
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pane-tabs__item:hover .pane-tabs__close,
+.pane-tabs__item:focus-within .pane-tabs__close,
+.pane-tabs__tab[aria-selected='true'] + .pane-tabs__close {
+  opacity: 1;
+}
+
+.pane-tabs__close:hover:not(:disabled) {
+  background: var(--line);
+  color: var(--text);
+}
+
+.pane-tabs__close:disabled {
+  cursor: default;
+}
+
+.pane-tabs__confirm {
+  display: flex;
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--text-sm);
+}

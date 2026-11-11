@@ -950,6 +950,7 @@ function WorkspaceBody({
               idleIds={idleIds}
               providers={providers}
               onSelect={showSolo}
+              onClose={(leafId) => void closePane(leafId)}
               auto={soloAuto}
             />
             <div

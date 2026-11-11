@@ -186,6 +186,7 @@ describe('script de hook', () => {
     notification_type: 'permission_prompt',
     reason: 'clear',
     source: 'startup',
+    model: 'claude-haiku-5-5',
     tool_name: 'Bash',
     tool_input: { command: 'segredo' },
     tool_response: { stdout: 'saída longa' },
@@ -206,6 +207,7 @@ describe('script de hook', () => {
       notification_type: 'permission_prompt',
       reason: 'clear',
       source: 'startup',
+      model: 'claude-haiku-5-5',
     });
   });
 });

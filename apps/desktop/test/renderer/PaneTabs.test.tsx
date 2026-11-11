@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ProviderInfo, TerminalSummary } from '@project-hub/contracts';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setAskBeforeClosing } from '../../src/renderer/close-confirm';
 import { PaneTabs } from '../../src/renderer/workspace/PaneTabs';
 import { show, useFakeIntersectionObserver } from './fake-intersection-observer';
 
@@ -232,8 +233,211 @@ describe('PaneTabs: janela estreita (modo ligado pela largura)', () => {
     const note = screen.getByText('Janela pequena');
     expect(note.closest('[title]')).toHaveAttribute(
       'title',
-      'Volta para a grade quando a janela passar de 720 px',
+      'Volta para a grade quando o layout couber na janela',
     );
     expect(note.closest('button')).toBeNull();
+  });
+});
+
+describe('PaneTabs: nome pelo modelo', () => {
+  const comModelo = (id: string, model: string): TerminalSummary => ({
+    ...terminal(id, 'claude'),
+    kind: 'shell',
+    model,
+  });
+
+  it('o Claude com modelo conhecido leva a família do modelo no nome; sem modelo, o nome do programa', () => {
+    setup(
+      [leaf('a', 'claude', 't1'), leaf('b', 'claude', 't2'), leaf('c', 'codex', 't3')],
+      [comModelo('t1', 'claude-haiku-5-5'), terminal('t2', 'claude'), terminal('t3', 'codex')],
+    );
+
+    expect(rotulos()).toEqual(['Haiku', 'Claude Code', 'Codex']);
+  });
+
+  it('dois terminais no mesmo modelo ganham número de ordem; modelos diferentes, não', () => {
+    setup(
+      [leaf('a', 'claude', 't1'), leaf('b', 'claude', 't2'), leaf('c', 'claude', 't3')],
+      [
+        comModelo('t1', 'claude-haiku-5-5'),
+        comModelo('t2', 'claude-fable-5-2'),
+        comModelo('t3', 'claude-haiku-5-5'),
+      ],
+    );
+
+    expect(rotulos()).toEqual(['Haiku 1', 'Fable', 'Haiku 2']);
+  });
+
+  it('modelo que a tabela não reconhece cai no nome do programa', () => {
+    setup([leaf('a', 'claude', 't1')], [comModelo('t1', 'modelo-desconhecido')]);
+
+    expect(rotulos()).toEqual(['Claude Code']);
+  });
+
+  it('a dica da aba diz o programa, o título da sessão e o contexto', () => {
+    setup(
+      [leaf('a', 'claude', 't1')],
+      [
+        {
+          ...comModelo('t1', 'claude-haiku-5-5'),
+          title: 'Corrigir login',
+          context: { usedTokens: 76_000, windowTokens: 200_000 },
+        },
+      ],
+    );
+
+    expect(screen.getByRole('tab')).toHaveAttribute(
+      'title',
+      'Claude Code · Corrigir login · Contexto: 76.000 de 200.000 tokens (38%)',
+    );
+  });
+});
+
+describe('PaneTabs: estado por extenso', () => {
+  it('quem aguarda mostra "Aguardando" em texto e marca a aba; ativo mostra "Ativo"; ocioso, só o ponto', () => {
+    render(
+      <PaneTabs
+        leaves={[leaf('a', 'claude', 't1'), leaf('b', 'claude', 't2'), leaf('c', 'claude', 't3')]}
+        activeId="a"
+        terminals={[
+          { ...terminal('t1', 'claude'), state: 'waiting' },
+          terminal('t2', 'claude'),
+          terminal('t3', 'claude'),
+        ]}
+        idleIds={new Set(['t3'])}
+        providers={providers}
+        onSelect={vi.fn()}
+      />,
+    );
+    const [waiting, active, idle] = screen.getAllByRole('tab');
+
+    expect(waiting).toHaveAttribute('data-waiting', 'true');
+    expect(within(waiting!).getByText('Aguardando')).toHaveClass('state-mark__label');
+    expect(active).not.toHaveAttribute('data-waiting');
+    expect(within(active!).getByText('Ativo')).toHaveClass('state-mark__label');
+    expect(within(idle!).getByText('Ocioso')).toHaveClass('state-mark__sr');
+  });
+});
+
+describe('PaneTabs: contexto', () => {
+  it('a aba não desenha barra de contexto: o número fica só na dica', () => {
+    setup(
+      [leaf('a', 'claude', 't1')],
+      [{ ...terminal('t1', 'claude'), context: { usedTokens: 170_000, windowTokens: 200_000 } }],
+    );
+    const tab = screen.getByRole('tab');
+
+    expect(tab.querySelector('.pane-tabs__context')).toBeNull();
+    expect(tab.getAttribute('title')).toContain('Contexto: 170.000 de 200.000 tokens (85%)');
+  });
+});
+
+describe('PaneTabs: X de fechar na aba', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  const avulso = (id: string, provider: 'claude' | 'shell'): TerminalSummary => ({
+    ...terminal(id, provider),
+    kind: 'shell',
+  });
+
+  function comFechar(terminals: readonly TerminalSummary[], busy = false) {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <PaneTabs
+        leaves={[leaf('a', 'shell', 't1'), leaf('b', 'claude', 't2')]}
+        activeId="a"
+        terminals={terminals}
+        providers={providers}
+        onSelect={onSelect}
+        onClose={onClose}
+        busy={busy}
+      />,
+    );
+    return { onClose, onSelect };
+  }
+  const todos = [avulso('t1', 'shell'), avulso('t2', 'claude')];
+
+  it('sem onClose a faixa não tem X', () => {
+    setup([leaf('a', 'shell', 't1')], [avulso('t1', 'shell')]);
+    expect(screen.queryByRole('button', { name: /^Fechar/ })).not.toBeInTheDocument();
+  });
+
+  it('cada aba tem um X com o nome dela, fora do botão da aba e fora da ordem do Tab', () => {
+    comFechar(todos);
+    const x = screen.getByRole('button', { name: 'Fechar PowerShell' });
+    expect(x.closest('[role="tab"]')).toBeNull();
+    expect(x).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('button', { name: 'Fechar Claude Code' })).toBeInTheDocument();
+    // O nome da aba continua sendo só o rótulo.
+    expect(screen.getByRole('tab', { name: /^PowerShell/ })).toBeInTheDocument();
+  });
+
+  it('shell comum: o X fecha direto e não troca de aba', async () => {
+    const { onClose, onSelect } = comFechar(todos);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar PowerShell' }));
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('a');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('agente avulso vivo: o X pergunta antes, e só confirmar fecha', async () => {
+    const { onClose } = comFechar(todos);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar Claude Code' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('group', {
+        name: 'Encerrar o Claude Code e fechar o painel? O processo para.',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar e encerrar' }));
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('b');
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('"Voltar" some a pergunta, não fecha e devolve o foco à aba', async () => {
+    const { onClose } = comFechar(todos);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar Claude Code' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^Claude Code/ })).toHaveFocus();
+  });
+
+  it('com a pergunta desligada, o X do agente fecha direto', async () => {
+    setAskBeforeClosing(false);
+    const { onClose } = comFechar(todos);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar Claude Code' }));
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('b');
+  });
+
+  it('a pergunta some se a sessão terminar enquanto está aberta', async () => {
+    const onClose = vi.fn();
+    const props = {
+      leaves: [leaf('b', 'claude', 't2')],
+      activeId: 'b',
+      providers,
+      onSelect: vi.fn(),
+      onClose,
+    };
+    const view = render(<PaneTabs {...props} terminals={[avulso('t2', 'claude')]} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar Claude Code' }));
+    expect(screen.getByRole('group')).toBeInTheDocument();
+
+    view.rerender(
+      <PaneTabs {...props} terminals={[{ ...avulso('t2', 'claude'), state: 'exited' }]} />,
+    );
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('ocupado, os X ficam desligados', () => {
+    comFechar(todos, true);
+    expect(screen.getByRole('button', { name: 'Fechar PowerShell' })).toBeDisabled();
   });
 });
