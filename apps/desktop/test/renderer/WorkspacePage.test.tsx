@@ -16,7 +16,7 @@ import type {
   WorkspaceDto,
 } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import { arrangeLeaves } from '@project-hub/contracts/layout-ops';
 import { Toaster } from '../../src/renderer/components/Toaster';
 import { FakeResizeObserver } from './fake-resize-observer';
 import {
@@ -74,8 +74,8 @@ function medirArea(width: number, height: number) {
   act(() => observadores.forEach((item) => item.report(area, width, height)));
 }
 
-// Um espião sobre `setRatio`, para ver se arrastar uma divisória chega ao hook (o resto do hook é o de verdade).
-const setRatioChamado = vi.hoisted(() => vi.fn());
+// Um espião sobre `setSizes`, para ver se mover uma divisória chega ao hook (o resto do hook é o de verdade).
+const setSizesChamado = vi.hoisted(() => vi.fn());
 vi.mock('../../src/renderer/workspace/use-workspace', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('../../src/renderer/workspace/use-workspace')>();
@@ -85,9 +85,9 @@ vi.mock('../../src/renderer/workspace/use-workspace', async (importOriginal) => 
       const workspace = original.useWorkspace(projectId);
       return {
         ...workspace,
-        setRatio: (splitId: string, ratio: number) => {
-          setRatioChamado(splitId, ratio);
-          workspace.setRatio(splitId, ratio);
+        setSizes: (splitId: string, sizes: number[]) => {
+          setSizesChamado(splitId, sizes);
+          workspace.setSizes(splitId, sizes);
         },
       };
     },
@@ -121,16 +121,17 @@ function padrao(shellTerminal: string | null = null): LayoutNode {
     type: 'split',
     id: 'raiz',
     direction: 'row',
-    ratio: 0.5,
-    first: leaf('a', 'claude'),
-    second: {
-      type: 'split',
-      id: 'meio',
-      direction: 'column',
-      ratio: 0.5,
-      first: leaf('b', 'codex'),
-      second: leaf('c', 'shell', shellTerminal),
-    },
+    children: [
+      leaf('a', 'claude'),
+      {
+        type: 'split',
+        id: 'meio',
+        direction: 'column',
+        children: [leaf('b', 'codex'), leaf('c', 'shell', shellTerminal)],
+        sizes: [0.5, 0.5],
+      },
+    ],
+    sizes: [0.5, 0.5],
   };
 }
 
@@ -167,6 +168,7 @@ const api = {
     startSession: vi.fn(),
     endSession: vi.fn(),
     addPane: vi.fn(),
+    splitPane: vi.fn(),
     removePane: vi.fn(),
   },
   providers: { list: vi.fn() },
@@ -215,7 +217,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1000);
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(800);
   areaSize = { width: 1000, height: 800 };
-  setRatioChamado.mockClear();
+  setSizesChamado.mockClear();
   FakeResizeObserver.instances = [];
   vi.stubGlobal('ResizeObserver', ObservadorDaArea);
   api.workspaces.list.mockResolvedValue({ ok: true, data: [] });
@@ -224,6 +226,7 @@ beforeEach(() => {
   api.workspaces.startSession.mockReset();
   api.workspaces.endSession.mockReset();
   api.workspaces.addPane.mockReset();
+  api.workspaces.splitPane.mockReset();
   api.workspaces.removePane.mockReset();
   api.providers.list.mockResolvedValue({ ok: true, data: providers });
   api.terminals.list.mockResolvedValue({ ok: true, data: [] });
@@ -751,7 +754,7 @@ describe('animação ao abrir e fechar painéis', () => {
 
   it('o painel novo nasce marcado para entrar; os que o workspace trouxe ao abrir, não', async () => {
     api.workspaces.open.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
-    api.workspaces.addPane.mockResolvedValue({
+    api.workspaces.splitPane.mockResolvedValue({
       ok: true,
       data: dto(
         arrangeLeaves([leaf('a', 'claude'), leaf('n', 'shell')], () => 'novo') as LayoutNode,
@@ -770,7 +773,7 @@ describe('animação ao abrir e fechar painéis', () => {
 
   it('a marca de entrada sai quando a entrada termina (voltar à visão Terminais não a repete)', async () => {
     api.workspaces.open.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
-    api.workspaces.addPane.mockResolvedValue({
+    api.workspaces.splitPane.mockResolvedValue({
       ok: true,
       data: dto(
         arrangeLeaves([leaf('a', 'claude'), leaf('n', 'shell')], () => 'novo') as LayoutNode,
@@ -959,17 +962,13 @@ describe('modo "um painel por vez"', () => {
   });
 });
 
-describe('grade responsiva', () => {
+describe('layout que não cabe na área (modo foco)', () => {
   const regioes = () => screen.queryAllByRole('region', { name: /^Painel / });
-  const dock = () => screen.queryByRole('group', { name: 'Terminais fora da grade' });
-  const fichas = () =>
-    dock() === null ? [] : within(dock() as HTMLElement).getAllByRole('button');
-  const nomeDaFicha = (ficha: HTMLElement) =>
-    ficha.querySelector('.off-grid__chip-label')?.textContent ?? '';
+  const abas = () => screen.queryByRole('tablist', { name: 'Painéis abertos' });
   const idsDosGrupos = () =>
     Array.from(document.querySelectorAll('.pane-tree__group')).map((grupo) => grupo.id);
 
-  /** `n` painéis de Claude Code sem sessão, arrumados como o servidor arruma. */
+  /** `n` painéis de Claude Code sem sessão, em grade (6 ficam em 3 colunas e 2 linhas: pedem 1036 × 408 px). */
   function guardado(n: number): LayoutNode {
     const folhas = Array.from({ length: n }, (_, i) => leaf(`g${i + 1}`, 'claude'));
     return arrangeLeaves(folhas, () => crypto.randomUUID()) as LayoutNode;
@@ -977,112 +976,65 @@ describe('grade responsiva', () => {
   const abrirCom = (layout: LayoutNode) =>
     api.workspaces.open.mockResolvedValue({ ok: true, data: dto(layout) });
 
-  it('sem a primeira medida, mostra a árvore guardada: sem fichas, sem abas', async () => {
+  it('sem a primeira medida, mostra o layout guardado, sem abas', async () => {
     areaSize = null;
     abrirCom(guardado(6));
     renderAt();
     await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
     expect(regioes()).toHaveLength(6);
-    expect(dock()).toBeNull();
-    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
+    expect(abas()).not.toBeInTheDocument();
   });
 
-  it('1200 × 600 com 6 painéis guardados em 3 × 2: a árvore guardada fica intacta, sem fichas', async () => {
-    areaSize = null; // o que vale antes da medida é a árvore guardada: é com ela que se compara
+  it('1200 × 600 com 6 painéis em 3 × 2: o layout guardado fica como está', async () => {
+    areaSize = null;
     abrirCom(guardado(6));
     renderAt();
     await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
     const antes = idsDosGrupos();
     medirArea(1200, 600);
     expect(regioes()).toHaveLength(6);
-    expect(dock()).toBeNull();
+    expect(abas()).not.toBeInTheDocument();
     expect(idsDosGrupos()).toEqual(antes);
-    expect(antes).toHaveLength(5);
-    expect(antes.every((id) => !id.startsWith('fit:'))).toBe(true);
   });
 
-  it('1000 × 600 com 6 painéis: 4 na grade em 2 colunas e 2 fichas, com o ativo na grade', async () => {
+  it('1000 × 600 com 6 painéis: um painel grande e os outros nas abas; ao caber de novo, volta o layout guardado', async () => {
     abrirCom(guardado(6));
     renderAt();
     await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1200, 600);
+    const antes = idsDosGrupos();
     medirArea(1000, 600);
-    expect(regioes()).toHaveLength(4);
-    expect(fichas().map(nomeDaFicha)).toEqual(['Claude Code 5', 'Claude Code 6']);
-    // A árvore é derivada: os ids de divisão não existem no layout guardado.
-    expect(idsDosGrupos()).toHaveLength(3);
-    expect(idsDosGrupos().every((id) => id.startsWith('fit:'))).toBe(true);
-    // O primeiro painel é o ativo e está entre os mostrados.
-    expect(document.querySelector('.pane[data-active="true"]')).not.toBeNull();
+    expect(regioes()).toHaveLength(1);
+    expect(within(abas() as HTMLElement).getAllByRole('tab')).toHaveLength(6);
+    expect(api.workspaces.saveLayout).not.toHaveBeenCalled();
+
+    medirArea(1200, 600);
+    expect(abas()).not.toBeInTheDocument();
+    expect(regioes()).toHaveLength(6);
+    expect(idsDosGrupos()).toEqual(antes);
   });
 
-  it('clicar numa ficha traz o painel para a grade, e o último mostrado que não é o ativo vira ficha', async () => {
-    abrirCom(guardado(6));
+  it('área baixa demais (1400 × 400 com 3 painéis, dois deles empilhados) também entra no modo foco', async () => {
     renderAt();
-    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
-    medirArea(1000, 600);
-
-    await userEvent.click(fichas()[0] as HTMLElement); // "Claude Code 5"
-
-    expect(regioes()).toHaveLength(4);
-    expect(fichas().map(nomeDaFicha)).toEqual(['Claude Code 4', 'Claude Code 6']);
-    // O painel trazido é o ativo (e recebe o foco do teclado).
-    expect(document.querySelectorAll('.pane[data-active="true"]')).toHaveLength(1);
-  });
-
-  it('a ficha de uma sessão aguardando vem antes das outras', async () => {
-    const layout = arrangeLeaves(
-      Array.from({ length: 6 }, (_, i) => leaf(`g${i + 1}`, 'shell', `t${i + 1}`)),
-      () => crypto.randomUUID(),
-    ) as LayoutNode;
-    abrirCom(layout);
-    api.terminals.list.mockResolvedValue({
-      ok: true,
-      data: Array.from({ length: 6 }, (_, i) => ({
-        ...shellTerminal,
-        id: `t${i + 1}`,
-        state: i === 5 ? ('waiting' as const) : ('running' as const),
-      })),
-    });
-    renderAt();
-    await screen.findAllByRole('region', { name: 'Painel PowerShell' });
-    medirArea(1000, 600);
-    expect(fichas().map(nomeDaFicha)).toEqual(['PowerShell 6', 'PowerShell 5']);
-    expect(fichas()[0]).toHaveAttribute('title', 'Aguardando · traz para a grade');
-  });
-
-  it('com "Abas" ligado à mão numa janela larga não há "Fora da grade"; ao sair do modo a faixa volta com o ativo na grade', async () => {
-    abrirCom(guardado(6));
-    renderAt();
-    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
-    medirArea(1000, 600);
-    expect(fichas()).toHaveLength(2);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
-    expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
-    expect(dock()).toBeNull();
-
-    // Escolhe a aba do 6º painel (que estava fora da grade) e volta à grade: ele entra, e o ativo é um dos mostrados.
-    await userEvent.click(
-      within(screen.getByRole('tablist', { name: 'Painéis abertos' })).getAllByRole(
-        'tab',
-      )[5] as HTMLElement,
-    );
-    expect(dock()).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: 'Grade' }));
-    expect(regioes()).toHaveLength(4);
-    expect(fichas()).toHaveLength(2);
-    expect(fichas().map(nomeDaFicha)).not.toContain('Claude Code 6');
-    expect(document.querySelector('.pane[data-active="true"]')).not.toBeNull();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1400, 400);
+    expect(regioes()).toHaveLength(1);
+    expect(abas()).toBeInTheDocument();
+    medirArea(1400, 420);
+    expect(regioes()).toHaveLength(3);
   });
 
   describe('janela estreita (modo Abas automático)', () => {
-    it('abaixo de 720 px entra a faixa de abas com o aviso, "Grade" sem efeito e "Abas" apertado', async () => {
+    it('quando o layout não cabe na largura entra a faixa de abas com o aviso, "Grade" sem efeito e "Abas" apertado', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(700, 600);
+      medirArea(600, 600);
       expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
       expect(screen.getByText('Janela estreita')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Grade' })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('button', { name: 'Grade' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
       expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'true');
       expect(regioes()).toHaveLength(1);
     });
@@ -1090,7 +1042,7 @@ describe('grade responsiva', () => {
     it('voltar a 1000 × 600 restaura a grade', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(700, 600);
+      medirArea(600, 600);
       medirArea(1000, 600);
       expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
       expect(regioes()).toHaveLength(3);
@@ -1101,7 +1053,7 @@ describe('grade responsiva', () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
       await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
-      medirArea(700, 600);
+      medirArea(600, 600);
       expect(screen.getByText('Janela estreita')).toBeInTheDocument();
       medirArea(1000, 600);
       expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
@@ -1112,7 +1064,7 @@ describe('grade responsiva', () => {
     it('trocar de aba na janela estreita não liga o modo à mão: ao alargar, volta a grade', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(700, 600);
+      medirArea(600, 600);
       await userEvent.click(screen.getByRole('tab', { name: /Codex/ }));
       expect(regioes()).toHaveLength(1);
       medirArea(1000, 600);
@@ -1123,7 +1075,7 @@ describe('grade responsiva', () => {
     it('"Abas" na janela estreita não parece morto: o clique vale quando a janela alargar', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(700, 600);
+      medirArea(600, 600);
       await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
       expect(screen.getByRole('button', { name: 'Abas' })).toHaveAttribute('aria-pressed', 'true');
       medirArea(1000, 600);
@@ -1133,7 +1085,7 @@ describe('grade responsiva', () => {
     it('Ctrl+Alt com as setas troca de aba no modo automático', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(700, 600);
+      medirArea(600, 600);
       screen.getByRole('tab', { name: /Claude Code/ }).focus();
       await userEvent.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}');
       expect(screen.getByRole('region', { name: 'Painel Codex' })).toBeInTheDocument();
@@ -1143,105 +1095,52 @@ describe('grade responsiva', () => {
     it('o painel mostrado não tem o botão de maximizar (não haveria para onde voltar)', async () => {
       renderAt();
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(700, 600);
+      medirArea(600, 600);
       expect(screen.queryByRole('button', { name: 'Voltar à grade' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Maximizar painel' })).not.toBeInTheDocument();
     });
   });
 
-  it('janela arrastada em rajada (1000 → 1010 → 1020 × 600) não remonta a árvore', async () => {
+  it('janela arrastada em rajada (1200 → 1210 → 1220 × 600) não remonta a árvore', async () => {
     abrirCom(guardado(6));
     renderAt();
     await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
-    medirArea(1000, 600);
+    medirArea(1200, 600);
     const grupo = document.querySelector('.pane-tree__group');
     expect(grupo).not.toBeNull();
-    medirArea(1010, 600);
-    medirArea(1020, 600);
+    medirArea(1210, 600);
+    medirArea(1220, 600);
     expect(document.querySelector('.pane-tree__group')).toBe(grupo);
-    expect(regioes()).toHaveLength(4);
+    expect(regioes()).toHaveLength(6);
   });
 
   it('uma medida zerada (a visão do projeto escondida) mantém a grade como estava', async () => {
     abrirCom(guardado(6));
     renderAt();
     await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
-    medirArea(1000, 600);
+    medirArea(1200, 600);
     const grupo = document.querySelector('.pane-tree__group');
     medirArea(0, 0);
-    expect(screen.queryByRole('tablist', { name: 'Painéis abertos' })).not.toBeInTheDocument();
-    expect(regioes()).toHaveLength(4);
-    expect(fichas()).toHaveLength(2);
+    expect(abas()).not.toBeInTheDocument();
+    expect(regioes()).toHaveLength(6);
     expect(document.querySelector('.pane-tree__group')).toBe(grupo);
   });
 
-  it('3 colunas e 1 linha (1400 × 400) com 3 painéis: tudo numa linha só', async () => {
+  it('mover uma divisória chega ao hook com os tamanhos novos e grava o layout', async () => {
+    abrirCom(guardado(6));
     renderAt();
-    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
-    medirArea(1400, 400);
-    expect(regioes()).toHaveLength(3);
-    expect(dock()).toBeNull();
-    const divisorias = screen.getAllByRole('separator');
-    expect(divisorias).toHaveLength(2);
-    for (const divisoria of divisorias)
-      expect(divisoria).toHaveAttribute('aria-orientation', 'vertical');
-  });
-
-  describe('divisórias', () => {
-    const mexerNaPrimeira = () => {
-      const [primeira] = screen.getAllByRole('separator') as [HTMLElement];
-      // A divisória vertical anda com as setas laterais; a horizontal, com as de cima e de baixo.
-      const key =
-        primeira.getAttribute('aria-orientation') === 'horizontal' ? 'ArrowDown' : 'ArrowRight';
-      act(() => primeira.focus());
-      fireEvent.keyDown(primeira, { key });
-    };
-
-    it('na árvore guardada, arrastar grava como sempre', async () => {
-      abrirCom(guardado(6));
-      renderAt();
-      await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(1200, 600);
-      mexerNaPrimeira();
-      expect(setRatioChamado).toHaveBeenCalledTimes(1);
-      await waitFor(() => expect(api.workspaces.saveLayout).toHaveBeenCalled(), { timeout: 2000 });
-    });
-
-    it('na árvore derivada, arrastar não chama setRatio nem grava nada', async () => {
-      abrirCom(guardado(6));
-      renderAt();
-      await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
-      medirArea(1000, 600);
-      mexerNaPrimeira();
-      expect(setRatioChamado).not.toHaveBeenCalled();
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 700));
-      });
-      expect(api.workspaces.saveLayout).not.toHaveBeenCalled();
-    });
-  });
-
-  it('fechar um painel mostrado com fichas: a primeira ficha entra na grade', async () => {
-    const layout = arrangeLeaves(
-      Array.from({ length: 5 }, (_, i) => leaf(`g${i + 1}`, 'shell', `t${i + 1}`)),
-      () => crypto.randomUUID(),
-    ) as LayoutNode;
-    abrirCom(layout);
-    api.terminals.list.mockResolvedValue({
-      ok: true,
-      data: Array.from({ length: 5 }, (_, i) => ({ ...shellTerminal, id: `t${i + 1}` })),
-    });
-    api.workspaces.removePane.mockReturnValue(new Promise(() => {}));
-    renderAt();
-    await screen.findAllByRole('region', { name: 'Painel PowerShell' });
-    medirArea(1000, 600);
-    expect(regioes()).toHaveLength(4);
-    expect(fichas()).toHaveLength(1);
-
-    await fecharPeloMenu(regioes()[1] as HTMLElement);
-
-    expect(regioes()).toHaveLength(4);
-    expect(dock()).toBeNull();
+    await screen.findAllByRole('button', { name: 'Iniciar Claude Code' });
+    medirArea(1200, 600);
+    const [primeira] = screen.getAllByRole('separator') as [HTMLElement];
+    // A divisória vertical anda com as setas laterais; a horizontal, com as de cima e de baixo.
+    const key =
+      primeira.getAttribute('aria-orientation') === 'horizontal' ? 'ArrowDown' : 'ArrowRight';
+    act(() => primeira.focus());
+    fireEvent.keyDown(primeira, { key });
+    expect(setSizesChamado).toHaveBeenCalledTimes(1);
+    const [, sizes] = setSizesChamado.mock.calls[0] as [string, number[]];
+    expect(sizes.reduce((sum, size) => sum + size, 0)).toBeCloseTo(1);
+    await waitFor(() => expect(api.workspaces.saveLayout).toHaveBeenCalled(), { timeout: 2000 });
   });
 });
 
@@ -2288,7 +2187,7 @@ describe('fechar todos os terminais', () => {
     );
   });
 
-  it('a faixa flutua sobre a área da grade: abrir a pergunta não muda a área medida, os painéis nem as fichas', async () => {
+  it('a faixa flutua sobre a área da grade: abrir a pergunta não muda a área medida nem os painéis mostrados', async () => {
     // 12 painéis numa área com altura para uma linha: o limite em que perder altura perderia a linha.
     areaSize = { width: 1000, height: 270 };
     comSessoes(12, (i) => shell(i));
@@ -2297,9 +2196,6 @@ describe('fechar todos os terminais', () => {
     await waitFor(() => expect(regioes().length).toBeGreaterThan(0));
     const area = document.querySelector('.workspace__area') as HTMLElement;
     const mostrados = regioes().length;
-    const fichasAntes = screen
-      .queryAllByRole('group', { name: 'Terminais fora da grade' })
-      .map((item) => item.textContent);
     expect(mostrados).toBeLessThan(12);
 
     act(() => requestCloseAll('p1'));
@@ -2309,11 +2205,6 @@ describe('fechar todos os terminais', () => {
     expect(area.contains(grupo)).toBe(true);
     expect(document.querySelector('.workspace__area')).toBe(area);
     expect(regioes()).toHaveLength(mostrados);
-    expect(
-      screen
-        .queryAllByRole('group', { name: 'Terminais fora da grade' })
-        .map((item) => item.textContent),
-    ).toEqual(fichasAntes);
   });
 
   describe('pelo cabeçalho', () => {

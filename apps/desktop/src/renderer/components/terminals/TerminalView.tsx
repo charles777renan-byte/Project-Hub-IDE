@@ -66,6 +66,12 @@ export function fitTerminal(
   return { cols, rows };
 }
 
+/**
+ * Quanto a área precisa ficar parada antes de o terminal se ajustar a ela. Enquanto a pessoa arrasta uma divisória (ou
+ * a janela), só o desenho muda; as colunas e linhas novas vão ao processo uma vez, depois de ela soltar.
+ */
+export const RESIZE_SETTLE_MS = 150;
+
 /** Quantas vezes seguidas o ajuste espera o xterm medir a célula (um quadro cada) antes de desistir. */
 const MAX_MEASURE_RETRIES = 30;
 
@@ -115,6 +121,9 @@ export function TerminalView({
     let disposed = false;
     let retryFrame: number | undefined;
     let retries = 0;
+    // Se o terminal já se ajustou à área uma vez. Antes disso (abertura, área que acabou de aparecer) o ajuste é na hora.
+    let settled = false;
+    let settleTimer: number | undefined;
     const refit = () => {
       // Uma montagem desfeita (o StrictMode do desenvolvimento monta, desfaz e monta de novo) não pode mais mandar
       // tamanho ao processo: o `.then(refit)` da assinatura dela ainda chega depois da limpeza.
@@ -124,6 +133,8 @@ export function TerminalView({
       // Aberto escondido, o xterm ainda não mediu a célula quando a área aparece: espera o quadro seguinte (limitado).
       if (!awaitingMeasure(host)) {
         retries = 0;
+        if (host.clientWidth >= MIN_FIT_WIDTH && host.clientHeight >= MIN_FIT_HEIGHT)
+          settled = true;
       } else if (retryFrame === undefined && retries < MAX_MEASURE_RETRIES) {
         retries += 1;
         retryFrame = window.requestAnimationFrame(() => {
@@ -170,7 +181,19 @@ export function TerminalView({
     const typing = term.onData((data) => {
       void api.write(terminalId, data);
     });
-    const observer = new ResizeObserver(refit);
+    // Mudança de tamanho da área: a primeira vale na hora; as seguintes esperam a área parar (`RESIZE_SETTLE_MS`), para
+    // o processo receber um só tamanho novo no fim de um arrasto, e não um a cada quadro.
+    const observer = new ResizeObserver(() => {
+      if (!settled) {
+        refit();
+        return;
+      }
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = undefined;
+        refit();
+      }, RESIZE_SETTLE_MS);
+    });
     observer.observe(host);
     // A tela do xterm muda de tamanho quando ele mede a célula (depois de o terminal aparecer): é o aviso para ajustar.
     const screen = host.querySelector('.xterm-screen');
@@ -180,6 +203,7 @@ export function TerminalView({
     return () => {
       disposed = true;
       if (retryFrame !== undefined) window.cancelAnimationFrame(retryFrame);
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
       observer.disconnect();
       typing.dispose();
       stream.detach();

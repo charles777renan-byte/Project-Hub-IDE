@@ -87,15 +87,15 @@ describe('árvore de painéis e painel', () => {
     expect(rule(horizontal).get('cursor')).toBe('row-resize');
   });
 
-  it('passar o mouse, arrastar e focar acende um traço de 2px em --field-line no meio do vão', () => {
+  it('passar o mouse, arrastar e focar acende um traço de 1px em --field-line no meio do vão', () => {
     const vertical = ".pane-tree__separator[aria-orientation='vertical']";
     const horizontal = ".pane-tree__separator[aria-orientation='horizontal']";
     for (const state of [':hover', ':active', ':focus-visible']) {
       expect(rule(`${vertical}${state}`).get('background'), vertical + state).toBe(
-        'linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat',
+        'linear-gradient(var(--field-line), var(--field-line)) center / 1px 100% no-repeat',
       );
       expect(rule(`${horizontal}${state}`).get('background'), horizontal + state).toBe(
-        'linear-gradient(var(--field-line), var(--field-line)) center / 100% 2px no-repeat',
+        'linear-gradient(var(--field-line), var(--field-line)) center / 100% 1px no-repeat',
       );
     }
     // Foco por teclado: o anel lima do sistema, no vão entre os cartões.

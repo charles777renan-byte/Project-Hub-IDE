@@ -540,7 +540,7 @@
 .app-body > .pane-tree__separator[aria-orientation='vertical']:hover,
 .app-body > .pane-tree__separator[aria-orientation='vertical']:active,
 .app-body > .pane-tree__separator[aria-orientation='vertical']:focus-visible {
-  background: linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat;
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 1px 100% no-repeat;
 }
 
 /*
@@ -1406,8 +1406,8 @@
 
 /*
  * Divisória: o vão de 8px entre dois cartões. É transparente (o brilho da janela aparece nele) e é a própria
- * pegada de arrastar; ao passar o mouse, arrastar ou focar, um traço de 2px em --field-line surge no meio
- * dele. O anel de foco (--focus) contorna o vão.
+ * pegada de arrastar; ao passar o mouse, arrastar ou focar, um traço de 1px em --field-line surge no meio
+ * dele. Dois cliques igualam os dois lados. O anel de foco (--focus) contorna o vão.
  */
 .pane-tree__separator {
   position: relative;
@@ -1429,13 +1429,13 @@
 .pane-tree__separator[aria-orientation='vertical']:hover,
 .pane-tree__separator[aria-orientation='vertical']:active,
 .pane-tree__separator[aria-orientation='vertical']:focus-visible {
-  background: linear-gradient(var(--field-line), var(--field-line)) center / 2px 100% no-repeat;
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 1px 100% no-repeat;
 }
 
 .pane-tree__separator[aria-orientation='horizontal']:hover,
 .pane-tree__separator[aria-orientation='horizontal']:active,
 .pane-tree__separator[aria-orientation='horizontal']:focus-visible {
-  background: linear-gradient(var(--field-line), var(--field-line)) center / 100% 2px no-repeat;
+  background: linear-gradient(var(--field-line), var(--field-line)) center / 100% 1px no-repeat;
 }
 
 .pane-tree__separator:focus-visible {

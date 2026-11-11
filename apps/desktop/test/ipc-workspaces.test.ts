@@ -33,9 +33,11 @@ const layout: LayoutNode = {
   type: 'split',
   id: 's1',
   direction: 'row',
-  ratio: 0.5,
-  first: { type: 'leaf', id: 'l1', provider: 'claude', terminalId: null },
-  second: { type: 'leaf', id: 'l2', provider: 'shell', terminalId: 't1' },
+  children: [
+    { type: 'leaf', id: 'l1', provider: 'claude', terminalId: null },
+    { type: 'leaf', id: 'l2', provider: 'shell', terminalId: 't1' },
+  ],
+  sizes: [0.5, 0.5],
 };
 
 const dto = {
@@ -62,6 +64,7 @@ function setup() {
     endSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     addPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     resumeSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
+    splitPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     removePane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     reorder: vi.fn(() => Promise.resolve(ok)),
   };
@@ -79,6 +82,11 @@ const CALLS: [string, unknown, keyof WorkspaceService][] = [
   [CHANNELS.workspacesStartSession, { workspaceId: 'w1', leafId: 'l1' }, 'startSession'],
   [CHANNELS.workspacesEndSession, { workspaceId: 'w1', leafId: 'l1' }, 'endSession'],
   [CHANNELS.workspacesAddPane, { workspaceId: 'w1', provider: 'shell' }, 'addPane'],
+  [
+    CHANNELS.workspacesSplitPane,
+    { workspaceId: 'w1', leafId: 'l1', side: 'right', provider: 'shell' },
+    'splitPane',
+  ],
   [CHANNELS.workspacesRemovePane, { workspaceId: 'w1', leafId: 'l1' }, 'removePane'],
   [CHANNELS.workspacesReorder, { workspaceIds: ['w1', 'w2'] }, 'reorder'],
 ];
@@ -169,7 +177,7 @@ describe('canais de workspaces e provedores', () => {
     [CHANNELS.workspacesSaveLayout, { layout }, 'O layout não é válido.'],
     [
       CHANNELS.workspacesSaveLayout,
-      { workspaceId: 'w1', layout: { ...layout, ratio: 2 } },
+      { workspaceId: 'w1', layout: { ...layout, sizes: [2, 0.5] } },
       'O layout não é válido.',
     ],
     [
@@ -197,9 +205,8 @@ describe('canais de workspaces e provedores', () => {
         type: 'split',
         id: `s${n}`,
         direction: 'row',
-        first: deep,
-        second: { type: 'leaf', id: `f${n}`, provider: 'shell', terminalId: null },
-        ratio: 0.5,
+        children: [deep, { type: 'leaf', id: `f${n}`, provider: 'shell', terminalId: null }],
+        sizes: [0.5, 0.5],
       };
     }
 

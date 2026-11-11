@@ -217,6 +217,13 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<WorkspaceDto>(CHANNELS.workspacesEndSession, { workspaceId, leafId }),
       addPane: (workspaceId: string, provider: ProviderId) =>
         call<WorkspaceDto>(CHANNELS.workspacesAddPane, { workspaceId, provider }),
+      splitPane: (
+        workspaceId: string,
+        leafId: string,
+        side: 'left' | 'right' | 'top' | 'bottom',
+        provider: ProviderId,
+      ) =>
+        call<WorkspaceDto>(CHANNELS.workspacesSplitPane, { workspaceId, leafId, side, provider }),
       removePane: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesRemovePane, { workspaceId, leafId }),
       reorder: (workspaceIds: string[]) => call<void>(CHANNELS.workspacesReorder, { workspaceIds }),

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { arrangeLeaves } from '@project-hub/contracts/layout-arrange';
+import {
+  dockLeaf,
+  equalizeDivider,
+  presetLayout,
+  PRESET_SLOTS,
+  splitLeaf,
+  swapLeaves,
+  withSizes,
+  type LayoutPreset,
+  type Side,
+} from '@project-hub/contracts/layout-ops';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
 import type {
   AppResult,
@@ -19,9 +29,10 @@ import {
   findLeaf,
   leafHolding,
   leavesOf,
-  withRatio,
+  restoreArrangement,
   withTerminal,
 } from './layout-model';
+import { bestPlacement, type AreaSize } from './layout-fit';
 
 export type WorkspaceState =
   | { status: 'loading' }
@@ -39,8 +50,27 @@ const SAVE_REFUSED = 'O layout não pôde ser gravado e não será tentado de no
 
 export type UseWorkspace = {
   state: WorkspaceState;
-  /** Otimista: muda o layout na hora e grava depois de `SAVE_DELAY_MS`. */
-  setRatio(splitId: string, ratio: number): void;
+  /** Os tamanhos novos dos filhos de uma divisão. Otimista: muda o layout na hora e grava depois de `SAVE_DELAY_MS`. */
+  setSizes(splitId: string, sizes: number[]): void;
+  /** Iguala os dois lados da divisória entre os filhos `index` e `index + 1` da divisão. */
+  equalize(splitId: string, index: number): void;
+  /** Troca dois painéis de lugar; os tamanhos ficam com os lugares. Pode ser desfeito. */
+  swap(firstLeafId: string, secondLeafId: string): void;
+  /** Tira o painel de onde está e o encaixa no lado `side` do alvo, que cede metade do espaço. Pode ser desfeito. */
+  dock(leafId: string, targetLeafId: string, side: Side): void;
+  /**
+   * Arruma os painéis num layout pronto, na ordem em que estão. Faltando painéis para os lugares do layout, entram
+   * painéis vazios do programa `fill`, cada um com o botão de iniciar. Pode ser desfeito.
+   */
+  applyPreset(preset: LayoutPreset, fill: ProviderId): void;
+  /** Se há um movimento (trocar, encaixar, layout pronto) para desfazer. Muda a cada movimento. */
+  undoToken: number | null;
+  /** Volta ao layout de antes do último movimento. As sessões não mudam. */
+  undo(): void;
+  /** Esquece o movimento guardado (o aviso de desfazer saiu da tela). */
+  forgetUndo(): void;
+  /** A área dos terminais, em px, para escolher onde um painel novo entra. A página informa a cada medida. */
+  setArea(area: AreaSize | null): void;
   /**
    * Mostra a sessão: folha que já a tem → ativa; senão a folha ativa sem sessão, a primeira livre ou um
    * painel novo (até o limite). Nunca substitui uma sessão viva. `provider` é o do terminal, para o painel novo.
@@ -49,8 +79,13 @@ export type UseWorkspace = {
   detach(leafId: string): void;
   /** `null` = ok; texto = mensagem de erro. */
   startSession(leafId: string): Promise<string | null>;
-  /** Abre um painel novo do provedor. `null` = ok; texto = erro. O servidor decide a organização: o layout devolvido vale inteiro. */
+  /**
+   * Abre um painel novo do provedor, ao lado do painel em que ele fica maior sem tirar nenhum do tamanho mínimo.
+   * `null` = ok; texto = erro. O layout devolvido pelo servidor vale inteiro.
+   */
   addPane(provider: ProviderId): Promise<string | null>;
+  /** Abre um painel novo do provedor no lado `side` do painel `leafId`. `null` = ok; texto = erro. */
+  splitPane(leafId: string, side: Side, provider: ProviderId): Promise<string | null>;
   /** Retoma uma sessão do histórico como painel novo deste workspace. `null` = ok; texto = erro. */
   resumeSession(sessionId: string): Promise<string | null>;
   /** Fecha o painel. `null` = ok; texto = erro. Se a folha ativa saiu, ativa a primeira restante. */
@@ -106,6 +141,18 @@ export function useWorkspace(projectId: string): UseWorkspace {
   // Limitação aceita: uma edição pendente do projeto antigo, com mudança estrutural dele em voo na troca,
   // é descartada.
   const structural = useRef(0);
+  // O layout de antes do último movimento (trocar, encaixar, layout pronto), para o "Desfazer".
+  const undoLayout = useRef<LayoutNode | null>(null);
+  const [undoToken, setUndoToken] = useState<number | null>(null);
+  const undoCount = useRef(0);
+  const area = useRef<AreaSize | null>(null);
+  const setArea = useCallback((next: AreaSize | null) => {
+    area.current = next;
+  }, []);
+  const forgetUndo = useCallback(() => {
+    undoLayout.current = null;
+    setUndoToken(null);
+  }, []);
 
   const setActive = useCallback((leafId: string | null, withFocus = false) => {
     activeRef.current = leafId;
@@ -188,6 +235,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
     setSaveError(null);
     setState({ status: 'loading' });
     setActive(null);
+    forgetUndo();
 
     void (async () => {
       try {
@@ -210,12 +258,69 @@ export function useWorkspace(projectId: string): UseWorkspace {
       // Grava o que ficou pendente do projeto que sai (a gravação lê `current` antes de ele mudar).
       void saveNow();
     };
-  }, [projectId, adopt, saveNow, setActive]);
+  }, [projectId, adopt, saveNow, setActive, forgetUndo]);
 
-  const setRatio = useCallback(
-    (splitId: string, ratio: number) => edit((layout) => withRatio(layout, splitId, ratio)),
+  const setSizes = useCallback(
+    (splitId: string, sizes: number[]) =>
+      edit((layout) => (layout === null ? null : withSizes(layout, splitId, sizes))),
     [edit],
   );
+
+  const equalize = useCallback(
+    (splitId: string, index: number) =>
+      edit((layout) => (layout === null ? null : equalizeDivider(layout, splitId, index))),
+    [edit],
+  );
+
+  /** Um movimento de painéis: guarda o layout de antes para o "Desfazer" e aplica a mudança. Nada muda, nada guarda. */
+  const move = useCallback(
+    (change: (layout: LayoutNode) => LayoutNode | null) => {
+      const before = current.current?.layout ?? null;
+      if (before === null) return;
+      edit(() => change(before));
+      if (current.current?.layout === before) return;
+      undoLayout.current = before;
+      undoCount.current += 1;
+      setUndoToken(undoCount.current);
+    },
+    [edit],
+  );
+
+  const swap = useCallback(
+    (firstLeafId: string, secondLeafId: string) =>
+      move((layout) => swapLeaves(layout, firstLeafId, secondLeafId)),
+    [move],
+  );
+
+  const dock = useCallback(
+    (leafId: string, targetLeafId: string, side: Side) =>
+      move((layout) => dockLeaf(layout, leafId, targetLeafId, side, () => crypto.randomUUID())),
+    [move],
+  );
+
+  const applyPreset = useCallback(
+    (preset: LayoutPreset, fill: ProviderId) =>
+      move((layout) => {
+        const leaves = leavesOf(layout);
+        const missing = Math.min(
+          PRESET_SLOTS[preset] - leaves.length,
+          LAYOUT_LIMITS.maxLeaves - leaves.length,
+        );
+        for (let i = 0; i < missing; i += 1) {
+          leaves.push({ type: 'leaf', id: crypto.randomUUID(), provider: fill, terminalId: null });
+        }
+        return presetLayout(preset, leaves, () => crypto.randomUUID());
+      }),
+    [move],
+  );
+
+  const undo = useCallback(() => {
+    const before = undoLayout.current;
+    forgetUndo();
+    if (before === null) return;
+    // Um painel que abriu ou fechou depois do movimento torna o layout guardado inválido: aí não há o que desfazer.
+    edit((layout) => (layout === null ? null : (restoreArrangement(before, layout) ?? layout)));
+  }, [edit, forgetUndo]);
 
   const detach = useCallback(
     (leafId: string) => edit((layout) => withTerminal(layout, leafId, null)),
@@ -249,7 +354,13 @@ export function useWorkspace(projectId: string): UseWorkspace {
         return null;
       }
       const pane: LayoutLeaf = { type: 'leaf', id: crypto.randomUUID(), provider, terminalId };
-      edit(() => arrangeLeaves([...leaves, pane], () => crypto.randomUUID()));
+      const layout = workspace.layout;
+      const where = bestPlacement(layout, area.current);
+      edit(() =>
+        layout === null || where === null
+          ? pane
+          : splitLeaf(layout, where.leafId, where.side, pane, () => crypto.randomUUID()),
+      );
       setActive(pane.id, true);
       return pane.id;
     },
@@ -330,6 +441,8 @@ export function useWorkspace(projectId: string): UseWorkspace {
         // O servidor é a verdade: o pendente (feito sobre o layout velho) deixa de valer.
         dirty.current = false;
         adopted = true;
+        // O layout guardado para desfazer não tem o painel novo (ou ainda tem o fechado): deixa de valer.
+        forgetUndo();
         adopt(result.data);
         setSaveError(null);
         afterAdopt(previous, result.data);
@@ -343,7 +456,7 @@ export function useWorkspace(projectId: string): UseWorkspace {
         if (!adopted && generation.current === mine && dirty.current) scheduleSave();
       }
     },
-    [adopt, saveNow, scheduleSave, setSaveError],
+    [adopt, saveNow, scheduleSave, setSaveError, forgetUndo],
   );
 
   /** Depois de um painel novo: a folha que não existia antes fica ativa, com foco. */
@@ -356,10 +469,24 @@ export function useWorkspace(projectId: string): UseWorkspace {
     [setActive],
   );
 
-  const addPane = useCallback(
-    (provider: ProviderId) =>
-      changePanes((id) => window.projectHub.workspaces.addPane(id, provider), focusCreatedLeaf),
+  const splitPane = useCallback(
+    (leafId: string, side: Side, provider: ProviderId) =>
+      changePanes(
+        (id) => window.projectHub.workspaces.splitPane(id, leafId, side, provider),
+        focusCreatedLeaf,
+      ),
     [changePanes, focusCreatedLeaf],
+  );
+
+  const addPane = useCallback(
+    (provider: ProviderId) => {
+      // O lugar é escolhido aqui, que conhece o tamanho da área em px; com o workspace vazio, o servidor só cria o painel.
+      const where = bestPlacement(current.current?.layout ?? null, area.current);
+      return where === null
+        ? changePanes((id) => window.projectHub.workspaces.addPane(id, provider), focusCreatedLeaf)
+        : splitPane(where.leafId, where.side, provider);
+    },
+    [changePanes, focusCreatedLeaf, splitPane],
   );
 
   /** O servidor confere a sessão e a pasta; aqui só entra o painel novo que ele devolve. */
@@ -405,7 +532,16 @@ export function useWorkspace(projectId: string): UseWorkspace {
 
   return {
     state,
-    setRatio,
+    setSizes,
+    equalize,
+    swap,
+    dock,
+    applyPreset,
+    undoToken,
+    undo,
+    forgetUndo,
+    setArea,
+    splitPane,
     showTerminal,
     detach,
     startSession,

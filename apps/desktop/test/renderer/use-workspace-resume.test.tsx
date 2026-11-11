@@ -18,9 +18,11 @@ function dois(): LayoutNode {
     type: 'split',
     id: 'raiz',
     direction: 'row',
-    ratio: 0.5,
-    first: { type: 'leaf', id: 'a', provider: 'claude', terminalId: 't1' },
-    second: { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
+    children: [
+      { type: 'leaf', id: 'a', provider: 'claude', terminalId: 't1' },
+      { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
+    ],
+    sizes: [0.5, 0.5],
   };
 }
 
@@ -30,16 +32,20 @@ function tres(): LayoutNode {
     type: 'split',
     id: 'raiz',
     direction: 'row',
-    ratio: 0.5,
-    first: { type: 'leaf', id: 'a', provider: 'claude', terminalId: 't1' },
-    second: {
-      type: 'split',
-      id: 'r2',
-      direction: 'column',
-      ratio: 0.5,
-      first: { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
-      second: { type: 'leaf', id: 'c', provider: 'codex', terminalId: 't2' },
-    },
+    children: [
+      { type: 'leaf', id: 'a', provider: 'claude', terminalId: 't1' },
+      {
+        type: 'split',
+        id: 'r2',
+        direction: 'column',
+        children: [
+          { type: 'leaf', id: 'b', provider: 'shell', terminalId: null },
+          { type: 'leaf', id: 'c', provider: 'codex', terminalId: 't2' },
+        ],
+        sizes: [0.5, 0.5],
+      },
+    ],
+    sizes: [0.5, 0.5],
   };
 }
 

@@ -176,9 +176,8 @@ function balancedLayout(count: number): LayoutNode {
       type: 'split',
       id: `s${from}-${to}`,
       direction: 'row',
-      ratio: 0.5,
-      first: build(from, mid),
-      second: build(mid, to),
+      children: [build(from, mid), build(mid, to)],
+      sizes: [0.5, 0.5],
     };
   };
   return build(0, count);

@@ -35,12 +35,12 @@ export type LayoutLeaf = {
 export type LayoutSplit = {
   type: 'split';
   id: string;
-  /** `row` põe `first` à esquerda; `column` põe `first` em cima. */
+  /** `row` põe os filhos lado a lado, da esquerda para a direita; `column` os empilha, de cima para baixo. */
   direction: 'row' | 'column';
-  first: LayoutNode;
-  second: LayoutNode;
-  /** Fração do espaço que fica com `first`. */
-  ratio: number;
+  /** Dois filhos ou mais. */
+  children: LayoutNode[];
+  /** A fração do espaço de cada filho, na mesma ordem; somam 1. */
+  sizes: number[];
 };
 
 export type LayoutNode = LayoutLeaf | LayoutSplit;
@@ -75,10 +75,22 @@ export function layoutIssue(root: LayoutNode): string | null {
       return null;
     }
 
-    if (!(node.ratio >= LAYOUT_LIMITS.minRatio && node.ratio <= LAYOUT_LIMITS.maxRatio)) {
-      return `A divisão "${node.id}" tem ratio ${node.ratio}; o permitido é de ${LAYOUT_LIMITS.minRatio} a ${LAYOUT_LIMITS.maxRatio}.`;
+    if (node.children.length < 2) return `A divisão "${node.id}" tem menos de dois painéis.`;
+    if (node.sizes.length !== node.children.length) {
+      return `A divisão "${node.id}" tem ${node.children.length} painéis e ${node.sizes.length} tamanhos.`;
     }
-    return visit(node.first, depth + 1) ?? visit(node.second, depth + 1);
+    if (node.sizes.some((size) => !(size >= LAYOUT_LIMITS.minSize))) {
+      return `A divisão "${node.id}" tem um tamanho abaixo de ${LAYOUT_LIMITS.minSize}.`;
+    }
+    const total = node.sizes.reduce((sum, size) => sum + size, 0);
+    if (Math.abs(total - 1) > LAYOUT_LIMITS.sizeTolerance) {
+      return `Os tamanhos da divisão "${node.id}" somam ${total}; o esperado é 1.`;
+    }
+    for (const child of node.children) {
+      const issue = visit(child, depth + 1);
+      if (issue !== null) return issue;
+    }
+    return null;
   };
 
   return visit(root, 1);
@@ -91,7 +103,7 @@ const leafShape = z.object({
   terminalId: z.string().min(1).max(128).nullable(),
 });
 
-// Só o formato, recursivo. As regras do conjunto (limites, ids únicos, faixa do ratio) rodam uma
+// Só o formato, recursivo. As regras do conjunto (limites, ids únicos, tamanhos) rodam uma
 // vez na raiz, em `layoutIssue`; por isso o `superRefine` fica fora do `z.lazy`.
 const layoutShape: z.ZodType<LayoutNode> = z.lazy(() =>
   z.discriminatedUnion('type', [
@@ -100,9 +112,9 @@ const layoutShape: z.ZodType<LayoutNode> = z.lazy(() =>
       type: z.literal('split'),
       id: z.string().min(1).max(128),
       direction: z.enum(['row', 'column']),
-      first: layoutShape,
-      second: layoutShape,
-      ratio: z.number().finite(),
+      // O teto do comprimento barra a lista absurda antes de descer nela; as regras finas ficam no `layoutIssue`.
+      children: z.array(layoutShape).max(LAYOUT_LIMITS.maxLeaves),
+      sizes: z.array(z.number().finite()).max(LAYOUT_LIMITS.maxLeaves),
     }),
   ]),
 );
@@ -152,6 +164,17 @@ export const saveLayoutInputSchema = z.object({
 
 /** Entrada de `workspaces:add-pane:v1`: o workspace e o programa; o comando sai do registro de provedores. */
 export const addPaneInputSchema = z.object({ workspaceId: idSchema, provider: providerIdSchema });
+
+/**
+ * Entrada de `workspaces:split-pane:v1`: o painel que cede espaço, o lado em que o novo entra e o programa dele.
+ * Nunca comando ou caminho.
+ */
+export const splitPaneInputSchema = z.object({
+  workspaceId: idSchema,
+  leafId: idSchema,
+  side: z.enum(['left', 'right', 'top', 'bottom']),
+  provider: providerIdSchema,
+});
 
 /** Entrada dos canais que agem num painel: o workspace e a folha, nunca comando ou caminho. */
 export const paneInputSchema = z.object({ workspaceId: idSchema, leafId: idSchema });

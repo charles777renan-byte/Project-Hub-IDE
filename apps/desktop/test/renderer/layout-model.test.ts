@@ -5,7 +5,7 @@ import {
   firstFreeLeaf,
   leafHolding,
   leavesOf,
-  withRatio,
+  restoreArrangement,
   withTerminal,
 } from '../../src/renderer/workspace/layout-model';
 
@@ -18,7 +18,13 @@ const split = (
   second: LayoutNode,
   ratio = 0.5,
   direction: LayoutSplit['direction'] = 'row',
-): LayoutSplit => ({ type: 'split', id, direction, first, second, ratio });
+): LayoutSplit => ({
+  type: 'split',
+  id,
+  direction,
+  children: [first, second],
+  sizes: [ratio, 1 - ratio],
+});
 
 const padrao = (): LayoutSplit =>
   split(
@@ -90,7 +96,7 @@ describe('withTerminal', () => {
   it('compartilha as partes que não mudaram', () => {
     const original = padrao();
     const next = withTerminal(original, 'a', 't1') as LayoutSplit;
-    expect(next.second).toBe(original.second);
+    expect(next.children[1]).toBe(original.children[1]);
   });
 
   it('tira o mesmo terminal de qualquer outra folha', () => {
@@ -121,34 +127,33 @@ describe('withTerminal', () => {
   });
 });
 
-describe('withRatio', () => {
-  it('muda só a divisão pedida', () => {
-    const original = padrao();
-    const next = withRatio(original, 'raiz', 0.3) as LayoutSplit;
-
-    expect(next.ratio).toBe(0.3);
-    expect((next.second as LayoutSplit).ratio).toBe(0.5);
-    expect(next.second).toBe(original.second);
-    expect(original.ratio).toBe(0.52);
+describe('restoreArrangement', () => {
+  it('traz o arranjo de antes com as sessões de agora', () => {
+    const antes = padrao();
+    // Depois do movimento, `a` e `c` trocaram de lugar e `b` ganhou uma sessão.
+    const agora = split(
+      'raiz',
+      leaf('c', 'shell'),
+      split('meio', leaf('b', 'codex', 't7'), leaf('a', 'claude'), 0.5, 'column'),
+      0.3,
+    );
+    const volta = restoreArrangement(antes, agora);
+    expect(leavesOf(volta).map((item) => item.id)).toEqual(['a', 'b', 'c']);
+    expect(terminalOf(volta as LayoutNode, 'b')).toBe('t7');
+    expect((volta as LayoutSplit).sizes).toEqual([0.52, 0.48]);
   });
 
-  it('muda uma divisão aninhada', () => {
-    const next = withRatio(padrao(), 'meio', 0.7) as LayoutSplit;
-    expect(next.ratio).toBe(0.52);
-    expect((next.second as LayoutSplit).ratio).toBe(0.7);
-  });
-
-  it('limita o valor ao intervalo permitido', () => {
-    expect((withRatio(padrao(), 'raiz', 0.99) as LayoutSplit).ratio).toBe(0.9);
-    expect((withRatio(padrao(), 'raiz', 0.01) as LayoutSplit).ratio).toBe(0.1);
-  });
-
-  it('devolve o mesmo objeto para id inexistente, para folha ou para ratio igual', () => {
-    const original = padrao();
-    expect(withRatio(original, 'nenhuma', 0.3)).toBe(original);
-    expect(withRatio(original, 'a', 0.3)).toBe(original);
-    expect(withRatio(original, 'raiz', 0.52)).toBe(original);
-    expect(withRatio(original, 'raiz', 0.99)).not.toBe(original);
+  it('não serve mais se um painel abriu ou fechou depois', () => {
+    const antes = padrao();
+    expect(
+      restoreArrangement(antes, split('r', leaf('a', 'claude'), leaf('b', 'codex'))),
+    ).toBeNull();
+    expect(
+      restoreArrangement(
+        antes,
+        split('r', leaf('a', 'claude'), split('m', leaf('b', 'codex'), leaf('x', 'shell'))),
+      ),
+    ).toBeNull();
   });
 });
 
@@ -163,8 +168,7 @@ describe('layout vazio (null)', () => {
     expect(leafHolding(null, 't1')).toBeUndefined();
   });
 
-  it('withRatio e withTerminal devolvem null', () => {
-    expect(withRatio(null, 'raiz', 0.3)).toBeNull();
+  it('withTerminal devolve null', () => {
     expect(withTerminal(null, 'a', 't1')).toBeNull();
   });
 });

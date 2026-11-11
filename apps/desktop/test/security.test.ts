@@ -532,6 +532,7 @@ describe('buildProjectHubApi', () => {
       'removePane',
       'reorder',
       'saveLayout',
+      'splitPane',
       'startSession',
     ]);
     expect(Object.keys(api.files).sort()).toEqual([
