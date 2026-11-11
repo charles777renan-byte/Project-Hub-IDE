@@ -2252,3 +2252,46 @@ describe('fechar todos os terminais', () => {
     });
   });
 });
+
+describe('dividir pelo cabeçalho do painel', () => {
+  const painel = (nome: string) => screen.getByRole('region', { name: `Painel ${nome}` });
+  // Pelo teclado: no jsdom a biblioteca das divisórias cancela o clique do mouse (ver `abrirMenuDoPainel`).
+  const apertar = async (botao: HTMLElement) => {
+    botao.focus();
+    await userEvent.keyboard('{Enter}');
+  };
+
+  it('"Dividir abaixo" pede a divisão daquele painel, daquele lado, com o mesmo programa', async () => {
+    api.workspaces.splitPane.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await apertar(within(painel('Claude Code')).getByRole('button', { name: 'Dividir abaixo' }));
+    expect(api.workspaces.splitPane).toHaveBeenCalledWith(
+      expect.any(String),
+      'a',
+      'bottom',
+      'claude',
+    );
+    expect(api.workspaces.addPane).not.toHaveBeenCalled();
+  });
+
+  it('sem largura para mais uma coluna, "Dividir à direita" fica apagado e não pede nada; alargando, volta', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    // 1000 px: duas colunas cabem (688), três não (1036).
+    const direita = () =>
+      within(painel('Claude Code')).getByRole('button', { name: 'Dividir à direita' });
+    expect(direita()).toHaveAttribute('aria-disabled', 'true');
+    await apertar(direita());
+    expect(api.workspaces.splitPane).not.toHaveBeenCalled();
+    medirArea(1200, 800);
+    expect(direita()).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('com um painel por vez na tela (Abas), os botões de dividir somem', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(screen.queryByRole('button', { name: 'Dividir à direita' })).not.toBeInTheDocument();
+  });
+});

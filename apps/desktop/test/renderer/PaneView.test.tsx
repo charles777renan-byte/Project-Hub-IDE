@@ -1096,3 +1096,77 @@ describe('X do painel com sessão viva', () => {
     expect(x()).toBeDisabled();
   });
 });
+
+describe('dividir o painel', () => {
+  const split = (blocked: NonNullable<PaneViewProps['split']>['blocked'] = {}) => ({
+    blocked,
+    others: [{ id: 'codex' as const, label: 'Codex' }],
+    onSplit: vi.fn(),
+  });
+
+  it('o cabeçalho ganha "Dividir à direita" e "Dividir abaixo" depois do maximizar, e o resto fica como era', () => {
+    const { container } = setup({ onMaximize: vi.fn(), split: split() });
+    const actions = container.querySelector('.pane__actions') as HTMLElement;
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual([
+      'Maximizar painel',
+      'Dividir à direita',
+      'Dividir abaixo',
+      'Mais ações do painel',
+      'Fechar painel',
+    ]);
+  });
+
+  it('sem `split` (um painel por vez na tela) os botões de dividir não aparecem', () => {
+    setup({ onMaximize: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Dividir à direita' })).not.toBeInTheDocument();
+  });
+
+  it('o botão divide com o mesmo programa: chama onSplit só com o lado', async () => {
+    const dados = split();
+    setup({ split: dados });
+    await userEvent.click(screen.getByRole('button', { name: 'Dividir à direita' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Dividir abaixo' }));
+    expect(dados.onSplit.mock.calls).toEqual([['right'], ['bottom']]);
+  });
+
+  it('o menu ⋯ oferece dividir com outro programa, dos dois lados', async () => {
+    const dados = split();
+    setup({ split: dados });
+    await userEvent.click(screen.getByRole('button', { name: 'Mais ações do painel' }));
+    expect(screen.getByRole('menuitem', { name: 'Dividir à direita com Codex' })).toBeVisible();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Dividir abaixo com Codex' }));
+    expect(dados.onSplit).toHaveBeenCalledWith('bottom', 'codex');
+  });
+
+  it('lado bloqueado: o botão fica apagado, o clique não faz nada e o item do menu fica desabilitado', async () => {
+    const dados = split({ right: 'Sem espaço para dividir este painel' });
+    setup({ split: dados });
+    const direita = screen.getByRole('button', { name: 'Dividir à direita' });
+    expect(direita).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(direita);
+    expect(dados.onSplit).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Dividir abaixo' })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Mais ações do painel' }));
+    expect(screen.getByRole('menuitem', { name: 'Dividir à direita com Codex' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('o lançador e a sessão encerrada também podem ser divididos', async () => {
+    const dados = split();
+    const { unmount } = setup({ leaf: emptyLeaf, terminal: undefined, split: dados });
+    await userEvent.click(screen.getByRole('button', { name: 'Dividir abaixo' }));
+    unmount();
+    setup({ terminal: { ...session, state: 'exited' }, split: dados });
+    await userEvent.click(screen.getByRole('button', { name: 'Dividir à direita' }));
+    expect(dados.onSplit.mock.calls).toEqual([['bottom'], ['right']]);
+  });
+});

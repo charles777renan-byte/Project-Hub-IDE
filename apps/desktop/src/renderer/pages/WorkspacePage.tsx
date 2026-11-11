@@ -11,7 +11,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
-import { removeLeaf } from '@project-hub/contracts/layout-ops';
+import { removeLeaf, splitLeaf } from '@project-hub/contracts/layout-ops';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
@@ -38,7 +38,7 @@ import {
 } from '../workspace/close-all';
 import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
-import { PaneView } from '../workspace/PaneView';
+import { PaneView, type SplitSide } from '../workspace/PaneView';
 import { layoutFits, PANE_MIN_HEIGHT, PANE_MIN_WIDTH, pickVisible } from '../workspace/layout-fit';
 import { useLeafHosts } from '../workspace/leaf-hosts';
 import { leavesOf } from '../workspace/layout-model';
@@ -53,7 +53,9 @@ import { isIdle, useActivity } from '../sidebar-activity';
 import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useAreaSize } from '../workspace/use-area-size';
 import { useWorkspace } from '../workspace/use-workspace';
-import { WorkspaceToolbar, type PaneLayoutMode } from '../workspace/WorkspaceToolbar';
+import { LIMIT_HINT, WorkspaceToolbar, type PaneLayoutMode } from '../workspace/WorkspaceToolbar';
+
+const NO_ROOM_HINT = 'Sem espaço para dividir este painel';
 
 const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.';
 const UNAVAILABLE_NOTICE =
@@ -495,6 +497,36 @@ function WorkspaceBody({
     }
   };
 
+  // Dividir pelo cabeçalho do painel: o novo entra no lado pedido, com metade do espaço daquele painel.
+  const splitPane = async (leafId: string, side: SplitSide, provider: ProviderId) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
+    try {
+      const message = await workspace.splitPane(leafId, side, provider);
+      if (message !== null) notify.error(message);
+      else await reload();
+    } finally {
+      openingRef.current = false;
+      setOpening(false);
+    }
+  };
+  // Por que o painel não pode ser dividido daquele lado; indefinido quando pode. A falta de espaço é medida com o
+  // layout que resultaria: dividir nunca joga a tela no modo de um painel por vez.
+  const splitBlocked = (leafId: string, side: SplitSide): string | undefined => {
+    if (unavailableReason !== undefined) return unavailableReason;
+    if (shownLeaves.length >= LAYOUT_LIMITS.maxLeaves) return LIMIT_HINT;
+    if (shown === null || size === null) return undefined;
+    const probe = splitLeaf(
+      shown,
+      leafId,
+      side,
+      { type: 'leaf', id: '\u0000probe', provider: 'shell', terminalId: null },
+      () => '\u0000split',
+    );
+    return layoutFits(probe, size) ? undefined : NO_ROOM_HINT;
+  };
+
   // Fechar o painel encerra a sessão dele (o processo principal cuida disso); a de missão só sai do painel.
   // O painel some na hora, sem esperar o processo principal. Se o pedido falhar, ele volta e o erro aparece nele.
   // `closingAll`: o painel sai junto com todos os outros, então nenhum vizinho precisa virar o ativo.
@@ -649,6 +681,25 @@ function WorkspaceBody({
         onDetach={() => workspace.detach(leaf.id)}
         onClose={() => void closePane(leaf.id)}
         maximized={soloLeaf?.id === leaf.id}
+        // Com um painel só na tela (maximizado ou em abas) não há onde ver a divisão: os botões somem.
+        split={
+          soloLeaf !== undefined
+            ? undefined
+            : {
+                blocked: {
+                  ...(splitBlocked(leaf.id, 'right') !== undefined
+                    ? { right: splitBlocked(leaf.id, 'right') as string }
+                    : {}),
+                  ...(splitBlocked(leaf.id, 'bottom') !== undefined
+                    ? { bottom: splitBlocked(leaf.id, 'bottom') as string }
+                    : {}),
+                },
+                others: providers
+                  .filter((item) => item.id !== providerId && item.available !== false)
+                  .map((item) => ({ id: item.id, label: item.label })),
+                onSplit: (side, other) => void splitPane(leaf.id, side, other ?? providerId),
+              }
+        }
         // Com a janela estreita o modo Abas não é escolha da pessoa: não há "maximizar" nem "voltar à grade".
         {...(soloAuto
           ? {}
