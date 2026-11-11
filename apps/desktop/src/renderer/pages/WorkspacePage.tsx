@@ -11,12 +11,19 @@ import {
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router';
 import { LAYOUT_LIMITS } from '@project-hub/contracts/layout-limits';
-import { removeLeaf, splitLeaf } from '@project-hub/contracts/layout-ops';
+import {
+  LAYOUT_PRESETS,
+  PRESET_SLOTS,
+  presetLayout,
+  removeLeaf,
+  splitLeaf,
+  type LayoutPreset,
+} from '@project-hub/contracts/layout-ops';
 import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
-import { SquareTerminal } from '../components/Icon';
+import { ICON_PROPS, SquareTerminal, Undo2 } from '../components/Icon';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { PathText } from '../components/PathText';
@@ -56,9 +63,61 @@ import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useAreaSize } from '../workspace/use-area-size';
 import { usePaneDrag } from '../workspace/use-pane-drag';
 import { useWorkspace } from '../workspace/use-workspace';
-import { LIMIT_HINT, WorkspaceToolbar, type PaneLayoutMode } from '../workspace/WorkspaceToolbar';
+import {
+  LIMIT_HINT,
+  WorkspaceToolbar,
+  type PaneLayoutMode,
+  type PresetOption,
+} from '../workspace/WorkspaceToolbar';
 
 const NO_ROOM_HINT = 'Sem espaço para dividir este painel';
+const PRESET_NO_ROOM_HINT = 'Não cabe nesta janela com o mínimo de cada terminal';
+/** Quanto tempo o aviso "Layout alterado · Desfazer" fica na tela. */
+export const UNDO_NOTICE_MS = 6000;
+
+/** O nome de cada layout pronto, para `count` painéis depois de aplicado. */
+function presetLabel(preset: LayoutPreset, count: number): string {
+  switch (preset) {
+    case 'side-by-side':
+      return 'Lado a lado';
+    case 'main-stack':
+      return `1 grande + ${count - 1}`;
+    case 'grid':
+      return count <= 4 ? 'Grade 2 × 2' : 'Grade';
+    case 'three-columns':
+      return '3 colunas';
+  }
+}
+
+/**
+ * O aviso de que os painéis mudaram de lugar, com o botão que desfaz. `token` muda a cada movimento: o aviso some
+ * sozinho depois de `UNDO_NOTICE_MS` (o mouse em cima o segura) e volta no movimento seguinte. Desfazer pelo teclado
+ * (Ctrl+Z fora do terminal) continua valendo depois que ele some.
+ */
+function UndoNotice({ token, onUndo }: { token: number; onUndo(): void }) {
+  const [hiddenToken, setHiddenToken] = useState<number | null>(null);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (held) return;
+    const timer = window.setTimeout(() => setHiddenToken(token), UNDO_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [token, held]);
+  if (hiddenToken === token) return null;
+  return (
+    <div
+      className="workspace__undo"
+      role="status"
+      onPointerEnter={() => setHeld(true)}
+      onPointerLeave={() => setHeld(false)}
+    >
+      <span>Layout alterado</span>
+      <button type="button" onClick={onUndo}>
+        <Undo2 {...ICON_PROPS} />
+        Desfazer
+      </button>
+    </div>
+  );
+}
 
 const PROVIDERS_ERROR = 'Não foi possível carregar os programas disponíveis.';
 const UNAVAILABLE_NOTICE =
@@ -624,6 +683,47 @@ function WorkspaceBody({
   };
   // As ferramentas dos terminais, no cabeçalho do projeto (ver `toolsHost`). Os eventos seguem a árvore do React, então
   // os atalhos capturados no `.workspace` continuam valendo com o foco nelas.
+  // O programa de um painel: o da sessão dele, se há uma; senão, o que o painel abre.
+  const providerOf = (leaf: LayoutLeaf): ProviderId =>
+    (leaf.terminalId === null
+      ? undefined
+      : terminals.find((item) => item.id === leaf.terminalId)?.provider) ?? leaf.provider;
+  const labelOfProvider = (id: ProviderId) => providers.find((item) => item.id === id)?.label ?? id;
+
+  // Os layouts prontos rearrumam os painéis abertos; os lugares que sobram viram painéis vazios do programa do painel
+  // ativo, cada um com o botão de iniciar. O que não cabe na área com o mínimo de cada terminal fica desabilitado.
+  const activeLeaf = shownLeaves.find((leaf) => leaf.id === workspace.activeLeafId);
+  const presets: PresetOption[] =
+    shownLeaves.length === 0
+      ? []
+      : LAYOUT_PRESETS.map((id) => {
+          const count = Math.min(
+            Math.max(shownLeaves.length, PRESET_SLOTS[id]),
+            LAYOUT_LIMITS.maxLeaves,
+          );
+          const leaves: LayoutLeaf[] = Array.from(
+            { length: count },
+            (_, i) =>
+              shownLeaves[i] ?? {
+                type: 'leaf',
+                id: `\u0000${i}`,
+                provider: 'shell',
+                terminalId: null,
+              },
+          );
+          const next = presetLayout(id, leaves, () => '\u0000preset');
+          const fits = size === null || next === null || layoutFits(next, size);
+          return {
+            id,
+            label: presetLabel(id, count),
+            ...(fits ? {} : { blocked: PRESET_NO_ROOM_HINT }),
+          };
+        });
+  const choosePreset = (preset: LayoutPreset) => {
+    setSoloOn(false);
+    workspace.applyPreset(preset, activeLeaf === undefined ? 'shell' : providerOf(activeLeaf));
+  };
+
   const toolbar = (
     <WorkspaceToolbar
       providers={providers}
@@ -634,6 +734,8 @@ function WorkspaceBody({
       soloMode={soloLeaf !== undefined}
       soloAuto={soloAuto}
       canSolo={shownLeaves.length > 0}
+      presets={presets}
+      onPreset={choosePreset}
       onLayout={chooseLayout}
       onOpen={(provider) => void openPane(provider)}
     />
@@ -656,6 +758,24 @@ function WorkspaceBody({
       if (!blocked && target.available !== false) void openPane(target.id);
       return;
     }
+    // Ctrl+Z desfaz o último movimento de painéis, só com o foco fora do terminal e de campos de texto (lá o Ctrl+Z é
+    // do programa ou do campo).
+    if (
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      event.nativeEvent.code === 'KeyZ' &&
+      workspace.undoToken !== null &&
+      !(event.target as Element).closest(
+        '.terminal-view, input, textarea, [contenteditable="true"]',
+      )
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      workspace.undo();
+      return;
+    }
     if (soloLeaf === undefined || !event.ctrlKey || !event.altKey) return;
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
@@ -663,13 +783,6 @@ function WorkspaceBody({
     const next = stepSolo(shownLeaves, soloLeaf.id, event.key === 'ArrowLeft' ? -1 : 1);
     if (next !== null) showSolo(next);
   };
-
-  // O programa de um painel: o da sessão dele, se há uma; senão, o que o painel abre.
-  const providerOf = (leaf: LayoutLeaf): ProviderId =>
-    (leaf.terminalId === null
-      ? undefined
-      : terminals.find((item) => item.id === leaf.terminalId)?.provider) ?? leaf.provider;
-  const labelOfProvider = (id: ProviderId) => providers.find((item) => item.id === id)?.label ?? id;
 
   const renderLeaf = (leaf: LayoutLeaf) => {
     const terminal =
@@ -791,6 +904,9 @@ function WorkspaceBody({
               onCancel={cancelCloseAll}
             />
           </div>
+        ) : null}
+        {workspace.undoToken !== null && soloLeaf === undefined ? (
+          <UndoNotice token={workspace.undoToken} onUndo={workspace.undo} />
         ) : null}
         {soloLeaf !== undefined ? (
           <div className="workspace__solo">

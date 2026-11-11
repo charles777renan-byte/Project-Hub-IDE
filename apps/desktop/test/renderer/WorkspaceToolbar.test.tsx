@@ -371,7 +371,10 @@ describe('WorkspaceToolbar', () => {
       const capsule = screen.getByRole('group', { name: 'Layout dos painéis' }).parentElement;
       expect(capsule).toHaveClass('workspace__controls');
       expect(capsule).toContainElement(screen.getByRole('button', { name: 'Abrir terminal' }));
-      expect(capsule?.querySelector('.workspace__controls-sep')).toHaveAttribute('aria-hidden', 'true');
+      expect(capsule?.querySelector('.workspace__controls-sep')).toHaveAttribute(
+        'aria-hidden',
+        'true',
+      );
     });
 
     it('o texto "Terminal" fica num rótulo à parte, que a faixa estreita esconde deixando os ícones', () => {
@@ -421,7 +424,7 @@ describe('WorkspaceToolbar', () => {
 
       await userEvent.hover(grade);
       expect(await screen.findByRole('tooltip')).toHaveTextContent(
-        'Janela estreita: um painel por vez',
+        'Janela pequena para este layout: um painel por vez, até caber de novo',
       );
       await userEvent.click(grade);
       expect(onLayout).not.toHaveBeenCalled();
@@ -434,5 +437,42 @@ describe('WorkspaceToolbar', () => {
         'Abas: um painel por vez, com uma aba para cada um',
       );
     });
+  });
+});
+
+describe('layouts prontos', () => {
+  const presets = [
+    { id: 'side-by-side' as const, label: 'Lado a lado' },
+    { id: 'main-stack' as const, label: '1 grande + 2' },
+    { id: 'grid' as const, label: 'Grade 2 × 2', blocked: 'Não cabe nesta janela' },
+    { id: 'three-columns' as const, label: '3 colunas' },
+  ];
+
+  it('o menu "Layouts prontos" fica no seletor de layout e lista os quatro', async () => {
+    setup({ presets, onPreset: vi.fn(), onLayout: vi.fn() });
+    const seletor = screen.getByRole('group', { name: 'Layout dos painéis' });
+    await userEvent.click(within(seletor).getByRole('button', { name: 'Layouts prontos' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Lado a lado',
+      '1 grande + 2',
+      'Grade 2 × 2',
+      '3 colunas',
+    ]);
+  });
+
+  it('escolher um layout chama onPreset com ele; o que não cabe fica desabilitado, com o motivo', async () => {
+    const onPreset = vi.fn();
+    setup({ presets, onPreset, onLayout: vi.fn() });
+    await userEvent.click(screen.getByRole('button', { name: 'Layouts prontos' }));
+    const grade = screen.getByRole('menuitem', { name: 'Grade 2 × 2' });
+    expect(grade).toHaveAttribute('aria-disabled', 'true');
+    expect(grade).toHaveAttribute('title', 'Não cabe nesta janela');
+    await userEvent.click(screen.getByRole('menuitem', { name: '3 colunas' }));
+    expect(onPreset).toHaveBeenCalledWith('three-columns');
+  });
+
+  it('sem layouts (nenhum painel aberto) o menu não aparece', () => {
+    setup({ presets: [], onPreset: vi.fn(), onLayout: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Layouts prontos' })).not.toBeInTheDocument();
   });
 });

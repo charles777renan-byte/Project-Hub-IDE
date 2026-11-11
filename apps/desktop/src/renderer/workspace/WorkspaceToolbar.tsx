@@ -1,15 +1,28 @@
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react';
+import type { LayoutPreset } from '@project-hub/contracts/layout-ops';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { Hint } from '../components/Hint';
-import { ChevronDown, ICON_PROPS, LayoutGrid, PanelTop, Plus, Search } from '../components/Icon';
+import {
+  ChevronDown,
+  ICON_PROPS,
+  LayoutGrid,
+  LayoutTemplate,
+  PanelTop,
+  Plus,
+  Search,
+} from '../components/Icon';
+import { MenuAcoes } from '../components/MenuAcoes';
 import { providerShortcutKeys, providerShortcutLabel } from './provider-shortcuts';
 
 export const LIMIT_HINT = 'Limite de 12 painéis';
-const SOLO_AUTO_HINT = 'Janela estreita: um painel por vez';
+const SOLO_AUTO_HINT = 'Janela pequena para este layout: um painel por vez, até caber de novo';
 const GRID_HINT = 'Grade: todos os painéis lado a lado';
 const TABS_HINT = 'Abas: um painel por vez, com uma aba para cada um (Ctrl+Alt+setas troca de aba)';
+
+/** Um layout pronto no menu "Layouts prontos"; `blocked` é o motivo de ele não poder ser aplicado agora. */
+export type PresetOption = { id: LayoutPreset; label: string; blocked?: string };
 
 /** Como os painéis aparecem: lado a lado ou um por vez. */
 export type PaneLayoutMode = 'grade' | 'abas';
@@ -35,8 +48,8 @@ function rowStyle(index: number): CSSProperties {
 }
 
 /**
- * Ferramentas dos terminais, na faixa do projeto (o cabeçalho, à direita): "Fora da grade", o seletor de layout
- * (Grade e Abas, só ícones) e o botão "+ Terminal" (nome acessível "Abrir terminal"), que abre o menu dos programas
+ * Ferramentas dos terminais, na faixa do projeto (o cabeçalho, à direita): o seletor de layout (Grade e Abas, só
+ * ícones, e o menu "Layouts prontos", que rearruma os painéis abertos) e o botão "+ Terminal" (nome acessível "Abrir terminal"), que abre o menu dos programas
  * alinhado à direita. O menu abre
  * com o foco no campo de busca, que filtra os programas pelo nome (sem diferenciar maiúsculas nem acentos), e
  * Enter abre o item marcado. O item marcado é o que tem o mouse em cima ou o foco, e só ele mostra a descrição;
@@ -50,7 +63,7 @@ function rowStyle(index: number): CSSProperties {
  * botão também fica desabilitado, e a dica é o motivo. Um bloqueio que chega com o menu aberto fecha o menu.
  * `focusToken` novo leva o foco ao botão, como quando o
  * último painel é fechado. `dock` (os terminais "Fora da grade") vai no começo, à esquerda do seletor. Com `soloAuto`
- * (a janela está estreita e o modo Abas valeu sozinho), "Abas" fica apertado, "Grade" fica desabilitado e as dicas
+ * (a janela está pequena para o layout e o modo Abas valeu sozinho), "Abas" fica apertado, "Grade" fica desabilitado e as dicas
  * dizem isso; escolher "Abas" ainda vale, para quando a janela alargar.
  */
 export function WorkspaceToolbar({
@@ -63,6 +76,8 @@ export function WorkspaceToolbar({
   soloAuto = false,
   canSolo = false,
   dock,
+  presets,
+  onPreset,
   onLayout,
   onOpen,
 }: {
@@ -82,6 +97,10 @@ export function WorkspaceToolbar({
   canSolo?: boolean;
   /** O que vai no começo da barra, à esquerda do seletor (a faixa "Fora da grade"). */
   dock?: ReactNode;
+  /** Os layouts prontos (lado a lado, 1 grande + 2...). Sem eles, ou sem `onPreset`, o menu não aparece. */
+  presets?: readonly PresetOption[];
+  /** A pessoa escolheu um layout pronto: os painéis abertos são rearrumados nele. */
+  onPreset?(preset: LayoutPreset): void;
   /** A pessoa escolheu como os painéis aparecem. Sem ele, o seletor não aparece. */
   onLayout?(mode: PaneLayoutMode): void;
   onOpen(provider: ProviderId): void;
@@ -250,6 +269,18 @@ export function WorkspaceToolbar({
                 <PanelTop {...ICON_PROPS} />
               </button>
             </Hint>
+            {presets === undefined || presets.length === 0 || onPreset === undefined ? null : (
+              <MenuAcoes
+                rotulo="Layouts prontos"
+                icone={<LayoutTemplate {...ICON_PROPS} />}
+                acoes={presets.map((preset) => ({
+                  rotulo: preset.label,
+                  onSelecionar: () => onPreset(preset.id),
+                  desabilitada: preset.blocked !== undefined,
+                  ...(preset.blocked !== undefined ? { dica: preset.blocked } : {}),
+                }))}
+              />
+            )}
           </div>
         )}
         {onLayout === undefined ? null : (

@@ -32,7 +32,7 @@ import {
   useCloseAllRequest,
   usePaneCount,
 } from '../../src/renderer/workspace/close-all';
-import { WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
+import { UNDO_NOTICE_MS, WorkspacePage } from '../../src/renderer/pages/WorkspacePage';
 import { AppRoutes, missionPath, ROUTE_PATHS } from '../../src/renderer/routes';
 
 // O xterm precisa de um navegador de verdade. Aqui o terminal é trocado por um marcador, que conta as montagens: cada
@@ -1030,7 +1030,7 @@ describe('layout que não cabe na área (modo foco)', () => {
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
       medirArea(600, 600);
       expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
-      expect(screen.getByText('Janela estreita')).toBeInTheDocument();
+      expect(screen.getByText('Janela pequena')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Grade' })).toHaveAttribute(
         'aria-disabled',
         'true',
@@ -1054,10 +1054,10 @@ describe('layout que não cabe na área (modo foco)', () => {
       await screen.findByRole('button', { name: 'Iniciar Claude Code' });
       await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
       medirArea(600, 600);
-      expect(screen.getByText('Janela estreita')).toBeInTheDocument();
+      expect(screen.getByText('Janela pequena')).toBeInTheDocument();
       medirArea(1000, 600);
       expect(screen.getByRole('tablist', { name: 'Painéis abertos' })).toBeInTheDocument();
-      expect(screen.queryByText('Janela estreita')).not.toBeInTheDocument();
+      expect(screen.queryByText('Janela pequena')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Grade' })).toBeInTheDocument();
     });
 
@@ -1089,7 +1089,7 @@ describe('layout que não cabe na área (modo foco)', () => {
       screen.getByRole('tab', { name: /Claude Code/ }).focus();
       await userEvent.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}');
       expect(screen.getByRole('region', { name: 'Painel Codex' })).toBeInTheDocument();
-      expect(screen.getByText('Janela estreita')).toBeInTheDocument();
+      expect(screen.getByText('Janela pequena')).toBeInTheDocument();
     });
 
     it('o painel mostrado não tem o botão de maximizar (não haveria para onde voltar)', async () => {
@@ -2310,5 +2310,105 @@ describe('alça de arrastar na grade', () => {
     renderAt();
     await screen.findByRole('button', { name: 'Iniciar Claude Code' });
     expect(document.querySelector('.pane__grip')).toBeNull();
+  });
+});
+
+describe('layouts prontos e desfazer', () => {
+  const orientacoes = () =>
+    screen.getAllByRole('separator').map((item) => item.getAttribute('aria-orientation'));
+  // Pelo teclado, como em `abrirMenuDoPainel`: com mais de um painel o jsdom cancela o clique do mouse.
+  const escolherLayout = async (nome: string) => {
+    screen.getByRole('button', { name: 'Layouts prontos' }).focus();
+    await userEvent.keyboard('{Enter}');
+    const item = await screen.findByRole('menuitem', { name: nome });
+    item.focus();
+    await userEvent.keyboard('{Enter}');
+  };
+
+  it('"Lado a lado" põe os três painéis numa linha, grava o layout e mostra "Layout alterado" com Desfazer', async () => {
+    areaSize = { width: 1200, height: 800 };
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(orientacoes()).toEqual(['vertical', 'horizontal']);
+
+    await escolherLayout('Lado a lado');
+    expect(orientacoes()).toEqual(['vertical', 'vertical']);
+    expect(screen.getAllByRole('region', { name: /^Painel / })).toHaveLength(3);
+    const aviso = (await screen.findByText('Layout alterado')).closest(
+      '.workspace__undo',
+    ) as HTMLElement;
+    expect(aviso).toHaveAttribute('role', 'status');
+    expect(aviso).toHaveTextContent('Layout alterado');
+    await waitFor(() => expect(api.workspaces.saveLayout).toHaveBeenCalled(), { timeout: 2000 });
+
+    within(aviso).getByRole('button', { name: 'Desfazer' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(orientacoes()).toEqual(['vertical', 'horizontal']);
+    expect(screen.queryByText('Layout alterado')).not.toBeInTheDocument();
+  });
+
+  it('"Grade 2 × 2" com três painéis abre um quarto lugar vazio, com o botão de iniciar', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await escolherLayout('Grade 2 × 2');
+    expect(screen.getAllByRole('region', { name: /^Painel / })).toHaveLength(4);
+    expect(screen.getAllByRole('button', { name: /^Iniciar / })).toHaveLength(4);
+    expect(api.workspaces.startSession).not.toHaveBeenCalled();
+  });
+
+  it('o layout que não cabe na área fica desabilitado no menu', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    // 1000 px de largura: três colunas pedem 1036.
+    screen.getByRole('button', { name: 'Layouts prontos' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(await screen.findByRole('menuitem', { name: 'Lado a lado' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(screen.getByRole('menuitem', { name: '1 grande + 2' })).not.toHaveAttribute(
+      'aria-disabled',
+    );
+  });
+
+  it('Ctrl+Z com o foco num painel (fora do terminal) desfaz; sem nada a desfazer, a tecla passa', async () => {
+    areaSize = { width: 1200, height: 800 };
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    const painel = () => screen.getByRole('region', { name: 'Painel Claude Code' });
+    const ctrlZ = () => fireEvent.keyDown(painel(), { key: 'z', code: 'KeyZ', ctrlKey: true });
+
+    // Nada foi movido ainda: a tecla não é engolida.
+    expect(ctrlZ()).toBe(true);
+
+    await escolherLayout('Lado a lado');
+    expect(orientacoes()).toEqual(['vertical', 'vertical']);
+    expect(ctrlZ()).toBe(false);
+    expect(orientacoes()).toEqual(['vertical', 'horizontal']);
+  });
+
+  it('o aviso some sozinho depois de alguns segundos', async () => {
+    areaSize = { width: 1200, height: 800 };
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    await escolherLayout('Lado a lado');
+    expect(await screen.findByText('Layout alterado')).toBeInTheDocument();
+    vi.useFakeTimers();
+    try {
+      // O prazo começou com o relógio de verdade: reinicia-o no falso mexendo o mouse sobre o aviso e saindo.
+      const aviso = document.querySelector('.workspace__undo') as HTMLElement;
+      fireEvent.pointerEnter(aviso);
+      fireEvent.pointerLeave(aviso);
+      act(() => {
+        vi.advanceTimersByTime(UNDO_NOTICE_MS - 1);
+      });
+      expect(screen.getByText('Layout alterado')).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.queryByText('Layout alterado')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

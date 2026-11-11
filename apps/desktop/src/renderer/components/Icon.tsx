@@ -34,6 +34,7 @@ export {
   Inbox,
   Italic,
   LayoutGrid,
+  LayoutTemplate,
   List,
   ListChecks,
   LoaderCircle,
