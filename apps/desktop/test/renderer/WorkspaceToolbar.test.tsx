@@ -340,19 +340,14 @@ describe('WorkspaceToolbar', () => {
   });
 
   describe('na faixa do projeto', () => {
-    it('a ordem é "Fora da grade", o seletor de layout e, por último, "+ Terminal"', () => {
-      const { container } = setup({
-        canSolo: true,
-        onLayout: vi.fn(),
-        dock: <div data-testid="dock">fora da grade</div>,
-      });
+    it('a ordem é o seletor de layout e, por último, "+ Terminal"', () => {
+      const { container } = setup({ canSolo: true, onLayout: vi.fn() });
       const barra = container.querySelector('.workspace__toolbar') as HTMLElement;
       const ordem = [
-        screen.getByTestId('dock'),
         screen.getByRole('group', { name: 'Layout dos painéis' }),
         screen.getByRole('button', { name: 'Abrir terminal' }),
       ];
-      expect(barra.firstElementChild).toBe(ordem[0]);
+      expect(barra.firstElementChild).toBe(barra.querySelector('.workspace__controls'));
       for (let k = 1; k < ordem.length; k += 1) {
         expect(
           (ordem[k - 1] as HTMLElement).compareDocumentPosition(ordem[k] as HTMLElement) &

@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
+import type { CSSProperties, KeyboardEvent } from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { LayoutPreset } from '@project-hub/contracts/layout-ops';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
@@ -62,7 +62,7 @@ function rowStyle(index: number): CSSProperties {
  * painéis, o botão fica desabilitado com a dica do limite. Com `unavailableReason` (a pasta do projeto sumiu), o
  * botão também fica desabilitado, e a dica é o motivo. Um bloqueio que chega com o menu aberto fecha o menu.
  * `focusToken` novo leva o foco ao botão, como quando o
- * último painel é fechado. `dock` (os terminais "Fora da grade") vai no começo, à esquerda do seletor. Com `soloAuto`
+ * último painel é fechado. Com `soloAuto`
  * (a janela está pequena para o layout e o modo Abas valeu sozinho), "Abas" fica apertado, "Grade" fica desabilitado e as dicas
  * dizem isso; escolher "Abas" ainda vale, para quando a janela alargar.
  */
@@ -75,7 +75,6 @@ export function WorkspaceToolbar({
   soloMode = false,
   soloAuto = false,
   canSolo = false,
-  dock,
   presets,
   onPreset,
   onLayout,
@@ -96,7 +95,6 @@ export function WorkspaceToolbar({
   /** Há painel para mostrar sozinho; sem ele o botão fica desabilitado. */
   canSolo?: boolean;
   /** O que vai no começo da barra, à esquerda do seletor (a faixa "Fora da grade"). */
-  dock?: ReactNode;
   /** Os layouts prontos (lado a lado, 1 grande + 2...). Sem eles, ou sem `onPreset`, o menu não aparece. */
   presets?: readonly PresetOption[];
   /** A pessoa escolheu um layout pronto: os painéis abertos são rearrumados nele. */
@@ -237,7 +235,6 @@ export function WorkspaceToolbar({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      {dock}
       {/* A cápsula: o seletor de layout e o gatilho, juntos, com um fio entre eles. */}
       <div className="workspace__controls">
         {onLayout === undefined ? null : (

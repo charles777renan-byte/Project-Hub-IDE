@@ -27,12 +27,15 @@ describe('terminal-tools.css', () => {
   const css = readCss('terminal-tools.css');
   const rule = (selector: string): Map<string, string> => ruleDeclarations(css, selector);
 
-  it('é ligado depois do off-grid.css, para vencer as medidas da barra antiga', () => {
-    const html = readFileSync(resolve(import.meta.dirname, '../../src/renderer/index.html'), 'utf8');
-    const offGrid = html.indexOf('./styles/off-grid.css');
+  it('é ligado depois do workspace.css, para vencer as medidas da barra antiga', () => {
+    const html = readFileSync(
+      resolve(import.meta.dirname, '../../src/renderer/index.html'),
+      'utf8',
+    );
+    const workspace = html.indexOf('./styles/workspace.css');
     const tools = html.indexOf('./styles/terminal-tools.css');
-    expect(offGrid).toBeGreaterThan(0);
-    expect(tools).toBeGreaterThan(offGrid);
+    expect(workspace).toBeGreaterThan(0);
+    expect(tools).toBeGreaterThan(workspace);
   });
 
   it('a cápsula é um cartão de 32px com fio, e os controles dentro dela têm 28px', () => {
@@ -59,17 +62,15 @@ describe('terminal-tools.css', () => {
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 
-  it('a barra só cresce na faixa quando há terminais fora da grade', () => {
+  it('a barra não cresce na faixa: fica do tamanho da cápsula', () => {
     expect(rule('.project-header__tools .workspace__toolbar').get('flex')).toBe('0 1 auto');
-    expect(rule('.project-header__tools .workspace__toolbar:has(.off-grid)').get('flex')).toBe(
-      '1 1 auto',
-    );
+    expect(css).not.toContain('off-grid');
   });
 
   it('com a faixa estreita, "Terminal" sai e o gatilho fica só com os ícones', () => {
     const narrow = containerBlock(css, 'project-header (max-width: 860px)');
-    expect(ruleDeclarations(narrow, '.workspace__controls .workspace__open-label').get('display')).toBe(
-      'none',
-    );
+    expect(
+      ruleDeclarations(narrow, '.workspace__controls .workspace__open-label').get('display'),
+    ).toBe('none');
   });
 });
