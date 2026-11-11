@@ -188,6 +188,10 @@
 }
 
 .mission-head__back {
+  /* Alvo de ao menos 24px de altura: em linha, o link tinha a altura do texto (20px). */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   color: var(--muted);
   font-size: var(--text-sm);
 }

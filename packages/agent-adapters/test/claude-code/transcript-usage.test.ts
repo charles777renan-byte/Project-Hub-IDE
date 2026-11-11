@@ -1,4 +1,11 @@
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -93,7 +100,9 @@ describe('takeCompleteLines', () => {
 
 describe('readUsageLine', () => {
   it('lê só os números da resposta, com a escrita de cache por validade', () => {
-    expect(readUsageLine(assistantLine('msg_1', { input: 2, output: 9, cacheRead: 5, write1h: 7 }))).toEqual({
+    expect(
+      readUsageLine(assistantLine('msg_1', { input: 2, output: 9, cacheRead: 5, write1h: 7 })),
+    ).toEqual({
       id: 'msg_1',
       usage: {
         model: 'claude-sonnet-5-5',
@@ -204,8 +213,11 @@ describe('createTranscriptUsageTracker', () => {
   });
 
   it('não lê subagentes de uma pasta de sessão que é um link para fora da pasta de projetos', async () => {
-    writeFileSync(sessionFile(), `${assistantLine('msg_1', { output: 10 })}
-`);
+    writeFileSync(
+      sessionFile(),
+      `${assistantLine('msg_1', { output: 10 })}
+`,
+    );
     const outside = mkdtempSync(join(tmpdir(), 'ph-fora-'));
     try {
       mkdirSync(join(outside, 'subagents'));
@@ -299,6 +311,34 @@ describe('latestContext', () => {
     await tracker.poll();
     // Entrada + leitura + as duas escritas de cache; a saída não conta.
     expect(tracker.latestContext()).toEqual({ model: 'claude-opus-4-7', usedTokens: 1060 });
+  });
+
+  it('nome de modelo longo demais não vira contexto, mas a resposta entra na soma', async () => {
+    const longo = 'm'.repeat(101);
+    writeFileSync(
+      sessionFile(),
+      `${timedLine('msg_1', T1, { input: 500, output: 7 }, longo)}
+`,
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+
+    expect(await tracker.poll()).toMatchObject({ inputTokens: 500, outputTokens: 7 });
+    expect(tracker.latestContext()).toBeUndefined();
+  });
+
+  it('nome de modelo no limite de 100 caracteres vale', async () => {
+    const noLimite = 'm'.repeat(100);
+    writeFileSync(
+      sessionFile(),
+      `${timedLine('msg_1', T1, { input: 500 }, noLimite)}
+`,
+    );
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+
+    await tracker.poll();
+    expect(tracker.latestContext()).toEqual({ model: noLimite, usedTokens: 500 });
   });
 
   it('com duas sessões principais (/clear), vale a de timestamp maior, mesmo lida antes', async () => {

@@ -63,6 +63,23 @@ describe('contratos de terminal', () => {
     expect(terminalSummarySchema.safeParse({ ...ok, origin: 'resumed' }).success).toBe(false);
   });
 
+  it('o nome do modelo tem no máximo 100 caracteres', () => {
+    const base = {
+      id: 't',
+      kind: 'shell',
+      title: 'Claude',
+      projectId: 'p1',
+      projectName: 'app',
+      state: 'running',
+      provider: 'claude',
+      origin: 'new',
+    };
+    expect(terminalSummarySchema.safeParse({ ...base, model: 'm'.repeat(100) }).success).toBe(true);
+    expect(terminalSummarySchema.safeParse({ ...base, model: 'm'.repeat(101) }).success).toBe(
+      false,
+    );
+  });
+
   it('o resumo aceita modelo e contexto, e continua valendo sem eles', () => {
     const base = {
       id: 't',

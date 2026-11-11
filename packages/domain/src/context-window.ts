@@ -7,6 +7,12 @@ import type { MessageUsage } from './usage';
  */
 export type ContextUsage = { model: string; usedTokens: number };
 
+/**
+ * Tamanho máximo do nome de um modelo. O nome vem do transcript, que é um arquivo: um valor maior que isto não é um
+ * id de modelo, e não segue para o banco nem para a tela. O contrato do terminal usa o mesmo número.
+ */
+export const MODEL_NAME_MAX_LENGTH = 100;
+
 /** Janela de contexto de um modelo fora da tabela, em tokens. */
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
 
