@@ -874,6 +874,42 @@ button:disabled {
 }
 
 /*
+ * O nome do estado fica fechado e abre para a direita com o mouse ou o foco do teclado; ao sair, fecha. A grade de
+ * uma coluna vai de 0fr a 1fr, então a largura animada é a do próprio texto, sem número fixo. A transição mora aqui,
+ * e não em motion.css (só opacidade e transform) nem em statusbar.css (sem animação), porque muda largura: só a barra de status se rearruma (ela tem altura fixa e fica fora do
+ * corpo da janela), e os terminais não são remedidos. A margem negativa desfaz o `gap` do selo enquanto fechado; o
+ * respiro volta por dentro, como recuo do texto (que não ocupa largura com o rótulo fechado).
+ */
+.overview-counter__label {
+  display: grid;
+  grid-template-columns: 0fr;
+  margin-left: calc(-1 * var(--space-1));
+  letter-spacing: 0.06em;
+  transition: grid-template-columns var(--dur) var(--ease);
+}
+
+.overview-counter__label > span {
+  min-width: 0;
+  overflow: hidden;
+  text-indent: var(--space-1);
+  white-space: nowrap;
+}
+
+.overview-counter:hover .overview-counter__label {
+  grid-template-columns: 1fr;
+}
+
+.overview-counter:focus-visible .overview-counter__label {
+  grid-template-columns: 1fr;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-counter__label {
+    transition: none;
+  }
+}
+
+/*
  * Uso do computador e "Parar todos" na barra de status (components/SystemUsage.tsx e StopAll.tsx). O uso é texto
  * discreto em --muted. Só em janela bem estreita (800px ou menos) ele some, para os contadores não perderem lugar. A pergunta
  * de "Parar todos" cabe na altura da barra (as regras dela estão em statusbar.css).

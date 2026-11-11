@@ -159,7 +159,7 @@ describe('carga compartilhada', () => {
     );
     await flush();
 
-    expect(screen.getByText('1 executando')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '1 executando' })).toBeInTheDocument();
     expect(api.projects.list).toHaveBeenCalledTimes(1);
     expect(api.missions.list).toHaveBeenCalledTimes(1);
     expect(api.missions.subscribe).toHaveBeenCalledTimes(1);

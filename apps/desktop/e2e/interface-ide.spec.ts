@@ -42,9 +42,9 @@ test('a barra de status mostra os contadores, e clicar num deles filtra o Iníci
   const failed = status.getByRole('link', { name: /falharam$|falhou$/ });
 
   // Sem missões, os três contadores existem e estão zerados.
-  await expect(running).toHaveText('0 executando');
-  await expect(waiting).toHaveText('0 aguarda você');
-  await expect(failed).toHaveText('0 falharam');
+  await expect(running).toHaveAccessibleName('0 executando');
+  await expect(waiting).toHaveAccessibleName('0 aguarda você');
+  await expect(failed).toHaveAccessibleName('0 falharam');
   // E trazem o uso do computador (saiu da barra superior). O "Parar todos" só aparece com missão em execução.
   await expect(status.getByRole('group', { name: 'Uso do computador' })).toBeVisible();
   await expect(status.getByRole('button', { name: /Parar todos/ })).toHaveCount(0);
@@ -54,8 +54,8 @@ test('a barra de status mostra os contadores, e clicar num deles filtra o Iníci
   await openProject(page, projectName);
   await createMission(page, MISSION);
   await orchestrate(page);
-  await expect(waiting).toHaveText('1 aguarda você');
-  await expect(running).toHaveText('0 executando');
+  await expect(waiting).toHaveAccessibleName('1 aguarda você');
+  await expect(running).toHaveAccessibleName('0 executando');
   // O projeto e a branch da aba ativa ficam à esquerda da mesma barra.
   await expect(status.getByText(`${projectName} · main`)).toBeVisible();
 

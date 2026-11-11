@@ -574,6 +574,31 @@ describe('barra de status', () => {
     expect(Number(queries[0]?.[1])).toBeLessThanOrEqual(800);
   });
 
+  it('o rótulo do contador fica fechado e abre para a direita com o mouse ou o foco, no ritmo dos tokens', () => {
+    const label = ruleDeclarations(readCss('app.css'), '.overview-counter__label');
+    expect(label.get('display')).toBe('grid');
+    expect(label.get('grid-template-columns')).toBe('0fr');
+    expect(label.get('transition')).toBe('grid-template-columns var(--dur) var(--ease)');
+    const inner = ruleDeclarations(readCss('app.css'), '.overview-counter__label > span');
+    expect(inner.get('overflow')).toBe('hidden');
+    expect(inner.get('min-width')).toBe('0');
+    for (const state of ['hover', 'focus-visible']) {
+      expect(
+        ruleDeclarations(
+          readCss('app.css'),
+          `.overview-counter:${state} .overview-counter__label`,
+        ).get('grid-template-columns'),
+      ).toBe('1fr');
+    }
+  });
+
+  it('com "reduzir movimento", o rótulo do contador abre sem animar', () => {
+    // O app.css tem mais de um bloco de movimento reduzido: procura o que cita o rótulo.
+    expect(readCss('app.css')).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.overview-counter__label \{\s*transition: none;/,
+    );
+  });
+
   it('o link do contador não é sublinhado', () => {
     expect(ruleDeclarations(readCss('app.css'), '.overview-counter').get('text-decoration')).toBe(
       'none',
