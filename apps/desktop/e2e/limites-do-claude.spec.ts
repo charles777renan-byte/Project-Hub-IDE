@@ -46,18 +46,23 @@ test('Limites do Claude: a barra de status resume as janelas e abre o painel', a
   // O rodapé fica fora das rotas (App.tsx): o mesmo resumo aparece em todas as telas.
   const footer = page.getByRole('contentinfo', { name: 'Barra de status' });
   const indicator = footer.getByRole('button', { name: /^Limites do Claude/ });
-  await expect(indicator).toHaveAccessibleName('Limites do Claude: 5h 16%, sem 13%', {
-    timeout: 30_000,
-  });
-  await expect(indicator).toContainText('5h 16%');
+  await expect(indicator).toHaveAccessibleName(
+    /^Limites do Claude: 5h 16%, semanal 13%, renova em (<1|\d)d$/,
+    { timeout: 30_000 },
+  );
+  await expect(indicator).toContainText('16%');
 
   await indicator.click();
   const panel = page.getByRole('dialog', { name: 'Limites da assinatura' });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('Sessão atual');
-  await expect(panel).toContainText('16% usado · 84% restante');
-  await expect(panel).toContainText('13% usado · 87% restante');
-  await expect(panel.getByRole('button', { name: 'Atualizar' })).toBeVisible();
+  const session = panel.getByRole('listitem', { name: 'Sessão atual' });
+  await expect(session).toContainText('16%');
+  await expect(session).toContainText(/renova em \d/);
+  await expect(session.getByRole('meter')).toHaveAttribute('aria-valuenow', '16');
+  await expect(panel.getByRole('listitem', { name: /Semanal/ })).toContainText('13%');
+  await expect(panel.getByRole('button', { name: 'Atualizar limites' })).toBeVisible();
+  await expect(panel.getByRole('list', { name: 'Outros programas' })).toContainText('Em breve');
 
   // O painel fica inteiro dentro da janela e acima da barra (a barra corta o que passa da borda dela).
   const box = await panel.boundingBox();
