@@ -17,6 +17,7 @@ import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { SquareTerminal } from '../components/Icon';
+import { ProviderIcon } from '../components/ProviderIcon';
 import { ProjectProgress } from '../components/progress/ProjectProgress';
 import { PathText } from '../components/PathText';
 import { PROJECT_UNAVAILABLE_NOTICE_ID, ProjectHeader } from '../components/project/ProjectHeader';
@@ -38,6 +39,7 @@ import {
 } from '../workspace/close-all';
 import { PaneTabs, paneTabId } from '../workspace/PaneTabs';
 import { PaneTree } from '../workspace/PaneTree';
+import { dockedLayout } from '../workspace/pane-drag';
 import { PaneView, type SplitSide } from '../workspace/PaneView';
 import { layoutFits, PANE_MIN_HEIGHT, PANE_MIN_WIDTH, pickVisible } from '../workspace/layout-fit';
 import { useLeafHosts } from '../workspace/leaf-hosts';
@@ -52,6 +54,7 @@ import { providerShortcutIndex } from '../workspace/provider-shortcuts';
 import { isIdle, useActivity } from '../sidebar-activity';
 import { neighbourOf, stepSolo } from '../workspace/solo';
 import { useAreaSize } from '../workspace/use-area-size';
+import { usePaneDrag } from '../workspace/use-pane-drag';
 import { useWorkspace } from '../workspace/use-workspace';
 import { LIMIT_HINT, WorkspaceToolbar, type PaneLayoutMode } from '../workspace/WorkspaceToolbar';
 
@@ -333,6 +336,27 @@ function WorkspaceBody({
   // A janela ficou pequena demais para o layout (algum painel ficaria abaixo do mínimo): modo foco, com um painel
   // grande e os outros em abas. O layout guardado não muda, e volta sozinho quando couber. Sem medida, nada é decidido.
   const soloAuto = size !== null && shown !== null && !layoutFits(shown, size);
+
+  // Arrastar um painel pela alça: no meio de outro, os dois trocam de lugar (cada um fica com o tamanho do lugar);
+  // junto de uma borda, o arrastado encaixa ali e o destino cede metade. O encaixe que deixaria algum painel abaixo
+  // do mínimo, ou que não mudaria nada, não é destino.
+  const paneDrag = usePaneDrag({
+    area: areaElement,
+    accepts: (sourceId, zone) => {
+      if (zone.spot === 'center') return true;
+      if (shown === null) return false;
+      const next = dockedLayout(shown, sourceId, zone.targetId, zone.spot, () => '\u0000dock');
+      return next !== null && (size === null || layoutFits(next, size));
+    },
+    onDrop: (sourceId, zone) => {
+      if (zone.spot === 'center') workspace.swap(sourceId, zone.targetId);
+      else workspace.dock(sourceId, zone.targetId, zone.spot);
+      workspace.activateWithFocus(sourceId);
+    },
+  });
+  const drag = paneDrag.drag;
+  const dragged = drag === null ? undefined : shownLeaves.find((leaf) => leaf.id === drag.sourceId);
+
   // O modo foco da tela: o que a pessoa ligou (maximizar, "Abas") ou o que o tamanho da janela pede. O `soloOn` dela
   // não é tocado pelo automático, então alargar a janela devolve o que ela tinha.
   const soloEffective = soloOn || soloAuto;
@@ -640,6 +664,13 @@ function WorkspaceBody({
     if (next !== null) showSolo(next);
   };
 
+  // O programa de um painel: o da sessão dele, se há uma; senão, o que o painel abre.
+  const providerOf = (leaf: LayoutLeaf): ProviderId =>
+    (leaf.terminalId === null
+      ? undefined
+      : terminals.find((item) => item.id === leaf.terminalId)?.provider) ?? leaf.provider;
+  const labelOfProvider = (id: ProviderId) => providers.find((item) => item.id === id)?.label ?? id;
+
   const renderLeaf = (leaf: LayoutLeaf) => {
     const terminal =
       leaf.terminalId === null ? undefined : terminals.find((item) => item.id === leaf.terminalId);
@@ -681,6 +712,12 @@ function WorkspaceBody({
         onDetach={() => workspace.detach(leaf.id)}
         onClose={() => void closePane(leaf.id)}
         maximized={soloLeaf?.id === leaf.id}
+        // Mover só faz sentido com outro painel na grade.
+        onGripPointerDown={
+          soloLeaf !== undefined || shownLeaves.length < 2
+            ? undefined
+            : (event) => paneDrag.onGripPointerDown(leaf.id, event)
+        }
         // Com um painel só na tela (maximizado ou em abas) não há onde ver a divisão: os botões somem.
         split={
           soloLeaf !== undefined
@@ -713,7 +750,36 @@ function WorkspaceBody({
   return (
     <div className="workspace" onKeyDownCapture={onKeyDownCapture}>
       {visible ? createPortal(toolbar, toolsHost) : null}
-      <div className="workspace__area" ref={setAreaElement}>
+      <div
+        className="workspace__area"
+        ref={setAreaElement}
+        data-dragging={drag !== null ? 'true' : undefined}
+      >
+        {drag?.preview != null ? (
+          <div
+            className="pane-drop"
+            data-spot={drag.zone?.spot}
+            style={{
+              left: drag.preview.left,
+              top: drag.preview.top,
+              width: drag.preview.width,
+              height: drag.preview.height,
+            }}
+          />
+        ) : null}
+        {drag !== null && dragged !== undefined
+          ? createPortal(
+              <div
+                className="pane-ghost"
+                style={{ transform: `translate(${drag.x + 14}px, ${drag.y + 14}px)` }}
+              >
+                <ProviderIcon provider={providerOf(dragged)} size={14} />
+                <span className="pane-ghost__number">{shownLeaves.indexOf(dragged) + 1}</span>
+                <span>{labelOfProvider(providerOf(dragged))}</span>
+              </div>,
+              document.body,
+            )
+          : null}
         {/* Flutua sobre o topo da área (position: absolute): não tira altura da área medida, e a grade não reflui. */}
         {askingCloseAll ? (
           <div className="workspace__confirm" onKeyDown={onCloseAllKeyDown}>

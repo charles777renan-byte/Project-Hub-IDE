@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LayoutLeaf, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1168,5 +1168,28 @@ describe('dividir o painel', () => {
     setup({ terminal: { ...session, state: 'exited' }, split: dados });
     await userEvent.click(screen.getByRole('button', { name: 'Dividir à direita' }));
     expect(dados.onSplit.mock.calls).toEqual([['bottom'], ['right']]);
+  });
+});
+
+describe('alça de arrastar o painel', () => {
+  it('com onGripPointerDown, o cabeçalho começa pela alça e o ponteiro nela avisa quem cuida do arrasto', () => {
+    const onGripPointerDown = vi.fn();
+    const { container } = setup({ onGripPointerDown });
+    const alca = container.querySelector('.pane__grip') as HTMLElement;
+    expect(container.querySelector('.pane__head')?.firstElementChild).toBe(alca);
+    expect(alca).toHaveAttribute('title', 'Arraste para mover o painel');
+    fireEvent.pointerDown(alca);
+    expect(onGripPointerDown).toHaveBeenCalledTimes(1);
+  });
+
+  it('o lançador e a sessão encerrada também têm a alça; sem onGripPointerDown, ninguém tem', () => {
+    const onGripPointerDown = vi.fn();
+    const lancador = setup({ leaf: emptyLeaf, terminal: undefined, onGripPointerDown });
+    expect(lancador.container.querySelector('.pane__grip')).not.toBeNull();
+    lancador.unmount();
+    const encerrada = setup({ terminal: { ...session, state: 'exited' }, onGripPointerDown });
+    expect(encerrada.container.querySelector('.pane__grip')).not.toBeNull();
+    encerrada.unmount();
+    expect(setup().container.querySelector('.pane__grip')).toBeNull();
   });
 });

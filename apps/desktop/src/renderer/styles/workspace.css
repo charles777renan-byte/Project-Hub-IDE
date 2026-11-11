@@ -1660,6 +1660,84 @@
   flex: none;
 }
 
+/*
+ * A alça de arrastar o painel, no começo do cabeçalho. `touch-action: none` deixa o gesto com o app (sem rolagem
+ * do navegador no toque); a margem negativa come parte do respiro do cabeçalho, para o título não andar muito.
+ */
+.pane__grip {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 24px;
+  margin-left: calc(var(--space-1) * -1);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.pane__grip:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.pane__grip svg {
+  display: block;
+}
+
+/* O painel que está sendo arrastado fica apagado no lugar de origem até ser solto. */
+.pane-tree__leaf[data-drag-source] {
+  opacity: 0.45;
+}
+
+/* Com um arrasto em curso, o cursor é o de arrastar em toda a área, e nada de selecionar texto pelo caminho. */
+.workspace__area[data-dragging] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.workspace__area[data-dragging] .pane__grip {
+  cursor: grabbing;
+}
+
+/*
+ * A prévia do destino: a área que o painel vai ocupar ao ser solto, tracejada. Fica por cima dos painéis e não
+ * recebe o ponteiro (quem decide o destino é a posição do ponteiro, não o que está embaixo dele).
+ */
+.pane-drop {
+  position: absolute;
+  z-index: 5;
+  border: 2px dashed var(--focus);
+  border-radius: var(--radius-card, var(--radius));
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+  pointer-events: none;
+}
+
+/* O "fantasma": o número e o programa do painel arrastado, seguindo o ponteiro. */
+.pane-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pane-ghost__number {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Sem como dividir (limite de painéis, falta de espaço): o botão fica, apagado, e a dica diz o motivo. */
 .pane__actions .pane__split[aria-disabled='true'] {
   opacity: 0.45;

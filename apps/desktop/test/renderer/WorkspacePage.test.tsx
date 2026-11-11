@@ -2295,3 +2295,20 @@ describe('dividir pelo cabeçalho do painel', () => {
     expect(screen.queryByRole('button', { name: 'Dividir à direita' })).not.toBeInTheDocument();
   });
 });
+
+describe('alça de arrastar na grade', () => {
+  it('com mais de um painel na grade cada um tem a alça; em Abas, ou com um painel só, não', async () => {
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(document.querySelectorAll('.pane__grip')).toHaveLength(3);
+    await userEvent.click(screen.getByRole('button', { name: 'Abas' }));
+    expect(document.querySelectorAll('.pane__grip')).toHaveLength(0);
+  });
+
+  it('um painel só não tem para onde ir: sem alça', async () => {
+    api.workspaces.open.mockResolvedValue({ ok: true, data: dto(leaf('a', 'claude')) });
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    expect(document.querySelector('.pane__grip')).toBeNull();
+  });
+});

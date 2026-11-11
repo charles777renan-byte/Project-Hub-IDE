@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { LayoutLeaf, ProviderId, ProviderInfo, TerminalSummary } from '@project-hub/contracts';
 import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
@@ -6,6 +6,7 @@ import { Hint } from '../components/Hint';
 import {
   Columns2,
   Ellipsis,
+  GripVertical,
   ICON_PROPS,
   Maximize2,
   Minimize2,
@@ -65,6 +66,11 @@ export type PaneViewProps = {
   /** Mostrar só este painel (modo "um painel por vez"), ou, se `maximized`, voltar à grade. Duplo clique no cabeçalho faz o mesmo. */
   onMaximize?(): void;
   maximized?: boolean;
+  /**
+   * O ponteiro desceu na alça do cabeçalho: começa o arrasto do painel para outro lugar da grade. Sem ele (um painel
+   * só, ou um por vez na tela), a alça não aparece.
+   */
+  onGripPointerDown?: ((event: PointerEvent<HTMLElement>) => void) | undefined;
   /** Dividir este painel. Sem ele (um painel por vez na tela), os botões de dividir não aparecem. */
   split?: PaneSplit | undefined;
 };
@@ -164,6 +170,18 @@ export function PaneView(props: PaneViewProps) {
     : {};
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
   const split = props.split;
+  // A alça não é botão (não faz nada ao clicar nem entra na ordem do Tab): quem usa o teclado move o painel pelos
+  // atalhos. O nome fica na dica.
+  const grip =
+    props.onGripPointerDown === undefined ? null : (
+      <span
+        className="pane__grip"
+        title="Arraste para mover o painel"
+        onPointerDown={props.onGripPointerDown}
+      >
+        <GripVertical {...ICON_PROPS} />
+      </span>
+    );
   // Maximizar fica ao lado do contador de uso, como sempre; os de dividir vêm logo depois.
   const maximize = (
     <>
@@ -225,6 +243,7 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head">
+          {grip}
           <span className="pane__title">{label}</span>
           <span className="pane__actions">
             {maximize}
@@ -274,6 +293,7 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head">
+          {grip}
           <div className="pane__notice">
             <span role="status">A sessão terminou.</span>
             <span className="pane__actions">
@@ -384,6 +404,7 @@ export function PaneView(props: PaneViewProps) {
     content = (
       <>
         <div className="pane__head pane__head--live">
+          {grip}
           <span className="pane__provider">
             <ProviderIcon provider={terminal.provider} size={16} />
           </span>
