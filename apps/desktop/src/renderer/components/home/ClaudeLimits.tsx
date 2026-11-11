@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { LimitWindowDto } from '@project-hub/contracts';
 import {
   LIMIT_CRITICAL_ABOVE,
@@ -6,6 +7,8 @@ import {
   LIMIT_WARN_FROM,
   formatClock,
   formatRenewal,
+  formatReturn,
+  isWindowExhausted,
   isWindowExpired,
   limitLevel,
   usageText,
@@ -23,7 +26,11 @@ function LimitRow({ window, now }: { window: LimitWindowDto; now: Date }) {
       <div className="claude-limits__head">
         <span className="claude-limits__label">{label}</span>
         {!expired && (
-          <span className="claude-limits__reset">{formatRenewal(window.resetsAt, now)}</span>
+          <span className="claude-limits__reset">
+            {isWindowExhausted(window)
+              ? formatReturn(window.resetsAt, now)
+              : formatRenewal(window.resetsAt, now)}
+          </span>
         )}
       </div>
       {expired ? (
@@ -59,6 +66,7 @@ function LimitRow({ window, now }: { window: LimitWindowDto; now: Date }) {
  */
 export function ClaudeLimits() {
   const { limits, refresh } = useLimits();
+  const titleId = useId();
   const claude = limits?.providers.find((entry) => entry.provider === 'claude');
   const windows = claude?.windows ?? [];
   const refreshing = claude?.refreshing ?? false;
@@ -70,9 +78,9 @@ export function ClaudeLimits() {
   const capturedClock = claude?.capturedAt ? formatClock(claude.capturedAt) : '';
 
   return (
-    <div className="claude-limits" role="group" aria-labelledby="claude-limits-title">
+    <div className="claude-limits" role="group" aria-labelledby={titleId}>
       <div className="claude-limits__title-row">
-        <h3 id="claude-limits-title" className="claude-limits__title">
+        <h3 id={titleId} className="claude-limits__title">
           <ProviderIcon provider="claude" size={16} />
           Uso do Claude
         </h3>

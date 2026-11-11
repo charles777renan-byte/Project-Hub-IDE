@@ -89,3 +89,28 @@ export function limitLevel(window: Pick<LimitWindowDto, 'usedPercent'>): LimitLe
   if (used >= LIMIT_WARN_FROM) return 'aviso';
   return 'normal';
 }
+
+/** Rótulo curto das janelas que a barra de status resume; as outras só aparecem no painel. */
+const SHORT_WINDOW_LABELS: Record<string, string> = {
+  five_hour: '5h',
+  seven_day: 'sem',
+};
+
+/** Rótulo curto da janela para a barra de status ("5h", "sem"); `undefined` para a janela que ela não resume. */
+export function shortWindowLabel(id: string): string | undefined {
+  return SHORT_WINDOW_LABELS[id];
+}
+
+/** A janela esgotou: o percentual que a tela mostra chegou a 100. */
+export function isWindowExhausted(window: Pick<LimitWindowDto, 'usedPercent'>): boolean {
+  return usedPercent(window) >= 100;
+}
+
+/**
+ * Quando a janela esgotada volta: "Esgotada · volta às 20:49" nas próximas 24 horas; mais longe, o dia da semana
+ * ("Esgotada · volta sex, 05:59"). Só "Esgotada" se o instante for inválido.
+ */
+export function formatReturn(resetsAt: string, now: Date): string {
+  const renewal = formatRenewal(resetsAt, now);
+  return renewal === '' ? 'Esgotada' : `Esgotada · ${renewal.replace('Renova', 'volta')}`;
+}

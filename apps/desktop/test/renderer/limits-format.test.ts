@@ -4,6 +4,9 @@ import {
   LIMIT_WARN_FROM,
   formatClock,
   formatRenewal,
+  formatReturn,
+  isWindowExhausted,
+  shortWindowLabel,
   isWindowExpired,
   limitLevel,
   remainingPercent,
@@ -79,5 +82,25 @@ describe('limits-format', () => {
     expect(limitLevel({ usedPercent: 74.6 })).toBe('aviso');
     expect(limitLevel({ usedPercent: 90.4 })).toBe('aviso');
     expect(limitLevel({ usedPercent: 90.6 })).toBe('critico');
+  });
+});
+
+describe('limits-format: resumo para a barra de status', () => {
+  it('dá o rótulo curto das janelas conhecidas e nenhum às outras', () => {
+    expect(shortWindowLabel('five_hour')).toBe('5h');
+    expect(shortWindowLabel('seven_day')).toBe('sem');
+    expect(shortWindowLabel('thirty_day')).toBeUndefined();
+  });
+
+  it('a janela está esgotada a partir de 100% usado (já arredondado)', () => {
+    expect(isWindowExhausted({ usedPercent: 99.4 })).toBe(false);
+    expect(isWindowExhausted({ usedPercent: 99.5 })).toBe(true);
+    expect(isWindowExhausted({ usedPercent: 100 })).toBe(true);
+  });
+
+  it('diz quando a janela esgotada volta, na hora ou no dia da semana', () => {
+    expect(formatReturn(at(28, 20, 49), NOW)).toBe('Esgotada · volta às 20:49');
+    expect(formatReturn(at(30, 5, 59), NOW)).toBe('Esgotada · volta sex, 05:59');
+    expect(formatReturn('não é data', NOW)).toBe('Esgotada');
   });
 });

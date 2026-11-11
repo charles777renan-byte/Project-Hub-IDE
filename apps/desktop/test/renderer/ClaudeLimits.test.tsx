@@ -191,3 +191,32 @@ describe('ClaudeLimits', () => {
     expect(await screen.findByText('Ainda sem leitura.')).toBeInTheDocument();
   });
 });
+
+describe('ClaudeLimits: janela esgotada', () => {
+  it('em 100% diz que esgotou e quando volta, no lugar de "Renova"', async () => {
+    install(
+      claude({ windows: [{ id: 'five_hour', usedPercent: 100, resetsAt: iso(28, 20, 49) }] }),
+    );
+    render(<ClaudeLimits />);
+
+    expect(await screen.findByText('Esgotada · volta às 20:49')).toBeInTheDocument();
+    expect(screen.queryByText('Renova às 20:49')).not.toBeInTheDocument();
+    expect(screen.getByText('100% usado · 0% restante')).toBeInTheDocument();
+  });
+
+  it('dois cartões na mesma tela não repetem o id do título', async () => {
+    install(claude());
+    render(
+      <>
+        <ClaudeLimits />
+        <ClaudeLimits />
+      </>,
+    );
+
+    const groups = await screen.findAllByRole('group', { name: 'Uso do Claude' });
+    expect(groups).toHaveLength(2);
+    expect(groups[0]?.getAttribute('aria-labelledby')).not.toBe(
+      groups[1]?.getAttribute('aria-labelledby'),
+    );
+  });
+});
