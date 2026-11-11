@@ -469,3 +469,44 @@ describe('atenção do terminal (o Claude pede algo)', () => {
     expect(h.service.waitingOf('t1')).toBe(false);
   });
 });
+
+describe('modelo dito pelo SessionStart', () => {
+  it('o modelo do SessionStart vale antes de haver resposta', async () => {
+    const h = setup();
+    expect(h.service.modelOf('t1')).toBeUndefined();
+    h.service.track('t1');
+    h.log.push('t1', { ...sessionStart(SESSION), model: 'claude-haiku-5-5' });
+    await h.service.usageOf('t1');
+    expect(h.service.modelOf('t1')).toBe('claude-haiku-5-5');
+    expect(h.service.contextOf('t1')).toBeUndefined();
+  });
+
+  it('SessionStart sem modelo, com modelo que não é texto ou longo demais não diz nada', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', sessionStart(SESSION));
+    h.log.push('t1', { ...sessionStart(SESSION), model: 42 });
+    h.log.push('t1', { ...sessionStart(SESSION), model: 'm'.repeat(101) });
+    h.log.push('t1', { ...sessionStart(SESSION), model: '' });
+    await h.service.usageOf('t1');
+    expect(h.service.modelOf('t1')).toBeUndefined();
+  });
+
+  it('o SessionStart mais recente com modelo vence, e um sem modelo não apaga o anterior', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', { ...sessionStart(SESSION), model: 'claude-haiku-5-5' });
+    h.log.push('t1', { ...sessionStart(CLEARED, 'clear'), model: 'claude-opus-5-5' });
+    h.log.push('t1', sessionStart(CLEARED, 'resume'));
+    await h.service.usageOf('t1');
+    expect(h.service.modelOf('t1')).toBe('claude-opus-5-5');
+  });
+
+  it('o modelo de outro evento não conta', async () => {
+    const h = setup();
+    h.service.track('t1');
+    h.log.push('t1', { hook_event_name: 'Stop', model: 'claude-haiku-5-5' });
+    await h.service.usageOf('t1');
+    expect(h.service.modelOf('t1')).toBeUndefined();
+  });
+});
