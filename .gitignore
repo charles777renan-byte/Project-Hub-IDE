@@ -10,8 +10,21 @@ out/
 *.sqlite
 *.sqlite-*
 
+# Relatórios de cobertura de testes
+coverage/
+
 # Mockups do brainstorm e arquivos de trabalho dos agentes
 .superpowers/
+
+# Grafo do graphify (saída gerada, reconstruível pelo /graphify)
+graphify-out/
+
+# Skills instaladas pelo `npx skills add` (ficam só na máquina, fora do git)
+.agents/
+skills-lock.json
+
+# Configuração local do Claude Code e worktrees dele (ficam só na máquina, fora do git)
+.claude/
 
 # Cérebro do projeto (vault do Obsidian): fica só na máquina, fora do git
 brain/

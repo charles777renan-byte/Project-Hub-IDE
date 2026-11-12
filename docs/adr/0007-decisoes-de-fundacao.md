@@ -46,7 +46,7 @@ Dependências novas entram com versão exata (`saveExact: true` em `pnpm-workspa
 ## 3. Drizzle ORM com better-sqlite3
 
 - **Contexto:** O ADR 0002 escolhe SQLite, e falta escolher o driver e o ORM.
-- **Decisão:** `better-sqlite3` como driver e Drizzle ORM para tipar o schema e as consultas. As migrações SQL saem do `drizzle-kit` (`pnpm db:generate`) e são aplicadas por `pnpm db:migrate`, com as regras do ADR 0002.
+- **Decisão:** `better-sqlite3` como driver e Drizzle ORM para tipar o schema e as consultas. As migrações SQL saem do `drizzle-kit` (`pnpm db:generate`) e são aplicadas pelo próprio app ao abrir o banco (`migrateDatabase`, com backup prévio), com as regras do ADR 0002. Não existe script `db:migrate`: ele foi removido em 2026-11-11 por não ter implementação.
 - **Consequência:** `better-sqlite3` é um módulo nativo, o que traz o custo descrito no item 7.
 
 ## 4. PowerShell como shell padrão no Windows

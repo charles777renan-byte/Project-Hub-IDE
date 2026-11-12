@@ -17,8 +17,7 @@
     "test": "vitest run --project=!integration",
     "test:integration": "vitest run --project=integration --no-file-parallelism",
     "test:e2e": "pnpm --filter @project-hub/desktop test:e2e",
-    "db:generate": "pnpm --filter @project-hub/database db:generate",
-    "db:migrate": "pnpm --filter @project-hub/database db:migrate"
+    "db:generate": "pnpm --filter @project-hub/database db:generate"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
