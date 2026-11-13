@@ -38,7 +38,23 @@ export type ProjectsIpcDeps = {
   chooseDirectory: (sender: WebContents) => Promise<string | null>;
   /** Abre a pasta no gerenciador de arquivos. Devolve o texto do erro, ou vazio quando abriu (como `shell.openPath`). */
   openFolder: (path: string) => Promise<string>;
+  /** Avisado depois de uma remoção que deu certo, para quem guarda coisas do projeto fora do banco (o navegador). */
+  onRemoved?: (projectId: string) => void;
 };
+
+/** Remove o projeto e, se deu certo, avisa `onRemoved`. Uma falha no aviso não desfaz a remoção: só é registrada. */
+export function handleRemoveProject(deps: ProjectsIpcDeps, payload: unknown): AppResult<undefined> {
+  const result = handleProjectLifecycle(removeProject, deps.lifecycle, payload);
+  if (!result.ok || deps.onRemoved === undefined) return result;
+  const input = projectIdInputSchema.safeParse(payload);
+  if (!input.success) return result;
+  try {
+    deps.onRemoved(input.data.projectId);
+  } catch (cause) {
+    console.error('Falha ao limpar os dados do projeto removido:', cause);
+  }
+  return result;
+}
 
 const INVALID_PROJECT = 'Informe o projeto.';
 
@@ -177,7 +193,7 @@ export function registerProjectHandlers(
     Promise.resolve(handleProjectLifecycle(unarchiveProject, deps.lifecycle, payload)),
   );
   registerTrustedHandler(registry, CHANNELS.projectsRemove, isTrusted, (_event, payload) =>
-    Promise.resolve(handleProjectLifecycle(removeProject, deps.lifecycle, payload)),
+    Promise.resolve(handleRemoveProject(deps, payload)),
   );
   registerTrustedHandler(registry, CHANNELS.projectsSetGroup, isTrusted, (_event, payload) =>
     Promise.resolve(handleSetGroup(deps.lifecycle, payload)),
@@ -188,8 +204,11 @@ export function registerProjectHandlers(
   registerTrustedHandler(registry, CHANNELS.projectsOpenFolder, isTrusted, (_event, payload) =>
     handleOpenFolder(deps, payload),
   );
-  registerTrustedHandler(registry, CHANNELS.projectsRepositoryPreview, isTrusted, (_event, payload) =>
-    handleRepositoryPreview(deps.repository, payload),
+  registerTrustedHandler(
+    registry,
+    CHANNELS.projectsRepositoryPreview,
+    isTrusted,
+    (_event, payload) => handleRepositoryPreview(deps.repository, payload),
   );
   registerTrustedHandler(registry, CHANNELS.projectsInitRepository, isTrusted, (_event, payload) =>
     handleInitRepository(deps.repository, payload),

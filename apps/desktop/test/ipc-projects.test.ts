@@ -347,6 +347,65 @@ describe('registerProjectHandlers', () => {
     expect(archive).toHaveBeenCalledWith('p1', NOW);
   });
 
+  it('projects:remove que deu certo avisa onRemoved com o id do projeto', async () => {
+    const { registry, call } = fakeRegistry();
+    const onRemoved = vi.fn();
+    registerProjectHandlers(registry, isTrusted, {
+      services: neverCalled,
+      lifecycle: lifecycleWith({ markRemoved: () => undefined }),
+      repository: neverCalledRepository,
+      chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
+      onRemoved,
+    });
+
+    await expect(call(CHANNELS.projectsRemove, trusted, { projectId: 'p1' })).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(onRemoved).toHaveBeenCalledExactlyOnceWith('p1');
+  });
+
+  it('projects:remove que falhou não avisa onRemoved', async () => {
+    const { registry, call } = fakeRegistry();
+    const onRemoved = vi.fn();
+    registerProjectHandlers(registry, isTrusted, {
+      services: neverCalled,
+      lifecycle: lifecycleWith({ get: () => undefined }),
+      repository: neverCalledRepository,
+      chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
+      onRemoved,
+    });
+
+    await expect(
+      call(CHANNELS.projectsRemove, trusted, { projectId: 'p1' }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'PROJECT_NOT_FOUND' } });
+    await call(CHANNELS.projectsRemove, trusted, {});
+    expect(onRemoved).not.toHaveBeenCalled();
+  });
+
+  it('uma falha em onRemoved não desfaz a remoção', async () => {
+    const { registry, call } = fakeRegistry();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    registerProjectHandlers(registry, isTrusted, {
+      services: neverCalled,
+      lifecycle: lifecycleWith({ markRemoved: () => undefined }),
+      repository: neverCalledRepository,
+      chooseDirectory: () => Promise.resolve(null),
+      openFolder: () => Promise.resolve(''),
+      onRemoved: () => {
+        throw new Error('falhou');
+      },
+    });
+
+    await expect(call(CHANNELS.projectsRemove, trusted, { projectId: 'p1' })).resolves.toEqual({
+      ok: true,
+      data: undefined,
+    });
+    log.mockRestore();
+  });
+
   it('projects:list-archived devolve o resumo dos arquivados, com a disponibilidade da pasta', async () => {
     const { registry, call } = fakeRegistry();
     const archived = { ...PROJECT, archivedAt: NOW };
@@ -433,8 +492,8 @@ describe('criar o repositório Git: entrada conferida antes da aplicação (ADR 
       ok: false,
       error: { code: 'VALIDATION_FAILED' },
     });
-    await expect(handleInitRepository(neverCalledRepository, { path: 'C:\\x' })).resolves.toMatchObject(
-      { ok: false, error: { code: 'VALIDATION_FAILED' } },
-    );
+    await expect(
+      handleInitRepository(neverCalledRepository, { path: 'C:\\x' }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
   });
 });
