@@ -111,7 +111,12 @@ export function createPageFactory(deps: BrowserViewsDeps): PageFactory {
     const detach = (): void => {
       const win = attachedTo;
       attachedTo = null;
-      if (win !== null && !win.isDestroyed()) win.contentView.removeChildView(view);
+      if (win === null || win.isDestroyed()) return;
+      // A página que sai de vista com o foco dentro dela o devolve ao app: sem isso, o teclado ficaria falando com
+      // uma página que ninguém vê.
+      const hadFocus = !contents.isDestroyed() && contents.isFocused();
+      win.contentView.removeChildView(view);
+      if (hadFocus) win.webContents.focus();
     };
 
     const live = (run: () => void): void => {

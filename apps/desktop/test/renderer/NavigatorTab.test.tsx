@@ -2,7 +2,10 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NavigatorTab } from '../../src/renderer/components/right-panel/NavigatorTab';
-import { TOGGLE_RIGHT_PANEL_EVENT } from '../../src/renderer/right-panel-events';
+import {
+  TOGGLE_RIGHT_EXPANDED_EVENT,
+  TOGGLE_RIGHT_PANEL_EVENT,
+} from '../../src/renderer/right-panel-events';
 import { browserState, browserTab, installBrowserApi } from './browser-fixtures';
 
 afterEach(() => {
@@ -152,6 +155,52 @@ describe('NavigatorTab', () => {
     expect(api.openExternal).toHaveBeenCalledWith('p1', 't1');
     expect(api.openDevtools).toHaveBeenCalledWith('p1', 't1');
     expect(api.clearData).toHaveBeenCalledWith('p1');
+  });
+
+  it('Expandir dispara o evento de expandir o painel, e o nome do botão segue a propriedade', async () => {
+    installBrowserApi();
+    const heard = vi.fn();
+    window.addEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, heard);
+    const user = userEvent.setup();
+    const { rerender } = render(<NavigatorTab projectId="p1" />);
+    await address();
+    await user.click(screen.getByRole('button', { name: 'Expandir' }));
+    expect(heard).toHaveBeenCalledTimes(1);
+    rerender(<NavigatorTab projectId="p1" expanded />);
+    await user.click(screen.getByRole('button', { name: 'Restaurar tamanho' }));
+    window.removeEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, heard);
+    expect(heard).toHaveBeenCalledTimes(2);
+  });
+
+  it('sair da aba com o painel expandido restaura o tamanho', async () => {
+    installBrowserApi();
+    const heard = vi.fn();
+    window.addEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, heard);
+    const { unmount } = render(<NavigatorTab projectId="p1" expanded />);
+    await address();
+    unmount();
+    window.removeEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, heard);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('sair da aba sem o painel expandido não dispara nada', async () => {
+    installBrowserApi();
+    const heard = vi.fn();
+    window.addEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, heard);
+    const { unmount } = render(<NavigatorTab projectId="p1" />);
+    await address();
+    unmount();
+    window.removeEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, heard);
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it('com o menu Mais ações aberto, a página dá lugar à imagem parada', async () => {
+    const { api } = installBrowserApi();
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await waitFor(() => expect(api.snapshot).toHaveBeenCalledWith('p1'));
   });
 
   it('enquanto o estado não chega, diz que está carregando', () => {

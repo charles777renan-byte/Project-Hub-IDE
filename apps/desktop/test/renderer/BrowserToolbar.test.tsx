@@ -19,6 +19,7 @@ function setup(
     onOpenExternal: vi.fn(),
     onOpenDevtools: vi.fn(),
     onClearData: vi.fn(),
+    onMenuOpenChange: vi.fn(),
   };
   const view = render(
     <BrowserToolbar
@@ -147,6 +148,22 @@ describe('BrowserToolbar', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it('avisa quando o menu abre e quando fecha', async () => {
+    const { user, handlers } = setup();
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    expect(handlers.onMenuOpenChange).toHaveBeenLastCalledWith(true);
+    await user.keyboard('{Escape}');
+    expect(handlers.onMenuOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('as dicas da barra abrem para cima, para a página não ficar por cima delas', async () => {
+    const { user } = setup();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toHaveFocus();
+    const tip = await screen.findByRole('tooltip');
+    expect(tip.closest('[data-side]')).toHaveAttribute('data-side', 'top');
   });
 
   it('aba sem endereço https não oferece abrir no navegador do sistema', async () => {

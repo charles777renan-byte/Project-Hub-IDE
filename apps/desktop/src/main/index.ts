@@ -261,6 +261,9 @@ function publishBrowserState(state: BrowserStateDto): void {
 function publishBrowserShortcut(event: BrowserShortcutEvent): void {
   const target = mainWindow;
   if (target === undefined || target.isDestroyed()) return;
+  // O teclado sai da página e volta para o app: o renderer só consegue pôr o foco num elemento dele (o campo de
+  // endereço, a barra) se o quadro do app for o que recebe as teclas.
+  target.webContents.focus();
   target.webContents.send(CHANNELS.browserShortcut, event);
 }
 

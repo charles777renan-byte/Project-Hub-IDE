@@ -46,8 +46,11 @@ const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(RIGHT_TABS);
 export function RightPanel({
   projectId,
   onOpenFile,
+  expanded = false,
 }: {
   projectId: string | null;
+  /** O painel ocupa toda a largura do corpo da janela (o botão Expandir do navegador). */
+  expanded?: boolean;
   onOpenFile?: (path: string, mode?: FileMode) => void;
 }) {
   const [tab, setTab] = useState<RightTab>(readRightTab);
@@ -126,7 +129,7 @@ export function RightPanel({
               <EmptyState icon={Globe} title="Abra um projeto para usar o navegador" />
             ) : (
               // A chave por projeto troca o navegador inteiro: cada projeto tem as suas abas e a sua sessão.
-              <NavigatorTab key={projectId} projectId={projectId} />
+              <NavigatorTab key={projectId} projectId={projectId} expanded={expanded} />
             )
           ) : projectId === null ? (
             <EmptyState icon={Folder} title="Abra um projeto para ver os arquivos" />

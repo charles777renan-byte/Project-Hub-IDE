@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { TOGGLE_RIGHT_PANEL_EVENT } from '../../right-panel-events';
+import { useOverlayOpen } from '../../overlay-guard';
+import { TOGGLE_RIGHT_EXPANDED_EVENT, TOGGLE_RIGHT_PANEL_EVENT } from '../../right-panel-events';
 import { useBrowser } from '../../use-browser';
 import { BrowserPageTabs } from './BrowserPageTabs';
 import { BrowserToolbar } from './BrowserToolbar';
 import { BrowserViewport } from './BrowserViewport';
+
+function toggleExpanded() {
+  window.dispatchEvent(new Event(TOGGLE_RIGHT_EXPANDED_EVENT));
+}
 
 /**
  * A aba Navegador do painel direito: o navegador interno do projeto. Cada projeto tem as suas abas e a sua sessão
@@ -12,10 +17,21 @@ import { BrowserViewport } from './BrowserViewport';
  *
  * Com o foco dentro de uma página, as teclas não chegam ao app. Os atalhos que importam voltam por
  * `browser.onShortcut`: Ctrl+L foca o endereço, F6 foca a barra e Ctrl+Alt+B recolhe o painel.
+ *
+ * A página é desenhada por cima da janela, e nada do app fica na frente dela. Enquanto há um menu ou diálogo do app
+ * aberto (o menu Mais ações daqui, a paleta de comandos, uma confirmação), a página vira imagem parada.
  */
-export function NavigatorTab({ projectId }: { projectId: string }) {
+export function NavigatorTab({
+  projectId,
+  expanded = false,
+}: {
+  projectId: string;
+  /** O painel direito ocupa toda a largura do corpo da janela. Quem guarda esse estado é o `App`. */
+  expanded?: boolean;
+}) {
   const browser = useBrowser(projectId);
-  const [expanded, setExpanded] = useState(false);
+  const overlayOpen = useOverlayOpen();
+  const [menuOpen, setMenuOpen] = useState(false);
   const addressRef = useRef<HTMLInputElement>(null);
   const firstButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -28,6 +44,19 @@ export function NavigatorTab({ projectId }: { projectId: string }) {
         else window.dispatchEvent(new Event(TOGGLE_RIGHT_PANEL_EVENT));
       }),
     [projectId],
+  );
+
+  // Sair da aba (outra aba do painel, outro projeto) com o painel expandido devolve o tamanho: o botão de restaurar
+  // mora aqui, e sem ele a pessoa ficaria com as outras abas do painel na largura toda.
+  const expandedRef = useRef(expanded);
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
+  useEffect(
+    () => () => {
+      if (expandedRef.current) toggleExpanded();
+    },
+    [],
   );
 
   if (browser.failure !== null) {
@@ -66,10 +95,11 @@ export function NavigatorTab({ projectId }: { projectId: string }) {
         onForward={browser.forward}
         onReload={browser.reload}
         onStop={browser.stop}
-        onToggleExpand={() => setExpanded((value) => !value)}
+        onToggleExpand={toggleExpanded}
         onOpenExternal={browser.openExternal}
         onOpenDevtools={browser.openDevtools}
         onClearData={browser.clearData}
+        onMenuOpenChange={setMenuOpen}
         addressRef={addressRef}
         firstButtonRef={firstButtonRef}
       />
@@ -77,6 +107,7 @@ export function NavigatorTab({ projectId }: { projectId: string }) {
         projectId={projectId}
         tab={activeTab}
         hidden={false}
+        frozen={overlayOpen || menuOpen}
         onRetry={browser.reload}
       />
     </div>

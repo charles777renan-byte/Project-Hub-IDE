@@ -1,7 +1,13 @@
 import type { BrowserBounds, BrowserTabDto } from '@project-hub/contracts';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { EmptyState } from '../EmptyState';
 import { Globe } from '../Icon';
+
+/**
+ * Quanto tempo a página espera pela imagem parada antes de sair de cima de uma sobreposição. A captura costuma
+ * levar uns 15 ms, mas a primeira de uma página pode passar de 300 ms; um menu não pode ficar coberto esse tempo.
+ */
+const STILL_DEADLINE_MS = 60;
 
 function sameBounds(a: BrowserBounds | null, b: BrowserBounds | null): boolean {
   if (a === null || b === null) return a === b;
@@ -14,21 +20,54 @@ function sameBounds(a: BrowserBounds | null, b: BrowserBounds | null): boolean {
  * (`browser.setBounds`); quando não há página para mostrar (aba vazia, erro, `hidden`, área sem tamanho ou
  * componente desmontado), informa `null`, e a view some. As medições de um mesmo quadro viram um pedido só, e um
  * retângulo igual ao último não é mandado de novo.
+ *
+ * Nada do DOM fica na frente da view. Por isso, com `frozen` (um menu ou diálogo do app aberto), a página dá lugar a
+ * uma imagem parada dela: a imagem é pedida com a página ainda à vista, e a página sai quando a imagem chega, ou
+ * depois de `STILL_DEADLINE_MS`, o que vier primeiro.
  */
 export function BrowserViewport({
   projectId,
   tab,
   hidden,
+  frozen = false,
   onRetry,
 }: {
   projectId: string;
   tab: BrowserTabDto;
-  /** Esconde a página sem tirar a área (painel recolhido, sobreposição aberta). */
+  /** Esconde a página sem tirar a área (painel recolhido). */
   hidden: boolean;
+  /** Há uma sobreposição do app aberta: a página vira imagem parada. */
+  frozen?: boolean;
   onRetry: () => void;
 }) {
   const areaRef = useRef<HTMLDivElement>(null);
-  const showsPage = tab.error === null && tab.url !== '' && !hidden;
+  const hasPage = tab.error === null && tab.url !== '' && !hidden;
+  const freezing = frozen && hasPage;
+  /** A imagem parada, e se a página já saiu de cima. Só valem enquanto `freezing`. */
+  const [still, setStill] = useState<{ image: string | null; covered: boolean }>({
+    image: null,
+    covered: false,
+  });
+  const showsPage = hasPage && !(freezing && still.covered);
+
+  useEffect(() => {
+    if (!freezing) return undefined;
+    let cancelled = false;
+    const cover = (image: string | null) => {
+      if (cancelled) return;
+      setStill((current) => ({ image: image ?? current.image, covered: true }));
+    };
+    const deadline = window.setTimeout(() => cover(null), STILL_DEADLINE_MS);
+    window.projectHub.browser.snapshot(projectId).then(
+      (result) => cover(result.ok ? result.data : null),
+      () => cover(null),
+    );
+    return () => {
+      cancelled = true;
+      window.clearTimeout(deadline);
+      setStill({ image: null, covered: false });
+    };
+  }, [freezing, projectId, tab.id]);
 
   useEffect(() => {
     const api = window.projectHub.browser;
@@ -84,6 +123,9 @@ export function BrowserViewport({
         </div>
       ) : tab.url === '' ? (
         <EmptyState icon={Globe} title="Digite uma URL para começar" />
+      ) : freezing && still.image !== null ? (
+        // Decorativa: é a própria página, parada. O conteúdo dela não é do app.
+        <img className="browser__still" src={still.image} alt="" />
       ) : null}
     </div>
   );

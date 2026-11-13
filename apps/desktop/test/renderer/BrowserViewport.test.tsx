@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserViewport } from '../../src/renderer/components/right-panel/BrowserViewport';
@@ -168,6 +168,127 @@ describe('BrowserViewport', () => {
     flushFrames();
     expect(screen.getByText('Digite uma URL para começar')).toBeInTheDocument();
     expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
+  });
+
+  it('com sobreposição, pede a imagem, mostra e esconde a página', async () => {
+    const { api } = installBrowserApi();
+    api.snapshot.mockResolvedValue({ ok: true, data: 'data:image/png;base64,AA' });
+    const { rerender, container } = render(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />,
+    );
+    flushFrames();
+    rerender(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} frozen onRetry={vi.fn()} />,
+    );
+    await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+    flushFrames();
+    expect(api.snapshot).toHaveBeenCalledExactlyOnceWith('p1');
+    const image = container.querySelector('img');
+    expect(image).toHaveAttribute('src', 'data:image/png;base64,AA');
+    expect(image).toHaveAttribute('alt', '');
+    expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
+  });
+
+  it('a página só some depois de a imagem chegar', async () => {
+    const { api } = installBrowserApi();
+    let deliver: (value: { ok: true; data: string | null }) => void = () => undefined;
+    api.snapshot.mockReturnValue(new Promise((resolve) => (deliver = resolve)) as never);
+    const { rerender } = render(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />,
+    );
+    flushFrames();
+    rerender(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} frozen onRetry={vi.fn()} />,
+    );
+    flushFrames();
+    expect(api.setBounds).not.toHaveBeenCalledWith('p1', null);
+    await act(async () => {
+      deliver({ ok: true, data: 'data:image/png;base64,AA' });
+      await Promise.resolve();
+    });
+    flushFrames();
+    expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
+  });
+
+  it('imagem que demora não segura a página por cima da sobreposição', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { api } = installBrowserApi();
+      api.snapshot.mockReturnValue(new Promise(() => undefined) as never);
+      const { rerender } = render(
+        <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />,
+      );
+      flushFrames();
+      rerender(
+        <BrowserViewport
+          projectId="p1"
+          tab={browserTab()}
+          hidden={false}
+          frozen
+          onRetry={vi.fn()}
+        />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(80);
+      });
+      flushFrames();
+      expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ao fechar a sobreposição, volta o retângulo e a imagem sai', async () => {
+    const { api } = installBrowserApi();
+    api.snapshot.mockResolvedValue({ ok: true, data: 'data:image/png;base64,AA' });
+    const { rerender, container } = render(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} frozen onRetry={vi.fn()} />,
+    );
+    await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+    flushFrames();
+    rerender(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />,
+    );
+    flushFrames();
+    expect(container.querySelector('img')).toBeNull();
+    expect(api.setBounds).toHaveBeenLastCalledWith('p1', {
+      x: 1000,
+      y: 80,
+      width: 600,
+      height: 780,
+    });
+  });
+
+  it('sem imagem, não mostra <img> e ainda esconde a página', async () => {
+    const { api } = installBrowserApi();
+    api.snapshot.mockResolvedValue({ ok: true, data: null });
+    const { rerender, container } = render(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />,
+    );
+    flushFrames();
+    rerender(
+      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} frozen onRetry={vi.fn()} />,
+    );
+    await waitFor(() => {
+      flushFrames();
+      expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
+    });
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('aba sem página não pede imagem', () => {
+    const { api } = installBrowserApi();
+    render(
+      <BrowserViewport
+        projectId="p1"
+        tab={browserTab({ url: '', title: '' })}
+        hidden={false}
+        frozen
+        onRetry={vi.fn()}
+      />,
+    );
+    flushFrames();
+    expect(api.snapshot).not.toHaveBeenCalled();
   });
 
   it('quando o erro some, volta a informar o retângulo', () => {

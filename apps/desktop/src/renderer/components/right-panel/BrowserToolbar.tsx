@@ -38,7 +38,8 @@ function BarButton({
   buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   return (
-    <Hint label={label}>
+    // Para cima: abaixo da barra fica a página, que é desenhada por cima da janela e cobriria a dica.
+    <Hint label={label} side="top">
       <button
         type="button"
         ref={buttonRef}
@@ -61,7 +62,13 @@ type MenuItem = { label: string; disabled: boolean; run: () => void };
  * O menu "Mais ações" do navegador. É uma lista `role="menu"` própria (o mesmo desenho do menu do Código-fonte):
  * setas, Home e End movem o foco; Escape fecha e devolve o foco ao botão; Tab e o clique fora fecham.
  */
-function MoreMenu({ items }: { items: MenuItem[] }) {
+function MoreMenu({
+  items,
+  onOpenChange,
+}: {
+  items: MenuItem[];
+  onOpenChange?: ((open: boolean) => void) | undefined;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -70,6 +77,14 @@ function MoreMenu({ items }: { items: MenuItem[] }) {
   useEffect(() => {
     if (open) itemRefs.current[0]?.focus();
   }, [open]);
+
+  // O menu abre por cima da área da página: quem mostra a página precisa saber, para trocá-la pela imagem parada.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current === open) return;
+    opened.current = open;
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -124,7 +139,7 @@ function MoreMenu({ items }: { items: MenuItem[] }) {
 
   return (
     <div className="browser__menu" ref={rootRef}>
-      <Hint label="Mais ações">
+      <Hint label="Mais ações" side="top">
         <button
           type="button"
           ref={triggerRef}
@@ -196,6 +211,7 @@ export function BrowserToolbar({
   onOpenExternal,
   onOpenDevtools,
   onClearData,
+  onMenuOpenChange,
   addressRef,
   firstButtonRef,
 }: {
@@ -211,6 +227,8 @@ export function BrowserToolbar({
   onOpenExternal: () => void;
   onOpenDevtools: () => void;
   onClearData: () => void;
+  /** Avisa quando o menu Mais ações abre e fecha. */
+  onMenuOpenChange?: (open: boolean) => void;
   /** O campo de endereço, para o atalho Ctrl+L. */
   addressRef?: RefObject<HTMLInputElement | null>;
   /** O primeiro botão da barra, para o F6. */
@@ -273,6 +291,7 @@ export function BrowserToolbar({
           {expanded ? <Minimize2 {...ICON_PROPS} /> : <Maximize2 {...ICON_PROPS} />}
         </BarButton>
         <MoreMenu
+          onOpenChange={onMenuOpenChange}
           items={[
             // A regra dos links externos do app: só https sai para o navegador do sistema.
             {

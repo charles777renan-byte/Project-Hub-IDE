@@ -537,6 +537,20 @@
   padding-right: 0;
 }
 
+/*
+ * Painel direito expandido (o botão Expandir do navegador): a lateral, a página e as divisórias saem de vista, e o
+ * painel direito, que é o último painel do grupo, fica com toda a largura. Nada é desmontado: os terminais seguem
+ * vivos. O `!important` vence a largura que a biblioteca de painéis escreve no próprio elemento.
+ */
+.app-body--right-expanded > .app-body__panel:not(:last-child),
+.app-body--right-expanded > .pane-tree__separator {
+  display: none;
+}
+
+.app-body--right-expanded > .app-body__panel:last-child {
+  flex: 1 1 100% !important;
+}
+
 .app-body > .pane-tree__separator[aria-orientation='vertical']:hover,
 .app-body > .pane-tree__separator[aria-orientation='vertical']:active,
 .app-body > .pane-tree__separator[aria-orientation='vertical']:focus-visible {
