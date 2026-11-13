@@ -252,8 +252,6 @@
   min-height: 0;
   border-top: 1px solid var(--line);
   background: var(--bg);
-  /* A imagem parada tem o tamanho que a página tinha; se a área encolher no arraste, a sobra é cortada. */
-  overflow: hidden;
 }
 
 .browser__state {
@@ -277,9 +275,9 @@
 /* A imagem parada da página, no lugar dela enquanto um menu ou diálogo do app está aberto por cima. */
 .browser__still {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   display: block;
-  /* O tamanho vem dos atributos `width` e `height` da imagem (o da página quando ela foi capturada). */
-  max-width: none;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
 }

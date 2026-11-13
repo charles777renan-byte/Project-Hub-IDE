@@ -127,44 +127,8 @@ describe('BrowserViewport', () => {
     });
   });
 
-  it('arrastar uma divisória troca a página pela imagem parada e, ao soltar, manda o retângulo novo', async () => {
+  it('no arraste de uma divisória a página segue viva atrás da área, sem virar imagem parada', () => {
     const { api } = installBrowserApi();
-    api.snapshot.mockResolvedValue({ ok: true, data: 'data:image/png;base64,AA' });
-    const { container } = render(
-      <BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />,
-    );
-    flushFrames();
-    api.setBounds.mockClear();
-    act(() => {
-      window.dispatchEvent(new Event('pointerdown'));
-    });
-    rect = { ...rect, x: 900, width: 700 };
-    flushFrames();
-    // No meio do arraste a página não corre atrás da área: sai de vista e fica a imagem, no tamanho que tinha.
-    await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
-    flushFrames();
-    expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
-    expect(api.setBounds).not.toHaveBeenCalledWith('p1', expect.objectContaining({ x: 900 }));
-    const image = container.querySelector('img');
-    expect(image).toHaveAttribute('width', '600');
-    expect(image).toHaveAttribute('height', '780');
-    rect = { ...rect, x: 800, width: 800 };
-    act(() => {
-      window.dispatchEvent(new Event('pointerup'));
-    });
-    flushFrames();
-    expect(container.querySelector('img')).toBeNull();
-    expect(api.setBounds).toHaveBeenLastCalledWith('p1', {
-      x: 800,
-      y: 80,
-      width: 800,
-      height: 780,
-    });
-  });
-
-  it('apertar o botão numa divisória já congela a página, antes de a área mudar', async () => {
-    const { api } = installBrowserApi();
-    api.snapshot.mockResolvedValue({ ok: true, data: 'data:image/png;base64,AA' });
     const { container } = render(
       <>
         <div role="separator" data-testid="divisoria" />
@@ -175,20 +139,16 @@ describe('BrowserViewport', () => {
     act(() => {
       screen.getByTestId('divisoria').dispatchEvent(new Event('pointerdown', { bubbles: true }));
     });
-    await waitFor(() => expect(container.querySelector('img')).not.toBeNull());
+    rect = { ...rect, x: 900, width: 700 };
     flushFrames();
-    expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
-  });
-
-  it('botão apertado sem a área mudar não congela a página', () => {
-    const { api } = installBrowserApi();
-    render(<BrowserViewport projectId="p1" tab={browserTab()} hidden={false} onRetry={vi.fn()} />);
-    flushFrames();
-    act(() => {
-      window.dispatchEvent(new Event('pointerdown'));
+    expect(api.setBounds).toHaveBeenLastCalledWith('p1', {
+      x: 900,
+      y: 80,
+      width: 700,
+      height: 780,
     });
-    flushFrames();
     expect(api.snapshot).not.toHaveBeenCalled();
+    expect(container.querySelector('img')).toBeNull();
   });
 
   it('depois de desmontar, um quadro atrasado não manda mais nada', () => {

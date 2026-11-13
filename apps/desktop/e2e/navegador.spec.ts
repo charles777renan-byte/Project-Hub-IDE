@@ -259,7 +259,7 @@ test('navegador: a página segue a área, some sob o menu, e o painel expande', 
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setSize(1200, 700));
     await expectOverArea();
 
-    // Arrastar as divisórias: no meio do arraste a página dá lugar à imagem parada; ao soltar, volta sobre a área.
+    // Arrastar as divisórias: a página segue viva sobre a área, no meio do arraste e depois de soltar.
     for (const [label, dx] of [
       ['Redimensionar painel direito', -90],
       ['Redimensionar barra lateral', 60],
@@ -273,9 +273,10 @@ test('navegador: a página segue a área, some sob o menu, e o painel expande', 
       await page.mouse.down();
       await page.mouse.move(x + dx / 2, y, { steps: 4 });
       await page.mouse.move(x + dx, y, { steps: 4 });
-      await expect.poll(async () => (await viewState(app)).attached).toBe(0);
+      expect((await viewState(app)).attached).toBe(1);
+      await expect(viewport(page).locator('img')).toHaveCount(0);
+      await expectOverArea();
       await page.mouse.up();
-      await expect.poll(async () => (await viewState(app)).attached).toBe(1);
       await expect(viewport(page).locator('img')).toHaveCount(0);
       await expectOverArea();
       if (label === 'Redimensionar painel direito') {

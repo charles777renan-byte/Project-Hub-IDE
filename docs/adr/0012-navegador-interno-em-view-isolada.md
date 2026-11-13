@@ -41,7 +41,7 @@ A CSP, a negação de permissões, a restrição de navegação, a restrição d
 
 ## Consequências
 
-- **A view fica por cima do HTML.** Nada do app consegue ser desenhado na frente da página. Por isso, enquanto um menu ou diálogo do app está aberto (o menu de mais ações do navegador, a paleta de comandos, uma confirmação), a página dá lugar a uma imagem parada dela e volta quando a sobreposição fecha. O mesmo acontece durante o arraste de uma divisória. A área é medida a cada quadro enquanto há página à vista, porque ela muda de lugar sem mudar de tamanho. As dicas dos botões da barra do navegador abrem para cima.
+- **A view fica por cima do HTML.** Nada do app consegue ser desenhado na frente da página. Por isso, enquanto um menu ou diálogo do app está aberto (o menu de mais ações do navegador, a paleta de comandos, uma confirmação), a página dá lugar a uma imagem parada dela e volta quando a sobreposição fecha. A área é medida a cada quadro enquanto há página à vista, porque ela muda de lugar sem mudar de tamanho (mexer a barra lateral empurra o painel inteiro). As dicas dos botões da barra do navegador abrem para cima.
 - **Permissões negadas**: sites que pedem câmera, microfone ou localização não funcionam por inteiro aqui. Liberar por site é uma decisão futura, com tela própria.
 - **Login que recusa navegador embutido**: alguns provedores bloqueiam o login fora de um navegador conhecido. O agente de usuário sem o trecho do Electron reduz o problema, mas não o elimina; o caminho é "Abrir no navegador do sistema".
 - **Memória**: cada aba mostrada é um processo do Chromium. O limite de 8 abas e a criação tardia das páginas contêm o custo; a medição com vários projetos abertos fica pendente.
@@ -53,4 +53,4 @@ Um teste temporário criou uma `WebContentsView` pelo processo principal, sem c�
 
 - O Playwright enxerga a página da view (ver "Testes", acima).
 - Capturar a imagem da página levou 14 ms na mediana e 304 ms no pior caso (a primeira captura). Por isso a página não espera a imagem indefinidamente para sair de cima de uma sobreposição: sai quando a imagem chega, ou em 60 ms, o que vier primeiro.
-- Arrastar a divisória do painel por cima da view não pôde ser medido na janela de teste (ela não recebe o mouse do sistema). Na janela real, a página seguia o arraste com atraso e ficava torta por cima do app. Por isso, enquanto uma divisória é arrastada, a página também dá lugar à imagem parada, e volta no retângulo novo quando a pessoa solta.
+- Arrastar a divisória do painel por cima da view não pôde ser medido na janela de teste (ela não recebe o mouse do sistema). Na janela real, o arraste funciona com a página viva: ela segue a área com um ou dois quadros de atraso. Trocar a página por imagem parada durante o arraste foi testado e descartado, porque a imagem fica no tamanho antigo e deixa um vazio ao lado.
