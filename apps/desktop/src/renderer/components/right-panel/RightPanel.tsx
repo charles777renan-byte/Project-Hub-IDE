@@ -8,6 +8,7 @@ import {
   Files,
   Folder,
   GitBranch,
+  Globe,
   History,
   ICON_PROPS,
   ListChecks,
@@ -17,6 +18,7 @@ import { checksDot } from './checks-dot';
 import { ChecksTab } from './ChecksTab';
 import { FilesTab } from './FilesTab';
 import { GitTab } from './GitTab';
+import { NavigatorTab } from './NavigatorTab';
 import { SessionsTab } from './SessionsTab';
 import { RIGHT_TABS, readRightTab, saveRightTab, type RightTab } from './right-panel-state';
 
@@ -26,15 +28,17 @@ const TAB_INFO: Record<RightTab, { label: string; icon: LucideIcon }> = {
   sessoes: { label: 'Sessões', icon: History },
   codigo: { label: 'Código-fonte', icon: GitBranch },
   checks: { label: 'Checks', icon: ListChecks },
+  navegador: { label: 'Navegador', icon: Globe },
 };
 
-/** As abas que já têm conteúdo: as quatro. Uma aba que não tem conteúdo ainda ficaria desligada com "Em breve". */
+/** As abas que já têm conteúdo: as cinco. Uma aba que não tem conteúdo ainda ficaria desligada com "Em breve". */
 const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(RIGHT_TABS);
 
 /**
- * O painel direito do corpo da janela: uma barra de abas só de ícones (Arquivos, Sessões, Código-fonte e Checks, num
- * `tablist` do Radix) e o conteúdo da aba escolhida. As quatro são abas de verdade, e a escolhida é lembrada. Sem
- * projeto (o Início, por exemplo), Sessões mostra só o escopo Todos e as outras abas mostram o aviso para abrir um.
+ * O painel direito do corpo da janela: uma barra de abas só de ícones (Arquivos, Sessões, Código-fonte, Checks e
+ * Navegador, num `tablist` do Radix) e o conteúdo da aba escolhida. As cinco são abas de verdade, e a escolhida é
+ * lembrada. Sem projeto (o Início, por exemplo), Sessões mostra só o escopo Todos e as outras abas mostram o aviso
+ * para abrir um. A aba Navegador é o navegador interno do projeto (NavigatorTab.tsx): cada projeto tem o seu.
  * A aba Checks leva um ponto de estado na barra (`checksDot`) quando o PR tem checks. Um arquivo aberto, pela aba
  * Arquivos ou pela aba Código-fonte, entra nos arquivos abertos do projeto (`openFile`), e o painel mostra a aba
  * Arquivos com ele (o editor). `onOpenFile` só existe para os testes injetarem um espião no lugar disso.
@@ -117,6 +121,13 @@ export function RightPanel({
           ) : tab === 'sessoes' ? (
             // A chave por projeto zera a busca, o escopo e o detalhe aberto quando o projeto muda.
             <SessionsTab key={projectId ?? 'sem-projeto'} projectId={projectId} />
+          ) : tab === 'navegador' ? (
+            projectId === null ? (
+              <EmptyState icon={Globe} title="Abra um projeto para usar o navegador" />
+            ) : (
+              // A chave por projeto troca o navegador inteiro: cada projeto tem as suas abas e a sua sessão.
+              <NavigatorTab key={projectId} projectId={projectId} />
+            )
           ) : projectId === null ? (
             <EmptyState icon={Folder} title="Abra um projeto para ver os arquivos" />
           ) : tab === 'arquivos' ? (

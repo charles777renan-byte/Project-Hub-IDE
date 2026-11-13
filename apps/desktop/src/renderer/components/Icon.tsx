@@ -5,6 +5,7 @@
  */
 export {
   ArrowLeft,
+  ArrowRight,
   Bold,
   ChevronDown,
   ChevronRight,
@@ -28,6 +29,7 @@ export {
   FolderOpen,
   FolderPlus,
   GitBranch,
+  Globe,
   GripVertical,
   History,
   House,
@@ -51,6 +53,7 @@ export {
   Plus,
   Quote,
   RefreshCw,
+  RotateCw,
   Rows2,
   Search,
   ShieldQuestionMark,

@@ -47,7 +47,7 @@ describe('index.html do renderer', () => {
     expect(page.querySelectorAll('[style]')).toHaveLength(0);
   });
 
-  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css, o mission.css e o progress.css depois do app.css, o workspace.css, o terminal-tools.css e o right-panel.css depois dele, o checks.css logo depois do right-panel.css e, por último, o motion.css', () => {
+  it('liga os estilos por <link rel="stylesheet">, as fontes e os tokens primeiro, o home.css, o plan.css, o orchestrator-board.css e o statusbar.css, o project.css, o mission.css e o progress.css depois do app.css, o workspace.css, o terminal-tools.css e o right-panel.css depois dele, o checks.css e o browser.css logo depois do right-panel.css e, por último, o motion.css', () => {
     const hrefs = [...page.querySelectorAll('link[rel="stylesheet"]')].map((link) =>
       link.getAttribute('href'),
     );
@@ -67,6 +67,7 @@ describe('index.html do renderer', () => {
       './styles/terminal-tools.css',
       './styles/right-panel.css',
       './styles/checks.css',
+      './styles/browser.css',
       './styles/motion.css',
     ]);
   });
@@ -161,6 +162,7 @@ describe('fontes locais', () => {
       'workspace.css',
       'terminal-tools.css',
       'right-panel.css',
+      'browser.css',
       'motion.css',
     ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(

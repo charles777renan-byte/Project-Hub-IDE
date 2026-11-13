@@ -5,6 +5,7 @@ import type { ProjectHubApi } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openFile } from '../../src/renderer/open-files';
 import { RightPanel } from '../../src/renderer/components/right-panel/RightPanel';
+import { installBrowserApi } from './browser-fixtures';
 import {
   RIGHT_TABS,
   readRightTab,
@@ -62,7 +63,7 @@ function pendingSessions() {
 }
 
 describe('RightPanel', () => {
-  it('tem a lista de abas "Painéis laterais" com as quatro abas, só de ícone, pelo nome acessível', () => {
+  it('tem a lista de abas "Painéis laterais" com as cinco abas, só de ícone, pelo nome acessível', () => {
     renderPanel({ projectId: 'p1' });
 
     const tabs = within(screen.getByRole('tablist', { name: 'Painéis laterais' })).getAllByRole(
@@ -73,6 +74,7 @@ describe('RightPanel', () => {
       'Sessões',
       'Código-fonte',
       'Checks',
+      'Navegador',
     ]);
     for (const item of tabs) expect(item.textContent).toBe('');
   });
@@ -82,16 +84,16 @@ describe('RightPanel', () => {
 
     expect(screen.getByRole('complementary', { name: 'Painel direito' })).toBeInTheDocument();
     expect(tab('Arquivos')).toHaveAttribute('aria-selected', 'true');
-    for (const name of ['Sessões', 'Código-fonte', 'Checks']) {
+    for (const name of ['Sessões', 'Código-fonte', 'Checks', 'Navegador']) {
       expect(tab(name)).toHaveAttribute('aria-selected', 'false');
     }
     expect(screen.getByRole('tabpanel')).toBeInTheDocument();
   });
 
-  it('nenhuma aba fica aria-disabled: as quatro estão disponíveis', () => {
+  it('nenhuma aba fica aria-disabled: as cinco estão disponíveis', () => {
     renderPanel({ projectId: 'p1' });
 
-    for (const name of ['Arquivos', 'Sessões', 'Código-fonte', 'Checks']) {
+    for (const name of ['Arquivos', 'Sessões', 'Código-fonte', 'Checks', 'Navegador']) {
       expect(tab(name)).not.toHaveAttribute('aria-disabled');
     }
   });
@@ -138,6 +140,40 @@ describe('RightPanel', () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('checks');
     expect(screen.getByRole('tabpanel')).toHaveTextContent('Carregando…');
     expect(pr).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicar em Navegador a seleciona, guarda e mostra o navegador do projeto', async () => {
+    const user = userEvent.setup();
+    const { api } = installBrowserApi();
+    renderPanel({ projectId: 'p1' });
+
+    await user.click(tab('Navegador'));
+
+    expect(tab('Navegador')).toHaveAttribute('aria-selected', 'true');
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe('navegador');
+    expect(await screen.findByRole('textbox', { name: 'Endereço' })).toBeInTheDocument();
+    expect(api.state).toHaveBeenCalledWith('p1');
+  });
+
+  it('a dica da aba Navegador é o nome dela', async () => {
+    const user = userEvent.setup();
+    installBrowserApi();
+    renderPanel({ projectId: 'p1' });
+
+    await user.tab();
+    await user.keyboard('{End}');
+
+    expect(tab('Navegador')).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Navegador');
+  });
+
+  it('a aba Navegador sem projeto mostra o aviso dela', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'navegador');
+
+    renderPanel({ projectId: null });
+
+    expect(screen.getByText('Abra um projeto para usar o navegador')).toBeInTheDocument();
+    expect(screen.queryByText('Abra um projeto para ver os arquivos')).not.toBeInTheDocument();
   });
 
   it('a aba Checks sem projeto mostra o aviso de abrir um projeto', () => {
@@ -339,8 +375,14 @@ describe('RightPanel: abrir pela aba Código-fonte', () => {
 });
 
 describe('estado do painel direito', () => {
-  it('as abas são Arquivos, Sessões, Código-fonte e Checks, nessa ordem', () => {
-    expect(RIGHT_TABS).toEqual(['arquivos', 'sessoes', 'codigo', 'checks']);
+  it('as abas são Arquivos, Sessões, Código-fonte, Checks e Navegador, nessa ordem', () => {
+    expect(RIGHT_TABS).toEqual(['arquivos', 'sessoes', 'codigo', 'checks', 'navegador']);
+  });
+
+  it('a aba Navegador guardada volta', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'navegador');
+
+    expect(readRightTab()).toBe('navegador');
   });
 
   it('sem nada guardado, a aba é Arquivos', () => {
