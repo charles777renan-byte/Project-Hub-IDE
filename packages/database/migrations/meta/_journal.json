@@ -85,6 +85,13 @@
       "when": 1794281513538,
       "tag": "0011_contexto_da_tentativa",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794534629320,
+      "tag": "0012_abas_do_navegador",
+      "breakpoints": true
     }
   ]
 }

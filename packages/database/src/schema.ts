@@ -250,6 +250,26 @@ export const appSettings = sqliteTable('app_settings', {
   updatedAt: text('updated_at').notNull(),
 });
 
+/**
+ * Abas de página do navegador interno, por projeto. Guarda só o que volta ao reabrir o app: endereço, título, ordem
+ * e qual é a ativa. O histórico de voltar e avançar não é guardado.
+ */
+export const browserTabs = sqliteTable(
+  'browser_tabs',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    url: text('url').notNull(),
+    title: text('title').notNull(),
+    position: integer('position').notNull(),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('browser_tabs_project_idx').on(table.projectId)],
+);
+
 export const schema = {
   projects,
   missions,
@@ -261,4 +281,5 @@ export const schema = {
   workspaces,
   terminalSessions,
   appSettings,
+  browserTabs,
 };
