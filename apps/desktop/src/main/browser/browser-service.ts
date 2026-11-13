@@ -138,9 +138,11 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
     if (known !== undefined) return known;
     if (!deps.projectExists(projectId)) return undefined;
     const records = deps.repo.listByProject(projectId);
-    const tabs = records.map(
-      (record): BrowserTabDto => ({ ...emptyTab(record.url), id: record.id, title: record.title }),
-    );
+    const tabs = records.map((record): BrowserTabDto => ({
+      ...emptyTab(record.url),
+      id: record.id,
+      title: record.title,
+    }));
     const project: ProjectState = { tabs, activeTabId: '', pages: new Map() };
     if (tabs.length === 0) {
       const tab = emptyTab();
@@ -203,7 +205,11 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
   }
 
   /** A página da aba, criada e carregada agora se a aba tem endereço e ainda não tem página. */
-  function ensureLoaded(projectId: string, project: ProjectState, tab: BrowserTabDto): LivePage | undefined {
+  function ensureLoaded(
+    projectId: string,
+    project: ProjectState,
+    tab: BrowserTabDto,
+  ): LivePage | undefined {
     const existing = project.pages.get(tab.id);
     if (existing !== undefined) return existing;
     if (tab.url === '') return undefined;
@@ -218,7 +224,8 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
   function apply(): void {
     const visible = shown;
     for (const [projectId, project] of projects) {
-      const onScreen = visible !== null && visible.projectId === projectId && visible.bounds !== null;
+      const onScreen =
+        visible !== null && visible.projectId === projectId && visible.bounds !== null;
       if (onScreen) {
         const active = project.tabs.find((tab) => tab.id === project.activeTabId);
         if (active !== undefined) ensureLoaded(projectId, project, active);
@@ -283,7 +290,8 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
     if (project.tabs.length === 0) project.tabs.push(emptyTab());
     if (project.activeTabId === tabId) {
       // A vizinha da direita tomou o índice da que saiu; sem ela, a da esquerda.
-      project.activeTabId = (project.tabs[index] ?? project.tabs[index - 1] ?? project.tabs[0])?.id ?? '';
+      project.activeTabId =
+        (project.tabs[index] ?? project.tabs[index - 1] ?? project.tabs[0])?.id ?? '';
     }
     persist(projectId, project);
     apply();
