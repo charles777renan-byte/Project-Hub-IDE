@@ -1,7 +1,7 @@
 const TAB_STORAGE_KEY = 'project-hub:right-panel-tab';
 
-/** As abas do painel direito, na ordem da barra: Arquivos, Sessões, Código-fonte e Checks. */
-export const RIGHT_TABS = ['arquivos', 'sessoes', 'codigo', 'checks'] as const;
+/** As abas do painel direito, na ordem da barra: Arquivos, Sessões, Código-fonte, Checks e Navegador. */
+export const RIGHT_TABS = ['arquivos', 'sessoes', 'codigo', 'checks', 'navegador'] as const;
 
 export type RightTab = (typeof RIGHT_TABS)[number];
 

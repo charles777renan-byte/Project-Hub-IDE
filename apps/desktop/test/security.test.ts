@@ -469,6 +469,7 @@ describe('buildProjectHubApi', () => {
     expect(Object.keys(api).sort()).toEqual([
       'activity',
       'approvals',
+      'browser',
       'files',
       'git',
       'github',
@@ -483,6 +484,25 @@ describe('buildProjectHubApi', () => {
       'terminals',
       'workspaces',
       'worktrees',
+    ]);
+    expect(Object.keys(api.browser).sort()).toEqual([
+      'back',
+      'clearData',
+      'closeTab',
+      'focusPage',
+      'forward',
+      'navigate',
+      'onChanged',
+      'onShortcut',
+      'openDevtools',
+      'openExternal',
+      'openTab',
+      'reload',
+      'selectTab',
+      'setBounds',
+      'snapshot',
+      'state',
+      'stop',
     ]);
     expect(Object.keys(api.projects).sort()).toEqual([
       'add',

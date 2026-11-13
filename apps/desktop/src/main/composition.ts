@@ -28,11 +28,13 @@ import {
   createMissionRepository,
   createProjectRepository,
   createTerminalSessionRepository,
+  createBrowserTabRepository,
   createWorkspaceRepository,
   listExecutionTokens,
   migrateDatabase,
   openDatabase,
   type TerminalSessionRepository,
+  type BrowserTabRepository,
   type WorkspaceRepository,
 } from '@project-hub/database';
 import type { AppTerminal, MissionTokens } from '@project-hub/domain';
@@ -83,6 +85,8 @@ export type AppServices = AddProjectDeps & {
   };
   /** Repositórios do serviço de workspaces: os workspaces e os projetos. */
   workspaceDeps: { repo: WorkspaceRepository; projects: ProjectRepository };
+  /** As abas do navegador de cada projeto, guardadas no banco. */
+  browserTabs: BrowserTabRepository;
   /** Atividade por agente do Início: os terminais do app (com a pasta do projeto) e os tokens das missões. Só leitura. */
   agentActivityDeps: { terminals(): AppTerminal[]; missions(): MissionTokens[] };
   /** Perfil local: o nome da saudação, guardado nas configurações do banco. */
@@ -406,6 +410,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     lifecycle: { repo: projects, missions: repo, fs, now },
     terminalDeps: { repo, projects, sessions: terminalSessions },
     workspaceDeps: { repo: createWorkspaceRepository(db), projects },
+    browserTabs: createBrowserTabRepository(db),
     agentActivityDeps: {
       terminals: () =>
         terminalSessions.listAll().flatMap((session) => {

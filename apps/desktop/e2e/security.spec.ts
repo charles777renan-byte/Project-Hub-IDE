@@ -100,6 +100,7 @@ test.describe('renderer isolado', () => {
     expect(surface?.root).toEqual([
       'activity',
       'approvals',
+      'browser',
       'files',
       'git',
       'github',

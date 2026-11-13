@@ -8,6 +8,7 @@ import type {
   FilesWriteInput,
   NameSearchDto,
 } from './files';
+import type { BrowserBounds, BrowserShortcutEvent, BrowserStateDto } from './browser';
 import type {
   GithubCommentInput,
   GithubMergeInput,
@@ -192,6 +193,33 @@ export type ProjectHubApi = {
     list(input: SessionsListInput): Promise<AppResult<SessionsListResult>>;
     /** Abre um terminal na pasta da sessão, já retomando a conversa, e põe o painel no workspace. */
     resume(input: SessionsResumeInput): Promise<AppResult<WorkspaceDto>>;
+  };
+  browser: {
+    /** O navegador do projeto. Um projeto sem abas ganha uma aba vazia. */
+    state(projectId: string): Promise<AppResult<BrowserStateDto>>;
+    /** Abre uma aba vazia e a torna ativa. Acima de 8 abas, recusa. */
+    openTab(projectId: string): Promise<AppResult<BrowserStateDto>>;
+    closeTab(projectId: string, tabId: string): Promise<AppResult<BrowserStateDto>>;
+    selectTab(projectId: string, tabId: string): Promise<AppResult<BrowserStateDto>>;
+    /** Manda o texto da barra de endereço. Endereço de tipo não permitido volta como VALIDATION_FAILED. */
+    navigate(projectId: string, tabId: string, text: string): Promise<AppResult<BrowserStateDto>>;
+    back(projectId: string, tabId: string): Promise<AppResult<void>>;
+    forward(projectId: string, tabId: string): Promise<AppResult<void>>;
+    reload(projectId: string, tabId: string): Promise<AppResult<void>>;
+    stop(projectId: string, tabId: string): Promise<AppResult<void>>;
+    /** Onde a página aparece, em pixels de CSS da janela; `null` esconde. */
+    setBounds(projectId: string, bounds: BrowserBounds | null): Promise<AppResult<void>>;
+    /** Imagem parada da página ativa, como `data:image/png`, ou `null` se não há página. */
+    snapshot(projectId: string): Promise<AppResult<string | null>>;
+    focusPage(projectId: string): Promise<AppResult<void>>;
+    openDevtools(projectId: string, tabId: string): Promise<AppResult<void>>;
+    openExternal(projectId: string, tabId: string): Promise<AppResult<void>>;
+    /** Pergunta num diálogo nativo e, confirmado, apaga os dados de navegação do projeto. Devolve o estado depois. */
+    clearData(projectId: string): Promise<AppResult<BrowserStateDto>>;
+    /** Assina as mudanças de estado. Cada evento chega validado. Devolve a função que cancela a assinatura. */
+    onChanged(listener: (state: BrowserStateDto) => void): () => void;
+    /** Assina os atalhos do app apertados com o foco na página. */
+    onShortcut(listener: (event: BrowserShortcutEvent) => void): () => void;
   };
   activity: {
     /** Mensagens e tokens por agente e por dia, do uso feito pelo app. Só leitura, sem parâmetro. */

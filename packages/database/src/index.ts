@@ -5,6 +5,11 @@ export {
   type AppSettingsRepository,
 } from './repositories/app-settings-repository';
 export {
+  createBrowserTabRepository,
+  type BrowserTabRecord,
+  type BrowserTabRepository,
+} from './repositories/browser-tab-repository';
+export {
   createMissionRepository,
   listExecutionTokens,
   type MissionRepository,

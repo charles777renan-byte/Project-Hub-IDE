@@ -6,7 +6,7 @@ import { expectNoViolations, watchCsp } from './git-fixtures';
 import { addGitProject, filesTree, openFileFromPanel, openProject } from './missions';
 import { expectOpenSessions, expectTerminalToContain, fecharPainel } from './terminals';
 
-// O painel direito e a edição de arquivos na janela real do Electron construído: as quatro abas do painel, abrir
+// O painel direito e a edição de arquivos na janela real do Electron construído: as cinco abas do painel, abrir
 // um arquivo pelo teclado, editar, salvar no disco (lido com `fs`, não pela tela), fim de linha CRLF preservado,
 // arquivo alterado por fora, fechar aba suja, as duas buscas, recolher o painel, o foco visível, a CSP e o
 // terminal que segue montado. O que cada teste grava vive no repositório descartável da fixture `gitRepo`.
@@ -88,16 +88,16 @@ test('painel direito: abrir por teclado, editar, salvar no disco, CRLF, arquivo 
   await addGitProject(page, projectName);
   await openProject(page, projectName, 'Terminais');
 
-  // O painel direito tem as quatro abas, todas com conteúdo (nenhuma traz `aria-disabled`); Arquivos é a escolhida.
+  // O painel direito tem as cinco abas, todas com conteúdo (nenhuma traz `aria-disabled`); Arquivos é a escolhida.
   const panel = rightPanel(page);
   await expect(panel).toBeVisible();
   const panelTabs = panel.getByRole('tablist', { name: 'Painéis laterais' });
-  await expect(panelTabs.getByRole('tab')).toHaveCount(4);
+  await expect(panelTabs.getByRole('tab')).toHaveCount(5);
   await expect(panelTabs.getByRole('tab', { name: 'Arquivos' })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  for (const name of ['Arquivos', 'Sessões', 'Código-fonte', 'Checks']) {
+  for (const name of ['Arquivos', 'Sessões', 'Código-fonte', 'Checks', 'Navegador']) {
     await expect(panelTabs.getByRole('tab', { name })).not.toHaveAttribute('aria-disabled', 'true');
   }
   // Sessões abre a aba; Arquivos volta a ser a escolhida para o resto do teste.

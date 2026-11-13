@@ -10,13 +10,22 @@ const HINT_DELAY_MS = 400;
  * mantém o nome acessível dele (aria-label ou texto): a dica só o descreve (aria-describedby), nunca
  * o nomeia. O estilo vem da classe `.hint` (app.css), sem estilo escrito em texto (CSP estrita).
  */
-export function Hint({ label, children }: { label: string; children: ReactElement }) {
+export function Hint({
+  label,
+  children,
+  side = 'bottom',
+}: {
+  label: string;
+  children: ReactElement;
+  /** De que lado do elemento a dica abre. Abaixo, por padrão. */
+  side?: 'top' | 'bottom';
+}) {
   return (
     <Tooltip.Provider delayDuration={HINT_DELAY_MS} skipDelayDuration={0}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content className="hint" side="bottom" sideOffset={6} collisionPadding={8}>
+          <Tooltip.Content className="hint" side={side} sideOffset={6} collisionPadding={8}>
             {label}
           </Tooltip.Content>
         </Tooltip.Portal>

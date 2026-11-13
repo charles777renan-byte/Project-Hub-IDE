@@ -1,6 +1,7 @@
 import { isAbsolute, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Session, WebContents } from 'electron';
+import { isAllowedBrowserUrl } from './browser/address';
 
 // Os listeners de `session.webRequest` são registrados só por funções deste arquivo. O Electron
 // guarda um listener por evento em cada sessão, e um registro feito em outro lugar substituiria em
@@ -196,6 +197,81 @@ export function restrictNavigation(
 
   contents.setWindowOpenHandler(({ url }) => {
     openOutside(url);
+    return { action: 'deny' };
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Navegador interno (ADR 0012). As páginas rodam em sessões próprias, uma por projeto, separadas da sessão da janela
+// do app. Nada daqui para baixo toca a janela do app, e as funções acima não valem para as páginas.
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Nome da partição do navegador de um projeto: `persist:navegador-<id>`. O id entra no nome de uma pasta de dados,
+ * então só letras, números, `-` e `_` passam; qualquer outra coisa lança.
+ */
+export function browserPartition(projectId: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(projectId)) {
+    throw new Error('Id de projeto inválido para a sessão do navegador.');
+  }
+  return `persist:navegador-${projectId}`;
+}
+
+/**
+ * Agente de usuário das páginas: o do Chromium embutido, sem os trechos `Electron/x` e `<nome do app>/x`. Com eles,
+ * alguns sites tratam o navegador como desconhecido.
+ */
+export function browserUserAgent(defaultUserAgent: string, appName: string): string {
+  const escaped = appName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return defaultUserAgent
+    .replace(new RegExp(` ${escaped}/\\S+`), '')
+    .replace(/ Electron\/\S+/, '');
+}
+
+/**
+ * Configura a sessão do navegador de um projeto: cancela todo pedido `file:` (página, quadro ou recurso), nega toda
+ * permissão e troca o agente de usuário. Não põe a CSP do app (ela é da janela do app, não dos sites) e não mexe
+ * nos downloads: sem caminho definido, o Electron mostra o "Salvar como" do sistema.
+ *
+ * Como nas funções acima, o Electron guarda um só listener de `webRequest.onBeforeRequest` por sessão: todo uso
+ * desse evento numa sessão de navegador passa por esta função.
+ */
+export function configureBrowserSession(session: Session, userAgent: string): void {
+  session.webRequest.onBeforeRequest((details, callback) => {
+    callback({ cancel: details.url.startsWith('file:') });
+  });
+  denyAllPermissions(session);
+  session.setUserAgent(userAgent);
+}
+
+/** O que as páginas do navegador precisam do resto do processo principal. */
+export type BrowserGuardDeps = {
+  external: ExternalLinks;
+  /** A página pediu uma janela nova com um endereço permitido. Quem decide o limite de abas é o serviço. */
+  openTab(url: string): void;
+};
+
+/**
+ * Prende uma página do navegador. O quadro principal só navega e só é redirecionado para `http:`, `https:` e
+ * `about:blank`; `mailto:` vai para a confirmação nativa que já existe; o resto é barrado em silêncio. Quadros
+ * internos (iframes) não passam por aqui: o que eles não podem carregar (`file:`) a sessão já cancela. Janela nova
+ * nunca abre: com endereço `http:` ou `https:` vira um pedido de aba, e fora disso é ignorada.
+ */
+export function guardBrowserContents(contents: WebContents, deps: BrowserGuardDeps): void {
+  const guard = (event: { url: string; isMainFrame?: boolean; preventDefault(): void }): void => {
+    if (event.isMainFrame === false) return;
+    if (isAllowedBrowserUrl(event.url)) return;
+    event.preventDefault();
+    if (!isAllowedExternalUrl(event.url)) return;
+    confirmAndOpen(new URL(event.url).href, deps.external).catch(() => {
+      // O diálogo ou o programa externo falhou: o link só não abre.
+    });
+  };
+  contents.on('will-navigate', guard);
+  contents.on('will-redirect', guard);
+
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url !== 'about:blank' && isAllowedBrowserUrl(url)) deps.openTab(url);
     return { action: 'deny' };
   });
 }

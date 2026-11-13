@@ -1,5 +1,7 @@
 import {
   CHANNELS,
+  browserShortcutEventSchema,
+  browserStateSchema,
   filesChangedEventSchema,
   filesSaveAllRequestSchema,
   limitsDtoSchema,
@@ -10,6 +12,9 @@ import {
   type AddProjectInput,
   type AgentActivity,
   type AppResult,
+  type BrowserBounds,
+  type BrowserShortcutEvent,
+  type BrowserStateDto,
   type ContentSearchDto,
   type CreateMissionInput,
   type DecideApprovalInput,
@@ -234,6 +239,60 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     sessions: {
       list: (input: SessionsListInput) => call<SessionsListResult>(CHANNELS.sessionsList, input),
       resume: (input: SessionsResumeInput) => call<WorkspaceDto>(CHANNELS.sessionsResume, input),
+    },
+    browser: {
+      state: (projectId: string) => call<BrowserStateDto>(CHANNELS.browserState, { projectId }),
+      openTab: (projectId: string) =>
+        call<BrowserStateDto>(CHANNELS.browserOpenTab, { projectId }),
+      closeTab: (projectId: string, tabId: string) =>
+        call<BrowserStateDto>(CHANNELS.browserCloseTab, { projectId, tabId }),
+      selectTab: (projectId: string, tabId: string) =>
+        call<BrowserStateDto>(CHANNELS.browserSelectTab, { projectId, tabId }),
+      navigate: (projectId: string, tabId: string, text: string) =>
+        call<BrowserStateDto>(CHANNELS.browserNavigate, { projectId, tabId, text }),
+      back: (projectId: string, tabId: string) =>
+        call<void>(CHANNELS.browserBack, { projectId, tabId }),
+      forward: (projectId: string, tabId: string) =>
+        call<void>(CHANNELS.browserForward, { projectId, tabId }),
+      reload: (projectId: string, tabId: string) =>
+        call<void>(CHANNELS.browserReload, { projectId, tabId }),
+      stop: (projectId: string, tabId: string) =>
+        call<void>(CHANNELS.browserStop, { projectId, tabId }),
+      setBounds: (projectId: string, bounds: BrowserBounds | null) =>
+        call<void>(CHANNELS.browserSetBounds, { projectId, bounds }),
+      snapshot: (projectId: string) =>
+        call<string | null>(CHANNELS.browserSnapshot, { projectId }),
+      focusPage: (projectId: string) => call<void>(CHANNELS.browserFocusPage, { projectId }),
+      openDevtools: (projectId: string, tabId: string) =>
+        call<void>(CHANNELS.browserOpenDevtools, { projectId, tabId }),
+      openExternal: (projectId: string, tabId: string) =>
+        call<void>(CHANNELS.browserOpenExternal, { projectId, tabId }),
+      clearData: (projectId: string) =>
+        call<BrowserStateDto>(CHANNELS.browserClearData, { projectId }),
+      onChanged: (listener: (state: BrowserStateDto) => void) =>
+        subscribe(CHANNELS.browserChanged, (payload) => {
+          const parsed = browserStateSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.browserChanged}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
+      onShortcut: (listener: (event: BrowserShortcutEvent) => void) =>
+        subscribe(CHANNELS.browserShortcut, (payload) => {
+          const parsed = browserShortcutEventSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.browserShortcut}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
     },
     worktrees: {
       list: (projectId: string) => call<WorktreeDto[]>(CHANNELS.worktreesList, { projectId }),

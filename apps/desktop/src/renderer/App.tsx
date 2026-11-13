@@ -16,7 +16,7 @@ import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { listenForSaveAllRequests } from './open-files';
 import { buildPaletteItems } from './palette-items';
-import { TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
+import { TOGGLE_RIGHT_EXPANDED_EVENT, TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
 import { AppRoutes, ROUTE_PATHS } from './routes';
 import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 import { useSidebarData } from './use-sidebar-data';
@@ -141,10 +141,19 @@ export function App() {
     () => toggleColumn(sidePanel.current, '.app-side', '.topbar__sidebar-toggle'),
     [sidePanel],
   );
-  const toggleRight = useCallback(
-    () => toggleColumn(rightPanel.current, '.app-right', '.topbar__right-toggle'),
-    [rightPanel],
-  );
+  // O painel direito expandido ocupa todo o corpo da janela (o botão Expandir do navegador): a lateral, a página e
+  // as divisórias saem de vista por CSS e continuam montadas (os terminais seguem vivos). Não é guardado entre
+  // aberturas, e recolher o painel desfaz.
+  const [rightExpanded, setRightExpanded] = useState(false);
+  const toggleRight = useCallback(() => {
+    setRightExpanded(false);
+    toggleColumn(rightPanel.current, '.app-right', '.topbar__right-toggle');
+  }, [rightPanel]);
+  const toggleRightExpanded = useCallback(() => {
+    // Expandir um painel recolhido primeiro o traz de volta.
+    if (rightPanel.current?.isCollapsed() === true) rightPanel.current.expand();
+    setRightExpanded((value) => !value);
+  }, [rightPanel]);
 
   // Fechar a janela e escolher "Salvar": o processo principal pede a gravação dos arquivos abertos, de qualquer visão.
   useEffect(() => listenForSaveAllRequests(), []);
@@ -158,6 +167,11 @@ export function App() {
     window.addEventListener(TOGGLE_RIGHT_PANEL_EVENT, toggleRight);
     return () => window.removeEventListener(TOGGLE_RIGHT_PANEL_EVENT, toggleRight);
   }, [toggleRight]);
+
+  useEffect(() => {
+    window.addEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, toggleRightExpanded);
+    return () => window.removeEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, toggleRightExpanded);
+  }, [toggleRightExpanded]);
 
   // Ctrl+K abre a paleta em qualquer tela; quem fecha é o Escape. Com a paleta aberta, o Ctrl+K já é do cmdk
   // (sobe na lista), que o marca como tratado. Dentro do terminal ele segue para o programa: no Claude Code,
@@ -231,6 +245,7 @@ export function App() {
           'app-body',
           sideCollapsed ? 'app-body--side-collapsed' : '',
           rightCollapsed ? 'app-body--right-collapsed' : '',
+          rightExpanded && !rightCollapsed ? 'app-body--right-expanded' : '',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -286,7 +301,7 @@ export function App() {
         >
           {/* Recolhido, o painel sai do Tab também, como a lateral. */}
           <div className="app-right" inert={rightCollapsed}>
-            <RightPanel projectId={projectId} />
+            <RightPanel projectId={projectId} expanded={rightExpanded && !rightCollapsed} />
           </div>
         </Panel>
       </Group>

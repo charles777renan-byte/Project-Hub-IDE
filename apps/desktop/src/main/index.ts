@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   CHANNELS,
+  type BrowserShortcutEvent,
+  type BrowserStateDto,
   type LimitsDto,
   type MissionEventDto,
   type MissionUsageEventDto,
@@ -42,6 +44,9 @@ import { createCodexLimitsReader } from './codex-limits';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
+import { registerBrowserHandlers } from './ipc/browser';
+import { createBrowserService } from './browser/browser-service';
+import { clearBrowserSession, createPageFactory } from './browser/browser-views';
 import { registerFilesHandlers } from './ipc/files';
 import { registerFilesWatchHandlers } from './ipc/files-watch';
 import { createProjectWatcher } from './files/project-watcher';
@@ -245,6 +250,64 @@ function publishTerminalEvent(event: TerminalEvent): void {
   target.webContents.send(CHANNELS.terminalsEvent, event);
 }
 
+/** Entrega o estado do navegador de um projeto ao quadro principal. */
+function publishBrowserState(state: BrowserStateDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.browserChanged, state);
+}
+
+/** Entrega ao quadro principal um atalho do app que foi teclado com o foco dentro de uma página do navegador. */
+function publishBrowserShortcut(event: BrowserShortcutEvent): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  // O teclado sai da página e volta para o app: o renderer só consegue pôr o foco num elemento dele (o campo de
+  // endereço, a barra) se o quadro do app for o que recebe as teclas.
+  target.webContents.focus();
+  target.webContents.send(CHANNELS.browserShortcut, event);
+}
+
+/** A janela principal, se ela existe e não está sendo destruída. */
+function liveMainWindow(): BrowserWindow | undefined {
+  const win = mainWindow;
+  return win === undefined || win.isDestroyed() ? undefined : win;
+}
+
+/**
+ * Links que saem de uma página do navegador interno (ou do botão "Abrir no navegador do sistema"): a mesma
+ * confirmação nativa dos links do app. Sem janela, ou com o app fechando, a resposta é "não".
+ */
+function confirmExternalFromBrowser(url: string): Promise<boolean> {
+  const win = liveMainWindow();
+  if (win === undefined) return Promise.resolve(false);
+  return confirmExternal(win, url, () => quitting || win.isDestroyed());
+}
+
+/** Confirmação nativa de "Limpar dados de navegação". Cancelar é o botão padrão e a resposta do Esc. */
+function confirmClearBrowserData(): Promise<boolean> {
+  const win = liveMainWindow();
+  if (win === undefined) return Promise.resolve(false);
+  return confirmUnlessClosing(
+    () => quitting || win.isDestroyed(),
+    async () => {
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'warning',
+        title: 'Project Hub',
+        message: 'Limpar os dados de navegação deste projeto?',
+        detail: 'Cookies, logins e cache deste projeto serão apagados. As abas abertas fecham.',
+        buttons: ['Limpar', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      return response === 0;
+    },
+  );
+}
+
+/** Esconde a página do navegador interno que estiver à vista. Vira a função do serviço quando ele é criado. */
+let hideBrowserPages: () => void = () => undefined;
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -261,6 +324,14 @@ function createMainWindow(): void {
     },
   });
   mainWindow = win;
+  // A página do navegador interno fica por cima da janela, onde o renderer mandou. Se a janela recarrega ou o
+  // processo dela cai, esse renderer não existe mais: a página sai de vista até o novo medir a área de novo.
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) hideBrowserPages();
+  });
+  win.webContents.on('render-process-gone', () => {
+    hideBrowserPages();
+  });
   // A janela começa a fechar antes de ser destruída; o carregamento pendente rejeita nesse intervalo.
   let windowClosing = false;
   const closing = (): boolean => isClosing(win, windowClosing);
@@ -447,6 +518,32 @@ app
       limits.dispose();
     });
 
+    // Navegador interno: uma página por aba, na sessão do projeto. O serviço é o dono das abas; o renderer só mostra
+    // o que ele publica e manda o retângulo onde a página aparece.
+    const browser = createBrowserService({
+      repo: services.browserTabs,
+      pages: createPageFactory({
+        window: liveMainWindow,
+        external: {
+          confirmExternal: confirmExternalFromBrowser,
+          openExternal: (url) => shell.openExternal(url),
+        },
+        appName: app.getName(),
+      }),
+      projectExists: (projectId) => {
+        const project = services.workspaceDeps.projects.get(projectId);
+        return project !== undefined && project.removedAt === undefined;
+      },
+      publish: publishBrowserState,
+      publishShortcut: publishBrowserShortcut,
+      newId: randomUUID,
+      now: () => new Date().toISOString(),
+    });
+    hideBrowserPages = () => browser.hideAll();
+    app.once('will-quit', () => {
+      browser.dispose();
+    });
+
     registerTrustedHandler(ipcMain, CHANNELS.appPing, isTrustedSender, () =>
       Promise.resolve({ ok: true, data: 'pong' }),
     );
@@ -461,6 +558,16 @@ app
       },
       chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
       openFolder: (path) => shell.openPath(path),
+      // Projeto removido: as páginas fecham, a lista de abas some e a sessão (cookies, logins, cache) é apagada.
+      // As páginas fecham antes, para nenhuma regravar o armazenamento depois da limpeza.
+      onRemoved: (projectId) => {
+        browser.forgetProject(projectId);
+        Promise.resolve()
+          .then(() => clearBrowserSession(projectId))
+          .catch((cause: unknown) => {
+            console.error('Falha ao limpar os dados de navegação do projeto removido:', cause);
+          });
+      },
     });
     registerMissionHandlers(ipcMain, isTrustedSender, services.missions);
     registerApprovalHandlers(ipcMain, isTrustedSender, services.missions.orchestrator);
@@ -554,7 +661,7 @@ app
       settingsDir: join(terminalOptions.dataDir, 'terminal-host', 'settings'),
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
-    const workspaceService = createWorkspaceService({
+    const baseWorkspaceService = createWorkspaceService({
       repo: services.workspaceDeps.repo,
       projects: services.workspaceDeps.projects,
       terminals: terminalService,
@@ -563,8 +670,31 @@ app
       now: () => new Date().toISOString(),
       newId: randomUUID,
     });
+    // Fechar a aba do projeto fecha também as páginas do navegador dele; a lista de abas fica no banco.
+    const workspaceService: typeof baseWorkspaceService = {
+      ...baseWorkspaceService,
+      async close(workspaceId) {
+        const projectId = services.workspaceDeps.repo.get(workspaceId)?.projectId;
+        const result = await baseWorkspaceService.close(workspaceId);
+        if (result.ok && projectId !== undefined) browser.suspendProject(projectId);
+        return result;
+      },
+    };
     registerWorkspaceHandlers(ipcMain, isTrustedSender, workspaceService, providers);
     registerSessionHandlers(ipcMain, isTrustedSender, sessionHistory, workspaceService);
+    registerBrowserHandlers(ipcMain, isTrustedSender, {
+      browser,
+      contentSize: () => {
+        const size = liveMainWindow()?.getContentSize();
+        return size === undefined ? undefined : { width: size[0] ?? 0, height: size[1] ?? 0 };
+      },
+      zoomFactor: () => liveMainWindow()?.webContents.getZoomFactor() ?? 1,
+      confirmClear: confirmClearBrowserData,
+      clearSession: clearBrowserSession,
+      openExternal: async (url) => {
+        if (await confirmExternalFromBrowser(url)) await shell.openExternal(url);
+      },
+    });
     createMainWindow();
     limits.start();
 

@@ -1,9 +1,13 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectHubApi } from '@project-hub/contracts';
 import { App } from '../../src/renderer/App';
+import {
+  TOGGLE_RIGHT_EXPANDED_EVENT,
+  TOGGLE_RIGHT_PANEL_EVENT,
+} from '../../src/renderer/right-panel-events';
 
 /** A aba fixa Início da barra superior. */
 function homeTab(): HTMLElement {
@@ -89,6 +93,52 @@ describe('App', () => {
     } finally {
       Reflect.deleteProperty(window, 'projectHub');
     }
+  });
+});
+
+describe('painel direito expandido', () => {
+  const body = () => document.querySelector('.app-body') as HTMLElement;
+  const toggle = (name: string) =>
+    act(() => {
+      window.dispatchEvent(new Event(name));
+    });
+
+  it('o evento de expandir acrescenta e tira a classe do corpo da janela', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(body()).not.toHaveClass('app-body--right-expanded');
+    toggle(TOGGLE_RIGHT_EXPANDED_EVENT);
+    expect(body()).toHaveClass('app-body--right-expanded');
+    toggle(TOGGLE_RIGHT_EXPANDED_EVENT);
+    expect(body()).not.toHaveClass('app-body--right-expanded');
+  });
+
+  it('recolher o painel direito desfaz o expandir', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    toggle(TOGGLE_RIGHT_EXPANDED_EVENT);
+    toggle(TOGGLE_RIGHT_PANEL_EVENT);
+    expect(body()).not.toHaveClass('app-body--right-expanded');
+  });
+
+  it('a página e a lateral continuam montadas com o painel expandido', () => {
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    const main = screen.getByRole('main');
+    const heading = within(main).getByRole('heading', { level: 1, name: 'Início' });
+    toggle(TOGGLE_RIGHT_EXPANDED_EVENT);
+    expect(heading).toBeInTheDocument();
+    expect(document.querySelector('.app-main')).toBe(main);
+    expect(document.querySelector('.app-side')).not.toBeNull();
   });
 });
 
