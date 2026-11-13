@@ -305,6 +305,9 @@ function confirmClearBrowserData(): Promise<boolean> {
   );
 }
 
+/** Esconde a página do navegador interno que estiver à vista. Vira a função do serviço quando ele é criado. */
+let hideBrowserPages: () => void = () => undefined;
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -321,6 +324,14 @@ function createMainWindow(): void {
     },
   });
   mainWindow = win;
+  // A página do navegador interno fica por cima da janela, onde o renderer mandou. Se a janela recarrega ou o
+  // processo dela cai, esse renderer não existe mais: a página sai de vista até o novo medir a área de novo.
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) hideBrowserPages();
+  });
+  win.webContents.on('render-process-gone', () => {
+    hideBrowserPages();
+  });
   // A janela começa a fechar antes de ser destruída; o carregamento pendente rejeita nesse intervalo.
   let windowClosing = false;
   const closing = (): boolean => isClosing(win, windowClosing);
@@ -528,6 +539,7 @@ app
       newId: randomUUID,
       now: () => new Date().toISOString(),
     });
+    hideBrowserPages = () => browser.hideAll();
     app.once('will-quit', () => {
       browser.dispose();
     });

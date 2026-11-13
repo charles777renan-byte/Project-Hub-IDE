@@ -29,6 +29,7 @@ function fakeService() {
     stop: vi.fn(() => OK),
     setBounds: vi.fn(() => OK),
     snapshot: vi.fn(() => Promise.resolve({ ok: true as const, data: 'data:image/png;base64,AA' })),
+    hideAll: vi.fn(),
     focusPage: vi.fn(() => OK),
     openDevTools: vi.fn(() => OK),
     urlOf: vi.fn((): string | undefined => 'https://exemplo.com/a'),

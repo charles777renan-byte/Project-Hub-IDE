@@ -84,7 +84,12 @@ function data<T>(result: AppResult<T>): T {
 
 const RECT = { x: 900, y: 80, width: 600, height: 700 };
 
-function stored(projectId: string, id: string, position: number, isActive = false): BrowserTabRecord {
+function stored(
+  projectId: string,
+  id: string,
+  position: number,
+  isActive = false,
+): BrowserTabRecord {
   return {
     id,
     projectId,
@@ -150,7 +155,11 @@ describe('createBrowserService', () => {
     const state = data(service.navigate('A', tabId, 'localhost:3000'));
     expect(pages).toHaveLength(1);
     expect(pages[0]?.calls).toContain('load:"http://localhost:3000/"');
-    expect(state.tabs[0]).toMatchObject({ url: 'http://localhost:3000/', loading: true, error: null });
+    expect(state.tabs[0]).toMatchObject({
+      url: 'http://localhost:3000/',
+      loading: true,
+      error: null,
+    });
   });
 
   it('navigate recusa protocolo bloqueado, sem carregar', () => {
@@ -209,6 +218,17 @@ describe('createBrowserService', () => {
     expect(last(pages[0], 'setVisible')).toBe('setVisible:false');
   });
 
+  it('hideAll esconde a página à vista, e o próximo retângulo a traz de volta', () => {
+    const { service, pages } = setup([stored('A', 'a', 0, true)]);
+    service.hideAll();
+    service.setBounds('A', RECT);
+    service.hideAll();
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:false');
+    expect(pages[0]?.destroyed).toBe(false);
+    service.setBounds('A', RECT);
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:true');
+  });
+
   it('o "esconder" atrasado de um projeto não esconde o que entrou depois', () => {
     const { service, pages } = setup([stored('A', 'a', 0, true), stored('B', 'b', 0, true)]);
     service.setBounds('A', RECT);
@@ -255,7 +275,11 @@ describe('createBrowserService', () => {
   });
 
   it('fechar a aba ativa ativa a vizinha da direita, ou a da esquerda', () => {
-    const { service } = setup([stored('A', 'a', 0), stored('A', 'b', 1, true), stored('A', 'c', 2)]);
+    const { service } = setup([
+      stored('A', 'a', 0),
+      stored('A', 'b', 1, true),
+      stored('A', 'c', 2),
+    ]);
     expect(data(service.closeTab('A', 'b')).activeTabId).toBe('c');
     expect(data(service.closeTab('A', 'c')).activeTabId).toBe('a');
   });
@@ -281,7 +305,11 @@ describe('createBrowserService', () => {
     const { service, pages, published, repo } = setup([stored('A', 'a', 0, true)]);
     service.setBounds('A', RECT);
     pages[0]?.events.onChange({ title: 'Olá', loading: false, canGoBack: true });
-    expect(published.at(-1)?.tabs[0]).toMatchObject({ title: 'Olá', loading: false, canGoBack: true });
+    expect(published.at(-1)?.tabs[0]).toMatchObject({
+      title: 'Olá',
+      loading: false,
+      canGoBack: true,
+    });
     expect(repo.listByProject('A')[0]).toMatchObject({ title: 'Olá' });
   });
 

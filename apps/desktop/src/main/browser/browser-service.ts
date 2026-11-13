@@ -67,6 +67,11 @@ export type BrowserService = {
   /** `null` esconde. Só um projeto fica visível por vez: o do último retângulo não nulo. */
   setBounds(projectId: string, bounds: BrowserBounds | null): AppResult<undefined>;
   snapshot(projectId: string): Promise<AppResult<string | null>>;
+  /**
+   * Esconde a página que estiver à vista, sem destruir nada. Para quando a janela do app recarrega ou o processo
+   * dela cai: o renderer que mediu a área não existe mais, e ninguém mandaria esconder a página.
+   */
+  hideAll(): void;
   focusPage(projectId: string): AppResult<undefined>;
   openDevTools(projectId: string, tabId: string): AppResult<undefined>;
   /** Endereço atual da aba, para "Abrir no navegador do sistema". */
@@ -405,6 +410,12 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
       // Mostrar pela primeira vez uma aba restaurada começa a carregá-la: o renderer precisa saber.
       if (project !== undefined && project.pages.size !== before) publish(projectId, project);
       return DONE;
+    },
+
+    hideAll() {
+      if (shown === null) return;
+      shown = { projectId: shown.projectId, bounds: null };
+      apply();
     },
 
     async snapshot(projectId) {
