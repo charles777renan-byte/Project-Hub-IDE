@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { agentActivityResponseSchema } from './agent-activity';
+import { browserStateSchema } from './browser';
 import { CHANNELS } from './channels';
 import {
   contentSearchSchema,
@@ -141,4 +142,19 @@ export const responseSchemas = {
   [CHANNELS.githubOpenUrl]: appResultSchema(z.undefined()),
   [CHANNELS.sessionsList]: appResultSchema(sessionsListResultSchema),
   [CHANNELS.sessionsResume]: appResultSchema(workspaceDtoSchema),
+  [CHANNELS.browserState]: appResultSchema(browserStateSchema),
+  [CHANNELS.browserOpenTab]: appResultSchema(browserStateSchema),
+  [CHANNELS.browserCloseTab]: appResultSchema(browserStateSchema),
+  [CHANNELS.browserSelectTab]: appResultSchema(browserStateSchema),
+  [CHANNELS.browserNavigate]: appResultSchema(browserStateSchema),
+  [CHANNELS.browserBack]: appResultSchema(z.undefined()),
+  [CHANNELS.browserForward]: appResultSchema(z.undefined()),
+  [CHANNELS.browserReload]: appResultSchema(z.undefined()),
+  [CHANNELS.browserStop]: appResultSchema(z.undefined()),
+  [CHANNELS.browserSetBounds]: appResultSchema(z.undefined()),
+  [CHANNELS.browserSnapshot]: appResultSchema(z.string().nullable()),
+  [CHANNELS.browserFocusPage]: appResultSchema(z.undefined()),
+  [CHANNELS.browserOpenDevtools]: appResultSchema(z.undefined()),
+  [CHANNELS.browserOpenExternal]: appResultSchema(z.undefined()),
+  [CHANNELS.browserClearData]: appResultSchema(browserStateSchema),
 } as const;

@@ -143,4 +143,30 @@ export const CHANNELS = {
   sessionsList: 'sessions:list:v1',
   /** Retomar em Worktree. Entram só o id do workspace e o id da sessão: pasta e programa saem do índice no processo principal. */
   sessionsResume: 'sessions:resume:v1',
+  /** Navegador interno (painel direito). Só entram o id do projeto, o id da aba e o texto digitado; a página nunca fala por IPC. */
+  browserState: 'browser:state:v1',
+  browserOpenTab: 'browser:open-tab:v1',
+  browserCloseTab: 'browser:close-tab:v1',
+  browserSelectTab: 'browser:select-tab:v1',
+  /** O texto da barra de endereço; o processo principal decide se é endereço, busca ou recusa. */
+  browserNavigate: 'browser:navigate:v1',
+  browserBack: 'browser:back:v1',
+  browserForward: 'browser:forward:v1',
+  browserReload: 'browser:reload:v1',
+  browserStop: 'browser:stop:v1',
+  /** Onde a página aparece na janela, ou `null` para esconder. O processo principal confere o retângulo. */
+  browserSetBounds: 'browser:set-bounds:v1',
+  /** Imagem parada da página ativa (`data:image/png`), para pôr no lugar dela sob um menu ou diálogo do app. */
+  browserSnapshot: 'browser:snapshot:v1',
+  /** Leva o foco do teclado para a página ativa. */
+  browserFocusPage: 'browser:focus-page:v1',
+  browserOpenDevtools: 'browser:open-devtools:v1',
+  /** Abre o endereço da aba no navegador do sistema, com a confirmação nativa. Só https. */
+  browserOpenExternal: 'browser:open-external:v1',
+  /** Apaga cookies, armazenamento e cache do projeto, depois de confirmação nativa. */
+  browserClearData: 'browser:clear-data:v1',
+  /** O estado do navegador de um projeto mudou. Do processo principal para o renderer; não tem resposta. */
+  browserChanged: 'browser:changed:v1',
+  /** Um atalho do app foi apertado com o foco na página. Do processo principal para o renderer; não tem resposta. */
+  browserShortcut: 'browser:shortcut:v1',
 } as const;

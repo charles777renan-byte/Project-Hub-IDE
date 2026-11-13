@@ -310,6 +310,8 @@ describe('responseSchemas', () => {
       CHANNELS.terminalsEvent,
       CHANNELS.filesSaveAllRequest,
       CHANNELS.filesChanged,
+      CHANNELS.browserChanged,
+      CHANNELS.browserShortcut,
     ];
     const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());
