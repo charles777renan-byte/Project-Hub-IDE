@@ -540,14 +540,15 @@
 /*
  * Painel direito expandido (o botão Expandir do navegador): a lateral, a página e as divisórias saem de vista, e o
  * painel direito, que é o último painel do grupo, fica com toda a largura. Nada é desmontado: os terminais seguem
- * vivos. O `!important` vence a largura que a biblioteca de painéis escreve no próprio elemento.
+ * vivos. A regra mira o elemento de fora de cada painel (`data-panel`, da biblioteca; a nossa classe fica no de dentro), e o
+ * `!important` vence o `display` e a largura que a biblioteca escreve nele.
  */
-.app-body--right-expanded > .app-body__panel:not(:last-child),
+.app-body--right-expanded > [data-panel]:not(:last-child),
 .app-body--right-expanded > .pane-tree__separator {
-  display: none;
+  display: none !important;
 }
 
-.app-body--right-expanded > .app-body__panel:last-child {
+.app-body--right-expanded > [data-panel]:last-child {
   flex: 1 1 100% !important;
 }
 
