@@ -50,6 +50,7 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'packages/agent-adapters/test/simulated-adapter.integration.test.ts': 3, // 0 s
   'packages/database/test/app-settings.integration.test.ts': 3, // 0 s
   'packages/database/test/browser-tab-repository.integration.test.ts': 3, // 1 s
+  'packages/database/test/project-preview-repository.integration.test.ts': 3, // 1 s (estimativa; medir no CI)
   'packages/database/test/migrate-review.integration.test.ts': 3, // 0 s
   'apps/desktop/test/terminal-host/claude-agent.integration.test.ts': 3, // 0 s
   'apps/desktop/test/terminal-host/hook-receiver.integration.test.ts': 3, // 0 s
