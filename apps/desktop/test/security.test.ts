@@ -476,6 +476,7 @@ describe('buildProjectHubApi', () => {
       'limits',
       'missions',
       'ping',
+      'preview',
       'profile',
       'projects',
       'providers',
@@ -484,6 +485,15 @@ describe('buildProjectHubApi', () => {
       'terminals',
       'workspaces',
       'worktrees',
+    ]);
+    // O preview não tem método que leve texto de comando: só ids, o nome de um script e o texto de um endereço.
+    expect(Object.keys(api.preview).sort()).toEqual([
+      'approve',
+      'forget',
+      'onChanged',
+      'setAddress',
+      'start',
+      'state',
     ]);
     expect(Object.keys(api.browser).sort()).toEqual([
       'back',
@@ -548,6 +558,7 @@ describe('buildProjectHubApi', () => {
       'close',
       'endSession',
       'list',
+      'onChanged',
       'open',
       'removePane',
       'reorder',
