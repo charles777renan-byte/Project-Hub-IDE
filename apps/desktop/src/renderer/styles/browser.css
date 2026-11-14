@@ -281,3 +281,129 @@
   height: 100%;
   object-fit: fill;
 }
+
+.browser__state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/*
+ * O cartão do preview, na área da página de uma aba vazia. Não há página por baixo (a view só existe com endereço),
+ * então a área rola se o cartão não couber.
+ */
+.browser__preview-area {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.browser__preview {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 30rem;
+  margin: auto 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.browser__preview-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.browser__preview-text,
+.browser__preview-hint {
+  margin: 0;
+  color: var(--muted);
+}
+
+.browser__preview-hint {
+  font-size: var(--text-xs);
+}
+
+.browser__preview-error {
+  margin: 0;
+  color: var(--warn);
+}
+
+.browser__preview-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.browser__preview-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.browser__preview-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.browser__preview-facts dt {
+  color: var(--muted);
+}
+
+.browser__preview-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.browser__preview-facts code {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.browser__preview-actions,
+.browser__preview-more,
+.browser__preview-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.browser__preview-foot {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.browser__preview-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+}
+
+.browser__preview-address {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.browser__preview-address label {
+  color: var(--muted);
+}

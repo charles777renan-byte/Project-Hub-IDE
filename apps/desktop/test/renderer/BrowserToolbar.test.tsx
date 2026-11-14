@@ -19,6 +19,7 @@ function setup(
     onOpenExternal: vi.fn(),
     onOpenDevtools: vi.fn(),
     onClearData: vi.fn(),
+    onOpenPreview: vi.fn(),
     onMenuOpenChange: vi.fn(),
   };
   const view = render(
@@ -126,6 +127,7 @@ describe('BrowserToolbar', () => {
   it.each([
     ['Abrir no navegador do sistema', 'onOpenExternal'],
     ['Inspecionar', 'onOpenDevtools'],
+    ['Preview do projeto…', 'onOpenPreview'],
     ['Limpar dados de navegação deste projeto…', 'onClearData'],
   ] as const)('o item "%s" do menu chama a função certa e fecha o menu', async (label, handler) => {
     const { user, handlers } = setup();

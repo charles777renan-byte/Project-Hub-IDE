@@ -211,6 +211,7 @@ export function BrowserToolbar({
   onOpenExternal,
   onOpenDevtools,
   onClearData,
+  onOpenPreview,
   onMenuOpenChange,
   addressRef,
   firstButtonRef,
@@ -227,6 +228,8 @@ export function BrowserToolbar({
   onOpenExternal: () => void;
   onOpenDevtools: () => void;
   onClearData: () => void;
+  /** Abre o cartão do preview do projeto ("Preview do projeto…"). */
+  onOpenPreview: () => void;
   /** Avisa quando o menu Mais ações abre e fecha. */
   onMenuOpenChange?: (open: boolean) => void;
   /** O campo de endereço, para o atalho Ctrl+L. */
@@ -300,6 +303,7 @@ export function BrowserToolbar({
               run: onOpenExternal,
             },
             { label: 'Inspecionar', disabled: tab.url === '', run: onOpenDevtools },
+            { label: 'Preview do projeto…', disabled: false, run: onOpenPreview },
             {
               label: 'Limpar dados de navegação deste projeto…',
               disabled: false,

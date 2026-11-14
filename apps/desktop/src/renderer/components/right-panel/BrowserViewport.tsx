@@ -1,5 +1,5 @@
 import type { BrowserBounds, BrowserTabDto } from '@project-hub/contracts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { EmptyState } from '../EmptyState';
 import { Globe } from '../Icon';
 
@@ -33,6 +33,9 @@ export function BrowserViewport({
   hidden,
   frozen = false,
   onRetry,
+  emptyContent,
+  onOpenAddress,
+  onStartServer,
 }: {
   projectId: string;
   tab: BrowserTabDto;
@@ -41,6 +44,12 @@ export function BrowserViewport({
   /** Há uma sobreposição do app aberta: a página vira imagem parada. */
   frozen?: boolean;
   onRetry: () => void;
+  /** O que a aba vazia mostra no lugar de "Digite uma URL para começar": o cartão do preview. */
+  emptyContent?: ReactNode;
+  /** Com ele, o aviso da aba vazia ganha "Só abrir um endereço". */
+  onOpenAddress?: (() => void) | undefined;
+  /** Com ele, a página que não carregou ganha "Subir o servidor": o endereço é o do preview do projeto. */
+  onStartServer?: (() => void) | undefined;
 }) {
   const areaRef = useRef<HTMLDivElement>(null);
   const hasPage = tab.error === null && tab.url !== '' && !hidden;
@@ -114,12 +123,33 @@ export function BrowserViewport({
       {tab.error !== null ? (
         <div className="browser__state" role="alert">
           <p className="browser__state-text">{tab.error.message}</p>
-          <button type="button" onClick={onRetry}>
-            Tentar de novo
-          </button>
+          <div className="browser__state-actions">
+            <button type="button" onClick={onRetry}>
+              Tentar de novo
+            </button>
+            {onStartServer === undefined ? null : (
+              <button type="button" onClick={onStartServer}>
+                Subir o servidor
+              </button>
+            )}
+          </div>
         </div>
+      ) : tab.url === '' && emptyContent !== undefined ? (
+        <div className="browser__preview-area">{emptyContent}</div>
       ) : tab.url === '' ? (
-        <EmptyState icon={Globe} title="Digite uma URL para começar" />
+        <EmptyState
+          icon={Globe}
+          title="Digite uma URL para começar"
+          {...(onOpenAddress === undefined
+            ? {}
+            : {
+                action: (
+                  <button type="button" className="btn-ghost" onClick={onOpenAddress}>
+                    Só abrir um endereço
+                  </button>
+                ),
+              })}
+        />
       ) : freezing && still.image !== null ? (
         // Decorativa: é a própria página, parada. O conteúdo dela não é do app.
         <img className="browser__still" src={still.image} alt="" />

@@ -1,13 +1,47 @@
-import { useEffect, useRef, useState } from 'react';
+import type { BrowserTabDto, PreviewStateDto } from '@project-hub/contracts';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useOverlayOpen } from '../../overlay-guard';
-import { TOGGLE_RIGHT_EXPANDED_EVENT, TOGGLE_RIGHT_PANEL_EVENT } from '../../right-panel-events';
+import {
+  requestShowTerminal,
+  TOGGLE_RIGHT_EXPANDED_EVENT,
+  TOGGLE_RIGHT_PANEL_EVENT,
+} from '../../right-panel-events';
 import { useBrowser } from '../../use-browser';
+import { usePreview } from '../../use-preview';
 import { BrowserPageTabs } from './BrowserPageTabs';
 import { BrowserToolbar } from './BrowserToolbar';
 import { BrowserViewport } from './BrowserViewport';
+import { PreviewCard, previewSituation } from './PreviewCard';
 
 function toggleExpanded() {
   window.dispatchEvent(new Event(TOGGLE_RIGHT_EXPANDED_EVENT));
+}
+
+/** Se o endereço da aba é da mesma origem do endereço guardado do preview. */
+function sameOrigin(url: string, previewUrl: string | null): boolean {
+  if (previewUrl === null) return false;
+  try {
+    return new URL(url).origin === new URL(previewUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Se a aba dispara o preview sozinha. Só o que não precisa de pergunta: endereço fixo, comando aprovado que não
+ * mudou, ou site estático. Uma aba com endereço nunca dispara, fora a aba restaurada do site estático que não
+ * carregou (o servidor do app ainda não subiu nesta abertura). Depois de uma subida que não deu certo, quem tenta
+ * de novo é a pessoa, pelo cartão: senão cada aba vazia abriria mais um terminal.
+ */
+function startsAlone(tab: BrowserTabDto, state: PreviewStateDto): boolean {
+  const { approval, detection, status } = state;
+  const site = approval.kind === 'none' && detection.kind === 'static';
+  if (tab.error !== null) return site && sameOrigin(tab.url, state.url);
+  if (tab.url !== '') return false;
+  if (status !== 'idle' && status !== 'running' && status !== 'starting') return false;
+  if (approval.kind === 'address') return true;
+  if (approval.kind === 'script') return !approval.changed;
+  return site;
 }
 
 /**
@@ -20,6 +54,9 @@ function toggleExpanded() {
  *
  * A página é desenhada por cima da janela, e nada do app fica na frente dela. Enquanto há um menu ou diálogo do app
  * aberto (o menu Mais ações daqui, a paleta de comandos, uma confirmação), a página vira imagem parada.
+ *
+ * Uma aba de página vazia abre o preview do projeto: sozinha, quando não há o que perguntar, ou com o cartão do
+ * preview no lugar do aviso. Quem decide o que roda é o processo principal; daqui só sai "iniciar nesta aba".
  */
 export function NavigatorTab({
   projectId,
@@ -30,10 +67,19 @@ export function NavigatorTab({
   expanded?: boolean;
 }) {
   const browser = useBrowser(projectId);
+  const preview = usePreview(projectId);
   const overlayOpen = useOverlayOpen();
   const [menuOpen, setMenuOpen] = useState(false);
   const addressRef = useRef<HTMLInputElement>(null);
   const firstButtonRef = useRef<HTMLButtonElement>(null);
+  /** As abas em que a pessoa dispensou o cartão ("Agora não", "Fechar"). */
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+  /** A aba que mostra o cartão de "Preview do projeto…". */
+  const [manageTab, setManageTab] = useState<string | null>(null);
+  /** "Preview do projeto…" pediu uma aba nova: a próxima aba vazia que não é `from` mostra o cartão. */
+  const [manageNext, setManageNext] = useState<{ from: string } | null>(null);
+  /** As abas que já dispararam o preview nesta montagem. */
+  const fired = useRef(new Set<string>());
 
   useEffect(
     () =>
@@ -59,6 +105,32 @@ export function NavigatorTab({
     [],
   );
 
+  const { state, activeTab } = browser;
+  const previewState = preview.state;
+  const { start } = preview;
+
+  // A aba nova pedida por "Preview do projeto…" chegou: é nela que o cartão aparece. Ajuste durante a renderização,
+  // como a documentação do React recomenda para estado derivado de uma propriedade.
+  if (
+    manageNext !== null &&
+    activeTab !== null &&
+    activeTab.id !== manageNext.from &&
+    activeTab.url === ''
+  ) {
+    setManageNext(null);
+    setManageTab(activeTab.id);
+  }
+  const waitingManage = manageNext !== null;
+
+  useEffect(() => {
+    if (activeTab === null || previewState === null || waitingManage) return;
+    const { id } = activeTab;
+    if (manageTab === id || dismissed.has(id) || fired.current.has(id)) return;
+    if (!startsAlone(activeTab, previewState)) return;
+    fired.current.add(id);
+    void start(id);
+  }, [activeTab, previewState, waitingManage, manageTab, dismissed, start]);
+
   if (browser.failure !== null) {
     return (
       <div className="browser">
@@ -68,7 +140,6 @@ export function NavigatorTab({
       </div>
     );
   }
-  const { state, activeTab } = browser;
   if (state === null || activeTab === null) {
     return (
       <div className="browser">
@@ -76,6 +147,73 @@ export function NavigatorTab({
       </div>
     );
   }
+
+  const tabId = activeTab.id;
+  const empty = activeTab.url === '' && activeTab.error === null;
+
+  function startHere(options?: { restart?: boolean }) {
+    fired.current.add(tabId);
+    setManageTab(null);
+    void start(tabId, options);
+  }
+
+  function dismiss() {
+    setManageTab(null);
+    setManageNext(null);
+    setDismissed((current) => new Set(current).add(tabId));
+  }
+
+  function openPreviewCard() {
+    if (empty) {
+      setManageTab(tabId);
+      return;
+    }
+    setManageNext({ from: tabId });
+    browser.openTab();
+  }
+
+  let emptyContent: ReactNode;
+  let onOpenAddress: (() => void) | undefined;
+  if (empty && previewState !== null) {
+    const managing = manageTab === tabId;
+    // Um pedido recusado deixa o cartão no modo em que a pessoa age: "abrindo…" não seria verdade.
+    const mode = managing || preview.error !== null ? 'manage' : 'auto';
+    const situation = previewSituation(previewState, mode);
+    if (managing || (situation !== null && !dismissed.has(tabId))) {
+      emptyContent = (
+        <PreviewCard
+          // O que a pessoa escolheu no cartão (outro script, o campo de endereço) é desta aba e deste modo.
+          key={`${tabId}:${mode}`}
+          state={previewState}
+          mode={mode}
+          error={preview.error}
+          onApprove={(script, shownBody) => {
+            void preview.approve(script, shownBody).then((approved) => {
+              if (approved) startHere();
+            });
+          }}
+          onSetAddress={(text) => {
+            void preview.setAddress(text).then((saved) => {
+              if (saved) startHere();
+            });
+          }}
+          onStart={startHere}
+          onForget={() => void preview.forget()}
+          onShowTerminal={(terminalId) => requestShowTerminal(projectId, terminalId)}
+          onDismiss={dismiss}
+        />
+      );
+    } else if (situation === null) {
+      onOpenAddress = () => setManageTab(tabId);
+    }
+  }
+
+  const canStartServer =
+    previewState !== null &&
+    activeTab.error !== null &&
+    previewState.approval.kind === 'script' &&
+    !previewState.approval.changed &&
+    sameOrigin(activeTab.url, previewState.url);
 
   return (
     <div className="browser">
@@ -99,6 +237,7 @@ export function NavigatorTab({
         onOpenExternal={browser.openExternal}
         onOpenDevtools={browser.openDevtools}
         onClearData={browser.clearData}
+        onOpenPreview={openPreviewCard}
         onMenuOpenChange={setMenuOpen}
         addressRef={addressRef}
         firstButtonRef={firstButtonRef}
@@ -109,6 +248,9 @@ export function NavigatorTab({
         hidden={false}
         frozen={overlayOpen || menuOpen}
         onRetry={browser.reload}
+        emptyContent={emptyContent}
+        onOpenAddress={onOpenAddress}
+        onStartServer={canStartServer ? () => startHere() : undefined}
       />
     </div>
   );
