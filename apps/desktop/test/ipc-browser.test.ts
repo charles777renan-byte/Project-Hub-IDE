@@ -33,6 +33,8 @@ function fakeService() {
     focusPage: vi.fn(() => OK),
     openDevTools: vi.fn(() => OK),
     urlOf: vi.fn((): string | undefined => 'https://exemplo.com/a'),
+    reloadOrigin: vi.fn(),
+    hasOrigin: vi.fn(() => false),
     suspendProject: vi.fn(),
     forgetProject: vi.fn(),
     dispose: vi.fn(),
