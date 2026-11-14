@@ -855,3 +855,102 @@ describe('useWorkspace', () => {
     });
   });
 });
+
+describe('useWorkspace: mudança feita pelo processo principal (o painel do preview)', () => {
+  function withPreviewPane(projectId = 'p1'): WorkspaceDto {
+    return dto(
+      {
+        type: 'split',
+        id: 'nova-raiz',
+        direction: 'row',
+        children: [
+          layoutOf('t-a', 't-b'),
+          { type: 'leaf', id: 'preview', provider: 'shell', terminalId: 't-preview' },
+        ],
+        sizes: [0.5, 0.5],
+      },
+      projectId,
+    );
+  }
+
+  function wire() {
+    let listener: ((workspace: WorkspaceDto) => void) | undefined;
+    const stop = vi.fn();
+    const onChanged = vi.fn((next: (workspace: WorkspaceDto) => void) => {
+      listener = next;
+      return stop;
+    });
+    window.projectHub = {
+      workspaces: { ...api, onChanged },
+    } as unknown as typeof window.projectHub;
+    return { emit: (workspace: WorkspaceDto) => listener?.(workspace), stop, onChanged };
+  }
+
+  it('mostra o painel novo sem mudar o painel ativo nem pedir foco', async () => {
+    const events = wire();
+    const { result } = await mount();
+    act(() => result.current.activateWithFocus('b'));
+    const changed = vi.fn();
+    window.addEventListener(WORKSPACES_CHANGED_EVENT, changed);
+
+    act(() => events.emit(withPreviewPane()));
+    window.removeEventListener(WORKSPACES_CHANGED_EVENT, changed);
+
+    if (result.current.state.status !== 'ready') throw new Error('estado');
+    const ids = leavesOf(result.current.state.workspace.layout).map((leaf) => leaf.id);
+    expect(ids).toEqual(['a', 'b', 'preview']);
+    expect(result.current.activeLeafId).toBe('b');
+    expect(result.current.focusLeafId).toBe('b');
+    // As abas dos workspaces contam os painéis: precisam saber da mudança.
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('não grava de volta o layout que o processo principal acabou de mandar', async () => {
+    const events = wire();
+    const { result } = await mount();
+    act(() => result.current.setSizes('raiz', [0.7, 1 - 0.7]));
+
+    act(() => events.emit(withPreviewPane()));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS * 2);
+    });
+
+    // O pendente foi feito sobre o layout velho: gravá-lo apagaria o painel do preview.
+    expect(api.saveLayout).not.toHaveBeenCalled();
+  });
+
+  it('ignora a mudança de outro workspace', async () => {
+    const events = wire();
+    const { result } = await mount();
+
+    act(() => events.emit(withPreviewPane('p2')));
+
+    if (result.current.state.status !== 'ready') throw new Error('estado');
+    expect(leavesOf(result.current.state.workspace.layout)).toHaveLength(2);
+  });
+
+  it('em workspace vazio, o painel novo vira o ativo, sem foco', async () => {
+    const events = wire();
+    api.open.mockResolvedValue({ ok: true, data: { ...dto(layoutOf()), layout: null } });
+    const { result } = await mount();
+    expect(result.current.activeLeafId).toBeNull();
+
+    act(() => events.emit(withPreviewPane()));
+
+    expect(result.current.activeLeafId).toBe('a');
+    expect(result.current.focusLeafId).toBeNull();
+  });
+
+  it('cancela a assinatura ao desmontar', async () => {
+    const events = wire();
+    const { unmount } = await mount();
+    expect(events.onChanged).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(events.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem o aviso na API (testes antigos da tela), o hook funciona como antes', async () => {
+    const { result } = await mount();
+    expect(result.current.state.status).toBe('ready');
+  });
+});

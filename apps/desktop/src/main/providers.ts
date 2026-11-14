@@ -148,3 +148,13 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
     resolve,
   };
 }
+
+/**
+ * Os argumentos que fazem o shell rodar `command` ao abrir e continuar aberto depois, para a pessoa rodar de novo
+ * à mão. Vão depois dos argumentos do provedor `shell`. O comando chega pronto de quem chama: aqui ele só é posto
+ * no lugar certo, como um argumento só.
+ */
+export function shellStartArgs(command: string, platform: NodeJS.Platform): readonly string[] {
+  if (platform === 'win32') return ['-NoExit', '-Command', command];
+  return ['-c', `${command}; exec "\${SHELL:-/bin/sh}"`];
+}

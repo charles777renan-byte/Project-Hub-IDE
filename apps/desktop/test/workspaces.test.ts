@@ -1,13 +1,15 @@
 import type { ProjectRepository } from '@project-hub/application';
 import {
+  PREVIEW_MESSAGES,
   workspaceLayoutSchema,
   type AppResult,
   type LayoutNode,
   type ProviderId,
+  type WorkspaceDto,
 } from '@project-hub/contracts';
 import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database';
 import { describe, expect, it, vi } from 'vitest';
-import type { TerminalService } from '../src/main/terminals';
+import type { OpenSessionOptions, TerminalService } from '../src/main/terminals';
 import { arrangeLeaves } from '@project-hub/contracts/layout-ops';
 import { createWorkspaceService } from '../src/main/workspaces';
 
@@ -125,16 +127,19 @@ function setup(
 ) {
   const memory = memoryRepo(options.records);
   const calls: string[] = [];
+  const published: WorkspaceDto[] = [];
   const terminals: TerminalsPort = {
-    openSession: vi.fn((_projectId: string, provider: ProviderId) => {
-      calls.push(`open:${provider}`);
-      return Promise.resolve(
-        options.openResult ?? {
-          ok: true as const,
-          data: { terminalId: options.openIds?.() ?? 'novo' },
-        },
-      );
-    }),
+    openSession: vi.fn(
+      (_projectId: string, provider: ProviderId, _options?: OpenSessionOptions) => {
+        calls.push(`open:${provider}`);
+        return Promise.resolve(
+          options.openResult ?? {
+            ok: true as const,
+            data: { terminalId: options.openIds?.() ?? 'novo' },
+          },
+        );
+      },
+    ),
     closeSession: vi.fn((terminalId: string) => {
       calls.push(`close:${terminalId}`);
       return Promise.resolve(
@@ -163,8 +168,9 @@ function setup(
     checkResume: () => ({ resumable: true, resumeBlockedReason: null }),
     now: () => AT,
     newId: counter('id-'),
+    publish: (workspace) => void published.push(workspace),
   });
-  return { service, terminals, calls, ...memory };
+  return { service, terminals, calls, published, ...memory };
 }
 
 function stored(rows: Map<string, WorkspaceRecord>, id: string): LayoutNode | null {
@@ -1010,5 +1016,103 @@ describe('close e list', () => {
     if (!result.ok) throw new Error('esperava sucesso');
     expect(result.data[0]?.layout).toBeNull();
     expect(rows.get('w1')?.layout).toBe('null');
+  });
+});
+
+describe('addPreviewPane', () => {
+  const PANE = { startCommand: 'pnpm run dev', title: 'Preview · app' };
+
+  it('abre um shell com o comando de partida, põe o painel no workspace do projeto e avisa a tela', async () => {
+    const { service, terminals, rows, published } = setup({
+      records: [record({ layout: JSON.stringify(pair('t1', 't2')) })],
+      openIds: () => 'preview-1',
+    });
+
+    const result = await service.addPreviewPane('p1', PANE);
+
+    expect(terminals.openSession).toHaveBeenCalledWith('p1', 'shell', PANE);
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data.terminalId).toBe('preview-1');
+    const leaves = leavesOf(result.data.workspace.layout);
+    expect(leaves).toHaveLength(3);
+    expect(leaves.find((leaf) => leaf.terminalId === 'preview-1')?.provider).toBe('shell');
+    // Os painéis que já estavam continuam com os terminais deles.
+    expect(leaves.map((leaf) => leaf.terminalId)).toEqual(expect.arrayContaining(['t1', 't2']));
+    expect(stored(rows, 'w1')).toEqual(result.data.workspace.layout);
+    expect(published).toEqual([result.data.workspace]);
+  });
+
+  it('em workspace vazio, o painel do preview é o único', async () => {
+    const { service } = setup({
+      records: [record({ layout: 'null' })],
+      openIds: () => 'preview-1',
+    });
+
+    const result = await service.addPreviewPane('p1', PANE);
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data.workspace.layout).toMatchObject({
+      type: 'leaf',
+      provider: 'shell',
+      terminalId: 'preview-1',
+    });
+  });
+
+  it.each([
+    ['sem workspace', []],
+    ['com o workspace fechado', [record({ layout: 'null', isOpen: false })]],
+  ])('projeto %s: recusa sem abrir sessão e sem avisar', async (_label, records) => {
+    const { service, terminals, published } = setup({ records });
+
+    const result = await service.addPreviewPane('p1', PANE);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: PREVIEW_MESSAGES.noWorkspace },
+    });
+    expect(terminals.openSession).not.toHaveBeenCalled();
+    expect(published).toEqual([]);
+  });
+
+  it('no limite de painéis, recusa sem abrir sessão e sem avisar', async () => {
+    const twelve = arrangeLeaves(
+      Array.from({ length: 12 }, (_, i) => leaf(`l${i}`, 'shell', `t${i}`)) as Extract<
+        LayoutNode,
+        { type: 'leaf' }
+      >[],
+      counter('s'),
+    );
+    const { service, terminals, published, updateLayout } = setup({
+      records: [record({ layout: JSON.stringify(twelve) })],
+    });
+
+    const result = await service.addPreviewPane('p1', PANE);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(terminals.openSession).not.toHaveBeenCalled();
+    expect(updateLayout).not.toHaveBeenCalled();
+    expect(published).toEqual([]);
+  });
+
+  it('se a sessão não abre, a falha volta e nada é gravado nem avisado', async () => {
+    const { service, published, updateLayout } = setup({
+      records: [record({ layout: 'null' })],
+      openResult: {
+        ok: false,
+        error: { code: 'PROCESS_START_FAILED', message: 'não abriu', retryable: false },
+      },
+    });
+
+    const result = await service.addPreviewPane('p1', PANE);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'PROCESS_START_FAILED' } });
+    expect(updateLayout).not.toHaveBeenCalled();
+    expect(published).toEqual([]);
+  });
+
+  it('os painéis abertos pela pessoa não avisam a tela: ela já recebe a resposta', async () => {
+    const { service, published } = setup({ records: [record({ layout: 'null' })] });
+    await service.addPane('w1', 'shell');
+    expect(published).toEqual([]);
   });
 });

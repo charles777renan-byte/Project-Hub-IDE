@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProviderRegistry } from '../src/main/providers';
+import { createProviderRegistry, shellStartArgs } from '../src/main/providers';
 
 const MISSING = (label: string) =>
   `${label} não foi encontrado no PATH. Instale o programa e reabra o Project Hub.`;
@@ -216,5 +216,23 @@ describe('gancho de teste do Claude do painel', () => {
     });
 
     expect(registry.resolve('claude').ok).toBe(false);
+  });
+});
+
+describe('shellStartArgs', () => {
+  it('no Windows, o PowerShell roda o comando e continua aberto', () => {
+    expect(shellStartArgs('pnpm run dev', 'win32')).toEqual([
+      '-NoExit',
+      '-Command',
+      'pnpm run dev',
+    ]);
+  });
+
+  it('fora do Windows, o shell roda o comando e depois vira um shell interativo', () => {
+    expect(shellStartArgs('npm run dev', 'linux')).toEqual([
+      '-c',
+      'npm run dev; exec "${SHELL:-/bin/sh}"',
+    ]);
+    expect(shellStartArgs('npm run dev', 'darwin')[0]).toBe('-c');
   });
 });

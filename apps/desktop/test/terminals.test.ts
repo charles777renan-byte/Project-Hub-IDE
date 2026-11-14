@@ -241,6 +241,7 @@ function setup(
     now: () => new Date(clock).toISOString(),
     hooks: hooks.hooks,
     settingsDir: options.settingsDir ?? settingsDir(),
+    platform: 'win32',
   });
   return {
     service,
@@ -1019,4 +1020,59 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
 
     expect(h.hooks.unregistered).toEqual(['claude-antigo']);
   });
+});
+
+describe('sessão shell com comando de partida (o painel do preview)', () => {
+  it('abre o shell com o comando depois dos argumentos do programa e grava o título dado', async () => {
+    const h = setup();
+
+    const result = await h.service.openSession('p1', 'shell', {
+      startCommand: 'pnpm run dev',
+      title: 'Preview · app',
+    });
+
+    expect(result).toEqual({ ok: true, data: { terminalId: 'shell-1' } });
+    expect(h.opened[0]).toMatchObject({
+      cwd: 'C:/dev/app',
+      command: 'shell.exe',
+      args: ['-NoLogo', '-NoExit', '-Command', 'pnpm run dev'],
+    });
+    expect(h.sessions.rows.get('shell-1')).toMatchObject({
+      provider: 'shell',
+      title: 'Preview · app',
+    });
+    // O app não digita nada no terminal: o comando vai só na partida.
+    expect(h.written).toEqual([]);
+  });
+
+  it('sem título, a sessão com comando de partida fica com o título de sempre', async () => {
+    const h = setup();
+    await h.service.openSession('p1', 'shell', { startCommand: 'npm run dev' });
+    expect(h.sessions.rows.get('shell-1')?.title).toBe('PowerShell · app');
+  });
+
+  it.each(['claude', 'codex'] as const)(
+    'recusa comando de partida no provedor %s, sem abrir nem gravar',
+    async (provider) => {
+      const h = setup();
+
+      const result = await h.service.openSession('p1', provider, { startCommand: 'pnpm run dev' });
+
+      expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+      expect(h.opened).toEqual([]);
+      expect(h.sessions.rows.size).toBe(0);
+    },
+  );
+
+  it.each(['', '   ', 'pnpm run dev\ncalc', 'pnpm run dev\r', 'a\x00b', 'x'.repeat(501)])(
+    'recusa o comando de partida %j',
+    async (startCommand) => {
+      const h = setup();
+
+      const result = await h.service.openSession('p1', 'shell', { startCommand });
+
+      expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+      expect(h.opened).toEqual([]);
+    },
+  );
 });

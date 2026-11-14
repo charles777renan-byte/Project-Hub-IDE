@@ -23,7 +23,7 @@ import {
   type HookEventName,
 } from '@project-hub/agent-adapters';
 import { buildTerminalEnv } from '../terminal-host/env';
-import type { ProviderRegistry } from './providers';
+import { shellStartArgs, type ProviderRegistry } from './providers';
 import { createTerminalUsageService } from './terminal-usage';
 
 /** Quanto tempo uma contagem de arquivos alterados vale. O Git roda por pasta, não a cada leitura da lista. */
@@ -64,10 +64,31 @@ export type TerminalServiceDeps = {
   hooks: ClaudeHooks;
   /** Pasta do script de hook e dos arquivos de `--settings` (a mesma do adaptador da missão). */
   settingsDir: string;
+  /** O sistema em que o shell roda, para montar o comando de partida. Padrão: o deste processo. */
+  platform?: NodeJS.Platform;
 };
 
-/** Como abrir uma sessão fora do padrão: a pasta e os argumentos extras do programa. */
-export type OpenSessionOptions = { cwd?: string; args?: readonly string[] };
+/**
+ * Como abrir uma sessão fora do padrão: a pasta e os argumentos extras do programa. `startCommand` é o comando que
+ * o shell roda ao abrir (o servidor do preview) e só vale para o provedor `shell`; quem o passa é o processo
+ * principal, nunca um canal do renderer. `title` troca o título da sessão.
+ */
+export type OpenSessionOptions = {
+  cwd?: string;
+  args?: readonly string[];
+  startCommand?: string;
+  title?: string;
+};
+
+/** Maior comando de partida aceito. O do preview é `<gerenciador> run <script>`, bem menor. */
+const START_COMMAND_MAX = 500;
+
+/** Um comando de partida tem texto, cabe no limite e não tem quebra de linha nem outro caractere de controle. */
+function isStartCommand(command: string): boolean {
+  if (command.trim() === '' || command.length > START_COMMAND_MAX) return false;
+  // eslint-disable-next-line no-control-regex -- é justamente o caractere de controle que não pode entrar.
+  return !/[\x00-\x1f\x7f]/.test(command);
+}
 
 /** O que a interface pede ao app. Só entram ids: o caminho e o comando saem do banco e do registro de provedores. */
 export type TerminalService = {
@@ -297,13 +318,23 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     if (target === undefined) {
       return failure('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
     }
+    const { startCommand } = options;
+    if (startCommand !== undefined && (provider !== 'shell' || !isStartCommand(startCommand))) {
+      return failure('VALIDATION_FAILED', 'Este terminal não aceita um comando de partida.');
+    }
     const resolution = providers.resolve(provider);
     if (!resolution.ok) return failure('PROCESS_START_FAILED', resolution.reason);
 
     const terminalId = deps.newId();
     const base = {
       // Os argumentos extras (a retomada) entram depois dos do programa, como o `.cmd` exige.
-      args: [...resolution.launch.args, ...(options.args ?? [])],
+      args: [
+        ...resolution.launch.args,
+        ...(options.args ?? []),
+        ...(startCommand === undefined
+          ? []
+          : shellStartArgs(startCommand, deps.platform ?? process.platform)),
+      ],
       // COLORTERM fica fora da lista de permitidos (que protege segredos): o valor é fixo e nosso.
       env: buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }),
     };
@@ -328,7 +359,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         id: terminalId,
         projectId,
         provider,
-        title: `${label} · ${target.name}`,
+        title: options.title ?? `${label} · ${target.name}`,
         createdAt: deps.now(),
       });
     } catch (error) {

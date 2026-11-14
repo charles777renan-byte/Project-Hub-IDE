@@ -9,6 +9,7 @@ import {
   type MissionEventDto,
   type MissionUsageEventDto,
   type TerminalEvent,
+  type WorkspaceDto,
 } from '@project-hub/contracts';
 import { getStatus, listWorktrees } from '@project-hub/git-adapter';
 import { createHash, randomUUID } from 'node:crypto';
@@ -255,6 +256,13 @@ function publishBrowserState(state: BrowserStateDto): void {
   const target = mainWindow;
   if (target === undefined || target.isDestroyed()) return;
   target.webContents.send(CHANNELS.browserChanged, state);
+}
+
+/** Entrega ao quadro principal um workspace que o processo principal mudou por conta própria. */
+function publishWorkspace(workspace: WorkspaceDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.workspacesChanged, workspace);
 }
 
 /** Entrega ao quadro principal um atalho do app que foi teclado com o foco dentro de uma página do navegador. */
@@ -669,6 +677,7 @@ app
       checkResume: resumeVerdict,
       now: () => new Date().toISOString(),
       newId: randomUUID,
+      publish: publishWorkspace,
     });
     // Fechar a aba do projeto fecha também as páginas do navegador dele; a lista de abas fica no banco.
     const workspaceService: typeof baseWorkspaceService = {

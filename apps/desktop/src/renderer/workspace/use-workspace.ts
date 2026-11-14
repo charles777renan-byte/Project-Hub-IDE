@@ -260,6 +260,30 @@ export function useWorkspace(projectId: string): UseWorkspace {
     };
   }, [projectId, adopt, saveNow, setActive, forgetUndo]);
 
+  // O processo principal mudou o workspace por conta própria (o painel do preview). O layout dele vale inteiro,
+  // como o de uma resposta, mas ninguém aqui pediu nada: o painel ativo e o foco ficam onde estavam.
+  useEffect(() => {
+    // A API de teste de algumas telas não tem o aviso, ou nem tem a parte de workspaces.
+    const api = window.projectHub.workspaces as
+      Partial<typeof window.projectHub.workspaces> | undefined;
+    const subscribe = api?.onChanged;
+    if (subscribe === undefined) return undefined;
+    return subscribe((workspace) => {
+      if (current.current?.id !== workspace.id) return;
+      // O pendente foi feito sobre o layout velho: gravá-lo apagaria o que o processo principal acabou de pôr.
+      dirty.current = false;
+      if (timer.current !== undefined) {
+        clearTimeout(timer.current);
+        timer.current = undefined;
+      }
+      forgetUndo();
+      adopt(workspace);
+      setSaveError(null);
+      if (activeRef.current === null) setActive(firstLeafId(workspace.layout));
+      window.dispatchEvent(new Event(WORKSPACES_CHANGED_EVENT));
+    });
+  }, [adopt, forgetUndo, setActive, setSaveError]);
+
   const setSizes = useCallback(
     (splitId: string, sizes: number[]) =>
       edit((layout) => (layout === null ? null : withSizes(layout, splitId, sizes))),
