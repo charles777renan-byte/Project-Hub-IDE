@@ -113,6 +113,7 @@ function setup(
   const service = createPreviewService({
     repo: {
       get: (projectId) => rows.get(projectId),
+      list: () => [...rows.values()],
       save: (row) => void rows.set(row.projectId, row),
       delete: (projectId) => void rows.delete(projectId),
     },
@@ -276,6 +277,23 @@ describe('preview: estado', () => {
     h.responding.add(url);
     expect(ok(await h.service.state('p1')).status).toBe('running');
     expect(h.probe).toHaveBeenLastCalledWith(url, { timeoutMs: 500 });
+  });
+
+  it('o último endereço responde, mas a porta é do preview vivo de outro projeto: não conta como "running"', async () => {
+    const h = setup({
+      records: [
+        record({ lastUrl: 'http://localhost:5173/' }),
+        record({ projectId: 'p2', lastUrl: 'http://127.0.0.1:5173/', terminalId: 'outro' }),
+      ],
+    });
+    h.responding.add('http://localhost:5173/');
+    h.alive.add('outro');
+
+    expect(ok(await h.service.state('p1')).status).toBe('idle');
+
+    // O terminal do outro projeto encerrou: quem responde na porta não é mais dele.
+    h.alive.delete('outro');
+    expect(ok(await h.service.state('p1')).status).toBe('running');
   });
 
   it('um último endereço que não é local nunca é conferido nem devolvido', async () => {
@@ -525,6 +543,109 @@ describe('preview: iniciar com script', () => {
     expect(h.browser.navigate).toHaveBeenCalledWith('p1', 'tab1', url);
     expect(h.panes.addPreviewPane).not.toHaveBeenCalled();
     expect(state.status).toBe('running');
+  });
+
+  it('a porta que responde é do preview vivo de outro projeto: sobe o painel deste e não navega para o do outro', async () => {
+    const url = 'http://localhost:5173/';
+    const h = setup({
+      records: [
+        record({ lastUrl: url }),
+        record({ projectId: 'p2', lastUrl: 'http://127.0.0.1:5173/', terminalId: 'outro' }),
+      ],
+    });
+    h.responding.add(url);
+    h.alive.add('outro');
+
+    const state = ok(await h.service.start('p1', 'tab1'));
+
+    expect(h.browser.navigate).not.toHaveBeenCalled();
+    expect(h.panes.addPreviewPane).toHaveBeenCalledTimes(1);
+    expect(state.status).toBe('starting');
+  });
+
+  it.each([
+    ['o terminal do outro projeto encerrou', { alive: [] as string[], other: {} }],
+    [
+      'o outro projeto usa outra porta',
+      { alive: ['outro'], other: { lastUrl: 'http://localhost:3000/' } },
+    ],
+    [
+      'o outro projeto tem endereço fixo, sem servidor do app',
+      {
+        alive: ['outro'],
+        other: { kind: 'address' as const, fixedUrl: 'http://localhost:5173/' },
+      },
+    ],
+  ])('a porta que responde vale quando %s', async (_label, { alive, other }) => {
+    const url = 'http://localhost:5173/';
+    const h = setup({
+      records: [
+        record({ lastUrl: url }),
+        record({
+          projectId: 'p2',
+          lastUrl: 'http://127.0.0.1:5173/',
+          terminalId: 'outro',
+          ...other,
+        }),
+      ],
+    });
+    h.responding.add(url);
+    for (const id of alive) h.alive.add(id);
+
+    ok(await h.service.start('p1', 'tab1'));
+
+    expect(h.browser.navigate).toHaveBeenCalledWith('p1', 'tab1', url);
+    expect(h.panes.addPreviewPane).not.toHaveBeenCalled();
+  });
+
+  it('dois previews vivos na mesma porta: vale o de quem gravou o endereço por último', async () => {
+    const url = 'http://localhost:5173/';
+    const rows = (mine: string, theirs: string) => [
+      record({ lastUrl: url, terminalId: 'meu', updatedAt: mine }),
+      record({ projectId: 'p2', lastUrl: url, terminalId: 'outro', updatedAt: theirs }),
+    ];
+
+    const newer = setup({ records: rows('2026-01-02T00:00:00.000Z', '2026-01-01T00:00:00.000Z') });
+    newer.responding.add(url);
+    newer.alive.add('meu').add('outro');
+    expect(ok(await newer.service.state('p1')).status).toBe('running');
+
+    const older = setup({ records: rows('2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z') });
+    older.responding.add(url);
+    older.alive.add('meu').add('outro');
+    expect(ok(await older.service.state('p1')).status).toBe('stale-terminal');
+  });
+
+  it('outro projeto ainda subindo, com o endereço antigo dele na mesma porta, não toma a porta deste', async () => {
+    const url = 'http://localhost:5173/';
+    const h = setup({
+      records: [
+        record({ lastUrl: url, terminalId: 'meu' }),
+        record({ projectId: 'p2', lastUrl: url }),
+      ],
+    });
+    h.responding.add(url);
+    h.alive.add('meu');
+
+    // O outro projeto vê que a porta é deste e sobe o painel dele, que ainda não anunciou endereço.
+    expect(ok(await h.service.start('p2', 'tab2')).status).toBe('starting');
+    h.alive.add('t1');
+
+    expect(ok(await h.service.state('p1')).status).toBe('running');
+  });
+
+  it('endereço fixo não passa pela conferência de dono da porta', async () => {
+    const url = 'http://localhost:5173/';
+    const h = setup({
+      records: [
+        record({ kind: 'address', fixedUrl: url, lastUrl: url }),
+        record({ projectId: 'p2', lastUrl: url, terminalId: 'outro' }),
+      ],
+    });
+    h.responding.add(url);
+    h.alive.add('outro');
+
+    expect(ok(await h.service.state('p1')).status).toBe('running');
   });
 
   it('terminal do preview vivo sem servidor: não cria painel; com "restart", fecha e sobe outro', async () => {

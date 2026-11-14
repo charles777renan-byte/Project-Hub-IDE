@@ -143,6 +143,17 @@ function originOf(url: string): string | undefined {
   }
 }
 
+/** A porta de um endereço local. Os nomes mudam (`localhost`, `127.0.0.1`), a porta é a mesma máquina. */
+function portOf(url: string): number | undefined {
+  try {
+    const parsed = new URL(url);
+    if (parsed.port !== '') return Number(parsed.port);
+    return parsed.protocol === 'https:' ? 443 : 80;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * O preview de cada projeto. É quem decide o que roda: lê o `package.json`, confere a aprovação guardada contra
  * ele, monta o comando (`commandFor`) e pede o painel ao serviço de workspaces. A tela só manda ids, o nome de um
@@ -184,6 +195,37 @@ export function createPreviewService(deps: PreviewServiceDeps): PreviewService {
     return deps.probe(url, { timeoutMs }).catch(() => false);
   }
 
+  /**
+   * Se a porta de `url` é do servidor do preview de outro projeto. Dois projetos costumam anunciar a mesma porta
+   * padrão (5173, 3000) em dias diferentes: o último endereço deste pode estar respondendo com o servidor do
+   * outro. É do outro quando o terminal do preview dele está vivo, o último endereço dele é nessa porta e, se o
+   * terminal deste também está vivo, foi o outro quem gravou o endereço por último.
+   */
+  async function servedByAnother(record: ProjectPreviewRecord, url: string): Promise<boolean> {
+    const port = portOf(url);
+    const mine = record.terminalId !== null && (await isAlive(record.terminalId));
+    for (const other of deps.repo.list()) {
+      if (other.projectId === record.projectId || other.kind !== 'script') continue;
+      if (other.terminalId === null) continue;
+      // Um preview que ainda está subindo não anunciou endereço: o guardado é de uma subida anterior.
+      if (runs.get(other.projectId)?.status === 'starting') continue;
+      const theirs = knownUrl(other);
+      if (theirs === null || portOf(theirs) !== port) continue;
+      if (mine && other.updatedAt <= record.updatedAt) continue;
+      if (await isAlive(other.terminalId)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * "O servidor já está de pé?": o endereço guardado responde e quem responde é este projeto. Um endereço fixo é
+   * escolha da pessoa e não passa pela conferência de dono.
+   */
+  async function isUp(record: ProjectPreviewRecord | undefined, url: string): Promise<boolean> {
+    if (!(await responds(url, UP_PROBE_MS))) return false;
+    return record?.kind !== 'script' || !(await servedByAnother(record, url));
+  }
+
   async function stateOf(
     projectId: string,
     reading: Reading,
@@ -195,7 +237,7 @@ export function createPreviewService(deps: PreviewServiceDeps): PreviewService {
     let status = forced ?? run?.status;
     if (status === undefined) {
       const terminalId = record?.terminalId ?? null;
-      if (url !== null && (await responds(url, UP_PROBE_MS))) status = 'running';
+      if (url !== null && (await isUp(record, url))) status = 'running';
       else if (terminalId !== null && (await isAlive(terminalId))) status = 'stale-terminal';
       else status = 'idle';
     }
@@ -412,7 +454,7 @@ export function createPreviewService(deps: PreviewServiceDeps): PreviewService {
     stopRun(projectId);
 
     const url = knownUrl(record);
-    if (url !== null && (await responds(url, UP_PROBE_MS))) {
+    if (url !== null && (await isUp(record, url))) {
       deps.browser.navigate(projectId, tabId, url);
       return settle(projectId, reading, 'running');
     }

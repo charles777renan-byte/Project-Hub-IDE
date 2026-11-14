@@ -114,6 +114,19 @@ describe('repositório do preview do projeto', () => {
     expect(repo.get('p1')?.scriptBody).toBe(scriptBody);
   });
 
+  it('lista os registros de todos os projetos', () => {
+    expect(repo.list()).toEqual([]);
+    repo.save(preview('p1'));
+    repo.save(preview('p2', { kind: 'address', fixedUrl: 'http://localhost:3000/' }));
+
+    const all = repo.list();
+
+    expect(all.map((row) => row.projectId).sort()).toEqual(['p1', 'p2']);
+    expect(all.find((row) => row.projectId === 'p2')).toEqual(
+      preview('p2', { kind: 'address', fixedUrl: 'http://localhost:3000/' }),
+    );
+  });
+
   it('apagar tira só a linha do projeto', () => {
     repo.save(preview('p1'));
     repo.save(preview('p2'));

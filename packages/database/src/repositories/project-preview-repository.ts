@@ -26,12 +26,20 @@ export type ProjectPreviewRecord = {
 
 export interface ProjectPreviewRepository {
   get(projectId: string): ProjectPreviewRecord | undefined;
+  /** Os registros de todos os projetos: o preview confere se uma porta que responde é do servidor de outro. */
+  list(): ProjectPreviewRecord[];
   /** Insere ou troca a linha inteira do projeto. */
   save(record: ProjectPreviewRecord): void;
   delete(projectId: string): void;
 }
 
 const KINDS: readonly string[] = ['script', 'address', 'none'];
+
+function toRecord(row: typeof projectPreviews.$inferSelect): ProjectPreviewRecord {
+  // Um valor que este código não conhece (banco de uma versão mais nova) conta como nada aprovado.
+  const kind = KINDS.includes(row.kind) ? (row.kind as ProjectPreviewRecord['kind']) : 'none';
+  return { ...row, kind };
+}
 
 export function createProjectPreviewRepository(db: AppDatabase): ProjectPreviewRepository {
   return {
@@ -41,10 +49,11 @@ export function createProjectPreviewRepository(db: AppDatabase): ProjectPreviewR
         .from(projectPreviews)
         .where(eq(projectPreviews.projectId, projectId))
         .get();
-      if (row === undefined) return undefined;
-      // Um valor que este código não conhece (banco de uma versão mais nova) conta como nada aprovado.
-      const kind = KINDS.includes(row.kind) ? (row.kind as ProjectPreviewRecord['kind']) : 'none';
-      return { ...row, kind };
+      return row === undefined ? undefined : toRecord(row);
+    },
+
+    list() {
+      return db.select().from(projectPreviews).all().map(toRecord);
     },
 
     save(record) {
