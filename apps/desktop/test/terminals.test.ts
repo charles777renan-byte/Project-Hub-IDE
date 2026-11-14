@@ -220,6 +220,7 @@ function setup(
         finishSubscribe = () => resolve(stop);
       });
     },
+    listen: () => Promise.resolve(() => undefined),
   };
   const service = createTerminalService({
     port,

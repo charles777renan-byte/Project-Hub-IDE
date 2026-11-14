@@ -124,6 +124,39 @@ function collector() {
 
 describe.skipIf(!onWindows)('porta de terminais com o processo real', () => {
   it(
+    'uma escuta vê a mesma saída do painel, a guardada e a ao vivo, e continua depois que o painel sai',
+    async () => {
+      const id = randomUUID();
+      await port.open(shellInput(id));
+      const pane = collector();
+      const stopPane = await port.subscribe(id, pane.subscriber);
+      await waitFor(() => pane.seen.output.includes('PS '));
+      await waitForInput(id, pane.seen);
+      await port.write(id, 'Write-Output "antes-$(2+2)"\r');
+      await waitFor(() => pane.seen.output.includes('antes-4'));
+
+      // A escuta entra depois: recebe a saída guardada, e o painel a recebe de novo, avisado por onRestart.
+      const tap = collector();
+      const stopTap = await port.listen(id, tap.subscriber);
+      await waitFor(() => tap.seen.output.includes('antes-4'));
+      await waitFor(() => pane.seen.output.includes('antes-4'));
+      expect(pane.seen.restarts).toBe(2);
+      expect(tap.seen.restarts).toBe(1);
+
+      await port.write(id, 'Write-Output "vivo-$(4+4)"\r');
+      await waitFor(() => tap.seen.output.includes('vivo-8'));
+      await waitFor(() => pane.seen.output.includes('vivo-8'));
+
+      stopPane();
+      await port.write(id, 'Write-Output "sozinha-$(5+5)"\r');
+      await waitFor(() => tap.seen.output.includes('sozinha-10'));
+      expect(pane.seen.output).not.toContain('sozinha-10');
+      stopTap();
+    },
+    SHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
     'abre um shell, recebe a saída ao vivo e informa que o terminal está vivo',
     async () => {
       const id = randomUUID();

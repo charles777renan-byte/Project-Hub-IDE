@@ -19,25 +19,36 @@ export type TerminalHostPortOptions = {
  * Porta de terminais da aplicação, falada com o processo de terminais por pipe. Reconecta sozinha: se a
  * conexão cai, a próxima operação abre outra, e as assinaturas vivas são refeitas. Cada assinatura
  * recebe `onRestart` antes da saída guardada voltar, para ela descartar o que já mostrou.
+ *
+ * Cada terminal tem um assinante principal (o painel na tela) e, ao lado dele, escutas (`listen`). O processo de
+ * terminais só conhece uma assinatura por terminal nesta conexão: ela existe enquanto houver alguém, e a saída é
+ * repartida aqui.
  */
 export function createTerminalHostPort(options: TerminalHostPortOptions): TerminalPort {
   let client: TerminalHostClient | undefined;
   let connecting: Promise<TerminalHostClient> | undefined;
-  const subscribers = new Map<string, TerminalSubscriber>();
+  /** Quem recebe a saída de um terminal: o painel (no máximo um) e as escutas. */
+  type Audience = { primary: TerminalSubscriber | undefined; listeners: Set<TerminalSubscriber> };
+  const audiences = new Map<string, Audience>();
+
+  const membersOf = (audience: Audience): TerminalSubscriber[] =>
+    audience.primary === undefined
+      ? [...audience.listeners]
+      : [audience.primary, ...audience.listeners];
 
   function dispatch(event: HostEvent): void {
-    const subscriber = subscribers.get(event.terminalId);
-    if (subscriber === undefined) return;
+    const audience = audiences.get(event.terminalId);
+    if (audience === undefined) return;
     if (event.event === 'terminal.data') {
-      subscriber.onData(event.data);
+      for (const member of membersOf(audience)) member.onData(event.data);
       return;
     }
-    subscribers.delete(event.terminalId);
-    subscriber.onExit(
+    audiences.delete(event.terminalId);
+    const exit =
       event.signal === undefined
         ? { exitCode: event.exitCode }
-        : { exitCode: event.exitCode, signal: event.signal },
-    );
+        : { exitCode: event.exitCode, signal: event.signal };
+    for (const member of membersOf(audience)) member.onExit(exit);
   }
 
   async function connectAndRestore(): Promise<TerminalHostClient> {
@@ -46,13 +57,13 @@ export function createTerminalHostPort(options: TerminalHostPortOptions): Termin
     });
     next.onEvent(dispatch);
     client = next;
-    for (const [terminalId, subscriber] of [...subscribers]) {
-      subscriber.onRestart();
+    for (const [terminalId, audience] of [...audiences]) {
+      for (const member of membersOf(audience)) member.onRestart();
       await next.request({ type: 'terminal.subscribe', terminalId }).catch((error: unknown) => {
         // Só some quando o terminal não existe mais. Uma queda no meio da volta mantém a assinatura:
         // a próxima operação reconecta e refaz a volta.
         if (error instanceof TerminalHostError && error.code === 'TERMINAL_NOT_FOUND') {
-          subscribers.delete(terminalId);
+          audiences.delete(terminalId);
         }
       });
     }
@@ -72,6 +83,53 @@ export function createTerminalHostPort(options: TerminalHostPortOptions): Termin
     return active.request(body).catch((error: unknown) => {
       throw toPortError(error);
     });
+  }
+
+  /** Tira `subscriber` do terminal, se ainda é ele quem está lá. Devolve se tirou. */
+  function leave(id: string, subscriber: TerminalSubscriber, primary: boolean): boolean {
+    const audience = audiences.get(id);
+    if (audience === undefined) return false;
+    if (primary) {
+      if (audience.primary !== subscriber) return false;
+      audience.primary = undefined;
+    } else if (!audience.listeners.delete(subscriber)) {
+      return false;
+    }
+    if (membersOf(audience).length === 0) audiences.delete(id);
+    return true;
+  }
+
+  /**
+   * Põe `subscriber` no terminal e refaz a assinatura no processo de terminais, que manda a saída guardada outra
+   * vez para a conexão inteira. Por isso todos recebem `onRestart` antes: o que cada um já mostrou vai chegar de novo.
+   */
+  async function join(
+    id: string,
+    subscriber: TerminalSubscriber,
+    primary: boolean,
+  ): Promise<() => void> {
+    await current();
+    const audience = audiences.get(id) ?? { primary: undefined, listeners: new Set() };
+    audiences.set(id, audience);
+    if (primary) audience.primary = subscriber;
+    else audience.listeners.add(subscriber);
+    for (const member of membersOf(audience)) member.onRestart();
+    try {
+      await call({ type: 'terminal.subscribe', terminalId: id });
+    } catch (error) {
+      leave(id, subscriber, primary);
+      throw error;
+    }
+    return () => {
+      if (!leave(id, subscriber, primary)) return;
+      // Ainda há alguém ouvindo: a assinatura do processo de terminais fica.
+      if (audiences.has(id)) return;
+      if (client !== undefined && !client.isClosed) {
+        void client
+          .request({ type: 'terminal.unsubscribe', terminalId: id })
+          .catch(() => undefined);
+      }
+    };
   }
 
   return {
@@ -117,26 +175,9 @@ export function createTerminalHostPort(options: TerminalHostPortOptions): Termin
       }
     },
 
-    async subscribe(id: string, subscriber: TerminalSubscriber): Promise<() => void> {
-      await current();
-      subscribers.set(id, subscriber);
-      subscriber.onRestart();
-      try {
-        await call({ type: 'terminal.subscribe', terminalId: id });
-      } catch (error) {
-        if (subscribers.get(id) === subscriber) subscribers.delete(id);
-        throw error;
-      }
-      return () => {
-        if (subscribers.get(id) !== subscriber) return;
-        subscribers.delete(id);
-        if (client !== undefined && !client.isClosed) {
-          void client
-            .request({ type: 'terminal.unsubscribe', terminalId: id })
-            .catch(() => undefined);
-        }
-      };
-    },
+    subscribe: (id: string, subscriber: TerminalSubscriber) => join(id, subscriber, true),
+
+    listen: (id: string, listener: TerminalSubscriber) => join(id, listener, false),
   };
 }
 
