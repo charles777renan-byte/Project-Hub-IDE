@@ -169,4 +169,18 @@ export const CHANNELS = {
   browserChanged: 'browser:changed:v1',
   /** Um atalho do app foi apertado com o foco na página. Do processo principal para o renderer; não tem resposta. */
   browserShortcut: 'browser:shortcut:v1',
+  /** Preview automático do navegador. Só entram ids, o nome de um script e o texto de um endereço local: nunca o texto de um comando. */
+  previewState: 'preview:state:v1',
+  /** Aprova o script do `package.json` que sobe o servidor. O processo principal relê o arquivo e monta o comando. */
+  previewApprove: 'preview:approve:v1',
+  /** Guarda um endereço local fixo para o projeto. Com ele, o app nunca sobe servidor nesse projeto. */
+  previewSetAddress: 'preview:set-address:v1',
+  /** Sobe o servidor (ou serve o site estático) e abre o endereço na aba de página indicada. */
+  previewStart: 'preview:start:v1',
+  /** Apaga a aprovação e o endereço guardados do projeto. */
+  previewForget: 'preview:forget:v1',
+  /** O estado do preview de um projeto mudou. Do processo principal para o renderer; não tem resposta. */
+  previewChanged: 'preview:changed:v1',
+  /** O processo principal mudou um workspace por conta própria (o painel do preview). Não tem resposta. */
+  workspacesChanged: 'workspaces:changed:v1',
 } as const;

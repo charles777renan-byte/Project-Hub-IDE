@@ -2,6 +2,9 @@ import {
   CHANNELS,
   browserShortcutEventSchema,
   browserStateSchema,
+  previewStateSchema,
+  workspaceDtoSchema,
+  type PreviewStateDto,
   filesChangedEventSchema,
   filesSaveAllRequestSchema,
   limitsDtoSchema,
@@ -232,6 +235,44 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       removePane: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesRemovePane, { workspaceId, leafId }),
       reorder: (workspaceIds: string[]) => call<void>(CHANNELS.workspacesReorder, { workspaceIds }),
+      onChanged: (listener: (workspace: WorkspaceDto) => void) =>
+        subscribe(CHANNELS.workspacesChanged, (payload) => {
+          const parsed = workspaceDtoSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.workspacesChanged}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
+    },
+    preview: {
+      state: (projectId: string) => call<PreviewStateDto>(CHANNELS.previewState, { projectId }),
+      approve: (projectId: string, script: string, shownBody: string) =>
+        call<PreviewStateDto>(CHANNELS.previewApprove, { projectId, script, shownBody }),
+      setAddress: (projectId: string, text: string) =>
+        call<PreviewStateDto>(CHANNELS.previewSetAddress, { projectId, text }),
+      start: (projectId: string, tabId: string, options?: { restart?: boolean }) =>
+        call<PreviewStateDto>(CHANNELS.previewStart, {
+          projectId,
+          tabId,
+          ...(options?.restart === undefined ? {} : { restart: options.restart }),
+        }),
+      forget: (projectId: string) => call<PreviewStateDto>(CHANNELS.previewForget, { projectId }),
+      onChanged: (listener: (state: PreviewStateDto) => void) =>
+        subscribe(CHANNELS.previewChanged, (payload) => {
+          const parsed = previewStateSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.previewChanged}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
     },
     providers: {
       list: () => call<ProviderInfo[]>(CHANNELS.providersList),
@@ -242,8 +283,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     },
     browser: {
       state: (projectId: string) => call<BrowserStateDto>(CHANNELS.browserState, { projectId }),
-      openTab: (projectId: string) =>
-        call<BrowserStateDto>(CHANNELS.browserOpenTab, { projectId }),
+      openTab: (projectId: string) => call<BrowserStateDto>(CHANNELS.browserOpenTab, { projectId }),
       closeTab: (projectId: string, tabId: string) =>
         call<BrowserStateDto>(CHANNELS.browserCloseTab, { projectId, tabId }),
       selectTab: (projectId: string, tabId: string) =>
@@ -260,8 +300,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<void>(CHANNELS.browserStop, { projectId, tabId }),
       setBounds: (projectId: string, bounds: BrowserBounds | null) =>
         call<void>(CHANNELS.browserSetBounds, { projectId, bounds }),
-      snapshot: (projectId: string) =>
-        call<string | null>(CHANNELS.browserSnapshot, { projectId }),
+      snapshot: (projectId: string) => call<string | null>(CHANNELS.browserSnapshot, { projectId }),
       focusPage: (projectId: string) => call<void>(CHANNELS.browserFocusPage, { projectId }),
       openDevtools: (projectId: string, tabId: string) =>
         call<void>(CHANNELS.browserOpenDevtools, { projectId, tabId }),

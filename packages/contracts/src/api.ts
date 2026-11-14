@@ -29,6 +29,7 @@ import type {
   GitStatusDto,
 } from './git-panel';
 import type { LimitsDto } from './limits';
+import type { PreviewStateDto } from './preview';
 import type { ProfileDto } from './profile';
 import type { SessionsListInput, SessionsListResult, SessionsResumeInput } from './sessions';
 import type { SystemUsageDto } from './system';
@@ -183,6 +184,30 @@ export type ProjectHubApi = {
     removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
     /** Põe os workspaces abertos na ordem das abas. A lista precisa ter todos os abertos, uma vez cada. */
     reorder(workspaceIds: string[]): Promise<AppResult<void>>;
+    /** Assina as mudanças que o processo principal faz por conta própria num workspace (o painel do preview). */
+    onChanged(listener: (workspace: WorkspaceDto) => void): () => void;
+  };
+  preview: {
+    /** O preview do projeto: o que o `package.json` oferece, o que está aprovado e a situação do servidor. */
+    state(projectId: string): Promise<AppResult<PreviewStateDto>>;
+    /** Aprova um script pelo nome. `shownBody` é o texto que a tela mostrou; se o script mudou, a aprovação é recusada. */
+    approve(
+      projectId: string,
+      script: string,
+      shownBody: string,
+    ): Promise<AppResult<PreviewStateDto>>;
+    /** Guarda um endereço local fixo. Com ele, o app nunca sobe servidor nesse projeto. */
+    setAddress(projectId: string, text: string): Promise<AppResult<PreviewStateDto>>;
+    /** Sobe o servidor aprovado (ou serve o site estático) e abre o endereço na aba de página `tabId`. */
+    start(
+      projectId: string,
+      tabId: string,
+      options?: { restart?: boolean },
+    ): Promise<AppResult<PreviewStateDto>>;
+    /** Apaga a aprovação e o endereço guardados do projeto. Não fecha terminal. */
+    forget(projectId: string): Promise<AppResult<PreviewStateDto>>;
+    /** Assina as mudanças de estado. Cada evento chega validado. Devolve a função que cancela a assinatura. */
+    onChanged(listener: (state: PreviewStateDto) => void): () => void;
   };
   providers: {
     /** Os programas que um painel abre, e os que faltam no computador com o motivo. */

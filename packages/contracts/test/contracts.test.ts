@@ -158,8 +158,7 @@ describe('CHANNELS', () => {
     );
   });
 
-  it('inclui o canal de atividade, só de leitura', () => {
-  });
+  it('inclui o canal de atividade, só de leitura', () => {});
 
   it('inclui o canal de atividade por agente, só de leitura', () => {
     expect(CHANNELS.activityAgents).toBe('activity:agents:v1');
@@ -312,6 +311,8 @@ describe('responseSchemas', () => {
       CHANNELS.filesChanged,
       CHANNELS.browserChanged,
       CHANNELS.browserShortcut,
+      CHANNELS.previewChanged,
+      CHANNELS.workspacesChanged,
     ];
     const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());
