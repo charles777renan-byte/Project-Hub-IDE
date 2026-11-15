@@ -12,7 +12,9 @@ const PAGE = (title: string, body: string): string =>
 /**
  * Servidor HTTP em 127.0.0.1, numa porta livre. `/` devolve uma página com o título "Site de teste" e um link
  * `target=_blank` para `/outra`; `/cookie` grava o cookie `visita=1` (com validade, para sobreviver ao reinício do
- * app); `/le-cookie` devolve o cookie recebido como texto.
+ * app); `/le-cookie` devolve o cookie recebido como texto. `/agente` tem um botão que troca o título, um campo que
+ * escreve em `#saida` ao receber Enter e um erro plantado no console; `/dialogos` tem um botão que chama `alert()` e
+ * um link `mailto:`.
  */
 export async function startLocalSite(): Promise<{ url: string; close(): Promise<void> }> {
   const server = createServer((request, response) => {
@@ -33,6 +35,26 @@ export async function startLocalSite(): Promise<{ url: string; close(): Promise<
       response.end(PAGE('Cookie gravado', '<p id="texto">gravado</p>'));
     } else if (path === '/le-cookie') {
       response.end(PAGE('Cookie lido', `<p id="texto">${request.headers.cookie ?? ''}</p>`));
+    } else if (path === '/agente') {
+      response.end(
+        PAGE(
+          'Página do agente',
+          '<h1 style="color:#06c">Página do agente</h1>' +
+            '<button id="mudar" onclick="document.title=&quot;Clicado&quot;">Mudar título</button>' +
+            '<input id="campo" aria-label="Campo de teste"><p id="saida"></p>' +
+            '<script>console.error("erro plantado");' +
+            'document.getElementById("campo").addEventListener("keydown",function(e){' +
+            'if(e.key==="Enter")document.getElementById("saida").textContent="enviado: "+e.target.value;});</script>',
+        ),
+      );
+    } else if (path === '/dialogos') {
+      response.end(
+        PAGE(
+          'Diálogos',
+          '<button id="alerta" onclick="alert(1);document.title=&quot;Depois do alerta&quot;">Alertar</button>' +
+            '<a id="carta" href="mailto:alguem@example.com">Escrever</a>',
+        ),
+      );
     } else {
       response.statusCode = 404;
       response.end(PAGE('Não encontrada', '<h1>404</h1>'));
@@ -52,12 +74,13 @@ export async function startLocalSite(): Promise<{ url: string; close(): Promise<
 }
 
 /**
- * Roda `script` na página que o navegador do projeto visível mostra agora (a view presa à janela), pelo processo
- * principal. Falha se não há página à vista.
+ * Roda `script` na página que o navegador do projeto visível mostra agora (a view presa à janela principal), pelo
+ * processo principal. Falha se não há página à vista. A janela de apoio das páginas de agente não conta: ela nunca
+ * recebe o foco, e é assim que as três funções daqui a separam da principal.
  */
 export function evalInBrowserPage<T>(app: ElectronApplication, script: string): Promise<T> {
   return app.evaluate(async ({ BrowserWindow }, code) => {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getAllWindows().find((each) => each.isFocusable());
     const view = win?.contentView.children.find((child) => 'webContents' in child) as
       { webContents: Electron.WebContents } | undefined;
     if (view === undefined) throw new Error('Nenhuma página do navegador está na janela.');
@@ -80,7 +103,9 @@ export type ViewState = {
 export function viewState(app: ElectronApplication): Promise<ViewState> {
   return app.evaluate(({ BrowserWindow }) => {
     const windows = BrowserWindow.getAllWindows();
-    const views = (windows[0]?.contentView.children ?? []).filter(
+    // A janela principal: a de apoio das páginas de agente nunca recebe o foco.
+    const main = windows.find((each) => each.isFocusable());
+    const views = (main?.contentView.children ?? []).filter(
       (child) => 'webContents' in child,
     ) as unknown as { webContents: Electron.WebContents; getBounds(): Electron.Rectangle }[];
     const view = views[0];
@@ -101,7 +126,7 @@ export function pressInBrowserPage(
 ): Promise<void> {
   return app.evaluate(
     ({ BrowserWindow }, input) => {
-      const win = BrowserWindow.getAllWindows()[0];
+      const win = BrowserWindow.getAllWindows().find((each) => each.isFocusable());
       const view = win?.contentView.children.find((child) => 'webContents' in child) as
         { webContents: Electron.WebContents } | undefined;
       if (view === undefined) throw new Error('Nenhuma página do navegador está na janela.');
