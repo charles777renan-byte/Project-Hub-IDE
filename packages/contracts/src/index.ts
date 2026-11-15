@@ -8,6 +8,7 @@ export * from './git-panel';
 export * from './github';
 export * from './limits';
 export * from './mission';
+export * from './preview';
 export * from './profile';
 export * from './sessions';
 export * from './system';

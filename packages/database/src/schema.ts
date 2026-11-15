@@ -270,6 +270,25 @@ export const browserTabs = sqliteTable(
   (table) => [index('browser_tabs_project_idx').on(table.projectId)],
 );
 
+/**
+ * O preview do navegador de cada projeto: o que a pessoa aprovou (o script, como ela viu, ou um endereço fixo), o
+ * último endereço que respondeu, o terminal do servidor e a porta do site estático. Uma linha por projeto.
+ */
+export const projectPreviews = sqliteTable('project_previews', {
+  projectId: text('project_id')
+    .primaryKey()
+    .references(() => projects.id),
+  kind: text('kind').notNull(),
+  packageManager: text('package_manager'),
+  script: text('script'),
+  scriptBody: text('script_body'),
+  fixedUrl: text('fixed_url'),
+  lastUrl: text('last_url'),
+  terminalId: text('terminal_id'),
+  staticPort: integer('static_port'),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const schema = {
   projects,
   missions,
@@ -282,4 +301,5 @@ export const schema = {
   terminalSessions,
   appSettings,
   browserTabs,
+  projectPreviews,
 };

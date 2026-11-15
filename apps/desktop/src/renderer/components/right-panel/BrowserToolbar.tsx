@@ -12,7 +12,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Ellipsis,
+  Globe,
   ICON_PROPS,
+  Lock,
   Maximize2,
   Minimize2,
   RotateCw,
@@ -56,7 +58,13 @@ function BarButton({
   );
 }
 
-type MenuItem = { label: string; disabled: boolean; run: () => void };
+type MenuItem = {
+  label: string;
+  disabled: boolean;
+  run: () => void;
+  /** Uma divisória acima do item: ele é de outro grupo. */
+  separated?: boolean;
+};
 
 /**
  * O menu "Mais ações" do navegador. É uma lista `role="menu"` própria (o mesmo desenho do menu do Código-fonte):
@@ -166,7 +174,11 @@ function MoreMenu({
           onKeyDown={onMenuKeyDown}
         >
           {items.map((item, index) => (
-            <li key={item.label} role="none">
+            <li
+              key={item.label}
+              role="none"
+              className={item.separated === true ? 'browser__menu-row--separated' : undefined}
+            >
               <button
                 type="button"
                 role="menuitem"
@@ -211,6 +223,7 @@ export function BrowserToolbar({
   onOpenExternal,
   onOpenDevtools,
   onClearData,
+  onOpenPreview,
   onMenuOpenChange,
   addressRef,
   firstButtonRef,
@@ -227,6 +240,8 @@ export function BrowserToolbar({
   onOpenExternal: () => void;
   onOpenDevtools: () => void;
   onClearData: () => void;
+  /** Abre o cartão do preview do projeto ("Preview do projeto…"). */
+  onOpenPreview: () => void;
   /** Avisa quando o menu Mais ações abre e fecha. */
   onMenuOpenChange?: (open: boolean) => void;
   /** O campo de endereço, para o atalho Ctrl+L. */
@@ -266,27 +281,35 @@ export function BrowserToolbar({
             <RotateCw {...ICON_PROPS} />
           </BarButton>
         )}
-        <input
-          ref={addressRef}
-          type="text"
-          className="browser__address"
-          aria-label="Endereço"
-          placeholder="Digite uma URL"
-          spellCheck={false}
-          autoComplete="off"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onFocus={(event) => event.target.select()}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              onNavigate(draft);
-            } else if (event.key === 'Escape') {
-              event.preventDefault();
-              setDraft(tab.url);
-            }
-          }}
-        />
+        {/* O ícone é da moldura do campo: clicar nele leva o foco ao endereço, como em qualquer rótulo. */}
+        <label className="browser__field">
+          {isHttps(tab.url) ? (
+            <Lock {...ICON_PROPS} size={12} className="browser__field-icon" />
+          ) : (
+            <Globe {...ICON_PROPS} size={12} className="browser__field-icon" />
+          )}
+          <input
+            ref={addressRef}
+            type="text"
+            className="browser__address"
+            aria-label="Endereço"
+            placeholder="Digite uma URL"
+            spellCheck={false}
+            autoComplete="off"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onFocus={(event) => event.target.select()}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                onNavigate(draft);
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                setDraft(tab.url);
+              }
+            }}
+          />
+        </label>
         <BarButton label={expanded ? 'Restaurar tamanho' : 'Expandir'} onClick={onToggleExpand}>
           {expanded ? <Minimize2 {...ICON_PROPS} /> : <Maximize2 {...ICON_PROPS} />}
         </BarButton>
@@ -300,10 +323,12 @@ export function BrowserToolbar({
               run: onOpenExternal,
             },
             { label: 'Inspecionar', disabled: tab.url === '', run: onOpenDevtools },
+            { label: 'Preview do projeto…', disabled: false, run: onOpenPreview },
             {
               label: 'Limpar dados de navegação deste projeto…',
               disabled: false,
               run: onClearData,
+              separated: true,
             },
           ]}
         />
@@ -311,6 +336,8 @@ export function BrowserToolbar({
       <p role="status" className="browser__notice">
         {notice}
       </p>
+      {/* Decorativa: "carregando" já está no nome da aba e no botão Parar. */}
+      {tab.loading ? <span className="browser__progress" aria-hidden="true" /> : null}
     </div>
   );
 }

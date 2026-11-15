@@ -8,7 +8,9 @@ import {
   type LimitsDto,
   type MissionEventDto,
   type MissionUsageEventDto,
+  type PreviewStateDto,
   type TerminalEvent,
+  type WorkspaceDto,
 } from '@project-hub/contracts';
 import { getStatus, listWorktrees } from '@project-hub/git-adapter';
 import { createHash, randomUUID } from 'node:crypto';
@@ -45,6 +47,11 @@ import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
 import { registerAgentActivityHandlers } from './ipc/agent-activity';
 import { registerBrowserHandlers } from './ipc/browser';
+import { registerPreviewHandlers } from './ipc/preview';
+import { probePort } from './preview/port-probe';
+import { createPreviewService } from './preview/preview-service';
+import { readProjectFacts } from './preview/project-facts';
+import { createStaticServers } from './preview/static-server';
 import { createBrowserService } from './browser/browser-service';
 import { clearBrowserSession, createPageFactory } from './browser/browser-views';
 import { registerFilesHandlers } from './ipc/files';
@@ -255,6 +262,20 @@ function publishBrowserState(state: BrowserStateDto): void {
   const target = mainWindow;
   if (target === undefined || target.isDestroyed()) return;
   target.webContents.send(CHANNELS.browserChanged, state);
+}
+
+/** Entrega o estado do preview de um projeto ao quadro principal. */
+function publishPreviewState(state: PreviewStateDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.previewChanged, state);
+}
+
+/** Entrega ao quadro principal um workspace que o processo principal mudou por conta própria. */
+function publishWorkspace(workspace: WorkspaceDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.workspacesChanged, workspace);
 }
 
 /** Entrega ao quadro principal um atalho do app que foi teclado com o foco dentro de uma página do navegador. */
@@ -540,6 +561,8 @@ app
       now: () => new Date().toISOString(),
     });
     hideBrowserPages = () => browser.hideAll();
+    // O preview nasce mais abaixo, depois dos terminais e dos workspaces; a remoção de projeto o alcança por aqui.
+    let forgetPreview: (projectId: string) => void = () => undefined;
     app.once('will-quit', () => {
       browser.dispose();
     });
@@ -562,6 +585,7 @@ app
       // As páginas fecham antes, para nenhuma regravar o armazenamento depois da limpeza.
       onRemoved: (projectId) => {
         browser.forgetProject(projectId);
+        forgetPreview(projectId);
         Promise.resolve()
           .then(() => clearBrowserSession(projectId))
           .catch((cause: unknown) => {
@@ -669,6 +693,7 @@ app
       checkResume: resumeVerdict,
       now: () => new Date().toISOString(),
       newId: randomUUID,
+      publish: publishWorkspace,
     });
     // Fechar a aba do projeto fecha também as páginas do navegador dele; a lista de abas fica no banco.
     const workspaceService: typeof baseWorkspaceService = {
@@ -694,6 +719,39 @@ app
       openExternal: async (url) => {
         if (await confirmExternalFromBrowser(url)) await shell.openExternal(url);
       },
+    });
+    // Preview automático: o processo principal lê o `package.json`, confere a aprovação guardada, monta o comando e
+    // pede o painel ao serviço de workspaces. O renderer só mostra o cartão e manda ids e o nome de um script.
+    const preview = createPreviewService({
+      repo: services.projectPreviews,
+      facts: async (projectId) => {
+        const root = services.fileDeps.rootOf(projectId);
+        return root === undefined ? undefined : readProjectFacts(root);
+      },
+      projectName: (projectId) => services.workspaceDeps.projects.get(projectId)?.name,
+      panes: workspaceService,
+      terminals: terminalService,
+      port: terminalBackend.port,
+      browser,
+      statics: createStaticServers({ rootOf: (projectId) => services.fileDeps.rootOf(projectId) }),
+      watcher: projectWatcher,
+      probe: probePort,
+      publish: publishPreviewState,
+      now: () => new Date().toISOString(),
+      setTimer: (fn, ms) => {
+        const timer = setTimeout(fn, ms);
+        return () => clearTimeout(timer);
+      },
+    });
+    forgetPreview = (projectId) => {
+      preview.forgetProject(projectId).catch((cause: unknown) => {
+        console.error('Falha ao esquecer o preview do projeto removido:', cause);
+      });
+    };
+    registerPreviewHandlers(ipcMain, isTrustedSender, { preview });
+    // Fecha os servidores de site estático e para as escutas. Os terminais do preview seguem a regra dos outros.
+    app.once('will-quit', () => {
+      void preview.dispose();
     });
     createMainWindow();
     limits.start();

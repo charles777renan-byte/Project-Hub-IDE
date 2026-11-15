@@ -63,6 +63,9 @@ function setup() {
     startSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     endSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     addPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
+    addPreviewPane: vi.fn(() =>
+      Promise.resolve({ ok: true as const, data: { workspace: dto, terminalId: 't-preview' } }),
+    ),
     resumeSession: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     splitPane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),
     removePane: vi.fn(() => Promise.resolve({ ok: true as const, data: dto })),

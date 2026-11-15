@@ -19,6 +19,7 @@ function setup(
     onOpenExternal: vi.fn(),
     onOpenDevtools: vi.fn(),
     onClearData: vi.fn(),
+    onOpenPreview: vi.fn(),
     onMenuOpenChange: vi.fn(),
   };
   const view = render(
@@ -126,6 +127,7 @@ describe('BrowserToolbar', () => {
   it.each([
     ['Abrir no navegador do sistema', 'onOpenExternal'],
     ['Inspecionar', 'onOpenDevtools'],
+    ['Preview do projeto…', 'onOpenPreview'],
     ['Limpar dados de navegação deste projeto…', 'onClearData'],
   ] as const)('o item "%s" do menu chama a função certa e fecha o menu', async (label, handler) => {
     const { user, handlers } = setup();
@@ -173,5 +175,54 @@ describe('BrowserToolbar', () => {
     expect(item).toHaveAttribute('aria-disabled', 'true');
     await user.click(item);
     expect(handlers.onOpenExternal).not.toHaveBeenCalled();
+  });
+});
+
+describe('BrowserToolbar: a moldura do endereço, o traço de carregamento e o menu', () => {
+  it('o traço de carregamento só existe enquanto a aba carrega', () => {
+    const { container, rerender, handlers } = setup(browserTab({ loading: true }));
+    expect(container.querySelector('.browser__progress')).not.toBeNull();
+    rerender(
+      <BrowserToolbar
+        tab={browserTab({ loading: false })}
+        notice={null}
+        expanded={false}
+        {...handlers}
+      />,
+    );
+    expect(container.querySelector('.browser__progress')).toBeNull();
+  });
+
+  it('o ícone do campo é o cadeado em https e o globo no resto', () => {
+    const { container, rerender, handlers } = setup();
+    expect(container.querySelector('.browser__field .lucide-lock')).not.toBeNull();
+    rerender(
+      <BrowserToolbar
+        tab={browserTab({ url: 'http://localhost:3000/' })}
+        notice={null}
+        expanded={false}
+        {...handlers}
+      />,
+    );
+    expect(container.querySelector('.browser__field .lucide-lock')).toBeNull();
+    expect(container.querySelector('.browser__field .lucide-globe')).not.toBeNull();
+  });
+
+  it('clicar no ícone da moldura leva o foco ao endereço', async () => {
+    const { container, user } = setup();
+    const icon = container.querySelector('.browser__field-icon');
+    expect(icon).not.toBeNull();
+    if (icon !== null) await user.click(icon);
+    expect(address()).toHaveFocus();
+  });
+
+  it('só o item que apaga dados fica separado dos outros no menu', async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    const separated = screen
+      .getAllByRole('menuitem')
+      .filter((item) => item.parentElement?.className === 'browser__menu-row--separated');
+    expect(separated).toHaveLength(1);
+    expect(separated[0]).toHaveTextContent('Limpar dados de navegação deste projeto…');
   });
 });

@@ -1,6 +1,7 @@
 import { failure, type ProjectRepository } from '@project-hub/application';
 import {
   LAYOUT_LIMITS,
+  PREVIEW_MESSAGES,
   workspaceLayoutSchema,
   type AppResult,
   type LayoutLeaf,
@@ -37,6 +38,11 @@ export type WorkspaceServiceDeps = {
   checkResume: (input: ResumeCheckInput) => ResumeVerdict;
   now: () => string;
   newId: () => string;
+  /**
+   * Avisa a tela de uma mudança que o processo principal fez por conta própria (o painel do preview). As mudanças
+   * pedidas pela tela não passam por aqui: ela já recebe o workspace na resposta.
+   */
+  publish?: (workspace: WorkspaceDto) => void;
 };
 
 /** O que a interface pede ao app. Entram ids e, em `addPane`, o provedor do painel novo; o provedor e o caminho dos painéis existentes saem do banco. */
@@ -53,6 +59,15 @@ export type WorkspaceService = {
   endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   /** Abre a sessão do provedor e cria o painel dela, dividindo o maior painel. Sem sessão aberta, sem painel. */
   addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
+  /**
+   * O painel do servidor do preview: um shell que roda `startCommand` ao abrir, no workspace aberto do projeto,
+   * dividindo o maior painel. Quem chama é o serviço de preview, nunca um canal do renderer. A tela é avisada por
+   * `publish`. Projeto sem workspace aberto, ou workspace cheio: VALIDATION_FAILED, sem abrir sessão.
+   */
+  addPreviewPane(
+    projectId: string,
+    options: { startCommand: string; title: string },
+  ): Promise<AppResult<{ workspace: WorkspaceDto; terminalId: string }>>;
   /** Como `addPane`, mas o painel novo entra no lado `side` do painel `leafId`, que cede metade do espaço. */
   splitPane(
     workspaceId: string,
@@ -291,6 +306,17 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     options?: OpenSessionOptions,
     placement?: { leafId: string; side: Side },
   ): Promise<AppResult<WorkspaceDto>> {
+    const opened = await openPaneSession(record, provider, options, placement);
+    return opened.ok ? { ok: true, data: opened.data.workspace } : opened;
+  }
+
+  /** Como `openPane`, devolvendo também o terminal da sessão aberta. */
+  async function openPaneSession(
+    record: WorkspaceRecord,
+    provider: ProviderId,
+    options?: OpenSessionOptions,
+    placement?: { leafId: string; side: Side },
+  ): Promise<AppResult<{ workspace: WorkspaceDto; terminalId: string }>> {
     const layout = storedLayout(record);
     const leaves = leavesOf(layout);
     if (placement !== undefined && !leaves.some((leaf) => leaf.id === placement.leafId)) {
@@ -322,7 +348,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
         await terminals.closeSession(terminalId).catch(() => undefined);
         return failure('VALIDATION_FAILED', 'Não há mais como dividir este painel.');
       }
-      return { ok: true, data: persist(record, next) };
+      return { ok: true, data: { workspace: persist(record, next), terminalId } };
     } catch (error) {
       // Sem o painel no layout, a sessão aberta ficaria órfã: nenhuma tela a mostraria.
       await terminals.closeSession(terminalId).catch(() => undefined);
@@ -337,6 +363,19 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const record = repo.get(workspaceId);
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
     return openPane(record, provider);
+  }
+
+  async function addPreviewPane(
+    projectId: string,
+    options: { startCommand: string; title: string },
+  ): Promise<AppResult<{ workspace: WorkspaceDto; terminalId: string }>> {
+    const record = repo.getByProject(projectId);
+    if (record === undefined || !record.isOpen) {
+      return failure('VALIDATION_FAILED', PREVIEW_MESSAGES.noWorkspace);
+    }
+    const opened = await openPaneSession(record, 'shell', options);
+    if (opened.ok) deps.publish?.(opened.data.workspace);
+    return opened;
   }
 
   async function splitPane(
@@ -428,6 +467,7 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     endSession: (workspaceId, leafId) => serial(() => endSession(workspaceId, leafId)),
 
     addPane: (workspaceId, provider) => serial(() => addPane(workspaceId, provider)),
+    addPreviewPane: (projectId, options) => serial(() => addPreviewPane(projectId, options)),
 
     resumeSession: (workspaceId, sessionId) => serial(() => resumeSession(workspaceId, sessionId)),
 

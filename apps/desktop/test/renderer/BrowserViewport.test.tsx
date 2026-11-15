@@ -363,3 +363,95 @@ describe('BrowserViewport', () => {
     });
   });
 });
+
+describe('BrowserViewport: preview', () => {
+  const EMPTY = browserTab({ url: '', title: '' });
+  const FAILED = browserTab({ error: { code: 'OFFLINE', message: 'A página não respondeu.' } });
+
+  it('aba sem endereço mostra o conteúdo do preview no lugar do aviso, sem página', () => {
+    const { api } = installBrowserApi();
+    render(
+      <BrowserViewport
+        projectId="p1"
+        tab={EMPTY}
+        hidden={false}
+        onRetry={vi.fn()}
+        emptyContent={<p>cartão do preview</p>}
+      />,
+    );
+    flushFrames();
+    expect(screen.getByText('cartão do preview')).toBeInTheDocument();
+    expect(screen.queryByText('Digite uma URL para começar')).toBeNull();
+    expect(api.setBounds).toHaveBeenLastCalledWith('p1', null);
+  });
+
+  it('o conteúdo do preview não aparece em aba com endereço nem em aba com erro', () => {
+    installBrowserApi();
+    const { rerender } = render(
+      <BrowserViewport
+        projectId="p1"
+        tab={browserTab()}
+        hidden={false}
+        onRetry={vi.fn()}
+        emptyContent={<p>cartão do preview</p>}
+      />,
+    );
+    expect(screen.queryByText('cartão do preview')).toBeNull();
+    rerender(
+      <BrowserViewport
+        projectId="p1"
+        tab={FAILED}
+        hidden={false}
+        onRetry={vi.fn()}
+        emptyContent={<p>cartão do preview</p>}
+      />,
+    );
+    expect(screen.queryByText('cartão do preview')).toBeNull();
+  });
+
+  it('o aviso da aba vazia ganha "Só abrir um endereço" quando há para onde levar', async () => {
+    installBrowserApi();
+    const onOpenAddress = vi.fn();
+    const { rerender } = render(
+      <BrowserViewport projectId="p1" tab={EMPTY} hidden={false} onRetry={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Só abrir um endereço' })).toBeNull();
+
+    rerender(
+      <BrowserViewport
+        projectId="p1"
+        tab={EMPTY}
+        hidden={false}
+        onRetry={vi.fn()}
+        onOpenAddress={onOpenAddress}
+      />,
+    );
+    expect(screen.getByText('Digite uma URL para começar')).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Só abrir um endereço' }));
+    expect(onOpenAddress).toHaveBeenCalledTimes(1);
+  });
+
+  it('com erro, "Subir o servidor" só aparece quando há o que subir', async () => {
+    installBrowserApi();
+    const onStartServer = vi.fn();
+    const onRetry = vi.fn();
+    const { rerender } = render(
+      <BrowserViewport projectId="p1" tab={FAILED} hidden={false} onRetry={onRetry} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Subir o servidor' })).toBeNull();
+
+    rerender(
+      <BrowserViewport
+        projectId="p1"
+        tab={FAILED}
+        hidden={false}
+        onRetry={onRetry}
+        onStartServer={onStartServer}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Tentar de novo' })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Subir o servidor' }));
+    expect(onStartServer).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+});

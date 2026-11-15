@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { agentActivityResponseSchema } from './agent-activity';
 import { browserStateSchema } from './browser';
 import { CHANNELS } from './channels';
+import { previewStateSchema } from './preview';
 import {
   contentSearchSchema,
   fileContentSchema,
@@ -157,4 +158,9 @@ export const responseSchemas = {
   [CHANNELS.browserOpenDevtools]: appResultSchema(z.undefined()),
   [CHANNELS.browserOpenExternal]: appResultSchema(z.undefined()),
   [CHANNELS.browserClearData]: appResultSchema(browserStateSchema),
+  [CHANNELS.previewState]: appResultSchema(previewStateSchema),
+  [CHANNELS.previewApprove]: appResultSchema(previewStateSchema),
+  [CHANNELS.previewSetAddress]: appResultSchema(previewStateSchema),
+  [CHANNELS.previewStart]: appResultSchema(previewStateSchema),
+  [CHANNELS.previewForget]: appResultSchema(previewStateSchema),
 } as const;

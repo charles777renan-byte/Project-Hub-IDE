@@ -430,3 +430,66 @@ describe('createBrowserService', () => {
     expect(service.urlOf('A', 'nao')).toBeUndefined();
   });
 });
+
+describe('abas por origem (o site estático do preview)', () => {
+  const SITE = 'http://127.0.0.1:4100';
+
+  function tabs() {
+    return [
+      stored('A', 'a', 0, true),
+      { ...stored('A', 'b', 1), url: `${SITE}/sub/pagina.html` },
+      { ...stored('A', 'c', 2), url: `${SITE}/` },
+      { ...stored('B', 'd', 0, true), url: 'http://127.0.0.1:4200/' },
+    ];
+  }
+
+  it('reloadOrigin recarrega só as páginas vivas daquela origem e publica', () => {
+    const { service, pages, published } = setup(tabs());
+    service.setBounds('A', RECT);
+    service.selectTab('A', 'b');
+    expect(pages).toHaveLength(2);
+    const before = published.length;
+
+    service.reloadOrigin('A', SITE);
+
+    expect(pages[0]?.calls).not.toContain('reload');
+    expect(pages[1]?.calls).toContain('reload');
+    // A aba `c` é do site, mas nunca foi mostrada: não ganha página só para recarregar.
+    expect(pages).toHaveLength(2);
+    expect(published).toHaveLength(before + 1);
+    expect(published.at(-1)?.tabs.find((tab) => tab.id === 'b')?.loading).toBe(true);
+  });
+
+  it('reloadOrigin sem página daquela origem, ou em projeto que não existe, não faz nada', () => {
+    const { service, pages, published } = setup(tabs());
+    service.setBounds('A', RECT);
+    const before = published.length;
+
+    service.reloadOrigin('A', 'http://127.0.0.1:9999');
+    service.reloadOrigin('A', 'isto não é uma origem');
+    service.reloadOrigin('nao-existe', SITE);
+
+    expect(pages[0]?.calls).not.toContain('reload');
+    expect(published).toHaveLength(before);
+  });
+
+  it('hasOrigin olha as abas do projeto, mesmo as que ainda não têm página', () => {
+    const { service } = setup(tabs());
+
+    expect(service.hasOrigin('A', SITE)).toBe(true);
+    expect(service.hasOrigin('A', 'http://127.0.0.1:4200')).toBe(false);
+    expect(service.hasOrigin('A', 'http://localhost:3000')).toBe(true);
+    expect(service.hasOrigin('B', SITE)).toBe(false);
+    expect(service.hasOrigin('nao-existe', SITE)).toBe(false);
+    // Aba vazia não é de origem nenhuma.
+    expect(service.hasOrigin('A', 'null')).toBe(false);
+  });
+
+  it('hasOrigin deixa de valer quando a aba vai para outro endereço ou fecha', () => {
+    const { service } = setup(tabs());
+    service.navigate('A', 'b', 'https://example.com/');
+    expect(service.hasOrigin('A', SITE)).toBe(true);
+    service.closeTab('A', 'c');
+    expect(service.hasOrigin('A', SITE)).toBe(false);
+  });
+});

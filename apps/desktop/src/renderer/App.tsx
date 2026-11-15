@@ -16,8 +16,13 @@ import { StatusBar } from './components/StatusBar';
 import { RestoreWorkspace, TopBar } from './components/TopBar';
 import { listenForSaveAllRequests } from './open-files';
 import { buildPaletteItems } from './palette-items';
-import { TOGGLE_RIGHT_EXPANDED_EVENT, TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
-import { AppRoutes, ROUTE_PATHS } from './routes';
+import {
+  SHOW_TERMINAL_EVENT,
+  showTerminalRequest,
+  TOGGLE_RIGHT_EXPANDED_EVENT,
+  TOGGLE_RIGHT_PANEL_EVENT,
+} from './right-panel-events';
+import { AppRoutes, ROUTE_PATHS, workspacePath } from './routes';
 import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 import { useSidebarData } from './use-sidebar-data';
 
@@ -167,6 +172,21 @@ export function App() {
     window.addEventListener(TOGGLE_RIGHT_PANEL_EVENT, toggleRight);
     return () => window.removeEventListener(TOGGLE_RIGHT_PANEL_EVENT, toggleRight);
   }, [toggleRight]);
+
+  // "Ver terminal", no cartão do preview: a aba do projeto mostra o painel pedido, como quando a barra lateral pede.
+  // O painel direito expandido cobriria o terminal, então volta ao tamanho dele.
+  useEffect(() => {
+    const show = (event: Event) => {
+      const request = showTerminalRequest(event);
+      if (request === null) return;
+      setRightExpanded(false);
+      void navigate(workspacePath(request.projectId), {
+        state: { showTerminal: request.terminalId },
+      });
+    };
+    window.addEventListener(SHOW_TERMINAL_EVENT, show);
+    return () => window.removeEventListener(SHOW_TERMINAL_EVENT, show);
+  }, [navigate]);
 
   useEffect(() => {
     window.addEventListener(TOGGLE_RIGHT_EXPANDED_EVENT, toggleRightExpanded);

@@ -298,4 +298,10 @@ export interface TerminalPort {
    * anterior. Devolve a função que cancela a assinatura.
    */
   subscribe(id: string, subscriber: TerminalSubscriber): Promise<() => void>;
+  /**
+   * Uma escuta: recebe a saída guardada e a saída ao vivo, como a assinatura, sem substituir a assinatura nem as
+   * outras escutas. Quando alguém entra no mesmo terminal, a saída guardada volta para todos, e cada um recebe
+   * `onRestart` antes. Devolve a função que cancela a escuta.
+   */
+  listen(id: string, listener: TerminalSubscriber): Promise<() => void>;
 }

@@ -40,6 +40,21 @@ export function isAllowedBrowserUrl(url: string): boolean {
   return parsed !== undefined && (parsed.protocol === 'http:' || parsed.protocol === 'https:');
 }
 
+/** O nome de host é a própria máquina: `localhost`, `127.0.0.1`, `[::1]` ou um nome terminado em `.localhost`. */
+const LOCAL_HOSTNAME = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+(\.[a-z0-9-]+)*\.localhost)$/i;
+
+/**
+ * Diz se `url` é um endereço `http:` ou `https:` da própria máquina, sem usuário nem senha. É o que o preview
+ * aceita guardar, conferir e abrir sozinho.
+ */
+export function isLocalHostUrl(url: string): boolean {
+  const parsed = parse(url);
+  if (parsed === undefined) return false;
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (parsed.username !== '' || parsed.password !== '') return false;
+  return LOCAL_HOSTNAME.test(parsed.hostname);
+}
+
 /**
  * Interpreta o texto da barra de endereço. Quem decide é o processo principal, nunca o renderer: endereço com
  * esquema permitido segue normalizado, endereço local ganha `http://`, nome de domínio ganha `https://`, esquema

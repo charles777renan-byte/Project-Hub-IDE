@@ -93,6 +93,7 @@ test.describe('renderer isolado', () => {
         terminals: names(api['terminals']),
         workspaces: names(api['workspaces']),
         providers: names(api['providers']),
+        preview: names(api['preview']),
       };
     });
 
@@ -107,6 +108,7 @@ test.describe('renderer isolado', () => {
       'limits',
       'missions',
       'ping',
+      'preview',
       'profile',
       'projects',
       'providers',
@@ -151,6 +153,15 @@ test.describe('renderer isolado', () => {
       'unsubscribe',
       'write',
     ]);
+    // O preview só leva ids, o nome de um script, o texto mostrado e o texto de um endereço: nenhum canal de comando.
+    expect(surface?.preview).toEqual([
+      'approve',
+      'forget',
+      'onChanged',
+      'setAddress',
+      'start',
+      'state',
+    ]);
     const everyName = [
       ...(surface?.root ?? []),
       ...(surface?.projects ?? []),
@@ -164,6 +175,7 @@ test.describe('renderer isolado', () => {
       ...(surface?.terminals ?? []),
       ...(surface?.workspaces ?? []),
       ...(surface?.providers ?? []),
+      ...(surface?.preview ?? []),
     ];
     for (const generic of ['invoke', 'send', 'sendSync', 'on', 'once', 'ipcRenderer']) {
       expect(everyName).not.toContain(generic);

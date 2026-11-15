@@ -76,12 +76,29 @@ export type BrowserService = {
   openDevTools(projectId: string, tabId: string): AppResult<undefined>;
   /** Endereço atual da aba, para "Abrir no navegador do sistema". */
   urlOf(projectId: string, tabId: string): string | undefined;
+  /**
+   * Recarrega as páginas vivas do projeto cujo endereço tem essa origem (o site estático do preview, quando um
+   * arquivo muda). Aba sem página não ganha uma só para recarregar.
+   */
+  reloadOrigin(projectId: string, origin: string): void;
+  /** Se alguma aba do projeto, com página ou não, está num endereço dessa origem. */
+  hasOrigin(projectId: string, origin: string): boolean;
   /** Destrói as páginas do projeto e mantém a lista no banco (a aba do projeto foi fechada). */
   suspendProject(projectId: string): void;
   /** Destrói as páginas e apaga a lista (projeto removido, ou dados de navegação limpos). */
   forgetProject(projectId: string): void;
   dispose(): void;
 };
+
+/** A origem de um endereço de aba, ou `undefined` para aba vazia, `about:blank` e texto que não é endereço. */
+function originOf(url: string): string | undefined {
+  try {
+    const { origin } = new URL(url);
+    return origin === 'null' ? undefined : origin;
+  } catch {
+    return undefined;
+  }
+}
 
 const NO_PROJECT = 'O projeto não existe.';
 const NO_TAB = 'A aba não existe mais.';
@@ -437,6 +454,27 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
     urlOf(projectId, tabId) {
       const url = load(projectId)?.tabs.find((tab) => tab.id === tabId)?.url;
       return url === undefined || url === '' ? undefined : url;
+    },
+
+    reloadOrigin(projectId, origin) {
+      const project = projects.get(projectId);
+      if (project === undefined) return;
+      let reloaded = false;
+      for (const tab of project.tabs) {
+        if (originOf(tab.url) !== origin) continue;
+        const page = project.pages.get(tab.id);
+        if (page === undefined) continue;
+        tab.error = null;
+        tab.loading = true;
+        page.handle.reload();
+        reloaded = true;
+      }
+      if (reloaded) publish(projectId, project);
+    },
+
+    hasOrigin(projectId, origin) {
+      const project = load(projectId);
+      return project !== undefined && project.tabs.some((tab) => originOf(tab.url) === origin);
     },
 
     suspendProject: dropProject,
