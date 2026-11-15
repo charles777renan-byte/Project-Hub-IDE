@@ -496,6 +496,7 @@ describe('buildProjectHubApi', () => {
       'state',
     ]);
     expect(Object.keys(api.browser).sort()).toEqual([
+      'agentAccess',
       'back',
       'clearData',
       'closeTab',

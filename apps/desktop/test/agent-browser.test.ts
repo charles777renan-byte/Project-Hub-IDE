@@ -292,6 +292,16 @@ describe('abas do agente', () => {
     expect(shows().at(-1)).toBe('park');
   });
 
+  it('a imagem parada é a da aba que a pessoa olha, ou nada', async () => {
+    const { service } = setup();
+    expect(await service.snapshotByPerson('p1')).toBeNull();
+    const tab = data(await service.open(A, 'http://localhost:1/'));
+    expect(await service.snapshotByPerson('p1')).toBeNull();
+    service.lookAt('p1', tab.id);
+    expect(await service.snapshotByPerson('p1')).toBe('data:image/png;base64,AAAA');
+    expect(await service.snapshotByPerson('p2')).toBeNull();
+  });
+
   it('fechar a aba que a pessoa olha deixa de olhar', async () => {
     const { service } = setup();
     const tab = data(await service.open(A, 'http://localhost:1/'));

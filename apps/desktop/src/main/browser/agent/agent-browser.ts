@@ -108,6 +108,8 @@ export type AgentBrowser = {
   stepByPerson(projectId: string, tabId: string, step: 'back' | 'forward' | 'reload'): void;
   focusPage(projectId: string): void;
   urlOf(projectId: string, tabId: string): string | undefined;
+  /** Imagem parada da aba de agente que a pessoa olha, como `data:image/png`, ou `null`. */
+  snapshotByPerson(projectId: string): Promise<string | null>;
   // Ciclo de vida.
   endTerminal(terminalId: string): void;
   forgetProject(projectId: string): void;
@@ -364,6 +366,17 @@ export function createAgentBrowser(deps: AgentBrowserDeps): AgentBrowser {
     },
 
     urlOf: (projectId, tabId) => find(projectId, tabId)?.dto.url,
+
+    async snapshotByPerson(projectId) {
+      const tab = find(projectId, looking.get(projectId) ?? '');
+      if (tab === undefined) return null;
+      try {
+        const image = await tab.handle.screenshot();
+        return `data:${image.mimeType};base64,${image.base64}`;
+      } catch {
+        return null;
+      }
+    },
 
     endTerminal(terminalId) {
       destroyAll(tabs.filter((tab) => tab.terminalId === terminalId));

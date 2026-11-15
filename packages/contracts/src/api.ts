@@ -8,7 +8,12 @@ import type {
   FilesWriteInput,
   NameSearchDto,
 } from './files';
-import type { BrowserBounds, BrowserShortcutEvent, BrowserStateDto } from './browser';
+import type {
+  BrowserAgentAccessDto,
+  BrowserBounds,
+  BrowserShortcutEvent,
+  BrowserStateDto,
+} from './browser';
 import type {
   GithubCommentInput,
   GithubMergeInput,
@@ -241,6 +246,8 @@ export type ProjectHubApi = {
     openExternal(projectId: string, tabId: string): Promise<AppResult<void>>;
     /** Pergunta num diálogo nativo e, confirmado, apaga os dados de navegação do projeto. Devolve o estado depois. */
     clearData(projectId: string): Promise<AppResult<BrowserStateDto>>;
+    /** Quais programas recebem o navegador ao abrir um terminal. */
+    agentAccess(): Promise<AppResult<BrowserAgentAccessDto>>;
     /** Assina as mudanças de estado. Cada evento chega validado. Devolve a função que cancela a assinatura. */
     onChanged(listener: (state: BrowserStateDto) => void): () => void;
     /** Assina os atalhos do app apertados com o foco na página. */

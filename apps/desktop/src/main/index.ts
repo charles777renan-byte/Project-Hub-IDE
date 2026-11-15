@@ -53,7 +53,15 @@ import { createPreviewService } from './preview/preview-service';
 import { readProjectFacts } from './preview/project-facts';
 import { createStaticServers } from './preview/static-server';
 import { createBrowserService } from './browser/browser-service';
+import { composeBrowserState } from './browser/browser-state';
 import { clearBrowserSession, createPageFactory } from './browser/browser-views';
+import { createAgentBrowserAccess } from './browser/agent/agent-access';
+import { createAgentBrowser, type AgentBrowser } from './browser/agent/agent-browser';
+import { BROWSER_PROVIDERS } from './browser/agent/agent-launch';
+import { clearAgentSession, createAgentPageFactory } from './browser/agent/agent-pages';
+import { startAgentServer, type AgentServer } from './browser/agent/agent-server';
+import { createAgentTokens } from './browser/agent/agent-tokens';
+import { createSupportWindow } from './browser/agent/agent-window';
 import { registerFilesHandlers } from './ipc/files';
 import { registerFilesWatchHandlers } from './ipc/files-watch';
 import { createProjectWatcher } from './files/project-watcher';
@@ -329,6 +337,12 @@ function confirmClearBrowserData(): Promise<boolean> {
 /** Esconde a página do navegador interno que estiver à vista. Vira a função do serviço quando ele é criado. */
 let hideBrowserPages: () => void = () => undefined;
 
+/**
+ * Fecha as páginas dos agentes e a janela de apoio onde elas vivem. Vira a função de verdade quando o navegador
+ * dos agentes é criado. A janela de apoio é uma janela: enquanto existisse, fechar a principal não fecharia o app.
+ */
+let closeAgentPages: () => void = () => undefined;
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -362,6 +376,7 @@ function createMainWindow(): void {
   });
   win.once('closed', () => {
     if (mainWindow === win) mainWindow = undefined;
+    closeAgentPages();
   });
   // "Salvar": o renderer grava os arquivos sujos e responde; a janela só fecha se tudo foi gravado e nada ficou sujo.
   const saving = createSaveBeforeClose({
@@ -541,6 +556,15 @@ app
 
     // Navegador interno: uma página por aba, na sessão do projeto. O serviço é o dono das abas; o renderer só mostra
     // o que ele publica e manda o retângulo onde a página aparece.
+    const projectExists = (projectId: string): boolean => {
+      const project = services.workspaceDeps.projects.get(projectId);
+      return project !== undefined && project.removedAt === undefined;
+    };
+    // As abas dos agentes entram no estado que a tela recebe. O serviço delas nasce logo abaixo.
+    let agentTabs: Pick<AgentBrowser, 'tabsOf' | 'lookingAt'> = {
+      tabsOf: () => [],
+      lookingAt: () => null,
+    };
     const browser = createBrowserService({
       repo: services.browserTabs,
       pages: createPageFactory({
@@ -551,20 +575,113 @@ app
         },
         appName: app.getName(),
       }),
-      projectExists: (projectId) => {
-        const project = services.workspaceDeps.projects.get(projectId);
-        return project !== undefined && project.removedAt === undefined;
-      },
-      publish: publishBrowserState,
+      projectExists,
+      publish: (state) => publishBrowserState(composeBrowserState(state, agentTabs)),
       publishShortcut: publishBrowserShortcut,
       newId: randomUUID,
       now: () => new Date().toISOString(),
     });
-    hideBrowserPages = () => browser.hideAll();
+
+    // Navegador dos agentes: as abas que o agente de um terminal abre, numa sessão separada da pessoa. As páginas
+    // vivem numa janela de apoio fora da tela e só vêm para a janela do app enquanto a pessoa as olha.
+    const agentTokens = createAgentTokens();
+    const supportWindow = createSupportWindow();
+    const agentBrowser: AgentBrowser = createAgentBrowser({
+      pages: createAgentPageFactory({
+        window: liveMainWindow,
+        support: supportWindow,
+        appName: app.getName(),
+      }),
+      projectExists,
+      terminalTitle: (terminalId) => services.terminalDeps.sessions.get(terminalId)?.title ?? '',
+      previewUrl: (projectId) => {
+        const record = services.projectPreviews.get(projectId);
+        return record?.fixedUrl ?? record?.lastUrl ?? undefined;
+      },
+      changed: (projectId) => {
+        // A aba que a pessoa olhava pode ter fechado: a página dela volta para o lugar.
+        browser.setYielded(projectId, agentTabs.lookingAt(projectId) !== null);
+        const state = browser.state(projectId);
+        if (state.ok) publishBrowserState(composeBrowserState(state.data, agentTabs));
+      },
+      shortcut: (projectId, action) => publishBrowserShortcut({ projectId, action }),
+      newId: randomUUID,
+    });
+    agentTabs = agentBrowser;
+    hideBrowserPages = () => {
+      browser.hideAll();
+      agentBrowser.parkAll();
+    };
+    // O servidor de ferramentas escuta só em 127.0.0.1, numa porta que o sistema escolhe a cada execução. Só o
+    // Windows tem o recurso nesta fase. Enquanto ele não sobe (ou se não subir), os terminais abrem sem o navegador.
+    let agentServer: AgentServer | undefined;
+    let agentServerWanted = process.platform === 'win32';
+    if (agentServerWanted) {
+      startAgentServer({ tokens: agentTokens, browser: agentBrowser }).then(
+        (server) => {
+          if (agentServerWanted) agentServer = server;
+          else void server.close();
+        },
+        (cause: unknown) => {
+          console.error('O servidor do navegador para os agentes não subiu:', cause);
+        },
+      );
+    }
+    const terminalSettingsDir = join(terminalOptions.dataDir, 'terminal-host', 'settings');
+    const agentAccess = createAgentBrowserAccess({
+      tokens: agentTokens,
+      url: () => agentServer?.url,
+      dir: terminalSettingsDir,
+      endTerminal: (terminalId) => agentBrowser.endTerminal(terminalId),
+      onExit: (terminalId, exited) => {
+        let stop: (() => void) | undefined;
+        let done = false;
+        const finish = (): void => {
+          if (done) return;
+          done = true;
+          stop?.();
+          exited();
+        };
+        terminalBackend.port
+          .listen(terminalId, {
+            onData: () => undefined,
+            onExit: finish,
+            onRestart: () => undefined,
+          })
+          .then(
+            (off) => {
+              if (done) off();
+              else stop = off;
+            },
+            (cause: unknown) => {
+              console.warn('Sem aviso do fim do terminal para soltar o navegador:', cause);
+            },
+          );
+      },
+    });
+    const closeAgentBrowser = (): void => {
+      agentServerWanted = false;
+      const server = agentServer;
+      agentServer = undefined;
+      void server?.close();
+      agentAccess.dispose();
+      agentBrowser.dispose();
+      supportWindow.dispose();
+    };
+    // Fora do macOS, fechar a janela principal fecha o app: os tokens morrem junto com as páginas.
+    closeAgentPages = () => {
+      if (process.platform === 'darwin') {
+        agentBrowser.dispose();
+        supportWindow.dispose();
+      } else {
+        closeAgentBrowser();
+      }
+    };
     // O preview nasce mais abaixo, depois dos terminais e dos workspaces; a remoção de projeto o alcança por aqui.
     let forgetPreview: (projectId: string) => void = () => undefined;
     app.once('will-quit', () => {
       browser.dispose();
+      closeAgentBrowser();
     });
 
     registerTrustedHandler(ipcMain, CHANNELS.appPing, isTrustedSender, () =>
@@ -585,9 +702,11 @@ app
       // As páginas fecham antes, para nenhuma regravar o armazenamento depois da limpeza.
       onRemoved: (projectId) => {
         browser.forgetProject(projectId);
+        agentBrowser.forgetProject(projectId);
         forgetPreview(projectId);
         Promise.resolve()
           .then(() => clearBrowserSession(projectId))
+          .then(() => clearAgentSession(projectId))
           .catch((cause: unknown) => {
             console.error('Falha ao limpar os dados de navegação do projeto removido:', cause);
           });
@@ -682,7 +801,8 @@ app
       now: () => new Date().toISOString(),
       // Os painéis do Claude Code usam o mesmo receptor e a mesma pasta de configuração da missão.
       hooks: terminalBackend.hooks,
-      settingsDir: join(terminalOptions.dataDir, 'terminal-host', 'settings'),
+      settingsDir: terminalSettingsDir,
+      browserAccess: agentAccess,
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
     const baseWorkspaceService = createWorkspaceService({
@@ -709,6 +829,15 @@ app
     registerSessionHandlers(ipcMain, isTrustedSender, sessionHistory, workspaceService);
     registerBrowserHandlers(ipcMain, isTrustedSender, {
       browser,
+      agent: agentBrowser,
+      clearAgentSession,
+      agentAccess: () => ({
+        supported: process.platform === 'win32',
+        programs: providers
+          .list()
+          .filter((info) => info.id !== 'shell')
+          .map((info) => ({ label: info.label, access: BROWSER_PROVIDERS.includes(info.id) })),
+      }),
       contentSize: () => {
         const size = liveMainWindow()?.getContentSize();
         return size === undefined ? undefined : { width: size[0] ?? 0, height: size[1] ?? 0 };

@@ -1,12 +1,14 @@
 import {
   BROWSER_EXTERNAL_HTTPS_ONLY,
   CHANNELS,
+  type AppResult,
   type BrowserStateDto,
+  type BrowserTabDto,
 } from '@project-hub/contracts';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import type { BrowserService } from '../src/main/browser/browser-service';
-import { registerBrowserHandlers } from '../src/main/ipc/browser';
+import { registerBrowserHandlers, type BrowserIpcAgent } from '../src/main/ipc/browser';
 import type { IpcRegistry } from '../src/main/ipc/trusted-handler';
 
 const TRUSTED = 'file:///app/index.html';
@@ -28,6 +30,7 @@ function fakeService() {
     reload: vi.fn(() => OK),
     stop: vi.fn(() => OK),
     setBounds: vi.fn(() => OK),
+    setYielded: vi.fn(),
     snapshot: vi.fn(() => Promise.resolve({ ok: true as const, data: 'data:image/png;base64,AA' })),
     hideAll: vi.fn(),
     focusPage: vi.fn(() => OK),
@@ -41,8 +44,49 @@ function fakeService() {
   } satisfies BrowserService;
 }
 
+function agentTab(id: string): BrowserTabDto {
+  return {
+    id,
+    url: 'https://agente.exemplo/',
+    title: 'Página do agente',
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    error: null,
+    owner: 'agent',
+    terminalTitle: 'Claude Code · app',
+  };
+}
+
+/** O serviço das abas dos agentes, com as abas `owned` e a lembrança de qual a pessoa olha. */
+function fakeAgent(owned: string[]) {
+  let looking: string | null = null;
+  return {
+    tabsOf: vi.fn(() => owned.map(agentTab)),
+    owns: vi.fn((_projectId: string, tabId: string) => owned.includes(tabId)),
+    lookingAt: vi.fn(() => looking),
+    lookAt: vi.fn((_projectId: string, tabId: string | null) => {
+      looking = tabId;
+    }),
+    setBounds: vi.fn(),
+    closeByPerson: vi.fn(() => {
+      looking = null;
+    }),
+    navigateByPerson: vi.fn((): AppResult<undefined> => OK),
+    stepByPerson: vi.fn(),
+    focusPage: vi.fn(),
+    urlOf: vi.fn((): string | undefined => 'https://agente.exemplo/'),
+    snapshotByPerson: vi.fn((): Promise<string | null> =>
+      Promise.resolve('data:image/png;base64,AG'),
+    ),
+    forgetProject: vi.fn(),
+  } satisfies BrowserIpcAgent;
+}
+
 function setup(
   options: {
+    /** Ids das abas de agente do projeto. */
+    agentTabs?: string[];
     confirm?: boolean;
     zoom?: number;
     content?: { width: number; height: number } | null;
@@ -55,16 +99,31 @@ function setup(
     },
   };
   const browser = fakeService();
+  const agent = fakeAgent(options.agentTabs ?? []);
   const order: string[] = [];
   browser.forgetProject.mockImplementation(() => void order.push('forget'));
+  agent.forgetProject.mockImplementation(() => void order.push('agent-forget'));
   const clearSession = vi.fn(() => {
     order.push('clear');
+    return Promise.resolve();
+  });
+  const clearAgentSession = vi.fn((_projectId: string) => {
+    order.push('agent-clear');
     return Promise.resolve();
   });
   const confirmClear = vi.fn(() => Promise.resolve(options.confirm ?? true));
   const openExternal = vi.fn((_url: string) => Promise.resolve());
   registerBrowserHandlers(registry, isTrusted, {
     browser,
+    agent,
+    clearAgentSession,
+    agentAccess: () => ({
+      supported: true,
+      programs: [
+        { label: 'Claude Code', access: true },
+        { label: 'Antigravity CLI', access: false },
+      ],
+    }),
     contentSize: () =>
       options.content === null ? undefined : (options.content ?? { width: 1600, height: 900 }),
     zoomFactor: () => options.zoom ?? 1,
@@ -74,8 +133,10 @@ function setup(
   });
   return {
     browser,
+    agent,
     order,
     clearSession,
+    clearAgentSession,
     confirmClear,
     openExternal,
     channels: () => [...listeners.keys()].sort(),
@@ -112,8 +173,8 @@ const VALID: Record<string, unknown> = {
 };
 
 describe('registerBrowserHandlers', () => {
-  it('registra os 15 canais de pedido do navegador', () => {
-    expect(setup().channels()).toEqual(Object.keys(VALID).sort());
+  it('registra os 16 canais de pedido do navegador', () => {
+    expect(setup().channels()).toEqual([...Object.keys(VALID), CHANNELS.browserAgentAccess].sort());
   });
 
   it.each(Object.entries(VALID))(
@@ -221,14 +282,18 @@ describe('registerBrowserHandlers', () => {
     const ipc = setup({ confirm: false });
     expect(await ipc.call(CHANNELS.browserClearData, PROJECT)).toEqual(OK_STATE);
     expect(ipc.clearSession).not.toHaveBeenCalled();
+    expect(ipc.clearAgentSession).not.toHaveBeenCalled();
     expect(ipc.browser.forgetProject).not.toHaveBeenCalled();
+    expect(ipc.agent.forgetProject).not.toHaveBeenCalled();
   });
 
   it('clear-data confirmado esquece as abas, limpa a sessão e devolve o estado novo', async () => {
     const ipc = setup();
     expect(await ipc.call(CHANNELS.browserClearData, PROJECT)).toEqual(OK_STATE);
     // As páginas fecham antes de a sessão ser limpa: uma página viva regravaria o armazenamento.
-    expect(ipc.order).toEqual(['forget', 'clear']);
+    expect(ipc.order).toEqual(['forget', 'agent-forget', 'clear', 'agent-clear']);
+    expect(ipc.clearAgentSession).toHaveBeenCalledWith('p1');
+    expect(ipc.browser.setYielded).toHaveBeenLastCalledWith('p1', false);
     expect(ipc.clearSession).toHaveBeenCalledWith('p1');
     expect(ipc.browser.state).toHaveBeenCalledWith('p1');
   });
@@ -261,4 +326,157 @@ describe('registerBrowserHandlers', () => {
       expect(ipc.openExternal).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('abas de agente nos canais do navegador', () => {
+  const AGENT_TAB = { projectId: 'p1', tabId: 'g1' };
+  const REFUSED = { ok: false, error: { code: 'VALIDATION_FAILED' } };
+
+  it('o estado traz as abas da pessoa e as do agente', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    expect(await ipc.call(CHANNELS.browserState, PROJECT)).toEqual({
+      ok: true,
+      data: { projectId: 'p1', tabs: [agentTab('g1')], activeTabId: null },
+    });
+  });
+
+  it('escolher uma aba de agente passa a olhá-la e cede a página da pessoa, sem trocar a aba ativa dela', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    expect(await ipc.call(CHANNELS.browserSelectTab, AGENT_TAB)).toMatchObject({
+      ok: true,
+      data: { activeTabId: 'g1' },
+    });
+    expect(ipc.agent.lookAt).toHaveBeenCalledWith('p1', 'g1');
+    expect(ipc.browser.setYielded).toHaveBeenLastCalledWith('p1', true);
+    expect(ipc.browser.selectTab).not.toHaveBeenCalled();
+  });
+
+  it('escolher ou abrir uma aba da pessoa deixa de olhar a do agente', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    await ipc.call(CHANNELS.browserSelectTab, AGENT_TAB);
+    await ipc.call(CHANNELS.browserSelectTab, TAB);
+    expect(ipc.agent.lookAt).toHaveBeenLastCalledWith('p1', null);
+    expect(ipc.browser.setYielded).toHaveBeenLastCalledWith('p1', false);
+    expect(ipc.browser.selectTab).toHaveBeenCalledWith('p1', 't1');
+
+    await ipc.call(CHANNELS.browserSelectTab, AGENT_TAB);
+    await ipc.call(CHANNELS.browserOpenTab, PROJECT);
+    expect(ipc.agent.lookAt).toHaveBeenLastCalledWith('p1', null);
+    expect(ipc.browser.setYielded).toHaveBeenLastCalledWith('p1', false);
+  });
+
+  it('fechar uma aba de agente vai para o serviço do agente e devolve a página da pessoa', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    await ipc.call(CHANNELS.browserSelectTab, AGENT_TAB);
+    expect(await ipc.call(CHANNELS.browserCloseTab, AGENT_TAB)).toMatchObject({ ok: true });
+    expect(ipc.agent.closeByPerson).toHaveBeenCalledWith('p1', 'g1');
+    expect(ipc.browser.closeTab).not.toHaveBeenCalled();
+    expect(ipc.browser.setYielded).toHaveBeenLastCalledWith('p1', false);
+  });
+
+  it('navegar, voltar, avançar e recarregar numa aba de agente vão para o serviço do agente', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    expect(
+      await ipc.call(CHANNELS.browserNavigate, { ...AGENT_TAB, text: 'exemplo.com' }),
+    ).toMatchObject({ ok: true, data: { projectId: 'p1' } });
+    expect(ipc.agent.navigateByPerson).toHaveBeenCalledWith('p1', 'g1', 'exemplo.com');
+    expect(await ipc.call(CHANNELS.browserBack, AGENT_TAB)).toEqual(OK);
+    expect(await ipc.call(CHANNELS.browserForward, AGENT_TAB)).toEqual(OK);
+    expect(await ipc.call(CHANNELS.browserReload, AGENT_TAB)).toEqual(OK);
+    expect(ipc.agent.stepByPerson.mock.calls).toEqual([
+      ['p1', 'g1', 'back'],
+      ['p1', 'g1', 'forward'],
+      ['p1', 'g1', 'reload'],
+    ]);
+    for (const name of ['navigate', 'back', 'forward', 'reload'] as const) {
+      expect(ipc.browser[name]).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a recusa do serviço do agente ao navegar volta para a tela', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    ipc.agent.navigateByPerson.mockReturnValueOnce({
+      ok: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Esse endereço não abre aqui.',
+        retryable: false,
+      },
+    });
+    expect(
+      await ipc.call(CHANNELS.browserNavigate, { ...AGENT_TAB, text: 'file:///c:/x' }),
+    ).toMatchObject({ ok: false, error: { message: 'Esse endereço não abre aqui.' } });
+  });
+
+  it('parar e abrir as ferramentas de desenvolvedor são recusados numa aba de agente', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    expect(await ipc.call(CHANNELS.browserStop, AGENT_TAB)).toMatchObject(REFUSED);
+    expect(await ipc.call(CHANNELS.browserOpenDevtools, AGENT_TAB)).toMatchObject(REFUSED);
+    expect(ipc.browser.stop).not.toHaveBeenCalled();
+    expect(ipc.browser.openDevTools).not.toHaveBeenCalled();
+  });
+
+  it('abrir no navegador do sistema usa o endereço da aba do agente, com a mesma regra de https', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    expect(await ipc.call(CHANNELS.browserOpenExternal, AGENT_TAB)).toEqual(OK);
+    expect(ipc.openExternal).toHaveBeenCalledWith('https://agente.exemplo/');
+    expect(ipc.browser.urlOf).not.toHaveBeenCalled();
+    ipc.agent.urlOf.mockReturnValueOnce('http://localhost:3000/');
+    expect(await ipc.call(CHANNELS.browserOpenExternal, AGENT_TAB)).toMatchObject(REFUSED);
+  });
+
+  it('o retângulo vai para os dois serviços, já conferido', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    await ipc.call(CHANNELS.browserSetBounds, { ...PROJECT, bounds: RECT });
+    expect(ipc.agent.setBounds).toHaveBeenLastCalledWith('p1', RECT);
+    await ipc.call(CHANNELS.browserSetBounds, { ...PROJECT, bounds: { ...RECT, x: 5000 } });
+    expect(ipc.browser.setBounds).toHaveBeenLastCalledWith('p1', null);
+    expect(ipc.agent.setBounds).toHaveBeenLastCalledWith('p1', null);
+  });
+
+  it('o retângulo de um projeto que não existe não chega ao serviço do agente', async () => {
+    const ipc = setup();
+    ipc.browser.setBounds.mockReturnValueOnce({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'x', retryable: false },
+    } as never);
+    await ipc.call(CHANNELS.browserSetBounds, { ...PROJECT, bounds: RECT });
+    expect(ipc.agent.setBounds).not.toHaveBeenCalled();
+  });
+
+  it('o foco e a imagem parada vão para a página que a pessoa está olhando', async () => {
+    const ipc = setup({ agentTabs: ['g1'] });
+    await ipc.call(CHANNELS.browserFocusPage, PROJECT);
+    expect(ipc.browser.focusPage).toHaveBeenCalledTimes(1);
+    expect(ipc.agent.focusPage).not.toHaveBeenCalled();
+
+    await ipc.call(CHANNELS.browserSelectTab, AGENT_TAB);
+    await ipc.call(CHANNELS.browserFocusPage, PROJECT);
+    expect(ipc.agent.focusPage).toHaveBeenCalledWith('p1');
+    expect(ipc.browser.focusPage).toHaveBeenCalledTimes(1);
+    expect(await ipc.call(CHANNELS.browserSnapshot, PROJECT)).toEqual({
+      ok: true,
+      data: 'data:image/png;base64,AG',
+    });
+    expect(ipc.browser.snapshot).not.toHaveBeenCalled();
+  });
+
+  it('agent-access devolve só rótulos e sim ou não, e recusa remetente de outra origem', async () => {
+    const ipc = setup();
+    const result = await ipc.call(CHANNELS.browserAgentAccess);
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        supported: true,
+        programs: [
+          { label: 'Claude Code', access: true },
+          { label: 'Antigravity CLI', access: false },
+        ],
+      },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/127\.0\.0\.1|token|Bearer/i);
+    expect(
+      await ipc.call(CHANNELS.browserAgentAccess, undefined, 'https://exemplo.com/'),
+    ).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+  });
 });

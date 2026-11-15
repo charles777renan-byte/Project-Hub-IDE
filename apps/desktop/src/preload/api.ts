@@ -15,6 +15,7 @@ import {
   type AddProjectInput,
   type AgentActivity,
   type AppResult,
+  type BrowserAgentAccessDto,
   type BrowserBounds,
   type BrowserShortcutEvent,
   type BrowserStateDto,
@@ -308,6 +309,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<void>(CHANNELS.browserOpenExternal, { projectId, tabId }),
       clearData: (projectId: string) =>
         call<BrowserStateDto>(CHANNELS.browserClearData, { projectId }),
+      /** Quais programas recebem o navegador ao abrir um terminal. Só rótulos e sim ou não. */
+      agentAccess: () => call<BrowserAgentAccessDto>(CHANNELS.browserAgentAccess),
       onChanged: (listener: (state: BrowserStateDto) => void) =>
         subscribe(CHANNELS.browserChanged, (payload) => {
           const parsed = browserStateSchema.safeParse(payload);
