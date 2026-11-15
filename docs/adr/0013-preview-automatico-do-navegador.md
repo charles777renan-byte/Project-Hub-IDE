@@ -1,6 +1,6 @@
 # ADR 0013: Preview automático do navegador, com aprovação por comando exato
 
-- Status: proposta; implementada na fase 2, no ramo `feat/navegador-preview`. Passa a aceita com a integração do ramo.
+- Status: aceita; implementada na fase 2 e integrada.
 - Data: 2026-11-14
 - Origem: preview automático da aba Navegador, em `docs/superpowers/specs/2026-11-13-navegador-preview-automatico-design.md`
 - Complementa: ADR 0012 (navegador interno em view isolada), ADR 0001 (isolamento do Electron) e ADR 0007 (decisões de fundação). Esta decisão abre uma segunda exceção controlada: o app passa a rodar um comando que vem do repositório, depois de a pessoa ver o texto dele.
