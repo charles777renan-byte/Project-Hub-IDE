@@ -33,6 +33,7 @@ export {
   GripVertical,
   History,
   House,
+  Bot,
   Inbox,
   Italic,
   LayoutGrid,

@@ -1196,3 +1196,19 @@ describe('alça de arrastar o painel', () => {
     expect(setup().container.querySelector('.pane__grip')).toBeNull();
   });
 });
+
+describe('PaneView: navegador perdido no reinício', () => {
+  const LOST =
+    'Sem navegador: o app foi reiniciado. Abra um terminal novo para o agente voltar a usar.';
+
+  it('terminal recuperado que perdeu o navegador mostra o aviso', () => {
+    setup({ terminal: { ...session, origin: 'recovered', browserAccess: 'lost' } });
+    expect(screen.getByRole('note')).toHaveTextContent(LOST);
+  });
+
+  it.each([{ browserAccess: 'active' as const }, {}])('com %j, o aviso não aparece', (access) => {
+    setup({ terminal: { ...session, ...access } });
+    expect(screen.queryByText(LOST)).toBeNull();
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+});

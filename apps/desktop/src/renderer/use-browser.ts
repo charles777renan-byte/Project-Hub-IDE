@@ -1,4 +1,10 @@
-import type { AppResult, BrowserStateDto, BrowserTabDto } from '@project-hub/contracts';
+import type {
+  AppResult,
+  BrowserAgentAccessDto,
+  BrowserStateDto,
+  BrowserTabDto,
+  ProjectHubApi,
+} from '@project-hub/contracts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /** O navegador de um projeto, como a aba Navegador o vê: o estado que o processo principal publica e os pedidos. */
@@ -108,4 +114,63 @@ export function useBrowser(projectId: string): BrowserView {
       clearData: () => run(api.clearData(projectId)),
     };
   }, [state, activeTab, activeId, notice, failure, projectId, run]);
+}
+
+/**
+ * Quais programas recebem o navegador ao abrir um terminal, lido uma vez quando `enabled` vira verdadeiro (o cartão
+ * "Agentes e o navegador" abriu). `null` enquanto não chegou; uma falha vira "sem o recurso".
+ */
+export function useAgentAccess(enabled: boolean): BrowserAgentAccessDto | null {
+  const [access, setAccess] = useState<BrowserAgentAccessDto | null>(null);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let current = true;
+    const unavailable = { supported: false, programs: [] };
+    window.projectHub.browser.agentAccess().then(
+      (result) => {
+        if (current) setAccess(result.ok ? result.data : unavailable);
+      },
+      () => {
+        if (current) setAccess(unavailable);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [enabled]);
+  return access;
+}
+
+/**
+ * Se o projeto tem aba de agente no navegador, para o ponto de atividade da aba Navegador do painel direito. Vale
+ * com a aba Navegador fechada: lê o estado uma vez e segue os eventos. Sem projeto, ou sem o navegador (uma tela
+ * de teste que não o monta), é falso.
+ */
+export function useAgentInBrowser(projectId: string | null): boolean {
+  const [seen, setSeen] = useState<{ projectId: string; present: boolean } | null>(null);
+  useEffect(() => {
+    const hub = window.projectHub as Partial<ProjectHubApi> | undefined;
+    const api = hub?.browser;
+    if (projectId === null || api === undefined) return undefined;
+    let current = true;
+    const read = (state: BrowserStateDto): void => {
+      if (!current || state.projectId !== projectId) return;
+      setSeen({ projectId, present: state.tabs.some((tab) => tab.owner === 'agent') });
+    };
+    const unsubscribe = api.onChanged(read);
+    api.state(projectId).then(
+      (result) => {
+        if (!result.ok || !current) return;
+        const present = result.data.tabs.some((tab) => tab.owner === 'agent');
+        // Um evento que chegou antes da resposta é mais novo que ela.
+        setSeen((known) => (known?.projectId === projectId ? known : { projectId, present }));
+      },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+      unsubscribe();
+    };
+  }, [projectId]);
+  return seen !== null && seen.projectId === projectId && seen.present;
 }

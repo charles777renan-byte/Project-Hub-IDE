@@ -94,3 +94,58 @@ describe('BrowserPageTabs', () => {
     expect(screen.getByRole('tab')).not.toHaveTextContent('http://');
   });
 });
+
+describe('BrowserPageTabs: abas de agente', () => {
+  const AGENT = browserTab({
+    id: 'g1',
+    title: 'Página do agente',
+    owner: 'agent',
+    terminalTitle: 'Claude Code · app',
+  });
+
+  it('a aba de agente leva a marca "Agente", o nome começa com "Agente: " e a dica diz o terminal', () => {
+    setup([...TABS, AGENT]);
+    const tab = screen.getByRole('tab', { name: 'Agente: Página do agente' });
+    expect(within(tab).getByText('Agente')).toHaveClass('browser__tab-owner');
+    expect(tab.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(tab).toHaveAttribute('title', 'Aba do agente em Claude Code · app');
+    // As abas da pessoa seguem sem a marca.
+    expect(screen.getByRole('tab', { name: 'Exemplo' })).not.toHaveAttribute('title');
+    expect(screen.getAllByText('Agente')).toHaveLength(1);
+  });
+
+  it('carregando, o nome da aba de agente também diz', () => {
+    setup([...TABS, { ...AGENT, loading: true }]);
+    expect(
+      screen.getByRole('tab', { name: 'Agente: carregando Página do agente' }),
+    ).toBeInTheDocument();
+  });
+
+  it('sem o título do terminal, a dica não inventa um', () => {
+    const { terminalTitle: _dropped, ...untitled } = AGENT;
+    setup([...TABS, untitled]);
+    expect(screen.getByRole('tab', { name: 'Agente: Página do agente' })).toHaveAttribute(
+      'title',
+      'Aba de um agente',
+    );
+  });
+
+  it('as abas de agente ficam depois das da pessoa, e as setas seguem essa ordem', async () => {
+    const { user, handlers } = setup([AGENT, ...TABS], 't2');
+    const names = within(list())
+      .getAllByRole('tab')
+      .map((tab) => tab.getAttribute('aria-label') ?? tab.textContent);
+    expect(names).toEqual(['Exemplo', 'Docs', 'Agente: Página do agente']);
+    screen.getByRole('tab', { name: 'Docs' }).focus();
+    await user.keyboard('{ArrowRight}');
+    expect(handlers.onSelect).toHaveBeenCalledExactlyOnceWith('g1');
+  });
+
+  it('fechar e escolher a aba de agente mandam o id dela', async () => {
+    const { user, handlers } = setup([...TABS, AGENT]);
+    await user.click(screen.getByRole('tab', { name: 'Agente: Página do agente' }));
+    expect(handlers.onSelect).toHaveBeenCalledExactlyOnceWith('g1');
+    await user.click(screen.getByRole('button', { name: 'Fechar aba do agente Página do agente' }));
+    expect(handlers.onClose).toHaveBeenCalledExactlyOnceWith('g1');
+  });
+});

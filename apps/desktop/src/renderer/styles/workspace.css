@@ -1790,6 +1790,18 @@
  * A pergunta de "Fechar painel e encerrar…" (só a sessão viva): uma faixa abaixo do cabeçalho, com a pergunta e os
  * dois botões. A pergunta quebra de linha no painel estreito, e a faixa nunca encolhe.
  */
+/* Aviso curto do painel, entre o cabeçalho e o terminal (o agente recuperado que ficou sem o navegador). */
+.pane__notice {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .pane__confirm {
   flex: none;
   padding: var(--space-2);

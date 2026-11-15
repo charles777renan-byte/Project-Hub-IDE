@@ -1,6 +1,7 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
 import { useState } from 'react';
 import { openFile, type FileMode } from '../../open-files';
+import { useAgentInBrowser } from '../../use-browser';
 import { useGithubPanel } from '../../use-github-panel';
 import { EmptyState } from '../EmptyState';
 import { Hint } from '../Hint';
@@ -39,7 +40,8 @@ const AVAILABLE_TABS: ReadonlySet<RightTab> = new Set<RightTab>(RIGHT_TABS);
  * Navegador, num `tablist` do Radix) e o conteúdo da aba escolhida. As cinco são abas de verdade, e a escolhida é
  * lembrada. Sem projeto (o Início, por exemplo), Sessões mostra só o escopo Todos e as outras abas mostram o aviso
  * para abrir um. A aba Navegador é o navegador interno do projeto (NavigatorTab.tsx): cada projeto tem o seu.
- * A aba Checks leva um ponto de estado na barra (`checksDot`) quando o PR tem checks. Um arquivo aberto, pela aba
+ * A aba Checks leva um ponto de estado na barra (`checksDot`) quando o PR tem checks, e a aba Navegador leva um
+ * ponto de atividade enquanto o projeto tem aba aberta por um agente. Um arquivo aberto, pela aba
  * Arquivos ou pela aba Código-fonte, entra nos arquivos abertos do projeto (`openFile`), e o painel mostra a aba
  * Arquivos com ele (o editor). `onOpenFile` só existe para os testes injetarem um espião no lugar disso.
  */
@@ -57,6 +59,7 @@ export function RightPanel({
   // O PR é dado do painel, não da aba: o ponto de estado da barra precisa dele com a aba fechada. É chamado uma
   // vez, aqui; a aba Checks lê o retorno (e o ponto da barra, depois). A releitura de 30 s só vale com a aba visível.
   const github = useGithubPanel(projectId, tab === 'checks');
+  const agentInBrowser = useAgentInBrowser(projectId);
 
   /**
    * Abre o arquivo no painel direito: ele entra nos arquivos abertos do projeto e a aba Arquivos fica escolhida (e
@@ -84,8 +87,14 @@ export function RightPanel({
           {RIGHT_TABS.map((id) => {
             const { label, icon: Icon } = TAB_INFO[id];
             const available = AVAILABLE_TABS.has(id);
-            // O ponto só existe na aba Checks, e o estado vai também no texto do nome e da dica (nunca só na cor).
-            const dot = id === 'checks' ? checksDot(github.state) : null;
+            // O ponto existe na aba Checks e na aba Navegador, e o que ele diz vai também no texto do nome e da dica
+            // (nunca só na cor).
+            const dot =
+              id === 'checks'
+                ? checksDot(github.state)
+                : id === 'navegador' && agentInBrowser
+                  ? { tone: 'ok' as const, label: 'Navegador: agente no navegador' }
+                  : null;
             const name = dot?.label ?? label;
             return (
               <Hint key={id} label={available ? name : 'Em breve'}>

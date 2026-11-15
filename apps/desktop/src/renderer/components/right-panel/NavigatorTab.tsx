@@ -6,8 +6,9 @@ import {
   TOGGLE_RIGHT_EXPANDED_EVENT,
   TOGGLE_RIGHT_PANEL_EVENT,
 } from '../../right-panel-events';
-import { useBrowser } from '../../use-browser';
+import { useAgentAccess, useBrowser } from '../../use-browser';
 import { usePreview } from '../../use-preview';
+import { AgentAccessCard } from './AgentAccessCard';
 import { BrowserPageTabs } from './BrowserPageTabs';
 import { BrowserToolbar } from './BrowserToolbar';
 import { BrowserViewport } from './BrowserViewport';
@@ -34,6 +35,8 @@ function sameOrigin(url: string, previewUrl: string | null): boolean {
  * de novo é a pessoa, pelo cartão: senão cada aba vazia abriria mais um terminal.
  */
 function startsAlone(tab: BrowserTabDto, state: PreviewStateDto): boolean {
+  // O preview é da pessoa: a aba de um agente nunca o dispara, nem recebe o endereço dele.
+  if (tab.owner === 'agent') return false;
   const { approval, detection, status } = state;
   const site = approval.kind === 'none' && detection.kind === 'static';
   if (tab.error !== null) return site && sameOrigin(tab.url, state.url);
@@ -57,6 +60,9 @@ function startsAlone(tab: BrowserTabDto, state: PreviewStateDto): boolean {
  *
  * Uma aba de página vazia abre o preview do projeto: sozinha, quando não há o que perguntar, ou com o cartão do
  * preview no lugar do aviso. Quem decide o que roda é o processo principal; daqui só sai "iniciar nesta aba".
+ *
+ * As abas que os agentes dos terminais abrem aparecem na mesma faixa, marcadas como do agente. A pessoa pode
+ * olhá-las, navegar nelas e fechá-las; "Nova aba" e os atalhos seguem criando aba da pessoa.
  */
 export function NavigatorTab({
   projectId,
@@ -78,6 +84,9 @@ export function NavigatorTab({
   const [manageTab, setManageTab] = useState<string | null>(null);
   /** "Preview do projeto…" pediu uma aba nova: a próxima aba vazia que não é `from` mostra o cartão. */
   const [manageNext, setManageNext] = useState<{ from: string } | null>(null);
+  /** Qual cartão a aba de `manageTab` mostra: o do preview ou o dos agentes. */
+  const [cardKind, setCardKind] = useState<'preview' | 'agents'>('preview');
+  const agentAccess = useAgentAccess(cardKind === 'agents');
   /** As abas que já dispararam o preview nesta montagem. */
   const fired = useRef(new Set<string>());
 
@@ -163,7 +172,9 @@ export function NavigatorTab({
     setDismissed((current) => new Set(current).add(tabId));
   }
 
-  function openPreviewCard() {
+  /** Mostra um cartão na aba vazia à vista; com uma página à vista, abre uma aba nova da pessoa para ele. */
+  function openCard(kind: 'preview' | 'agents') {
+    setCardKind(kind);
     if (empty) {
       setManageTab(tabId);
       return;
@@ -174,7 +185,9 @@ export function NavigatorTab({
 
   let emptyContent: ReactNode;
   let onOpenAddress: (() => void) | undefined;
-  if (empty && previewState !== null) {
+  if (empty && manageTab === tabId && cardKind === 'agents') {
+    emptyContent = <AgentAccessCard access={agentAccess} onClose={() => setManageTab(null)} />;
+  } else if (empty && previewState !== null) {
     const managing = manageTab === tabId;
     // Um pedido recusado deixa o cartão no modo em que a pessoa age: "abrindo…" não seria verdade.
     const mode = managing || preview.error !== null ? 'manage' : 'auto';
@@ -210,6 +223,7 @@ export function NavigatorTab({
 
   const canStartServer =
     previewState !== null &&
+    activeTab.owner !== 'agent' &&
     activeTab.error !== null &&
     previewState.approval.kind === 'script' &&
     !previewState.approval.changed &&
@@ -237,7 +251,8 @@ export function NavigatorTab({
         onOpenExternal={browser.openExternal}
         onOpenDevtools={browser.openDevtools}
         onClearData={browser.clearData}
-        onOpenPreview={openPreviewCard}
+        onOpenPreview={() => openCard('preview')}
+        onOpenAgents={() => openCard('agents')}
         onMenuOpenChange={setMenuOpen}
         addressRef={addressRef}
         firstButtonRef={firstButtonRef}

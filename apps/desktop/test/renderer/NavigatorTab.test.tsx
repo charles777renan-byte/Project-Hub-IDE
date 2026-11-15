@@ -488,3 +488,86 @@ describe('NavigatorTab: preview do projeto', () => {
     expect(preview.start).not.toHaveBeenCalled();
   });
 });
+
+describe('NavigatorTab: agentes', () => {
+  const EMPTY = browserState([browserTab({ url: '', title: '' })]);
+  const AGENT = browserTab({
+    id: 'g1',
+    title: 'Página do agente',
+    url: 'http://127.0.0.1:4100/sub/',
+    owner: 'agent',
+    terminalTitle: 'Claude Code · app',
+  });
+  const settle = () => act(async () => void (await Promise.resolve()));
+  const card = () => screen.findByRole('region', { name: 'Agentes e o navegador' });
+
+  it('"Agentes e o navegador" numa aba vazia mostra quais programas alcançam o navegador, e "Fechar" tira', async () => {
+    const { api } = installBrowserApi(EMPTY);
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Agentes e o navegador' }));
+
+    const items = await within(await card()).findAllByRole('listitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Claude Code: alcança o navegador',
+      'Codex: alcança o navegador',
+      'Antigravity CLI: ainda não alcança',
+    ]);
+    expect(api.agentAccess).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(screen.queryByRole('region', { name: 'Agentes e o navegador' })).toBeNull();
+  });
+
+  it('"Agentes e o navegador" numa aba com página abre uma aba nova da pessoa e mostra o cartão nela', async () => {
+    const { api, emit } = installBrowserApi();
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Agentes e o navegador' }));
+    expect(api.openTab).toHaveBeenCalledExactlyOnceWith('p1');
+
+    act(() =>
+      emit(browserState([browserTab(), browserTab({ id: 't2', url: '', title: '' })], 't2')),
+    );
+    expect(await card()).toBeInTheDocument();
+  });
+
+  it('a aba de agente à vista mostra o aviso e manda os pedidos com o id dela', async () => {
+    const { api } = installBrowserApi(browserState([browserTab(), AGENT], 'g1'));
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    expect(await address()).toHaveValue('http://127.0.0.1:4100/sub/');
+    expect(
+      screen.getByText('Aba de um agente. A sessão dela é separada da sua.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Recarregar' }));
+    expect(api.reload).toHaveBeenCalledExactlyOnceWith('p1', 'g1');
+    // "Nova aba" segue criando aba da pessoa: o pedido não leva dono nem endereço.
+    await user.click(screen.getByRole('button', { name: 'Nova aba' }));
+    expect(api.openTab).toHaveBeenCalledExactlyOnceWith('p1');
+  });
+
+  it('uma aba de agente nunca dispara o preview, nem com erro no endereço do site do projeto', async () => {
+    const failedAgent = {
+      ...AGENT,
+      error: { code: 'OFFLINE' as const, message: 'A página não respondeu.' },
+    };
+    const { preview } = installBrowserApi(browserState([browserTab(), failedAgent], 'g1'), {
+      ...previewState({
+        detection: { kind: 'static', packageManager: 'npm', scripts: [], suggested: null },
+      }),
+      url: 'http://127.0.0.1:4100/',
+    });
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+    await settle();
+    expect(preview.start).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Subir o servidor' })).toBeNull();
+  });
+});
