@@ -135,6 +135,7 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
       canGoBack: false,
       canGoForward: false,
       error: null,
+      owner: 'person',
     };
   }
 

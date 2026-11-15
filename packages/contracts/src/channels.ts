@@ -165,6 +165,8 @@ export const CHANNELS = {
   browserOpenExternal: 'browser:open-external:v1',
   /** Apaga cookies, armazenamento e cache do projeto, depois de confirmação nativa. */
   browserClearData: 'browser:clear-data:v1',
+  /** Quais programas de agente alcançam o navegador. Sem entrada; devolve rótulos e sim ou não. */
+  browserAgentAccess: 'browser:agent-access:v1',
   /** O estado do navegador de um projeto mudou. Do processo principal para o renderer; não tem resposta. */
   browserChanged: 'browser:changed:v1',
   /** Um atalho do app foi apertado com o foco na página. Do processo principal para o renderer; não tem resposta. */

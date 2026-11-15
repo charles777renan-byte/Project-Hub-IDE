@@ -17,6 +17,7 @@ export function browserTab(overrides: Partial<BrowserTabDto> = {}): BrowserTabDt
     canGoBack: false,
     canGoForward: false,
     error: null,
+    owner: 'person',
     ...overrides,
   };
 }

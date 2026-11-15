@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   BROWSER_ADDRESS_MAX,
+  BROWSER_AGENT_TAB_LIMIT,
   BROWSER_ERROR_MESSAGES,
   BROWSER_TAB_LIMIT,
   CHANNELS,
+  browserAgentAccessSchema,
   browserBoundsInputSchema,
   browserNavigateInputSchema,
   browserShortcutEventSchema,
   browserStateSchema,
+  browserTabSchema,
   responseSchemas,
 } from '../src/index';
 
@@ -19,6 +22,7 @@ const tab = {
   canGoBack: false,
   canGoForward: false,
   error: null,
+  owner: 'person',
 };
 
 describe('contratos do navegador', () => {
@@ -54,7 +58,7 @@ describe('contratos do navegador', () => {
           key.startsWith('browser') && key !== 'browserChanged' && key !== 'browserShortcut',
       )
       .map(([, channel]) => channel);
-    expect(requests).toHaveLength(15);
+    expect(requests).toHaveLength(16);
     for (const channel of requests) expect(responseSchemas).toHaveProperty([channel]);
   });
 
@@ -78,6 +82,37 @@ describe('contratos do navegador', () => {
   it('a mensagem de servidor recusado fala do servidor local', () => {
     expect(BROWSER_ERROR_MESSAGES.REFUSED).toBe(
       'O servidor recusou a conexão. Se for o seu servidor local, veja se ele está rodando.',
+    );
+  });
+
+  it('toda aba diz de quem é: sem dono, é recusada', () => {
+    const { owner: _owner, ...ownerless } = tab;
+    expect(browserTabSchema.safeParse(ownerless).success).toBe(false);
+    expect(browserTabSchema.safeParse({ ...tab, owner: 'outro' }).success).toBe(false);
+  });
+
+  it('a aba de agente leva o título do terminal, que é opcional', () => {
+    expect(browserTabSchema.safeParse({ ...tab, owner: 'agent' }).success).toBe(true);
+    const parsed = browserTabSchema.parse({
+      ...tab,
+      owner: 'agent',
+      terminalTitle: 'Claude · site',
+    });
+    expect(parsed.terminalTitle).toBe('Claude · site');
+  });
+
+  it('o limite de abas de agente é 4', () => {
+    expect(BROWSER_AGENT_TAB_LIMIT).toBe(4);
+  });
+
+  it('o acesso dos agentes leva só rótulos e sim ou não', () => {
+    const access = { supported: true, programs: [{ label: 'Claude Code', access: true }] };
+    expect(browserAgentAccessSchema.safeParse(access).success).toBe(true);
+    expect(
+      responseSchemas[CHANNELS.browserAgentAccess].safeParse({ ok: true, data: access }).success,
+    ).toBe(true);
+    expect(browserAgentAccessSchema.safeParse({ supported: 'sim', programs: [] }).success).toBe(
+      false,
     );
   });
 });
