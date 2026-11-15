@@ -13,7 +13,7 @@ const PAGE = (title: string, body: string): string =>
  * Servidor HTTP em 127.0.0.1, numa porta livre. `/` devolve uma página com o título "Site de teste" e um link
  * `target=_blank` para `/outra`; `/cookie` grava o cookie `visita=1` (com validade, para sobreviver ao reinício do
  * app); `/le-cookie` devolve o cookie recebido como texto. `/agente` tem um botão que troca o título, um campo que
- * escreve em `#saida` ao receber Enter e um erro plantado no console; `/dialogos` tem um botão que chama `alert()` e
+ * escreve em `#saida` ao receber Enter, um erro plantado no console e o ponto do último clique em `#ponto`; `/dialogos` tem um botão que chama `alert()` e
  * um link `mailto:`.
  */
 export async function startLocalSite(): Promise<{ url: string; close(): Promise<void> }> {
@@ -41,8 +41,10 @@ export async function startLocalSite(): Promise<{ url: string; close(): Promise<
           'Página do agente',
           '<h1 style="color:#06c">Página do agente</h1>' +
             '<button id="mudar" onclick="document.title=&quot;Clicado&quot;">Mudar título</button>' +
-            '<input id="campo" aria-label="Campo de teste"><p id="saida"></p>' +
+            '<input id="campo" aria-label="Campo de teste"><p id="saida"></p><p id="ponto"></p>' +
             '<script>console.error("erro plantado");' +
+            'document.addEventListener("click",function(e){' +
+            'document.getElementById("ponto").textContent="ponto: "+e.clientX+","+e.clientY;});' +
             'document.getElementById("campo").addEventListener("keydown",function(e){' +
             'if(e.key==="Enter")document.getElementById("saida").textContent="enviado: "+e.target.value;});</script>',
         ),

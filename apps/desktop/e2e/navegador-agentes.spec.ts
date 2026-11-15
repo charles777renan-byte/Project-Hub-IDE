@@ -207,6 +207,27 @@ test.describe('agentes no navegador do projeto', () => {
     ).not.toBe(false);
   });
 
+  test('com a tela a 150%, a captura segue em 1280x800 e o clique por coordenada cai no ponto da imagem', async ({
+    launchApp,
+    gitRepo,
+  }) => {
+    const { page } = await launchApp({
+      dialogPath: gitRepo.path,
+      panelClaudeScript: FAKE_CLAUDE,
+      extraArgs: ['--force-device-scale-factor=1.5'],
+    });
+    const name = basename(gitRepo.path);
+    await addGitProject(page, name);
+    await openAgentTerminal(page, name);
+    const tab = await agent.open(`${site.url}/agente`);
+
+    const shot = await agent.shot(tab.id);
+    expect([shot.width, shot.height]).toEqual([1280, 800]);
+    expect(colorsIn(shot)).toBeGreaterThan(1);
+    await agent.text('browser_click', { tabId: tab.id, x: 900, y: 500 });
+    expect(await agent.text('browser_read_text', { tabId: tab.id })).toContain('ponto: 900,500');
+  });
+
   test('funciona igual com o painel direito fechado e outro projeto na tela', async ({
     launchApp,
     gitRepo,
@@ -283,6 +304,22 @@ test.describe('agentes no navegador do projeto', () => {
     const button = await agent.ref(tab.id, 'button "Mudar título"');
     await agent.text('browser_click', { tabId: tab.id, ref: button });
     await expect(pageTab(page, 'Agente: Clicado')).toBeVisible();
+
+    // A pessoa minimiza a janela olhando a aba do agente: a página volta para a janela de apoio, a captura do
+    // agente segue funcionando, e a página reaparece no painel quando a janela volta.
+    const mainWindow = (action: 'minimize' | 'restore'): Promise<void> =>
+      app.evaluate(({ BrowserWindow }, what) => {
+        const main = BrowserWindow.getAllWindows().find((each) => each.isFocusable());
+        if (what === 'minimize') main?.minimize();
+        else main?.restore();
+      }, action);
+    await mainWindow('minimize');
+    await expect.poll(async () => (await viewState(app)).attached).toBe(0);
+    const minimized = await agent.shot(tab.id);
+    expect([minimized.width, minimized.height]).toEqual([1280, 800]);
+    expect(colorsIn(minimized)).toBeGreaterThan(1);
+    await mainWindow('restore');
+    await expect.poll(async () => (await viewState(app)).url).toBe(`${site.url}/agente`);
 
     // De volta à aba da pessoa: a do agente sai da janela e a captura volta ao tamanho dela.
     await pageTab(page, 'Nova aba').click();

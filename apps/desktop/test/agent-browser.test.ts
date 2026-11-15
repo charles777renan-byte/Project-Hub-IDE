@@ -292,6 +292,28 @@ describe('abas do agente', () => {
     expect(shows().at(-1)).toBe('park');
   });
 
+  it('com a janela principal minimizada ou escondida, a página volta para a janela de apoio até ela reaparecer', async () => {
+    const { service, pages } = setup();
+    const tab = data(await service.open(A, 'http://localhost:1/'));
+    const last = (): string | undefined =>
+      (pages[0]?.calls ?? []).filter((call) => call.startsWith('show') || call === 'park').at(-1);
+    service.lookAt('p1', tab.id);
+    service.setBounds('p1', BOUNDS);
+    expect(last()).toBe(`show:${JSON.stringify(BOUNDS)}`);
+
+    // Numa janela que não é desenhada a captura do agente falharia.
+    service.setWindowVisible(false);
+    expect(last()).toBe('park');
+    // A pessoa segue olhando esta aba: o que mudou foi só onde a página está.
+    expect(service.lookingAt('p1')).toBe(tab.id);
+    // Um retângulo que chega com a janela fora de vista não traz a página de volta.
+    service.setBounds('p1', BOUNDS);
+    expect(last()).toBe('park');
+
+    service.setWindowVisible(true);
+    expect(last()).toBe(`show:${JSON.stringify(BOUNDS)}`);
+  });
+
   it('a imagem parada é a da aba que a pessoa olha, ou nada', async () => {
     const { service } = setup();
     expect(await service.snapshotByPerson('p1')).toBeNull();

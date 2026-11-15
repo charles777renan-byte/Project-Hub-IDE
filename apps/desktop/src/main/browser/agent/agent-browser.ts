@@ -115,6 +115,12 @@ export type AgentBrowser = {
   forgetProject(projectId: string): void;
   /** Devolve à janela de apoio a página que estiver na principal (a janela recarregou, ou o renderer caiu). */
   parkAll(): void;
+  /**
+   * A janela principal está sendo desenhada (`true`) ou foi minimizada ou escondida (`false`). Fora de vista, a
+   * página que a pessoa olhava volta para a janela de apoio, onde a captura do agente funciona; a escolha dela
+   * fica, e a página volta quando a janela reaparece.
+   */
+  setWindowVisible(visible: boolean): void;
   dispose(): void;
 };
 
@@ -155,6 +161,8 @@ export function createAgentBrowser(deps: AgentBrowserDeps): AgentBrowser {
   let screen: { projectId: string; bounds: BrowserBounds } | null = null;
   /** A aba que está na janela principal agora. */
   let displayed: AgentTab | null = null;
+  /** A janela principal está sendo desenhada. */
+  let windowVisible = true;
 
   const view = (tab: AgentTab): AgentTabView => ({
     id: tab.dto.id,
@@ -177,7 +185,9 @@ export function createAgentBrowser(deps: AgentBrowserDeps): AgentBrowser {
   /** Põe na janela principal a aba que a pessoa olha no projeto da tela, e devolve as outras à janela de apoio. */
   function apply(): void {
     const wanted =
-      screen === null ? undefined : find(screen.projectId, looking.get(screen.projectId) ?? '');
+      screen === null || !windowVisible
+        ? undefined
+        : find(screen.projectId, looking.get(screen.projectId) ?? '');
     if (displayed !== null && displayed !== wanted) {
       if (displayed.alive) displayed.handle.park();
       displayed = null;
@@ -388,6 +398,11 @@ export function createAgentBrowser(deps: AgentBrowserDeps): AgentBrowser {
 
     parkAll() {
       screen = null;
+      apply();
+    },
+
+    setWindowVisible(visible) {
+      windowVisible = visible;
       apply();
     },
 

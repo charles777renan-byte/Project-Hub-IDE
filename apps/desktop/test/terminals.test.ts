@@ -1160,6 +1160,67 @@ describe('navegador ao alcance do agente do terminal', () => {
     expect(h.opened[0]?.env).toHaveProperty('PROJECT_HUB_BROWSER_TOKEN', BROWSER_TOKEN);
   });
 
+  it('falha ao registrar o hook não tira o navegador: o Claude abre com o servidor e o token vivo', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const browser = fakeAccess();
+      const h = setup({ browserAccess: browser.access, hooks: fakeHooks({ failRegister: true }) });
+
+      expect((await h.service.openSession('p1', 'claude')).ok).toBe(true);
+
+      // Sem o arquivo de settings, mas com o navegador inteiro: o arquivo e o token que os argumentos citam seguem valendo.
+      expect(h.opened[0]?.args).toEqual(['--mcp-config', 'C:/dados/x.mcp.json']);
+      expect(h.opened[0]?.env).toHaveProperty('PROJECT_HUB_BROWSER_TOKEN', BROWSER_TOKEN);
+      expect(browser.calls).toEqual(['prepare:shell-1:p1:claude', 'opened:shell-1']);
+      const result = await h.service.list();
+      if (!result.ok) throw new Error('esperava sucesso');
+      expect(result.data[0]).toHaveProperty('browserAccess', 'active');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('programa instalado como .cmd recebe as opções depois do caminho dele, e não o cmd.exe', async () => {
+    const browser = fakeAccess();
+    const h = setup({
+      browserAccess: browser.access,
+      providers: {
+        list: providers.list,
+        resolve: (id) => ({
+          ok: true,
+          launch: { command: 'cmd.exe', args: ['/d', '/c', `C:/npm/${id}.cmd`] },
+        }),
+      },
+    });
+
+    await h.service.openSession('p1', 'claude', { args: ['--resume', 'abc'] });
+    await h.service.openSession('p1', 'codex', { args: ['resume', 'abc'] });
+
+    expect(h.opened[0]).toMatchObject({
+      command: 'cmd.exe',
+      args: [
+        '/d',
+        '/c',
+        'C:/npm/claude.cmd',
+        '--settings',
+        join(settingsDir(), 'shell-1.settings.json'),
+        '--mcp-config',
+        'C:/dados/x.mcp.json',
+        '--resume',
+        'abc',
+      ],
+    });
+    expect(h.opened[1]?.args).toEqual([
+      '/d',
+      '/c',
+      'C:/npm/codex.cmd',
+      '--mcp-config',
+      'C:/dados/x.mcp.json',
+      'resume',
+      'abc',
+    ]);
+  });
+
   it('o shell nunca pede o navegador, e programa sem o recurso abre como antes', async () => {
     const browser = fakeAccess();
     const h = setup({ browserAccess: browser.access });

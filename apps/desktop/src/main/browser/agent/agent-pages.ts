@@ -97,6 +97,9 @@ export function createAgentPageFactory(deps: AgentPagesDeps): AgentPageFactory {
         contextIsolation: true,
         sandbox: true,
         webSecurity: true,
+        // Nenhuma caixa nativa de `alert`, `confirm` ou `prompt`, nem por um instante: o depurador ainda avisa do
+        // pedido, e é por ele que o descarte vai para o console do agente.
+        disableDialogs: true,
       },
     });
     const contents = view.webContents;
@@ -417,8 +420,33 @@ export function createAgentPageFactory(deps: AgentPagesDeps): AgentPageFactory {
       },
       async screenshot() {
         try {
+          // A imagem sai em pixels da página (CSS), e não do monitor: é nessa medida que o clique por coordenada
+          // entra. Numa tela a 150%, sem o recorte com escala, a imagem viria 1,5 vez maior que a página.
+          const { cssVisualViewport: view } = await send<{
+            cssVisualViewport: {
+              pageX: number;
+              pageY: number;
+              clientWidth: number;
+              clientHeight: number;
+            };
+          }>('Page.getLayoutMetrics');
+          const { result } = await send<{ result: { value?: unknown } }>('Runtime.evaluate', {
+            expression: 'window.devicePixelRatio',
+            returnByValue: true,
+          });
+          const ratio =
+            typeof result.value === 'number' && Number.isFinite(result.value) && result.value > 0
+              ? result.value
+              : 1;
           const { data } = await send<{ data: string }>('Page.captureScreenshot', {
             format: 'png',
+            clip: {
+              x: view.pageX,
+              y: view.pageY,
+              width: view.clientWidth,
+              height: view.clientHeight,
+              scale: 1 / ratio,
+            },
           });
           return { mimeType: 'image/png', base64: data };
         } catch {

@@ -343,6 +343,12 @@ let hideBrowserPages: () => void = () => undefined;
  */
 let closeAgentPages: () => void = () => undefined;
 
+/**
+ * Avisa o navegador dos agentes de que a janela principal deixou de ser desenhada (minimizada ou escondida) ou
+ * voltou. Vira a função de verdade quando ele é criado.
+ */
+let agentWindowVisible: (visible: boolean) => void = () => undefined;
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -378,6 +384,11 @@ function createMainWindow(): void {
     if (mainWindow === win) mainWindow = undefined;
     closeAgentPages();
   });
+  // Numa janela minimizada ou escondida a página não é desenhada, e a captura do agente falharia.
+  win.on('minimize', () => agentWindowVisible(false));
+  win.on('hide', () => agentWindowVisible(false));
+  win.on('restore', () => agentWindowVisible(true));
+  win.on('show', () => agentWindowVisible(true));
   // "Salvar": o renderer grava os arquivos sujos e responde; a janela só fecha se tudo foi gravado e nada ficou sujo.
   const saving = createSaveBeforeClose({
     requestSave: (requestId) => {
@@ -608,6 +619,7 @@ app
       newId: randomUUID,
     });
     agentTabs = agentBrowser;
+    agentWindowVisible = (visible) => agentBrowser.setWindowVisible(visible);
     hideBrowserPages = () => {
       browser.hideAll();
       agentBrowser.parkAll();

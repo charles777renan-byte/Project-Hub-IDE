@@ -232,7 +232,8 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       };
     } catch (error) {
       console.warn('Terminal do Claude Code aberto sem o gasto de tokens:', error);
-      await releaseHooks(terminalId, registered);
+      // Só os hooks saem: o navegador que `launch` já cita (arquivo e token) continua valendo.
+      await dropHooks(terminalId, registered);
       return { ...launch, hooked: false };
     }
   }
@@ -267,8 +268,13 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
    * impede de fechar.
    */
   async function releaseHooks(terminalId: string, registered: boolean): Promise<void> {
-    usage.forget(terminalId);
     releaseBrowser(terminalId);
+    await dropHooks(terminalId, registered);
+  }
+
+  /** Solta só o leitor de tokens e o registro no receptor; o acesso ao navegador fica. */
+  async function dropHooks(terminalId: string, registered: boolean): Promise<void> {
+    usage.forget(terminalId);
     if (!registered) return;
     try {
       await deps.hooks.unregisterExecution(terminalId);
@@ -378,11 +384,11 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     const terminalId = deps.newId();
     const browser = browserLaunchOf(terminalId, projectId, provider);
     const base = {
-      // Os argumentos extras (a retomada) entram depois dos do programa, como o `.cmd` exige. Os do navegador
-      // são opções gerais e vêm antes de todos; o token dele nunca está neles, só no ambiente.
+      // O que vai depois dos argumentos do programa (`cmd.exe /d /c x.cmd`, numa instalação `.cmd`): antes deles,
+      // quem leria as opções seria o `cmd.exe`. Os do navegador são opções gerais e vêm antes dos extras (a
+      // retomada); o token dele nunca está neles, só no ambiente.
       args: [
         ...(browser?.args ?? []),
-        ...resolution.launch.args,
         ...(options.args ?? []),
         ...(startCommand === undefined
           ? []
@@ -401,7 +407,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         id: terminalId,
         cwd: options.cwd ?? target.path,
         command: resolution.launch.command,
-        args: [...(resolution.launch.prefix ?? []), ...launch.args],
+        args: [...(resolution.launch.prefix ?? []), ...resolution.launch.args, ...launch.args],
         env: launch.env,
       });
     } catch (error) {
