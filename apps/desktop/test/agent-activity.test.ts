@@ -297,7 +297,11 @@ describe('createSessionReader', () => {
       JSON.stringify({
         type: 'session_meta',
         timestamp: startedAt,
-        payload: { id: '019a0c3e-7b2d-7f10-8a4e-2c5d6e7f8a9b', cwd: 'C:\\dev\\app', timestamp: startedAt },
+        payload: {
+          id: '019a0c3e-7b2d-7f10-8a4e-2c5d6e7f8a9b',
+          cwd: 'C:\\dev\\app',
+          timestamp: startedAt,
+        },
       }),
       JSON.stringify({
         type: 'event_msg',

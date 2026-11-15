@@ -6,6 +6,7 @@ import {
   BROWSER_AGENT_TAB_LIMIT_MESSAGE,
   type AppResult,
   type BrowserBounds,
+  type BrowserShortcutAction,
   type BrowserTabDto,
 } from '@project-hub/contracts';
 import { interpretAddress } from '../address';
@@ -59,6 +60,8 @@ export type AgentPageHandle = {
 /** O que uma página do agente conta ao serviço. */
 export type AgentPageEvents = {
   onChange(patch: Partial<Omit<BrowserTabDto, 'id' | 'owner'>>): void;
+  /** Um atalho do app foi apertado com o foco na página (a pessoa está dentro dela). */
+  onShortcut(action: BrowserShortcutAction): void;
 };
 
 export type AgentPageFactory = (projectId: string, events: AgentPageEvents) => AgentPageHandle;
@@ -70,6 +73,8 @@ export type AgentBrowserDeps = {
   previewUrl(projectId: string): string | undefined;
   /** Algo mudou nas abas de agente do projeto. */
   changed(projectId: string): void;
+  /** Um atalho do app veio de uma página de agente do projeto. */
+  shortcut(projectId: string, action: BrowserShortcutAction): void;
   newId(): string;
 };
 
@@ -229,6 +234,9 @@ export function createAgentBrowser(deps: AgentBrowserDeps): AgentBrowser {
         if (!tab.alive) return;
         Object.assign(tab.dto, patch);
         deps.changed(tab.projectId);
+      },
+      onShortcut(action) {
+        if (tab.alive) deps.shortcut(tab.projectId, action);
       },
     });
     tabs.push(tab);

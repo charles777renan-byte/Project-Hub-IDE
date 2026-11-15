@@ -31,6 +31,7 @@ function setup(options: { autoLoad?: boolean; previewUrl?: string } = {}) {
   const autoLoad = options.autoLoad ?? true;
   const pages: FakePage[] = [];
   const changed: string[] = [];
+  const shortcuts: string[] = [];
   let nextId = 0;
   const service = createAgentBrowser({
     pages: (projectId, events) => {
@@ -81,9 +82,10 @@ function setup(options: { autoLoad?: boolean; previewUrl?: string } = {}) {
     terminalTitle: (terminalId) => `Claude · ${terminalId}`,
     previewUrl: () => options.previewUrl,
     changed: (projectId) => void changed.push(projectId),
+    shortcut: (projectId, action) => void shortcuts.push(`${projectId}:${action}`),
     newId: () => `tab-${++nextId}`,
   });
-  return { service, pages, changed };
+  return { service, pages, changed, shortcuts };
 }
 
 function data<T>(result: AppResult<T>): T {
@@ -314,6 +316,16 @@ describe('abas do agente', () => {
       owner: 'agent',
     });
     expect(changed).toEqual(['p1']);
+  });
+
+  it('um atalho do app vindo da página chega com o projeto dela, enquanto a aba vive', async () => {
+    const { service, pages, shortcuts } = setup();
+    const tab = data(await service.open(A, 'http://localhost:1/'));
+    pages[0]?.events.onShortcut('focus-address');
+    expect(shortcuts).toEqual(['p1:focus-address']);
+    service.closeByPerson('p1', tab.id);
+    pages[0]?.events.onShortcut('focus-toolbar');
+    expect(shortcuts).toHaveLength(1);
   });
 
   it('esquecer o projeto e encerrar destroem as páginas', async () => {

@@ -223,9 +223,7 @@ export function browserPartition(projectId: string): string {
  */
 export function browserUserAgent(defaultUserAgent: string, appName: string): string {
   const escaped = appName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return defaultUserAgent
-    .replace(new RegExp(` ${escaped}/\\S+`), '')
-    .replace(/ Electron\/\S+/, '');
+  return defaultUserAgent.replace(new RegExp(` ${escaped}/\\S+`), '').replace(/ Electron\/\S+/, '');
 }
 
 /**
@@ -266,6 +264,65 @@ export function guardBrowserContents(contents: WebContents, deps: BrowserGuardDe
     confirmAndOpen(new URL(event.url).href, deps.external).catch(() => {
       // O diálogo ou o programa externo falhou: o link só não abre.
     });
+  };
+  contents.on('will-navigate', guard);
+  contents.on('will-redirect', guard);
+
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url !== 'about:blank' && isAllowedBrowserUrl(url)) deps.openTab(url);
+    return { action: 'deny' };
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Páginas dos agentes (ADR 0014). Um agente de terminal usa um navegador próprio do projeto, numa sessão separada
+// da sessão da pessoa. Vale tudo o que vale acima, e mais: nada do que a página pede chega à pessoa como diálogo.
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Nome da partição do navegador dos agentes de um projeto: `navegador-agente-<id>`. Sem `persist:`, de propósito:
+ * a sessão vive só na memória, e fechar o app apaga cookies e armazenamento.
+ */
+export function agentBrowserPartition(projectId: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(projectId)) {
+    throw new Error('Id de projeto inválido para a sessão do navegador.');
+  }
+  return `navegador-agente-${projectId}`;
+}
+
+/** Como `configureBrowserSession`, e todo download é cancelado: o agente não grava arquivo pelo navegador. */
+export function configureAgentSession(session: Session, userAgent: string): void {
+  configureBrowserSession(session, userAgent);
+  session.on('will-download', (event) => {
+    event.preventDefault();
+  });
+}
+
+/** O que as páginas de agente precisam do resto do processo principal. */
+export type AgentGuardDeps = {
+  /** A página pediu uma janela nova com um endereço permitido. */
+  openTab(url: string): void;
+  /** Algo foi descartado em silêncio. `what` diz o tipo (`mailto:`), nunca o endereço inteiro. */
+  dropped(what: string): void;
+};
+
+/** O esquema de um endereço barrado, para dizer o que foi descartado sem repetir o endereço. */
+function schemeOf(url: string): string {
+  const match = /^([a-z][a-z0-9+.-]*):/i.exec(url);
+  return match === null ? 'endereço' : `${(match[1] ?? '').toLowerCase()}:`;
+}
+
+/**
+ * Prende uma página de agente. Como `guardBrowserContents`, sem a confirmação nativa: o que não é `http:`,
+ * `https:` ou `about:blank` é barrado e contado, e nenhum diálogo aparece para a pessoa por causa de uma página
+ * que ela não está olhando.
+ */
+export function guardAgentContents(contents: WebContents, deps: AgentGuardDeps): void {
+  const guard = (event: { url: string; isMainFrame?: boolean; preventDefault(): void }): void => {
+    if (event.isMainFrame === false) return;
+    if (isAllowedBrowserUrl(event.url)) return;
+    event.preventDefault();
+    deps.dropped(schemeOf(event.url));
   };
   contents.on('will-navigate', guard);
   contents.on('will-redirect', guard);
