@@ -350,3 +350,30 @@ describe('PreviewCard: "Preview do projeto…"', () => {
     expect(handlers.onDismiss).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('PreviewCard: os campos e o giro', () => {
+  it('nenhum campo do cartão fica com a aparência padrão: o endereço e o seletor têm a moldura do app', async () => {
+    const { container, user } = setup(ASK);
+    const select = screen.getByRole('combobox', { name: 'Outro script' });
+    expect(select.parentElement).toHaveClass('browser__select');
+    expect(container.querySelector('.browser__select .browser__select-icon')).not.toBeNull();
+
+    await user.click(button('Só abrir um endereço'));
+    expect(screen.getByRole('textbox', { name: 'Endereço local' })).toHaveClass('browser__input');
+  });
+
+  it('o giro aparece no aviso só enquanto o app sobe ou abre o preview', () => {
+    const starting = previewState({
+      detection: SERVER_DETECTION,
+      approval: DEV_APPROVAL,
+      status: 'starting',
+      terminalId: 't1',
+    });
+    const { container, unmount } = setup(starting);
+    expect(container.querySelector('[role="status"] .browser__spinner')).not.toBeNull();
+    unmount();
+
+    const asking = setup(ASK);
+    expect(asking.container.querySelector('.browser__spinner')).toBeNull();
+  });
+});

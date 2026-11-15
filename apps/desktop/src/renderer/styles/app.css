@@ -1668,6 +1668,14 @@ button:disabled {
 }
 
 /*
+ * A dica não recebe o mouse, e a caixa que a posiciona (do Radix) também não: sem isto, a dica de um botão que
+ * ficou com o foco cobria o botão vizinho e engolia o clique nele (a de "Mais ações" sobre "Nova aba", no navegador).
+ */
+[data-radix-popper-content-wrapper]:has(> .hint) {
+  pointer-events: none;
+}
+
+/*
  * Menu de ações (components/MenuAcoes.tsx, Radix DropdownMenu): a lista flutua abaixo do botão "Mais ações",
  * com a mesma superfície e a mesma sombra do menu "+" e da dica. O botão (.menu-acoes__gatilho) herda o
  * estilo dos botões da barra de ações da missão. O destaque do item vem do Radix (data-highlighted): vale

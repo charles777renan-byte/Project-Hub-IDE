@@ -1,7 +1,7 @@
 import type { BrowserBounds, BrowserTabDto } from '@project-hub/contracts';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { EmptyState } from '../EmptyState';
-import { Globe } from '../Icon';
+import { CircleAlert, Globe } from '../Icon';
 
 /**
  * Quanto tempo a página espera pela imagem parada antes de sair de cima de uma sobreposição. A captura costuma
@@ -122,17 +122,22 @@ export function BrowserViewport({
     <div className="browser__viewport" ref={areaRef}>
       {tab.error !== null ? (
         <div className="browser__state" role="alert">
-          <p className="browser__state-text">{tab.error.message}</p>
-          <div className="browser__state-actions">
-            <button type="button" onClick={onRetry}>
-              Tentar de novo
-            </button>
-            {onStartServer === undefined ? null : (
-              <button type="button" onClick={onStartServer}>
-                Subir o servidor
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={CircleAlert}
+            title={tab.error.message}
+            action={
+              <div className="browser__state-actions">
+                <button type="button" className="btn-secondary" onClick={onRetry}>
+                  Tentar de novo
+                </button>
+                {onStartServer === undefined ? null : (
+                  <button type="button" className="btn-secondary" onClick={onStartServer}>
+                    Subir o servidor
+                  </button>
+                )}
+              </div>
+            }
+          />
         </div>
       ) : tab.url === '' && emptyContent !== undefined ? (
         <div className="browser__preview-area">{emptyContent}</div>

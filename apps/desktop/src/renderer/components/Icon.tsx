@@ -40,6 +40,7 @@ export {
   List,
   ListChecks,
   LoaderCircle,
+  Lock,
   Maximize2,
   Minus,
   Minimize2,

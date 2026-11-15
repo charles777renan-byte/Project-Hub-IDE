@@ -1,5 +1,6 @@
 import type { PreviewStateDto } from '@project-hub/contracts';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { ChevronDown, ICON_PROPS, LoaderCircle } from '../Icon';
 
 /**
  * O que o cartão mostra: a pergunta (`ask`), o aviso de que o comando mudou (`changed`), as situações da subida,
@@ -148,6 +149,7 @@ function AddressForm({
       <input
         id={fieldId}
         ref={fieldRef}
+        className="browser__input"
         type="text"
         value={draft}
         placeholder="localhost:3000"
@@ -235,20 +237,30 @@ export function PreviewCard({
     situation === 'ask' || situation === 'changed' || situation === 'no-address';
   const formOpen = situation === 'nothing' || (addressOpen && offersAddress);
   const closes = mode === 'manage' && situation !== 'ask' && situation !== 'changed';
+  /** O app está fazendo algo agora: o aviso ganha o giro. */
+  const busy = situation === 'starting' || situation === 'opening';
 
   return (
     <section className="browser__preview" aria-labelledby={titleId}>
-      <h3 id={titleId} className="browser__preview-title">
-        {TITLES[situation]}
-      </h3>
-      <p role="status" className="browser__preview-text">
-        {statusText(situation, state)}
-      </p>
-      {error === null ? null : (
-        <p role="alert" className="browser__preview-error">
-          {error}
+      <header className="browser__preview-head">
+        <h3 id={titleId} className="browser__preview-title">
+          {TITLES[situation]}
+        </h3>
+        <p
+          role="status"
+          className={
+            busy ? 'browser__preview-text browser__preview-text--busy' : 'browser__preview-text'
+          }
+        >
+          {busy ? <LoaderCircle {...ICON_PROPS} size={12} className="browser__spinner" /> : null}
+          <span>{statusText(situation, state)}</span>
         </p>
-      )}
+        {error === null ? null : (
+          <p role="alert" className="browser__preview-error">
+            {error}
+          </p>
+        )}
+      </header>
 
       {formOpen ? (
         <AddressForm
@@ -259,7 +271,11 @@ export function PreviewCard({
         <>
           {situation === 'changed' && approval.kind === 'script' ? (
             <>
-              <div role="group" aria-label="Antes" className="browser__preview-group">
+              <div
+                role="group"
+                aria-label="Antes"
+                className="browser__preview-group browser__preview-group--before"
+              >
                 <p className="browser__preview-label" aria-hidden="true">
                   Antes
                 </p>
@@ -371,20 +387,23 @@ export function PreviewCard({
               {hasOthers ? (
                 <span className="browser__preview-pick">
                   <label htmlFor={selectId}>Outro script</label>
-                  <select
-                    id={selectId}
-                    value={offered === undefined ? '' : offered.name}
-                    onChange={(event) =>
-                      setPicked(event.target.value === '' ? null : event.target.value)
-                    }
-                  >
-                    {offered === undefined ? <option value="">Escolher…</option> : null}
-                    {scripts.map((script) => (
-                      <option key={script.name} value={script.name}>
-                        {script.name}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="browser__select">
+                    <select
+                      id={selectId}
+                      value={offered === undefined ? '' : offered.name}
+                      onChange={(event) =>
+                        setPicked(event.target.value === '' ? null : event.target.value)
+                      }
+                    >
+                      {offered === undefined ? <option value="">Escolher…</option> : null}
+                      {scripts.map((script) => (
+                        <option key={script.name} value={script.name}>
+                          {script.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown {...ICON_PROPS} className="browser__select-icon" />
+                  </span>
                 </span>
               ) : null}
               {offersAddress ? (
@@ -400,12 +419,12 @@ export function PreviewCard({
       {(mode === 'manage' && approval.kind !== 'none') || closes ? (
         <div className="browser__preview-foot">
           {mode === 'manage' && approval.kind !== 'none' ? (
-            <button type="button" className="btn-ghost" onClick={onForget}>
+            <button type="button" className="btn-ghost browser__preview-forget" onClick={onForget}>
               Esquecer este preview
             </button>
           ) : null}
           {closes ? (
-            <button type="button" className="btn-ghost" onClick={onDismiss}>
+            <button type="button" className="btn-ghost browser__preview-close" onClick={onDismiss}>
               Fechar
             </button>
           ) : null}
