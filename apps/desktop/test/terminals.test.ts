@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import type { HookRecord } from '@project-hub/agent-adapters';
 import type { TerminalEvent } from '@project-hub/contracts';
 import type { TerminalSessionRecord, TerminalSessionRepository } from '@project-hub/database';
+import type { AgentBrowserAccess } from '../src/main/browser/agent/agent-launch';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderRegistry } from '../src/main/providers';
 import { createTerminalService } from '../src/main/terminals';
@@ -162,6 +163,7 @@ function setup(
     /** Pasta de configuração dos hooks. Padrão: uma pasta temporária nova. */
     settingsDir?: string;
     providers?: ProviderRegistry;
+    browserAccess?: AgentBrowserAccess;
   } = {},
 ) {
   const hooks = options.hooks ?? fakeHooks();
@@ -242,6 +244,7 @@ function setup(
     hooks: hooks.hooks,
     settingsDir: options.settingsDir ?? settingsDir(),
     platform: 'win32',
+    ...(options.browserAccess === undefined ? {} : { browserAccess: options.browserAccess }),
   });
   return {
     service,
@@ -1075,4 +1078,158 @@ describe('sessão shell com comando de partida (o painel do preview)', () => {
       expect(h.opened).toEqual([]);
     },
   );
+});
+
+describe('navegador ao alcance do agente do terminal', () => {
+  const BROWSER_TOKEN = 'token-do-navegador';
+  const old = (id: string, provider: string): TerminalSessionRecord => ({
+    id,
+    projectId: 'p1',
+    provider,
+    title: id,
+    createdAt: '2026-10-21T09:00:00.000Z',
+  });
+
+  function fakeAccess(options: { fail?: boolean } = {}) {
+    const calls: string[] = [];
+    const active = new Set<string>();
+    const access: AgentBrowserAccess = {
+      prepare(terminalId, projectId, provider) {
+        calls.push(`prepare:${terminalId}:${projectId}:${provider}`);
+        if (options.fail === true) throw new Error('servidor fora do ar');
+        if (provider !== 'claude' && provider !== 'codex') return undefined;
+        active.add(terminalId);
+        return {
+          args: ['--mcp-config', 'C:/dados/x.mcp.json'],
+          env: {
+            PROJECT_HUB_BROWSER_URL: 'http://127.0.0.1:5/mcp',
+            PROJECT_HUB_BROWSER_TOKEN: BROWSER_TOKEN,
+          },
+          files: [],
+        };
+      },
+      opened: (terminalId) => void calls.push(`opened:${terminalId}`),
+      release(terminalId) {
+        calls.push(`release:${terminalId}`);
+        active.delete(terminalId);
+      },
+      isActive: (terminalId) => active.has(terminalId),
+      supports: (provider) => provider === 'claude' || provider === 'codex',
+    };
+    return { access, calls };
+  }
+
+  it('abre o Claude com o servidor do navegador, o token só no ambiente e a permissão no arquivo de settings', async () => {
+    const browser = fakeAccess();
+    const h = setup({ browserAccess: browser.access });
+
+    await h.service.openSession('p1', 'claude');
+
+    const settingsFile = join(settingsDir(), 'shell-1.settings.json');
+    expect(h.opened[0]?.args).toEqual([
+      '--settings',
+      settingsFile,
+      '--mcp-config',
+      'C:/dados/x.mcp.json',
+    ]);
+    expect(h.opened[0]?.env).toMatchObject({
+      PROJECT_HUB_BROWSER_URL: 'http://127.0.0.1:5/mcp',
+      PROJECT_HUB_BROWSER_TOKEN: BROWSER_TOKEN,
+      PROJECT_HUB_HOOK_TOKEN: HOOK_TOKEN,
+    });
+    expect(JSON.stringify(h.opened[0]?.args)).not.toContain(BROWSER_TOKEN);
+    expect(JSON.parse(readFileSync(settingsFile, 'utf8'))).toMatchObject({
+      permissions: { allow: ['mcp__navegador'] },
+    });
+    expect(browser.calls).toEqual(['prepare:shell-1:p1:claude', 'opened:shell-1']);
+  });
+
+  it('os argumentos do navegador vêm antes dos do programa (a retomada do Codex)', async () => {
+    const browser = fakeAccess();
+    const h = setup({
+      browserAccess: browser.access,
+      providers: {
+        list: providers.list,
+        resolve: (id) => ({ ok: true, launch: { command: `${id}.exe`, args: [] } }),
+      },
+    });
+
+    await h.service.openSession('p1', 'codex', { args: ['resume', 'abc'] });
+
+    expect(h.opened[0]?.args).toEqual(['--mcp-config', 'C:/dados/x.mcp.json', 'resume', 'abc']);
+    expect(h.opened[0]?.env).toHaveProperty('PROJECT_HUB_BROWSER_TOKEN', BROWSER_TOKEN);
+  });
+
+  it('o shell nunca pede o navegador, e programa sem o recurso abre como antes', async () => {
+    const browser = fakeAccess();
+    const h = setup({ browserAccess: browser.access });
+
+    await h.service.openSession('p1', 'shell');
+    await h.service.openSession('p1', 'antigravity');
+
+    expect(browser.calls).toEqual(['prepare:shell-2:p1:antigravity']);
+    for (const opened of h.opened) {
+      expect(opened.env).not.toHaveProperty('PROJECT_HUB_BROWSER_TOKEN');
+      expect(opened.args).not.toContain('--mcp-config');
+    }
+  });
+
+  it('falha ao preparar o navegador não impede de abrir: o terminal abre sem o recurso', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const browser = fakeAccess({ fail: true });
+      const h = setup({ browserAccess: browser.access });
+
+      const result = await h.service.openSession('p1', 'claude');
+
+      const settingsFile = join(settingsDir(), 'shell-1.settings.json');
+      expect(result.ok).toBe(true);
+      expect(h.opened[0]?.args).toEqual(['--settings', settingsFile]);
+      expect(h.opened[0]?.env).not.toHaveProperty('PROJECT_HUB_BROWSER_TOKEN');
+      expect(JSON.parse(readFileSync(settingsFile, 'utf8'))).not.toHaveProperty('permissions');
+      expect(browser.calls).toEqual(['prepare:shell-1:p1:claude', 'release:shell-1']);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('falha ao abrir o terminal e fechar a sessão soltam o navegador', async () => {
+    const failing = fakeAccess();
+    const broken = setup({ browserAccess: failing.access, failOpen: true });
+    await broken.service.openSession('p1', 'claude').catch(() => undefined);
+    expect(failing.calls).toEqual(['prepare:shell-1:p1:claude', 'release:shell-1']);
+
+    const browser = fakeAccess();
+    const h = setup({ browserAccess: browser.access });
+    await h.service.openSession('p1', 'claude');
+    await h.service.closeSession('shell-1');
+    expect(browser.calls.at(-1)).toBe('release:shell-1');
+  });
+
+  it('a lista diz quem alcança o navegador, quem perdeu no reinício e quem nunca teve', async () => {
+    const browser = fakeAccess();
+    const h = setup({
+      browserAccess: browser.access,
+      sessions: [old('claude-antigo', 'claude'), old('agy-antigo', 'antigravity')],
+    });
+    await h.service.openSession('p1', 'claude');
+    await h.service.openSession('p1', 'shell');
+
+    const list = await h.service.list();
+    if (!list.ok) throw new Error('lista falhou');
+    const access = Object.fromEntries(list.data.map((item) => [item.id, item.browserAccess]));
+    expect(access).toEqual({
+      'claude-antigo': 'lost',
+      'agy-antigo': undefined,
+      'shell-1': 'active',
+      'shell-2': undefined,
+    });
+  });
+
+  it('sem o serviço do navegador (outro sistema), ninguém tem o campo', async () => {
+    const h = setup({ sessions: [old('claude-antigo', 'claude')] });
+    const list = await h.service.list();
+    if (!list.ok) throw new Error('lista falhou');
+    expect(list.data[0]).not.toHaveProperty('browserAccess');
+  });
 });

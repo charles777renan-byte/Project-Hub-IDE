@@ -23,6 +23,7 @@ import {
   type HookEventName,
 } from '@project-hub/agent-adapters';
 import { buildTerminalEnv } from '../terminal-host/env';
+import { BROWSER_PERMISSION, type AgentBrowserAccess } from './browser/agent/agent-launch';
 import { shellStartArgs, type ProviderRegistry } from './providers';
 import { createTerminalUsageService } from './terminal-usage';
 
@@ -66,6 +67,11 @@ export type TerminalServiceDeps = {
   settingsDir: string;
   /** O sistema em que o shell roda, para montar o comando de partida. Padrão: o deste processo. */
   platform?: NodeJS.Platform;
+  /**
+   * O navegador ao alcance dos agentes. Ausente (outro sistema, ou o servidor não subiu): os terminais abrem
+   * como sempre, sem o recurso.
+   */
+  browserAccess?: AgentBrowserAccess;
 };
 
 /**
@@ -195,10 +201,12 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
    * Liga os hooks do painel do Claude Code: registra o terminal no receptor, grava o arquivo de `--settings`
    * e põe o endereço e o token no ambiente (o token nunca vai na linha de comando, que outros processos
    * leem). Qualquer falha abre o Claude como antes, sem número de tokens: o terminal vale mais que o número.
+   * `allow` são as permissões que o arquivo já concede (as ferramentas do navegador, quando o terminal as tem).
    */
   async function withUsageHooks(
     terminalId: string,
     launch: { args: readonly string[]; env: Record<string, string> },
+    allow: readonly string[],
   ): Promise<{ args: readonly string[]; env: Record<string, string>; hooked: boolean }> {
     let registered = false;
     try {
@@ -210,6 +218,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         terminalId,
         script,
         PANEL_HOOK_EVENTS,
+        allow,
       );
       return {
         args: ['--settings', settingsFile, ...launch.args],
@@ -228,13 +237,38 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     }
   }
 
+  /** Revoga o acesso do terminal ao navegador. Falha ao soltar não impede de fechar. */
+  function releaseBrowser(terminalId: string): void {
+    try {
+      deps.browserAccess?.release(terminalId);
+    } catch (error) {
+      console.warn('Falha ao soltar o navegador do terminal:', error);
+    }
+  }
+
   /**
-   * Solta o leitor de tokens e, se o terminal pode ter registro no receptor (`registered`: um painel do
+   * O que entra no lançamento para o programa alcançar o navegador. O shell nunca recebe. Qualquer falha abre
+   * o terminal sem o recurso: o terminal vale mais que o navegador.
+   */
+  function browserLaunchOf(terminalId: string, projectId: string, provider: ProviderId) {
+    if (deps.browserAccess === undefined || provider === 'shell') return undefined;
+    try {
+      return deps.browserAccess.prepare(terminalId, projectId, provider);
+    } catch (error) {
+      console.warn('Terminal aberto sem o navegador:', error);
+      releaseBrowser(terminalId);
+      return undefined;
+    }
+  }
+
+  /**
+   * Solta o leitor de tokens, o acesso ao navegador e, se o terminal pode ter registro no receptor (`registered`: um painel do
    * Claude Code, inclusive o recuperado de outra execução do app), o registro também. Falha ao soltar não
    * impede de fechar.
    */
   async function releaseHooks(terminalId: string, registered: boolean): Promise<void> {
     usage.forget(terminalId);
+    releaseBrowser(terminalId);
     if (!registered) return;
     try {
       await deps.hooks.unregisterExecution(terminalId);
@@ -309,6 +343,22 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     return { state: 'unknown' };
   }
 
+  /**
+   * Se o terminal alcança o navegador (`active`) ou o perdeu num reinício do app (`lost`: o token só existe na
+   * memória, e o terminal recuperado segue com um que não vale mais). Programa sem o recurso: sem o campo.
+   */
+  function browserAccessOf(
+    terminalId: string,
+    provider: ProviderId,
+  ): { browserAccess?: 'active' | 'lost' } {
+    const access = deps.browserAccess;
+    if (access === undefined) return {};
+    if (access.isActive(terminalId)) return { browserAccess: 'active' };
+    return !openedHere.has(terminalId) && access.supports(provider)
+      ? { browserAccess: 'lost' }
+      : {};
+  }
+
   async function openSession(
     projectId: string,
     provider: ProviderId,
@@ -326,9 +376,12 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     if (!resolution.ok) return failure('PROCESS_START_FAILED', resolution.reason);
 
     const terminalId = deps.newId();
+    const browser = browserLaunchOf(terminalId, projectId, provider);
     const base = {
-      // Os argumentos extras (a retomada) entram depois dos do programa, como o `.cmd` exige.
+      // Os argumentos extras (a retomada) entram depois dos do programa, como o `.cmd` exige. Os do navegador
+      // são opções gerais e vêm antes de todos; o token dele nunca está neles, só no ambiente.
       args: [
+        ...(browser?.args ?? []),
         ...resolution.launch.args,
         ...(options.args ?? []),
         ...(startCommand === undefined
@@ -336,11 +389,13 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           : shellStartArgs(startCommand, deps.platform ?? process.platform)),
       ],
       // COLORTERM fica fora da lista de permitidos (que protege segredos): o valor é fixo e nosso.
-      env: buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }),
+      env: { ...buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }), ...(browser?.env ?? {}) },
     };
     // Só o Claude Code informa o gasto de tokens; os outros programas e o shell abrem como estão.
     const launch =
-      provider === 'claude' ? await withUsageHooks(terminalId, base) : { ...base, hooked: false };
+      provider === 'claude'
+        ? await withUsageHooks(terminalId, base, browser === undefined ? [] : [BROWSER_PERMISSION])
+        : { ...base, hooked: false };
     try {
       await port.open({
         id: terminalId,
@@ -369,6 +424,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       throw error;
     }
     openedHere.add(terminalId);
+    if (browser !== undefined) deps.browserAccess?.opened(terminalId);
     if (launch.hooked) usage.track(terminalId);
     return { ok: true, data: { terminalId } };
   }
@@ -467,6 +523,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
             startedAt: record.createdAt,
+            ...browserAccessOf(record.id, provider.data),
             ...(outputBytes === undefined ? {} : { outputBytes }),
             ...(changedFiles === undefined ? {} : { changedFiles }),
             ...(tokens === undefined ? {} : { usage: tokens }),

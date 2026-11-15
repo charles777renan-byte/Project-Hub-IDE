@@ -210,4 +210,30 @@ describe('script de hook', () => {
       model: 'claude-haiku-5-5',
     });
   });
+
+  it('com permissões, o arquivo libera essas ferramentas; sem, não tem a chave', () => {
+    const allowed = buildHookSettings('C:/app/hook.cjs', ['SessionStart'], ['mcp__navegador']);
+    expect(allowed.permissions).toEqual({ allow: ['mcp__navegador'] });
+    expect(buildHookSettings('C:/app/hook.cjs', ['SessionStart'])).not.toHaveProperty(
+      'permissions',
+    );
+    expect(buildHookSettings('C:/app/hook.cjs', ['SessionStart'], [])).not.toHaveProperty(
+      'permissions',
+    );
+    const dir = mkdtempSync(join(tmpdir(), 'ph-settings-allow-'));
+    try {
+      const file = writeSettingsFile(
+        dir,
+        'painel-2',
+        'C:/app/hook.cjs',
+        ['SessionStart'],
+        ['mcp__navegador'],
+      );
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({
+        permissions: { allow: ['mcp__navegador'] },
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
