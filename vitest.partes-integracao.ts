@@ -37,6 +37,7 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'apps/desktop/test/terminal-host/host.integration.test.ts': 2, // 1 s
   'apps/desktop/test/terminal-host/ensure.integration.test.ts': 2, // 0 s
   'apps/desktop/test/claude-limits.integration.test.ts': 2, // 0 s
+  'apps/desktop/test/agent-server.integration.test.ts': 2, // 1 s (estimativa; medir no CI)
 
   // Parte 3
   'packages/git-adapter/test/git-write.integration.test.ts': 3, // 60 s

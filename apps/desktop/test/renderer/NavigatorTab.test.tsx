@@ -248,30 +248,51 @@ describe('NavigatorTab: preview do projeto', () => {
   const card = (name: string) => screen.findByRole('region', { name });
   const click = (name: string) => userEvent.setup().click(screen.getByRole('button', { name }));
 
-  it('aba vazia com o comando aprovado inicia o preview uma vez, sem pergunta', async () => {
+  it('aba vazia com o comando aprovado não sobe o servidor sozinha: o cartão oferece "Abrir o preview"', async () => {
     const { preview, emit, emitPreview } = installBrowserApi(EMPTY, APPROVED);
     render(<NavigatorTab projectId="p1" />);
 
-    await waitFor(() => expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1'));
+    expect(await card('Preview deste projeto')).toBeInTheDocument();
+    await settle();
+    expect(preview.start).not.toHaveBeenCalled();
+    expect(screen.queryByText('Abrindo o preview…')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Usar este comando' })).toBeNull();
-    expect(screen.getByText('Abrindo o preview…')).toBeInTheDocument();
 
-    // Novos estados da mesma aba não disparam de novo.
+    // Novos estados da mesma aba também não disparam.
     act(() => emit(EMPTY));
-    act(() => emitPreview({ ...APPROVED, status: 'starting', terminalId: 'term-1' }));
     act(() => emitPreview(APPROVED));
     await settle();
-    expect(preview.start).toHaveBeenCalledTimes(1);
+    expect(preview.start).not.toHaveBeenCalled();
+
+    await click('Abrir o preview');
+    expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1');
   });
 
-  it.each([
-    ['endereço fixo', FIXED],
-    ['site estático', SITE],
-  ])('aba vazia em projeto de %s abre sem cartão de pergunta', async (_label, state) => {
-    const { preview } = installBrowserApi(EMPTY, state);
+  it('com o servidor do projeto já de pé, a aba vazia abre a página sozinha: nada novo sobe', async () => {
+    const { preview } = installBrowserApi(EMPTY, {
+      ...APPROVED,
+      status: 'running',
+      url: 'http://localhost:5173/',
+    });
+    render(<NavigatorTab projectId="p1" />);
+    await waitFor(() => expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1'));
+  });
+
+  it('aba vazia em projeto de endereço fixo abre sem cartão de pergunta', async () => {
+    const { preview } = installBrowserApi(EMPTY, FIXED);
     render(<NavigatorTab projectId="p1" />);
     await waitFor(() => expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1'));
     expect(screen.queryByRole('button', { name: 'Usar este comando' })).toBeNull();
+  });
+
+  it('aba vazia em projeto de site estático não sobe o servidor do app sozinha: o cartão oferece "Abrir o site"', async () => {
+    const { preview } = installBrowserApi(EMPTY, SITE);
+    render(<NavigatorTab projectId="p1" />);
+    expect(await card('Preview deste projeto')).toBeInTheDocument();
+    await settle();
+    expect(preview.start).not.toHaveBeenCalled();
+    await click('Abrir o site');
+    expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1');
   });
 
   it('uma aba que já tem endereço nunca inicia nada sozinha', async () => {
@@ -486,5 +507,88 @@ describe('NavigatorTab: preview do projeto', () => {
     await settle();
     // A aba aberta para mostrar o cartão não inicia o preview sozinha.
     expect(preview.start).not.toHaveBeenCalled();
+  });
+});
+
+describe('NavigatorTab: agentes', () => {
+  const EMPTY = browserState([browserTab({ url: '', title: '' })]);
+  const AGENT = browserTab({
+    id: 'g1',
+    title: 'Página do agente',
+    url: 'http://127.0.0.1:4100/sub/',
+    owner: 'agent',
+    terminalTitle: 'Claude Code · app',
+  });
+  const settle = () => act(async () => void (await Promise.resolve()));
+  const card = () => screen.findByRole('region', { name: 'Agentes e o navegador' });
+
+  it('"Agentes e o navegador" numa aba vazia mostra quais programas alcançam o navegador, e "Fechar" tira', async () => {
+    const { api } = installBrowserApi(EMPTY);
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Agentes e o navegador' }));
+
+    const items = await within(await card()).findAllByRole('listitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Claude Code: alcança o navegador',
+      'Codex: alcança o navegador',
+      'Antigravity CLI: ainda não alcança',
+    ]);
+    expect(api.agentAccess).toHaveBeenCalledOnce();
+
+    await user.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(screen.queryByRole('region', { name: 'Agentes e o navegador' })).toBeNull();
+  });
+
+  it('"Agentes e o navegador" numa aba com página abre uma aba nova da pessoa e mostra o cartão nela', async () => {
+    const { api, emit } = installBrowserApi();
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Agentes e o navegador' }));
+    expect(api.openTab).toHaveBeenCalledExactlyOnceWith('p1');
+
+    act(() =>
+      emit(browserState([browserTab(), browserTab({ id: 't2', url: '', title: '' })], 't2')),
+    );
+    expect(await card()).toBeInTheDocument();
+  });
+
+  it('a aba de agente à vista mostra o aviso e manda os pedidos com o id dela', async () => {
+    const { api } = installBrowserApi(browserState([browserTab(), AGENT], 'g1'));
+    const user = userEvent.setup();
+    render(<NavigatorTab projectId="p1" />);
+    expect(await address()).toHaveValue('http://127.0.0.1:4100/sub/');
+    expect(
+      screen.getByText('Aba de um agente. A sessão dela é separada da sua.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Recarregar' }));
+    expect(api.reload).toHaveBeenCalledExactlyOnceWith('p1', 'g1');
+    // "Nova aba" segue criando aba da pessoa: o pedido não leva dono nem endereço.
+    await user.click(screen.getByRole('button', { name: 'Nova aba' }));
+    expect(api.openTab).toHaveBeenCalledExactlyOnceWith('p1');
+  });
+
+  it('uma aba de agente nunca dispara o preview, nem com erro no endereço do site do projeto', async () => {
+    const failedAgent = {
+      ...AGENT,
+      error: { code: 'OFFLINE' as const, message: 'A página não respondeu.' },
+    };
+    const { preview } = installBrowserApi(browserState([browserTab(), failedAgent], 'g1'), {
+      ...previewState({
+        detection: { kind: 'static', packageManager: 'npm', scripts: [], suggested: null },
+      }),
+      url: 'http://127.0.0.1:4100/',
+    });
+    render(<NavigatorTab projectId="p1" />);
+    await address();
+    await settle();
+    expect(preview.start).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Subir o servidor' })).toBeNull();
   });
 });

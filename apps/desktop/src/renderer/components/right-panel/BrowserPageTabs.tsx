@@ -1,7 +1,7 @@
 import type { BrowserTabDto } from '@project-hub/contracts';
 import { useRef, type KeyboardEvent } from 'react';
 import { Hint } from '../Hint';
-import { ICON_PROPS, LoaderCircle, Plus, X } from '../Icon';
+import { Bot, ICON_PROPS, LoaderCircle, Plus, X } from '../Icon';
 
 /** O nome de uma aba: o título da página; sem título, o endereço sem o esquema; sem nada, "Nova aba". */
 export function pageTabLabel(tab: BrowserTabDto): string {
@@ -14,9 +14,12 @@ export function pageTabLabel(tab: BrowserTabDto): string {
  * A faixa de abas do navegador de um projeto: um `tablist` com uma aba por página, o botão de fechar de cada uma e
  * "Nova aba". Só a aba ativa entra na ordem do Tab; as setas, Home e End andam entre elas e já selecionam. O botão
  * de fechar é irmão da aba (um botão dentro de outro não é HTML válido) e diz no nome qual aba fecha.
+ *
+ * As abas que um agente abriu ficam depois das da pessoa e levam a marca "Agente", com ícone e texto (nunca só cor);
+ * o nome acessível delas começa com "Agente: ", e a dica diz de qual terminal a aba é.
  */
 export function BrowserPageTabs({
-  tabs,
+  tabs: allTabs,
   activeTabId,
   onSelect,
   onClose,
@@ -29,6 +32,11 @@ export function BrowserPageTabs({
   onNew: () => void;
 }) {
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  // A ordem da faixa é a das setas: primeiro as abas da pessoa, depois as dos agentes.
+  const tabs = [
+    ...allTabs.filter((tab) => tab.owner !== 'agent'),
+    ...allTabs.filter((tab) => tab.owner === 'agent'),
+  ];
 
   function go(index: number) {
     const target = tabs[(index + tabs.length) % tabs.length];
@@ -65,6 +73,7 @@ export function BrowserPageTabs({
         {tabs.map((tab, index) => {
           const label = pageTabLabel(tab);
           const selected = tab.id === activeTabId;
+          const agent = tab.owner === 'agent';
           return (
             <div
               key={tab.id}
@@ -78,6 +87,17 @@ export function BrowserPageTabs({
                   else tabRefs.current.set(tab.id, node);
                 }}
                 className="browser__tab-button"
+                // O nome sai do conteúdo; na aba de agente ele é escrito, para começar com "Agente: ".
+                aria-label={
+                  agent ? `Agente: ${tab.loading ? 'carregando ' : ''}${label}` : undefined
+                }
+                title={
+                  !agent
+                    ? undefined
+                    : tab.terminalTitle === undefined || tab.terminalTitle === ''
+                      ? 'Aba de um agente'
+                      : `Aba do agente em ${tab.terminalTitle}`
+                }
                 aria-selected={selected}
                 tabIndex={selected ? 0 : -1}
                 onClick={() => onSelect(tab.id)}
@@ -89,12 +109,18 @@ export function BrowserPageTabs({
                     <span className="visually-hidden">carregando </span>
                   </>
                 ) : null}
+                {agent ? (
+                  <span className="browser__tab-owner">
+                    <Bot {...ICON_PROPS} size={12} />
+                    Agente
+                  </span>
+                ) : null}
                 <span className="browser__tab-label">{label}</span>
               </button>
               <button
                 type="button"
                 className="browser__tab-close"
-                aria-label={`Fechar aba ${label}`}
+                aria-label={agent ? `Fechar aba do agente ${label}` : `Fechar aba ${label}`}
                 onClick={() => onClose(tab.id)}
               >
                 <X {...ICON_PROPS} size={12} />

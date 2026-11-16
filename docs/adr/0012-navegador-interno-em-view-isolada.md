@@ -1,6 +1,6 @@
 # ADR 0012: Navegador interno em view isolada, com sessão por projeto
 
-- Status: proposta; implementada na fase 1, no ramo `feat/navegador-interno`. Passa a aceita com a integração do ramo.
+- Status: aceita; implementada na fase 1 e integrada.
 - Data: 2026-11-12
 - Origem: aba Navegador do painel direito, em `docs/superpowers/specs/2026-11-12-navegador-interno-design.md`
 - Complementa: ADR 0001 (isolamento do Electron) e ADR 0007 (decisões de fundação). Esta decisão abre uma exceção controlada à janela fechada: páginas de fora passam a rodar dentro do aplicativo, sem que a janela do app deixe de ser fechada.

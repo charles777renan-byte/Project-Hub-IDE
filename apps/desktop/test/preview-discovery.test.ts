@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandFor, discover, shownBody } from '../src/main/preview/discovery';
+import { commandFor, discover, isOneShotScript, shownBody } from '../src/main/preview/discovery';
 
 const files = (...names: string[]) => new Set(names);
 const pkg = (value: unknown) => JSON.stringify(value);
@@ -33,6 +33,58 @@ describe('discover', () => {
     expect(
       discover({ packageJson: pkg({ scripts: onlyServe }), rootFiles: files() }).suggested,
     ).toBe('serve');
+  });
+
+  it.each([
+    ['web', 'vite --host 127.0.0.1'],
+    ['site', 'next dev -p 4000'],
+    ['app', 'webpack serve --mode development'],
+    ['ui', 'react-scripts start'],
+    ['front', 'ng serve'],
+    ['docs', 'astro dev'],
+    ['pagina', 'npx http-server public'],
+  ])('sem dev, start nem serve, sugere o script que sobe servidor pelo texto: %s', (name, body) => {
+    const scripts = { build: 'tsc -b && vite build', test: 'vitest run', [name]: body };
+    expect(discover({ packageJson: pkg({ scripts }), rootFiles: files() }).suggested).toBe(name);
+  });
+
+  it('um script que só compila ou testa nunca é sugerido, nem quando cita uma ferramenta de servidor', () => {
+    const scripts = {
+      build: 'tsc -b && vite build',
+      'build:web': 'vite',
+      test: 'vite --mode test',
+      lint: 'eslint .',
+      preview: 'vite build && vite preview',
+    };
+    expect(discover({ packageJson: pkg({ scripts }), rootFiles: files() }).suggested).toBe(
+      'preview',
+    );
+    const { preview: _dropped, ...rest } = scripts;
+    expect(
+      discover({ packageJson: pkg({ scripts: rest }), rootFiles: files() }).suggested,
+    ).toBeNull();
+  });
+
+  it('o nome vale mais que o texto: dev vence um script que cita vite', () => {
+    const scripts = { web: 'vite', dev: 'node server.js' };
+    expect(discover({ packageJson: pkg({ scripts }), rootFiles: files() }).suggested).toBe('dev');
+  });
+
+  it('diz quais nomes são de tarefa que termina (build, test, lint e parecidos)', () => {
+    for (const name of [
+      'build',
+      'build:web',
+      'test',
+      'test:browser',
+      'lint',
+      'typecheck',
+      'prebuild',
+    ]) {
+      expect(isOneShotScript(name), name).toBe(true);
+    }
+    for (const name of ['dev', 'start', 'serve', 'web', 'storybook', 'builder']) {
+      expect(isOneShotScript(name), name).toBe(false);
+    }
   });
 
   it('sem dev, start nem serve não há sugestão, mas os válidos são oferecidos', () => {

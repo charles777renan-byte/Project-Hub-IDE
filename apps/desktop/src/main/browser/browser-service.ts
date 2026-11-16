@@ -68,6 +68,11 @@ export type BrowserService = {
   setBounds(projectId: string, bounds: BrowserBounds | null): AppResult<undefined>;
   snapshot(projectId: string): Promise<AppResult<string | null>>;
   /**
+   * Enquanto cedido, a página ativa do projeto fica escondida: a pessoa olha uma aba de agente, que ocupa o mesmo
+   * lugar. A aba ativa não muda, e volta à vista quando o projeto deixa de estar cedido.
+   */
+  setYielded(projectId: string, yielded: boolean): void;
+  /**
    * Esconde a página que estiver à vista, sem destruir nada. Para quando a janela do app recarrega ou o processo
    * dela cai: o renderer que mediu a área não existe mais, e ninguém mandaria esconder a página.
    */
@@ -125,6 +130,8 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
   const projects = new Map<string, ProjectState>();
   /** O projeto cujo navegador está na tela e onde; `bounds` nulo é "escondido". */
   let shown: { projectId: string; bounds: BrowserBounds | null } | null = null;
+  /** Projetos cuja página ativa cedeu o lugar a uma aba de agente. */
+  const yielded = new Set<string>();
 
   function emptyTab(url = ''): BrowserTabDto {
     return {
@@ -135,6 +142,7 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
       canGoBack: false,
       canGoForward: false,
       error: null,
+      owner: 'person',
     };
   }
 
@@ -247,7 +255,10 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
     const visible = shown;
     for (const [projectId, project] of projects) {
       const onScreen =
-        visible !== null && visible.projectId === projectId && visible.bounds !== null;
+        visible !== null &&
+        visible.projectId === projectId &&
+        visible.bounds !== null &&
+        !yielded.has(projectId);
       if (onScreen) {
         const active = project.tabs.find((tab) => tab.id === project.activeTabId);
         if (active !== undefined) ensureLoaded(projectId, project, active);
@@ -257,7 +268,7 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
         page.handle.setMuted(visible?.projectId !== projectId);
       }
     }
-    if (visible === null || visible.bounds === null) return;
+    if (visible === null || visible.bounds === null || yielded.has(visible.projectId)) return;
     const project = projects.get(visible.projectId);
     const page = project?.pages.get(project.activeTabId);
     if (page === undefined) return;
@@ -368,6 +379,7 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
       projects.delete(projectId);
     }
     if (shown?.projectId === projectId) shown = null;
+    yielded.delete(projectId);
   }
 
   return {
@@ -427,6 +439,17 @@ export function createBrowserService(deps: BrowserServiceDeps): BrowserService {
       // Mostrar pela primeira vez uma aba restaurada começa a carregá-la: o renderer precisa saber.
       if (project !== undefined && project.pages.size !== before) publish(projectId, project);
       return DONE;
+    },
+
+    setYielded(projectId, value) {
+      if (yielded.has(projectId) === value) return;
+      if (value) yielded.add(projectId);
+      else yielded.delete(projectId);
+      const project = projects.get(projectId);
+      const before = project === undefined ? undefined : project.pages.size;
+      apply();
+      // Voltar a mostrar uma aba restaurada começa a carregá-la: o renderer precisa saber.
+      if (project !== undefined && project.pages.size !== before) publish(projectId, project);
     },
 
     hideAll() {

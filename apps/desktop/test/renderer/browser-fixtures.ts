@@ -17,6 +17,7 @@ export function browserTab(overrides: Partial<BrowserTabDto> = {}): BrowserTabDt
     canGoBack: false,
     canGoForward: false,
     error: null,
+    owner: 'person',
     ...overrides,
   };
 }
@@ -107,6 +108,16 @@ export function installBrowserApi(
     openDevtools: vi.fn(() => ok(undefined)),
     openExternal: vi.fn(() => ok(undefined)),
     clearData: vi.fn((_projectId: string) => ok(initial)),
+    agentAccess: vi.fn(() =>
+      ok({
+        supported: true,
+        programs: [
+          { label: 'Claude Code', access: true },
+          { label: 'Codex', access: true },
+          { label: 'Antigravity CLI', access: false },
+        ],
+      }),
+    ),
     onChanged: vi.fn((listener: (state: BrowserStateDto) => void) => {
       changed.add(listener);
       return () => changed.delete(listener);

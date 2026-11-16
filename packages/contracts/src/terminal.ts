@@ -28,6 +28,11 @@ export const terminalSummarySchema = z.object({
   origin: z.enum(['new', 'recovered']),
   /** Último trecho do caminho do worktree, quando o terminal roda num. O caminho inteiro não sai do processo principal. */
   worktreeName: z.string().optional(),
+  /**
+   * O navegador do projeto ao alcance do agente deste terminal. `active`: alcança. `lost`: o terminal sobreviveu
+   * ao reinício do app e ficou sem (um terminal novo devolve). Ausente: programa sem o recurso, shell ou missão.
+   */
+  browserAccess: z.enum(['active', 'lost']).optional(),
   /** Quando a sessão foi aberta (ISO). Só as sessões avulsas têm; a de missão mostra a missão, não a hora. */
   startedAt: z.string().optional(),
   /** Total de bytes que o terminal já produziu: a barra lateral compara leituras para desenhar a atividade recente. */

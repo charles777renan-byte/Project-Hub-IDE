@@ -209,6 +209,9 @@ function MoreMenu({
  * A barra do navegador: voltar, avançar, recarregar (ou parar, enquanto carrega), o campo de endereço, expandir e o
  * menu de mais ações. O campo mostra o endereço da aba; o que a pessoa digita é um rascunho local, que Enter manda
  * e Esc desfaz. O aviso do último pedido recusado fica numa região de status logo abaixo.
+ *
+ * Na aba de um agente, uma linha diz de quem a aba é, e "Parar" e "Inspecionar" ficam desligados: o depurador
+ * dessa página é do app, que o usa para as ferramentas do agente.
  */
 export function BrowserToolbar({
   tab,
@@ -224,6 +227,7 @@ export function BrowserToolbar({
   onOpenDevtools,
   onClearData,
   onOpenPreview,
+  onOpenAgents,
   onMenuOpenChange,
   addressRef,
   firstButtonRef,
@@ -242,6 +246,8 @@ export function BrowserToolbar({
   onClearData: () => void;
   /** Abre o cartão do preview do projeto ("Preview do projeto…"). */
   onOpenPreview: () => void;
+  /** Abre o cartão que diz quais programas alcançam o navegador ("Agentes e o navegador"). */
+  onOpenAgents: () => void;
   /** Avisa quando o menu Mais ações abre e fecha. */
   onMenuOpenChange?: (open: boolean) => void;
   /** O campo de endereço, para o atalho Ctrl+L. */
@@ -257,6 +263,7 @@ export function BrowserToolbar({
     setShown({ id: tab.id, url: tab.url });
     setDraft(tab.url);
   }
+  const agent = tab.owner === 'agent';
 
   return (
     <div className="browser__bar-wrap">
@@ -273,7 +280,7 @@ export function BrowserToolbar({
           <ArrowRight {...ICON_PROPS} />
         </BarButton>
         {tab.loading ? (
-          <BarButton label="Parar" onClick={onStop}>
+          <BarButton label="Parar" disabled={agent} onClick={onStop}>
             <X {...ICON_PROPS} />
           </BarButton>
         ) : (
@@ -322,8 +329,9 @@ export function BrowserToolbar({
               disabled: !isHttps(tab.url),
               run: onOpenExternal,
             },
-            { label: 'Inspecionar', disabled: tab.url === '', run: onOpenDevtools },
+            { label: 'Inspecionar', disabled: agent || tab.url === '', run: onOpenDevtools },
             { label: 'Preview do projeto…', disabled: false, run: onOpenPreview },
+            { label: 'Agentes e o navegador', disabled: false, run: onOpenAgents },
             {
               label: 'Limpar dados de navegação deste projeto…',
               disabled: false,
@@ -333,6 +341,11 @@ export function BrowserToolbar({
           ]}
         />
       </div>
+      {agent ? (
+        <p role="status" className="browser__agent-note">
+          Aba de um agente. A sessão dela é separada da sua.
+        </p>
+      ) : null}
       <p role="status" className="browser__notice">
         {notice}
       </p>

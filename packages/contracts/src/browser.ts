@@ -3,6 +3,13 @@ import { z } from 'zod';
 /** Máximo de abas de página no navegador de um projeto. */
 export const BROWSER_TAB_LIMIT = 8;
 
+/** Máximo de abas de agente no navegador de um projeto, somando os terminais. */
+export const BROWSER_AGENT_TAB_LIMIT = 4;
+
+/** De quem é uma aba: da pessoa, ou do agente de um terminal. */
+export const BROWSER_TAB_OWNERS = ['person', 'agent'] as const;
+export type BrowserTabOwner = (typeof BROWSER_TAB_OWNERS)[number];
+
 /** Maior texto que a barra de endereço aceita. */
 export const BROWSER_ADDRESS_MAX = 2048;
 
@@ -32,6 +39,9 @@ export const BROWSER_ERROR_MESSAGES: Record<BrowserLoadErrorCode, string> = {
 
 export const BROWSER_ADDRESS_BLOCKED = 'Este tipo de endereço não abre aqui.';
 export const BROWSER_TAB_LIMIT_MESSAGE = 'O limite é de 8 abas por projeto.';
+/** Resposta ao agente que pede a quinta aba. É ele quem lê: diz como sair do limite. */
+export const BROWSER_AGENT_TAB_LIMIT_MESSAGE =
+  'Limite de 4 abas do agente neste projeto. Feche uma com browser_close.';
 export const BROWSER_EXTERNAL_HTTPS_ONLY = 'Só endereços https abrem no navegador do sistema.';
 
 /** Uma aba de página. `url` vazia é a aba nova, sem endereço; `title` vazio é a página que ainda não disse o título. */
@@ -42,9 +52,11 @@ export const browserTabSchema = z.object({
   loading: z.boolean(),
   canGoBack: z.boolean(),
   canGoForward: z.boolean(),
-  error: z
-    .object({ code: z.enum(BROWSER_LOAD_ERROR_CODES), message: z.string() })
-    .nullable(),
+  error: z.object({ code: z.enum(BROWSER_LOAD_ERROR_CODES), message: z.string() }).nullable(),
+  /** `agent`: a aba é do agente de um terminal, vive numa sessão separada e não é guardada no banco. */
+  owner: z.enum(BROWSER_TAB_OWNERS),
+  /** Título do terminal dono da aba. Só a aba de agente tem. */
+  terminalTitle: z.string().optional(),
 });
 export type BrowserTabDto = z.infer<typeof browserTabSchema>;
 
@@ -102,3 +114,14 @@ export const browserShortcutEventSchema = z.object({
   action: z.enum(BROWSER_SHORTCUT_ACTIONS),
 });
 export type BrowserShortcutEvent = z.infer<typeof browserShortcutEventSchema>;
+
+/**
+ * Resposta de `browser:agent-access:v1`: quais programas de agente alcançam o navegador. Só rótulos e sim ou não;
+ * o endereço do servidor de ferramentas e o token nunca passam por um canal.
+ */
+export const browserAgentAccessSchema = z.object({
+  /** Falso no sistema em que o recurso ainda não existe. */
+  supported: z.boolean(),
+  programs: z.array(z.object({ label: z.string(), access: z.boolean() })),
+});
+export type BrowserAgentAccessDto = z.infer<typeof browserAgentAccessSchema>;

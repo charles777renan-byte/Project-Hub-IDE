@@ -1,9 +1,12 @@
 import type { Session, WebContents } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  agentBrowserPartition,
   browserPartition,
   browserUserAgent,
+  configureAgentSession,
   configureBrowserSession,
+  guardAgentContents,
   guardBrowserContents,
 } from '../src/main/security';
 
@@ -37,7 +40,8 @@ describe('browserUserAgent', () => {
   });
 
   it('tira o nome do app mesmo com caracteres especiais', () => {
-    const ua = 'Mozilla/5.0 @project-hub/desktop/1.0.0 Chrome/140.0.0.0 Electron/44.9.0 Safari/537.36';
+    const ua =
+      'Mozilla/5.0 @project-hub/desktop/1.0.0 Chrome/140.0.0.0 Electron/44.9.0 Safari/537.36';
     expect(browserUserAgent(ua, '@project-hub/desktop')).toBe(
       'Mozilla/5.0 Chrome/140.0.0.0 Safari/537.36',
     );
@@ -94,12 +98,14 @@ describe('configureBrowserSession', () => {
     expect(setup().ask('file:///C:/Windows/win.ini')).toEqual({ cancel: true });
   });
 
-  it.each(['http://localhost:3000/a.js', 'https://x.dev/', 'blob:https://x.dev/1', 'data:image/png;base64,AA'])(
-    'deixa passar %s',
-    (url) => {
-      expect(setup().ask(url)).toEqual({ cancel: false });
-    },
-  );
+  it.each([
+    'http://localhost:3000/a.js',
+    'https://x.dev/',
+    'blob:https://x.dev/1',
+    'data:image/png;base64,AA',
+  ])('deixa passar %s', (url) => {
+    expect(setup().ask(url)).toEqual({ cancel: false });
+  });
 
   it('nega todo pedido e toda consulta de permissão', () => {
     const session = setup();
@@ -226,5 +232,130 @@ describe('guardBrowserContents', () => {
     const guard = setup();
     expect(guard.open('about:blank')).toEqual({ action: 'deny' });
     expect(guard.openTab).not.toHaveBeenCalled();
+  });
+});
+
+describe('sessão das páginas de agente', () => {
+  it('a partição é só em memória: sem `persist:`, e separada da sessão da pessoa', () => {
+    expect(agentBrowserPartition('3f2a-b1_X')).toBe('navegador-agente-3f2a-b1_X');
+    expect(agentBrowserPartition('p')).not.toBe(browserPartition('p'));
+  });
+
+  it.each(['../x', 'a b', '', 'a/b'])('recusa o id %j', (id) => {
+    expect(() => agentBrowserPartition(id)).toThrow();
+  });
+
+  function setup() {
+    type RequestListener = (
+      details: { url: string },
+      callback: (response: { cancel?: boolean }) => void,
+    ) => void;
+    let beforeRequest: RequestListener | undefined;
+    let request:
+      | ((contents: unknown, permission: string, callback: (granted: boolean) => void) => void)
+      | undefined;
+    const listeners = new Map<string, (event: { preventDefault(): void }) => void>();
+    const setUserAgent = vi.fn();
+    const session = {
+      webRequest: {
+        onBeforeRequest(listener: RequestListener) {
+          beforeRequest = listener;
+        },
+      },
+      setPermissionRequestHandler(handler: typeof request) {
+        request = handler;
+      },
+      setPermissionCheckHandler: vi.fn(),
+      setUserAgent,
+      on(name: string, listener: (event: { preventDefault(): void }) => void) {
+        listeners.set(name, listener);
+      },
+    } as unknown as Session;
+    configureAgentSession(session, 'UA de teste');
+    return { beforeRequest, request, listeners, setUserAgent };
+  }
+
+  it('vale tudo o que vale na sessão da pessoa: file: cancelado, permissão negada, agente de usuário trocado', () => {
+    const { beforeRequest, request, setUserAgent } = setup();
+    const callback = vi.fn();
+    required(beforeRequest, 'onBeforeRequest')({ url: 'file:///C:/x' }, callback);
+    expect(callback).toHaveBeenCalledWith({ cancel: true });
+    const granted = vi.fn();
+    required(request, 'setPermissionRequestHandler')({}, 'geolocation', granted);
+    expect(granted).toHaveBeenCalledWith(false);
+    expect(setUserAgent).toHaveBeenCalledWith('UA de teste');
+  });
+
+  it('todo download é cancelado', () => {
+    const preventDefault = vi.fn();
+    required(setup().listeners.get('will-download'), 'will-download')({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('guardAgentContents', () => {
+  type NavigateEvent = { url: string; isMainFrame?: boolean; preventDefault: () => void };
+  type OpenHandler = (details: { url: string }) => { action: string };
+
+  function setup() {
+    const listeners = new Map<string, (event: NavigateEvent) => void>();
+    let openHandler: OpenHandler | undefined;
+    const contents = {
+      on(name: string, listener: (event: NavigateEvent) => void) {
+        listeners.set(name, listener);
+        return contents;
+      },
+      setWindowOpenHandler(handler: OpenHandler) {
+        openHandler = handler;
+      },
+    };
+    const openTab = vi.fn();
+    const dropped = vi.fn();
+    guardAgentContents(contents as unknown as WebContents, { openTab, dropped });
+    const fire = (name: string, url: string, isMainFrame = true): boolean => {
+      const preventDefault = vi.fn();
+      required(listeners.get(name), name)({ url, isMainFrame, preventDefault });
+      return preventDefault.mock.calls.length > 0;
+    };
+    return {
+      fire,
+      open: (url: string) => required(openHandler, 'setWindowOpenHandler')({ url }),
+      openTab,
+      dropped,
+    };
+  }
+
+  it.each(['mailto:alguem@exemplo.com', 'file:///c:/x', 'javascript:1', 'chrome://gpu'])(
+    'barra %s em silêncio e conta o descarte',
+    (url) => {
+      const guard = setup();
+      expect(guard.fire('will-navigate', url)).toBe(true);
+      expect(guard.fire('will-redirect', url)).toBe(true);
+      expect(guard.dropped).toHaveBeenCalledTimes(2);
+      // O que foi descartado é dito pelo tipo do endereço, nunca pelo endereço inteiro.
+      expect(guard.dropped.mock.calls[0]?.[0]).not.toContain('alguem@exemplo.com');
+    },
+  );
+
+  it.each(['https://exemplo.com/', 'http://localhost:3000/', 'about:blank'])(
+    'deixa navegar para %s',
+    (url) => {
+      const guard = setup();
+      expect(guard.fire('will-navigate', url)).toBe(false);
+      expect(guard.dropped).not.toHaveBeenCalled();
+    },
+  );
+
+  it('não barra a navegação de um quadro interno', () => {
+    expect(setup().fire('will-navigate', 'about:srcdoc', false)).toBe(false);
+  });
+
+  it('janela nova nunca abre: endereço permitido vira pedido, o resto é descartado', () => {
+    const guard = setup();
+    expect(guard.open('https://exemplo.com/a')).toEqual({ action: 'deny' });
+    expect(guard.openTab).toHaveBeenCalledWith('https://exemplo.com/a');
+    expect(guard.open('javascript:1')).toEqual({ action: 'deny' });
+    expect(guard.open('about:blank')).toEqual({ action: 'deny' });
+    expect(guard.openTab).toHaveBeenCalledTimes(1);
   });
 });

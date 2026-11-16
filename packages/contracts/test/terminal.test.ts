@@ -60,6 +60,10 @@ describe('contratos de terminal', () => {
     expect(terminalSummarySchema.safeParse({ ...base, origin: 'new' }).success).toBe(false);
     expect(terminalSummarySchema.safeParse({ ...base, provider: 'claude' }).success).toBe(false);
     expect(terminalSummarySchema.safeParse({ ...ok, provider: 'bash' }).success).toBe(false);
+    // O acesso ao navegador: ativo, perdido (terminal recuperado) ou ausente.
+    expect(terminalSummarySchema.safeParse({ ...ok, browserAccess: 'active' }).success).toBe(true);
+    expect(terminalSummarySchema.safeParse({ ...ok, browserAccess: 'lost' }).success).toBe(true);
+    expect(terminalSummarySchema.safeParse({ ...ok, browserAccess: 'sim' }).success).toBe(false);
     expect(terminalSummarySchema.safeParse({ ...ok, origin: 'resumed' }).success).toBe(false);
   });
 

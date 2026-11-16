@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { BrowserTabDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,6 +20,7 @@ function setup(
     onOpenDevtools: vi.fn(),
     onClearData: vi.fn(),
     onOpenPreview: vi.fn(),
+    onOpenAgents: vi.fn(),
     onMenuOpenChange: vi.fn(),
   };
   const view = render(
@@ -224,5 +225,49 @@ describe('BrowserToolbar: a moldura do endereço, o traço de carregamento e o m
       .filter((item) => item.parentElement?.className === 'browser__menu-row--separated');
     expect(separated).toHaveLength(1);
     expect(separated[0]).toHaveTextContent('Limpar dados de navegação deste projeto…');
+  });
+});
+
+describe('BrowserToolbar: aba de agente', () => {
+  const AGENT = browserTab({ id: 'g1', owner: 'agent', terminalTitle: 'Claude Code · app' });
+  const NOTE = 'Aba de um agente. A sessão dela é separada da sua.';
+
+  it('avisa, numa linha de status, que a aba é de um agente e que a sessão é outra', () => {
+    setup(AGENT);
+    const note = screen.getByText(NOTE);
+    expect(note).toHaveAttribute('role', 'status');
+  });
+
+  it('na aba da pessoa, o aviso não existe', () => {
+    setup();
+    expect(screen.queryByText(NOTE)).toBeNull();
+  });
+
+  it('"Parar" fica desligado na aba de agente', async () => {
+    const { user, handlers } = setup({ ...AGENT, loading: true });
+    const stop = screen.getByRole('button', { name: 'Parar' });
+    expect(stop).toHaveAttribute('aria-disabled', 'true');
+    await user.click(stop);
+    expect(handlers.onStop).not.toHaveBeenCalled();
+  });
+
+  it('"Inspecionar" fica desligado na aba de agente, e os outros itens seguem', async () => {
+    const { user, handlers } = setup(AGENT);
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    const menu = screen.getByRole('menu');
+    const inspect = within(menu).getByRole('menuitem', { name: 'Inspecionar' });
+    expect(inspect).toHaveAttribute('aria-disabled', 'true');
+    await user.click(inspect);
+    expect(handlers.onOpenDevtools).not.toHaveBeenCalled();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Abrir no navegador do sistema' }),
+    ).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('o menu tem "Agentes e o navegador", que abre o cartão', async () => {
+    const { user, handlers } = setup();
+    await user.click(screen.getByRole('button', { name: 'Mais ações' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Agentes e o navegador' }));
+    expect(handlers.onOpenAgents).toHaveBeenCalledOnce();
   });
 });

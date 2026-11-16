@@ -127,28 +127,39 @@ export type HookEventName = (typeof HOOK_EVENTS)[number] | (typeof PANEL_ONLY_HO
 /**
  * Configuração de hooks de uma execução: os eventos pedidos apontam todos para o mesmo script. Padrão: os
  * seis da missão. O painel de terminal pede só o início e o fim da sessão, porque cada evento a mais vira
- * uma linha no log que o receptor relê inteiro.
+ * uma linha no log que o receptor relê inteiro. `allow` são permissões que o arquivo já concede (as ferramentas
+ * de um servidor que o próprio app ligou ao terminal); sem nenhuma, a chave `permissions` não existe.
  */
 export function buildHookSettings(
   scriptPath: string,
   events: readonly HookEventName[] = HOOK_EVENTS,
+  allow: readonly string[] = [],
 ): {
   hooks: Record<string, { hooks: { type: 'command'; command: string }[] }[]>;
+  permissions?: { allow: string[] };
 } {
   const group = { hooks: [{ type: 'command' as const, command: hookCommand(scriptPath) }] };
-  return { hooks: Object.fromEntries(events.map((event) => [event, [group]])) };
+  return {
+    hooks: Object.fromEntries(events.map((event) => [event, [group]])),
+    ...(allow.length === 0 ? {} : { permissions: { allow: [...allow] } }),
+  };
 }
 
-/** Grava a configuração de hooks da execução e devolve o caminho do arquivo. Eventos: os de `buildHookSettings`. */
+/** Grava a configuração de hooks da execução e devolve o caminho do arquivo. Eventos e permissões: os de `buildHookSettings`. */
 export function writeSettingsFile(
   dir: string,
   executionId: string,
   scriptPath: string,
   events: readonly HookEventName[] = HOOK_EVENTS,
+  allow: readonly string[] = [],
 ): string {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${executionId}.settings.json`);
-  writeFileSync(file, JSON.stringify(buildHookSettings(scriptPath, events), null, 2), 'utf8');
+  writeFileSync(
+    file,
+    JSON.stringify(buildHookSettings(scriptPath, events, allow), null, 2),
+    'utf8',
+  );
   return file;
 }
 

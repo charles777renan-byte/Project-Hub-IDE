@@ -229,6 +229,34 @@ describe('createBrowserService', () => {
     expect(last(pages[0], 'setVisible')).toBe('setVisible:true');
   });
 
+  it('cedido, a página ativa fica escondida, e um retângulo novo não a mostra de novo', () => {
+    const { service, pages } = setup([stored('A', 'a', 0, true)]);
+    service.setBounds('A', RECT);
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:true');
+    service.setYielded('A', true);
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:false');
+    service.setBounds('A', { ...RECT, width: 500 });
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:false');
+    expect(pages[0]?.destroyed).toBe(false);
+    service.setYielded('A', false);
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:true');
+    expect(last(pages[0], 'setBounds')).toBe(
+      `setBounds:${JSON.stringify({ ...RECT, width: 500 })}`,
+    );
+  });
+
+  it('ceder um projeto não esconde a página de outro, e o projeto esquecido deixa de estar cedido', () => {
+    const { service, pages } = setup([stored('A', 'a', 0, true), stored('B', 'b', 0, true)]);
+    service.setYielded('A', true);
+    service.setBounds('B', RECT);
+    expect(last(pages[0], 'setVisible')).toBe('setVisible:true');
+    service.setYielded('B', true);
+    service.forgetProject('B');
+    service.setBounds('B', RECT);
+    service.navigate('B', data(service.state('B')).activeTabId ?? '', 'localhost:3000');
+    expect(last(pages.at(-1), 'setVisible')).toBe('setVisible:true');
+  });
+
   it('o "esconder" atrasado de um projeto não esconde o que entrou depois', () => {
     const { service, pages } = setup([stored('A', 'a', 0, true), stored('B', 'b', 0, true)]);
     service.setBounds('A', RECT);

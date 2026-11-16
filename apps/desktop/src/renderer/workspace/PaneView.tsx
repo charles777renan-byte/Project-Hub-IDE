@@ -438,6 +438,11 @@ export function PaneView(props: PaneViewProps) {
           </span>
           <PaneContext context={terminal.context} />
         </div>
+        {terminal.browserAccess === 'lost' && (
+          <p role="note" className="pane__notice">
+            Sem navegador: o app foi reiniciado. Abra um terminal novo para o agente voltar a usar.
+          </p>
+        )}
         {asking && (
           <div className="pane__confirm">
             <ConfirmInline

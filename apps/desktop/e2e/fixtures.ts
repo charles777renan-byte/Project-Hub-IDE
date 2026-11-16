@@ -148,6 +148,8 @@ export type LaunchOptions = {
    * os testes que dimensionam a janela por conta própria (capturas, janela estreita) continuam fazendo isso depois.
    */
   windowSize?: { width: number; height: number } | false;
+  /** Opções a mais na linha de comando do app (por exemplo `--force-device-scale-factor=1.5`). */
+  extraArgs?: string[];
 };
 
 /** Tamanho da janela dos testes: mede-se `.workspace__area` com as laterais abertas, e ela passa de 720 px com folga. */
@@ -414,7 +416,7 @@ export const test = base.extend<Fixtures>({
       const app = await electron.launch({
         executablePath: electronExecutable(),
         // O sandbox do renderer fica ligado, como no uso real: nenhum `--no-sandbox` aqui.
-        args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`],
+        args: [MAIN_ENTRY, `--user-data-dir=${userDataDir}`, ...(options.extraArgs ?? [])],
         env,
       });
       // O gancho vai como script de inicialização do contexto: roda antes dos scripts da janela, também
