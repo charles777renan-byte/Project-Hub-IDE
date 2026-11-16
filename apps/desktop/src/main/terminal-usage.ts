@@ -1,4 +1,5 @@
 import {
+  createCodexUsageTracker,
   createTranscriptUsageTracker,
   type ClaudeHooks,
   type HookRecord,
@@ -13,24 +14,30 @@ export const TERMINAL_USAGE_INTERVAL_MS = 1500;
 /** Leituras de hooks por vez: o processo de terminais corta a resposta, e o resto vem na leitura seguinte. */
 const MAX_HOOK_PAGES = 20;
 
+/** Os programas cujo gasto o app sabe ler: cada um grava a sessão num formato próprio. */
+export type UsageProvider = 'claude' | 'codex';
+
 export type TerminalUsageDeps = {
   hooks: Pick<ClaudeHooks, 'readAfter'>;
-  /** Pasta de dados do Claude Code que os terminais recebem (`CLAUDE_CONFIG_DIR`, ou `~/.claude`). */
-  configDir: string;
+  /**
+   * Pasta de dados que os terminais de cada programa recebem: a do Claude Code (`CLAUDE_CONFIG_DIR`, ou
+   * `~/.claude`) e a do Codex (`CODEX_HOME`, ou `~/.codex`).
+   */
+  roots: Record<UsageProvider, string>;
   /** Relógio em ms. Só serve para espaçar as leituras. */
   now: () => number;
   intervalMs?: number;
-  /** Fábrica do leitor de transcripts. Só os testes trocam. */
-  createTracker?: (configDir: string) => TranscriptUsageTracker;
+  /** Fábrica do leitor de sessões de um programa. Só os testes trocam. */
+  createTracker?: (provider: UsageProvider, root: string) => TranscriptUsageTracker;
 };
 
 /**
- * Gasto de tokens dos terminais do Claude Code abertos pelo painel. Não tem timer: lê quando a lista de
+ * Gasto de tokens dos terminais do Claude Code e do Codex abertos pelo painel. Não tem timer: lê quando a lista de
  * terminais pede, e no máximo a cada `intervalMs` por terminal.
  */
 export type TerminalUsageService = {
-  /** Passa a acompanhar o terminal. Repetir não faz nada. */
-  track(terminalId: string): void;
+  /** Passa a acompanhar o terminal, com o leitor do programa dele. Repetir não faz nada. */
+  track(terminalId: string, provider: UsageProvider): void;
   /** Para de acompanhar e solta o leitor. */
   forget(terminalId: string): void;
   isTracked(terminalId: string): boolean;
@@ -91,15 +98,20 @@ type Entry = {
 };
 
 /**
- * Cada terminal tem o seu leitor de transcripts. Os transcripts vêm dos hooks `SessionStart` (que trazem
- * `transcript_path` e `session_id`): um `/clear` dispara outro, e a sessão nova entra na mesma soma. O log
+ * Cada terminal tem o seu leitor de sessões, o do programa dele. As sessões vêm dos hooks `SessionStart` (que
+ * trazem `transcript_path` e `session_id`, no Claude Code e no Codex): um `/clear` ou um `/new` dispara outro, e a
+ * sessão nova entra na mesma soma. O log
  * de hooks fica em disco e sobrevive ao reinício do app, então um terminal recuperado refaz o total do zero
  * (a soma por resposta não conta nada duas vezes).
  */
 export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsageService {
   const intervalMs = deps.intervalMs ?? TERMINAL_USAGE_INTERVAL_MS;
   const newTracker =
-    deps.createTracker ?? ((configDir) => createTranscriptUsageTracker({ configDir }));
+    deps.createTracker ??
+    ((provider, root) =>
+      provider === 'codex'
+        ? createCodexUsageTracker({ codexHome: root })
+        : createTranscriptUsageTracker({ configDir: root }));
   const entries = new Map<string, Entry>();
 
   function learn(entry: Entry, record: HookRecord): void {
@@ -157,10 +169,10 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
   }
 
   return {
-    track(terminalId) {
+    track(terminalId, provider) {
       if (entries.has(terminalId)) return;
       entries.set(terminalId, {
-        tracker: newTracker(deps.configDir),
+        tracker: newTracker(provider, deps.roots[provider]),
         seq: 0,
         learned: false,
         last: undefined,

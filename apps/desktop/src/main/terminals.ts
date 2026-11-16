@@ -17,6 +17,8 @@ import type { TerminalSessionRepository } from '@project-hub/database';
 import { MODEL_NAME_MAX_LENGTH, contextWindowOf } from '@project-hub/domain';
 import {
   claudeConfigDirOf,
+  codexHomeOf,
+  codexHookArgs,
   writeHookScript,
   writeSettingsFile,
   type ClaudeHooks,
@@ -25,7 +27,7 @@ import {
 import { buildTerminalEnv } from '../terminal-host/env';
 import { BROWSER_PERMISSION, type AgentBrowserAccess } from './browser/agent/agent-launch';
 import { shellStartArgs, type ProviderRegistry } from './providers';
-import { createTerminalUsageService } from './terminal-usage';
+import { createTerminalUsageService, type UsageProvider } from './terminal-usage';
 
 /** Quanto tempo uma contagem de arquivos alterados vale. O Git roda por pasta, não a cada leitura da lista. */
 const CHANGES_TTL_MS = 10_000;
@@ -47,6 +49,11 @@ const PANEL_HOOK_EVENTS: readonly HookEventName[] = [
   'Stop',
 ];
 
+/** O programa cujo gasto de tokens o app sabe ler, ou `undefined` para os outros e para o shell. */
+function usageProviderOf(provider: string): UsageProvider | undefined {
+  return provider === 'claude' || provider === 'codex' ? provider : undefined;
+}
+
 export type TerminalServiceDeps = {
   port: TerminalPort;
   repo: Pick<MissionRepository, 'findExecutionsByStatus' | 'getMission'>;
@@ -61,7 +68,7 @@ export type TerminalServiceDeps = {
   env: NodeJS.ProcessEnv;
   newId: () => string;
   now: () => string;
-  /** Receptor de hooks do processo de terminais: diz ao app qual transcript é de qual painel do Claude Code. */
+  /** Receptor de hooks do processo de terminais: diz ao app qual sessão é de qual painel do Claude Code ou do Codex. */
   hooks: ClaudeHooks;
   /** Pasta do script de hook e dos arquivos de `--settings` (a mesma do adaptador da missão). */
   settingsDir: string;
@@ -144,10 +151,11 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   let subscriptionSeq = 0;
   /** Última contagem de arquivos alterados por pasta, com a hora (ms) em que foi lida. */
   const changes = new Map<string, { at: number; count: number | undefined }>();
-  // A raiz dos transcripts sai do mesmo ambiente filtrado que o terminal recebe.
+  // As raízes das sessões saem do mesmo ambiente filtrado que o terminal recebe.
+  const terminalEnv = buildTerminalEnv(deps.env);
   const usage = createTerminalUsageService({
     hooks: deps.hooks,
-    configDir: claudeConfigDirOf(buildTerminalEnv(deps.env)),
+    roots: { claude: claudeConfigDirOf(terminalEnv), codex: codexHomeOf(terminalEnv) },
     now: () => Date.parse(deps.now()),
   });
 
@@ -198,13 +206,15 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   }
 
   /**
-   * Liga os hooks do painel do Claude Code: registra o terminal no receptor, grava o arquivo de `--settings`
-   * e põe o endereço e o token no ambiente (o token nunca vai na linha de comando, que outros processos
-   * leem). Qualquer falha abre o Claude como antes, sem número de tokens: o terminal vale mais que o número.
-   * `allow` são as permissões que o arquivo já concede (as ferramentas do navegador, quando o terminal as tem).
+   * Liga os hooks do painel: registra o terminal no receptor e põe o endereço e o token no ambiente (o token
+   * nunca vai na linha de comando, que outros processos leem). O Claude Code recebe o arquivo de `--settings`;
+   * o Codex, opções `-c` que valem só neste lançamento, com o início e o fim da sessão. Qualquer falha abre o
+   * programa como antes, sem número de tokens: o terminal vale mais que o número. `allow` são as permissões
+   * que o arquivo do Claude já concede (as ferramentas do navegador, quando o terminal as tem).
    */
   async function withUsageHooks(
     terminalId: string,
+    provider: UsageProvider,
     launch: { args: readonly string[]; env: Record<string, string> },
     allow: readonly string[],
   ): Promise<{ args: readonly string[]; env: Record<string, string>; hooked: boolean }> {
@@ -213,15 +223,15 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       const registration = await deps.hooks.registerExecution(terminalId);
       registered = true;
       const script = writeHookScript(deps.settingsDir);
-      const settingsFile = writeSettingsFile(
-        deps.settingsDir,
-        terminalId,
-        script,
-        PANEL_HOOK_EVENTS,
-        allow,
-      );
+      const hookArgs =
+        provider === 'codex'
+          ? codexHookArgs(script, deps.platform ?? process.platform)
+          : [
+              '--settings',
+              writeSettingsFile(deps.settingsDir, terminalId, script, PANEL_HOOK_EVENTS, allow),
+            ];
       return {
-        args: ['--settings', settingsFile, ...launch.args],
+        args: [...hookArgs, ...launch.args],
         env: {
           ...launch.env,
           PROJECT_HUB_HOOK_URL: registration.url,
@@ -231,7 +241,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         hooked: true,
       };
     } catch (error) {
-      console.warn('Terminal do Claude Code aberto sem o gasto de tokens:', error);
+      console.warn('Terminal aberto sem o gasto de tokens:', error);
       // Só os hooks saem: o navegador que `launch` já cita (arquivo e token) continua valendo.
       await dropHooks(terminalId, registered);
       return { ...launch, hooked: false };
@@ -264,7 +274,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
 
   /**
    * Solta o leitor de tokens, o acesso ao navegador e, se o terminal pode ter registro no receptor (`registered`: um painel do
-   * Claude Code, inclusive o recuperado de outra execução do app), o registro também. Falha ao soltar não
+   * Claude Code ou do Codex, inclusive o recuperado de outra execução do app), o registro também. Falha ao soltar não
    * impede de fechar.
    */
   async function releaseHooks(terminalId: string, registered: boolean): Promise<void> {
@@ -307,15 +317,18 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   }
 
   /**
-   * Gasto de tokens de um painel do Claude Code. O painel aberto por esta execução do app só é acompanhado
-   * se os hooks ligaram. O recuperado (aberto antes de um reinício) passa a ser acompanhado aqui: se ele
-   * nasceu com os hooks, o log em disco refaz o total; se nasceu antes deste recurso, o log está vazio e
-   * não há número. A leitura nunca derruba a lista.
+   * Gasto de tokens de um painel do Claude Code ou do Codex. O painel aberto por esta execução do app só é
+   * acompanhado se os hooks ligaram. O recuperado (aberto antes de um reinício) passa a ser acompanhado aqui:
+   * se ele nasceu com os hooks, o log em disco refaz o total; se nasceu antes deste recurso, o log está vazio
+   * e não há número. A leitura nunca derruba a lista.
    */
-  async function usageOfClaude(terminalId: string): Promise<UsageSummaryDto | undefined> {
+  async function usageOf(
+    terminalId: string,
+    provider: UsageProvider,
+  ): Promise<UsageSummaryDto | undefined> {
     // A sessão pode ter sido fechada enquanto a lista era montada: aí o leitor não volta.
     if (openSessionRecord(terminalId) === undefined) return undefined;
-    if (!openedHere.has(terminalId)) usage.track(terminalId);
+    if (!openedHere.has(terminalId)) usage.track(terminalId, provider);
     try {
       return await usage.usageOf(terminalId);
     } catch {
@@ -345,7 +358,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     stopSubscription(terminalId);
     sessions.close(terminalId, deps.now());
     openedHere.delete(terminalId);
-    await releaseHooks(terminalId, record.provider === 'claude');
+    await releaseHooks(terminalId, usageProviderOf(record.provider) !== undefined);
     return { state: 'unknown' };
   }
 
@@ -397,11 +410,19 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       // COLORTERM fica fora da lista de permitidos (que protege segredos): o valor é fixo e nosso.
       env: { ...buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }), ...(browser?.env ?? {}) },
     };
-    // Só o Claude Code informa o gasto de tokens; os outros programas e o shell abrem como estão.
+    // O Claude Code e o Codex informam o gasto de tokens; os outros programas e o shell abrem como estão.
+    // As opções do Codex levam aspas e `<`, que um `.cmd` entregaria ao `cmd.exe`: só o executável as recebe.
+    const usageProvider = usageProviderOf(provider);
+    const viaCmd = resolution.launch.command.toLowerCase() === 'cmd.exe';
     const launch =
-      provider === 'claude'
-        ? await withUsageHooks(terminalId, base, browser === undefined ? [] : [BROWSER_PERMISSION])
-        : { ...base, hooked: false };
+      usageProvider === undefined || (usageProvider === 'codex' && viaCmd)
+        ? { ...base, hooked: false }
+        : await withUsageHooks(
+            terminalId,
+            usageProvider,
+            base,
+            browser === undefined ? [] : [BROWSER_PERMISSION],
+          );
     try {
       await port.open({
         id: terminalId,
@@ -431,7 +452,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     }
     openedHere.add(terminalId);
     if (browser !== undefined) deps.browserAccess?.opened(terminalId);
-    if (launch.hooked) usage.track(terminalId);
+    if (launch.hooked && usageProvider !== undefined) usage.track(terminalId, usageProvider);
     return { ok: true, data: { terminalId } };
   }
 
@@ -454,7 +475,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     }
     sessions.close(terminalId, deps.now());
     openedHere.delete(terminalId);
-    await releaseHooks(terminalId, record.provider === 'claude');
+    await releaseHooks(terminalId, usageProviderOf(record.provider) !== undefined);
     return OK;
   }
 
@@ -514,10 +535,13 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
           // O terminal avulso roda na pasta do projeto, então a contagem é a dela.
           const folder = projects.get(record.projectId);
           const changedFiles = await changedFilesOf(folder?.path);
-          const tokens = provider.data === 'claude' ? await usageOfClaude(record.id) : undefined;
-          // Lido junto do gasto, na mesma passada: só existe depois de `usageOfClaude` e sem ler de novo.
-          const context = provider.data === 'claude' ? usage.contextOf(record.id) : undefined;
-          const startModel = provider.data === 'claude' ? usage.modelOf(record.id) : undefined;
+          const usageProvider = usageProviderOf(provider.data);
+          const tokens =
+            usageProvider === undefined ? undefined : await usageOf(record.id, usageProvider);
+          // Lido junto do gasto, na mesma passada: só existe depois de `usageOf` e sem ler de novo. O Codex
+          // não informa contexto, só o modelo do começo da sessão.
+          const context = usageProvider === undefined ? undefined : usage.contextOf(record.id);
+          const startModel = usageProvider === undefined ? undefined : usage.modelOf(record.id);
           out.push({
             id: record.id,
             kind: 'shell',

@@ -14,7 +14,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { HookRecord } from '@project-hub/agent-adapters';
+import { codexHookArgs, type HookRecord } from '@project-hub/agent-adapters';
 import type { TerminalEvent } from '@project-hub/contracts';
 import type { TerminalSessionRecord, TerminalSessionRepository } from '@project-hub/database';
 import type { AgentBrowserAccess } from '../src/main/browser/agent/agent-launch';
@@ -51,13 +51,16 @@ const HOOK_TOKEN = 'token-secreto-do-hook';
 
 /** Pasta de dados do Claude Code (transcripts) e pasta de configuração dos hooks, novas a cada teste. */
 let claudeDir = '';
+let codexDir = '';
 let dataDir = '';
 beforeEach(() => {
   claudeDir = mkdtempSync(join(tmpdir(), 'ph-terminals-claude-'));
+  codexDir = mkdtempSync(join(tmpdir(), 'ph-terminals-codex-'));
   dataDir = mkdtempSync(join(tmpdir(), 'ph-terminals-data-'));
 });
 afterEach(() => {
   rmSync(claudeDir, { recursive: true, force: true });
+  rmSync(codexDir, { recursive: true, force: true });
   rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -238,7 +241,12 @@ function setup(
     providers: options.providers ?? providers,
     publish: (event) => events.push(event),
     countChanges: options.countChanges ?? (() => Promise.resolve(undefined)),
-    env: { PATH: 'C:/Windows', ANTHROPIC_API_KEY: 'segredo', CLAUDE_CONFIG_DIR: claudeDir },
+    env: {
+      PATH: 'C:/Windows',
+      ANTHROPIC_API_KEY: 'segredo',
+      CLAUDE_CONFIG_DIR: claudeDir,
+      CODEX_HOME: codexDir,
+    },
     newId: () => ids.shift() ?? 'shell-x',
     now: () => new Date(clock).toISOString(),
     hooks: hooks.hooks,
@@ -984,8 +992,8 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     expect(result.data[0]).not.toHaveProperty('usage');
   });
 
-  it('terminal de outro provedor nunca é lido, mesmo recuperado', async () => {
-    const h = setup({ sessions: [storedSession] });
+  it('terminal de programa sem leitor nunca é lido, mesmo recuperado', async () => {
+    const h = setup({ sessions: [{ ...storedSession, provider: 'antigravity' }] });
 
     await h.service.list();
 
@@ -1007,8 +1015,8 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     expect(h.hooks.reads).toEqual([]);
   });
 
-  it('fechar um painel recuperado do Claude também solta o registro; o de outro provedor, não', async () => {
-    const h = setup({ sessions: [claudeSession, storedSession] });
+  it('fechar um painel recuperado do Claude também solta o registro; o de programa sem leitor, não', async () => {
+    const h = setup({ sessions: [claudeSession, { ...storedSession, provider: 'antigravity' }] });
 
     await h.service.closeSession('claude-antigo');
     await h.service.closeSession('antiga');
@@ -1022,6 +1030,203 @@ describe('gasto de tokens dos painéis do Claude Code', () => {
     expect(await h.service.list()).toEqual({ ok: true, data: [] });
 
     expect(h.hooks.unregistered).toEqual(['claude-antigo']);
+  });
+});
+
+describe('gasto de tokens dos painéis do Codex', () => {
+  const CODEX_SESSION = '01a1e218-c798-71f0-bf48-72a4f485076c';
+  /** O Codex instalado como executável, que é chamado direto. */
+  const withCodex: ProviderRegistry = {
+    ...providers,
+    resolve: (id) =>
+      id === 'codex'
+        ? { ok: true, launch: { command: 'C:/bin/codex.exe', args: [] } }
+        : providers.resolve(id),
+  };
+  const codexSession: TerminalSessionRecord = {
+    id: 'codex-antigo',
+    projectId: 'p1',
+    provider: 'codex',
+    title: 'Codex · app',
+    createdAt: '2026-10-21T09:00:00.000Z',
+  };
+
+  /** Grava o total acumulado no rollout da sessão e devolve o caminho dele. */
+  function writeTotal(output: number, session = CODEX_SESSION): string {
+    const folder = join(codexDir, 'sessions', '2026', '11', '15');
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, `rollout-2026-11-15T23-03-57-${session}.jsonl`);
+    appendFileSync(
+      file,
+      `${JSON.stringify({
+        type: 'event_msg',
+        payload: {
+          type: 'token_count',
+          info: {
+            total_token_usage: {
+              input_tokens: 500,
+              cached_input_tokens: 300,
+              output_tokens: output,
+            },
+          },
+        },
+      })}\n`,
+    );
+    return file;
+  }
+
+  it('abre o Codex com os dois hooks por -c, e o endereço e o token do receptor só no ambiente', async () => {
+    const h = setup({ providers: withCodex });
+
+    await h.service.openSession('p1', 'codex', { args: ['resume', 'abc'] });
+
+    const hookArgs = codexHookArgs(join(settingsDir(), 'project-hub-hook.cjs'), 'win32');
+    expect(h.hooks.registered).toEqual(['shell-1']);
+    // As opções vêm antes do subcomando da retomada.
+    expect(h.opened[0]).toMatchObject({
+      command: 'C:/bin/codex.exe',
+      args: [...hookArgs, 'resume', 'abc'],
+    });
+    expect(
+      hookArgs.filter((arg) => arg.startsWith('hooks.')).map((arg) => arg.split('=')[0]),
+    ).toEqual(['hooks.SessionStart', 'hooks.SessionEnd', 'hooks.state']);
+    expect(h.opened[0]?.env).toMatchObject({
+      PROJECT_HUB_HOOK_URL: 'http://127.0.0.1:4000/hooks/shell-1',
+      PROJECT_HUB_HOOK_TOKEN: HOOK_TOKEN,
+      PROJECT_HUB_HOOK_SLIM: '1',
+    });
+    const line = JSON.stringify(h.opened[0]?.args);
+    expect(line).not.toContain(HOOK_TOKEN);
+    expect(line).not.toContain('127.0.0.1:4000');
+  });
+
+  it('Codex instalado como .cmd abre sem os hooks e sem número', async () => {
+    const h = setup({
+      providers: {
+        ...providers,
+        resolve: () => ({
+          ok: true,
+          launch: { command: 'cmd.exe', args: ['/d', '/c', 'C:/npm/codex.cmd'] },
+        }),
+      },
+    });
+
+    await h.service.openSession('p1', 'codex');
+
+    expect(h.opened[0]?.args).toEqual(['/d', '/c', 'C:/npm/codex.cmd']);
+    expect(h.opened[0]?.env).not.toHaveProperty('PROJECT_HUB_HOOK_TOKEN');
+    expect(h.hooks.registered).toEqual([]);
+    const result = await h.service.list();
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).not.toHaveProperty('usage');
+    expect(h.hooks.reads).toEqual([]);
+  });
+
+  it('falha ao registrar o hook não impede de abrir: o Codex abre puro e sem número', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const h = setup({ providers: withCodex, hooks: fakeHooks({ failRegister: true }) });
+
+      expect((await h.service.openSession('p1', 'codex')).ok).toBe(true);
+
+      expect(h.opened[0]).toMatchObject({ command: 'C:/bin/codex.exe', args: [] });
+      expect(h.opened[0]?.env).not.toHaveProperty('PROJECT_HUB_HOOK_TOKEN');
+      const result = await h.service.list();
+      if (!result.ok) throw new Error('esperava sucesso');
+      expect(result.data[0]).not.toHaveProperty('usage');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('falha ao montar os hooks abre o Codex puro e solta o registro', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const blocked = join(dataDir, 'arquivo');
+      writeFileSync(blocked, '');
+      const h = setup({ providers: withCodex, settingsDir: join(blocked, 'settings') });
+
+      expect((await h.service.openSession('p1', 'codex')).ok).toBe(true);
+
+      expect(h.opened[0]?.args).toEqual([]);
+      expect(h.hooks.unregistered).toEqual(['shell-1']);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a lista traz o gasto do painel do Codex depois do SessionStart, sem custo e sem contexto', async () => {
+    const h = setup({ providers: withCodex });
+    await h.service.openSession('p1', 'codex');
+    expect((await h.service.list()).ok).toBe(true);
+
+    h.hooks.sessionStart('shell-1', writeTotal(42), CODEX_SESSION);
+    h.advance(1500);
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).toMatchObject({
+      provider: 'codex',
+      usage: { inputTokens: 200, outputTokens: 42, cacheReadInputTokens: 300 },
+    });
+    expect(result.data[0]?.usage).not.toHaveProperty('estimatedCostUsd');
+    expect(result.data[0]).not.toHaveProperty('context');
+  });
+
+  it('rollout que o hook aponta fora da pasta do Codex é ignorado', async () => {
+    const h = setup({ providers: withCodex });
+    await h.service.openSession('p1', 'codex');
+    const real = writeTotal(42);
+    const outside = join(dataDir, 'sessions', '2026', '11', '15');
+    mkdirSync(outside, { recursive: true });
+    const forged = join(outside, `rollout-2026-11-15T23-03-57-${CODEX_SESSION}.jsonl`);
+    writeFileSync(forged, readFileSync(real));
+
+    h.hooks.sessionStart('shell-1', forged, CODEX_SESSION);
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data[0]).not.toHaveProperty('usage');
+  });
+
+  it('painel do Codex recuperado depois de reiniciar o app refaz o total pelo log de hooks', async () => {
+    const hooks = fakeHooks();
+    hooks.sessionStart('codex-antigo', writeTotal(77), CODEX_SESSION);
+    const h = setup({ sessions: [codexSession], hooks, providers: withCodex });
+
+    expect(await h.service.list()).toMatchObject({
+      ok: true,
+      data: [{ id: 'codex-antigo', origin: 'recovered', usage: { outputTokens: 77 } }],
+    });
+    expect(hooks.reads[0]).toEqual({ id: 'codex-antigo', afterSeq: 0 });
+  });
+
+  it('fechar o painel do Codex solta o registro e o leitor', async () => {
+    const h = setup({ providers: withCodex });
+    await h.service.openSession('p1', 'codex');
+    h.hooks.sessionStart('shell-1', writeTotal(10), CODEX_SESSION);
+    await h.service.list();
+
+    expect((await h.service.closeSession('shell-1')).ok).toBe(true);
+    h.hooks.reads.length = 0;
+    h.advance(1500);
+    await h.service.list();
+
+    expect(h.hooks.unregistered).toEqual(['shell-1']);
+    expect(h.hooks.reads).toEqual([]);
+  });
+
+  it('Antigravity e shell continuam sem número', async () => {
+    const h = setup({ providers: withCodex });
+    await h.service.openSession('p1', 'antigravity');
+    await h.service.openSession('p1', 'shell');
+
+    const result = await h.service.list();
+
+    if (!result.ok) throw new Error('esperava sucesso');
+    expect(result.data).toHaveLength(2);
+    for (const terminal of result.data) expect(terminal).not.toHaveProperty('usage');
+    expect(h.hooks.registered).toEqual([]);
   });
 });
 
@@ -1156,7 +1361,14 @@ describe('navegador ao alcance do agente do terminal', () => {
 
     await h.service.openSession('p1', 'codex', { args: ['resume', 'abc'] });
 
-    expect(h.opened[0]?.args).toEqual(['--mcp-config', 'C:/dados/x.mcp.json', 'resume', 'abc']);
+    // Os hooks do gasto de tokens vêm na frente, como o `--settings` do Claude.
+    expect(h.opened[0]?.args).toEqual([
+      ...codexHookArgs(join(settingsDir(), 'project-hub-hook.cjs'), 'win32'),
+      '--mcp-config',
+      'C:/dados/x.mcp.json',
+      'resume',
+      'abc',
+    ]);
     expect(h.opened[0]?.env).toHaveProperty('PROJECT_HUB_BROWSER_TOKEN', BROWSER_TOKEN);
   });
 
