@@ -1,6 +1,6 @@
 # ADR 0014: Agentes dos terminais usando o navegador do projeto
 
-- Status: proposta; implementada na fase 3, no ramo `feat/navegador-agentes`. Passa a aceita com a integração do ramo.
+- Status: aceita; implementada na fase 3 e integrada.
 - Data: 2026-11-15
 - Origem: agentes vendo e usando o navegador, em `docs/superpowers/specs/2026-11-14-navegador-agentes-design.md`
 - Complementa: ADR 0012 (navegador interno em view isolada), ADR 0013 (preview automático), ADR 0001 (isolamento do Electron) e ADR 0007 (decisões de fundação). Esta decisão abre uma terceira exceção controlada: um programa que roda num terminal passa a comandar páginas dentro do app.
