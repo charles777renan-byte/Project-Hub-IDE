@@ -22,6 +22,8 @@ O risco está no "sozinha". O comando que sobe o servidor é o script `dev` (ou 
 7. **Endereço fixo.** "Só abrir um endereço" guarda um endereço local e não sobe nada. Serve para monorepo, outras linguagens e servidor que a pessoa prefere subir por conta própria.
 8. **Dados do banco são tratados como não confiáveis.** Uma linha de `project_previews` que não passa na validação vale como "sem aprovação". Um último endereço que não é local nunca é sondado, devolvido nem aberto.
 9. **"Esquecer este preview"** apaga a aprovação e o endereço guardado. Remover o projeto faz o mesmo e fecha o servidor estático dele.
+10. **Nada sobe sem a pessoa pedir** (revisão de 2026-11-15). Abrir um projeto ou a aba Navegador não cria terminal nem servidor. Com um comando aprovado ou um site estático, o cartão oferece "Abrir o preview" ou "Abrir o site", e a subida acontece no clique. A aba vazia só abre sozinha o que não sobe nada: o endereço fixo e um servidor do preview que já está de pé ou subindo. A decisão anterior, de subir ao abrir a aba, abria um terminal em todo projeto visitado.
+11. **O app escolhe o script de servidor** (revisão de 2026-11-15). A sugestão é o script `dev`, `start` ou `serve`; sem eles, o primeiro script que não é de uma vez só (`build`, `test`, `lint` e parecidos) e cujo texto chama um servidor conhecido. Um script de uma vez só nunca anuncia endereço. Se a aprovação guardada é de um deles e o projeto tem um script de servidor, ela é posta de lado, e o cartão pede o comando certo uma vez.
 
 ## O que não muda
 
@@ -39,7 +41,7 @@ A janela do app, a CSP, a checagem de remetente dos canais e as políticas das p
 - O cliente dos terminais passou a ter ouvintes ao lado da assinatura do painel. É um ponto central, com teste próprio.
 - O workspace ganhou um caminho em que o processo principal cria um painel e avisa o renderer (`workspaces:changed`). Uma mudança de layout local ainda não gravada é descartada quando esse aviso chega.
 - Uma tabela nova (`project_previews`), cinco canais de pedido (`preview:*:v1`), todos com zod e `registerTrustedHandler`, e dois de aviso do processo principal para o renderer (`preview:changed:v1` e `workspaces:changed:v1`), validados no preload.
-- Depois de uma subida que não deu certo, a aba vazia não tenta de novo sozinha: a pessoa decide pelo cartão. Sem isso, cada aba nova abriria mais um terminal.
+- A aba vazia nunca sobe um servidor sozinha, nem depois de uma subida que não deu certo: a pessoa decide pelo cartão.
 
 ## Limites conhecidos
 

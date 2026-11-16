@@ -19,6 +19,38 @@ export type Discovery = {
 /** Os scripts que sobem servidor de desenvolvimento, na ordem em que são sugeridos. */
 const SUGGESTED = ['dev', 'start', 'serve'] as const;
 
+/**
+ * Nomes de tarefa que roda e termina: compilar, testar, conferir, publicar. Vale o nome sozinho ou com um
+ * sufixo (`build:web`, `test-e2e`) e os ganchos `pre` e `post`. Um script assim não sobe servidor.
+ */
+const ONE_SHOT_NAME =
+  /^(?:pre|post)?(?:build|test|lint|format|typecheck|type-check|check|clean|prepare|install|deploy|release|publish|e2e|coverage)(?:[:._-].*)?$/;
+
+/** O script roda e termina (pelo nome): nunca é sugerido como servidor. */
+export function isOneShotScript(name: string): boolean {
+  return ONE_SHOT_NAME.test(name);
+}
+
+/**
+ * Como o texto de um script denuncia um servidor de desenvolvimento, para o projeto que não usa os nomes de
+ * `SUGGESTED`. É só um palpite para a sugestão: o que roda é o que a pessoa aprova no cartão.
+ */
+const SERVER_BODY: readonly RegExp[] = [
+  /\bvite\b(?!\s+build\b)/,
+  /\bnext\s+(?:dev|start)\b/,
+  /\bnuxi?\s+(?:dev|start|preview)\b/,
+  /\bastro\s+(?:dev|preview)\b/,
+  /\bwebpack(?:-dev-server\b|\s+serve\b)/,
+  /\bng\s+serve\b/,
+  /\breact-scripts\s+start\b/,
+  /\bvue-cli-service\s+serve\b/,
+  /\bgatsby\s+develop\b/,
+  /\bremix\s+dev\b/,
+  /\bsvelte-kit\s+dev\b/,
+  /\bparcel\b(?!\s+build\b)/,
+  /\b(?:http-server|live-server|serve|nodemon)\b/,
+];
+
 /** Lockfile de cada gerenciador, na ordem em que valem quando há mais de um. */
 const LOCKFILES: readonly (readonly [string, PreviewPackageManager])[] = [
   ['pnpm-lock.yaml', 'pnpm'],
@@ -69,7 +101,13 @@ export function discover(facts: ProjectFacts): Discovery {
     if (typeof body !== 'string' || body.trim() === '') continue;
     scripts.push({ name, body });
   }
-  const suggested = SUGGESTED.find((name) => scripts.some((script) => script.name === name));
+  // Primeiro o nome de costume; sem ele, o primeiro script cujo texto sobe um servidor conhecido.
+  const suggested =
+    SUGGESTED.find((name) => scripts.some((script) => script.name === name)) ??
+    scripts.find(
+      (script) =>
+        !isOneShotScript(script.name) && SERVER_BODY.some((pattern) => pattern.test(script.body)),
+    )?.name;
   return {
     packageManager: managerOf(pkg, facts.rootFiles),
     scripts,

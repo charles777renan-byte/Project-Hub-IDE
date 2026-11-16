@@ -217,6 +217,35 @@ describe('preview: estado', () => {
     expect(ok(await empty.service.state('p1')).detection.kind).toBe('none');
   });
 
+  it('aprovação de um script que só compila, com um que sobe servidor ao lado, não vale: o app volta a perguntar', async () => {
+    const scripts = { dev: 'vite --host 127.0.0.1', build: 'tsc -b && vite build' };
+    const h = setup({
+      facts: facts(scripts),
+      records: [record({ script: 'build', scriptBody: 'tsc -b && vite build' })],
+    });
+    const state = ok(await h.service.state('p1'));
+    expect(state.approval).toEqual({ kind: 'none' });
+    expect(state.detection).toMatchObject({ kind: 'server', suggested: 'dev' });
+    // E o build não roda sozinho.
+    expect(await h.service.start('p1', 'tab1')).toMatchObject({
+      ok: false,
+      error: { message: PREVIEW_MESSAGES.notApproved },
+    });
+    expect(h.panes.addPreviewPane).not.toHaveBeenCalled();
+  });
+
+  it('sem nenhum script que sobe servidor, a aprovação de um build continua valendo (escolha da pessoa)', async () => {
+    const h = setup({
+      facts: facts({ build: 'tsc && node dist/server.js' }),
+      records: [record({ script: 'build', scriptBody: 'tsc && node dist/server.js' })],
+    });
+    expect(ok(await h.service.state('p1')).approval).toMatchObject({
+      kind: 'script',
+      script: 'build',
+      changed: false,
+    });
+  });
+
   it('script aprovado sem sugestão continua "server"', async () => {
     const h = setup({
       facts: facts({ storybook: 'storybook dev' }, ['index.html', 'pnpm-lock.yaml']),

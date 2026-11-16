@@ -248,30 +248,51 @@ describe('NavigatorTab: preview do projeto', () => {
   const card = (name: string) => screen.findByRole('region', { name });
   const click = (name: string) => userEvent.setup().click(screen.getByRole('button', { name }));
 
-  it('aba vazia com o comando aprovado inicia o preview uma vez, sem pergunta', async () => {
+  it('aba vazia com o comando aprovado não sobe o servidor sozinha: o cartão oferece "Abrir o preview"', async () => {
     const { preview, emit, emitPreview } = installBrowserApi(EMPTY, APPROVED);
     render(<NavigatorTab projectId="p1" />);
 
-    await waitFor(() => expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1'));
+    expect(await card('Preview deste projeto')).toBeInTheDocument();
+    await settle();
+    expect(preview.start).not.toHaveBeenCalled();
+    expect(screen.queryByText('Abrindo o preview…')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Usar este comando' })).toBeNull();
-    expect(screen.getByText('Abrindo o preview…')).toBeInTheDocument();
 
-    // Novos estados da mesma aba não disparam de novo.
+    // Novos estados da mesma aba também não disparam.
     act(() => emit(EMPTY));
-    act(() => emitPreview({ ...APPROVED, status: 'starting', terminalId: 'term-1' }));
     act(() => emitPreview(APPROVED));
     await settle();
-    expect(preview.start).toHaveBeenCalledTimes(1);
+    expect(preview.start).not.toHaveBeenCalled();
+
+    await click('Abrir o preview');
+    expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1');
   });
 
-  it.each([
-    ['endereço fixo', FIXED],
-    ['site estático', SITE],
-  ])('aba vazia em projeto de %s abre sem cartão de pergunta', async (_label, state) => {
-    const { preview } = installBrowserApi(EMPTY, state);
+  it('com o servidor do projeto já de pé, a aba vazia abre a página sozinha: nada novo sobe', async () => {
+    const { preview } = installBrowserApi(EMPTY, {
+      ...APPROVED,
+      status: 'running',
+      url: 'http://localhost:5173/',
+    });
+    render(<NavigatorTab projectId="p1" />);
+    await waitFor(() => expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1'));
+  });
+
+  it('aba vazia em projeto de endereço fixo abre sem cartão de pergunta', async () => {
+    const { preview } = installBrowserApi(EMPTY, FIXED);
     render(<NavigatorTab projectId="p1" />);
     await waitFor(() => expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1'));
     expect(screen.queryByRole('button', { name: 'Usar este comando' })).toBeNull();
+  });
+
+  it('aba vazia em projeto de site estático não sobe o servidor do app sozinha: o cartão oferece "Abrir o site"', async () => {
+    const { preview } = installBrowserApi(EMPTY, SITE);
+    render(<NavigatorTab projectId="p1" />);
+    expect(await card('Preview deste projeto')).toBeInTheDocument();
+    await settle();
+    expect(preview.start).not.toHaveBeenCalled();
+    await click('Abrir o site');
+    expect(preview.start).toHaveBeenCalledExactlyOnceWith('p1', 't1');
   });
 
   it('uma aba que já tem endereço nunca inicia nada sozinha', async () => {

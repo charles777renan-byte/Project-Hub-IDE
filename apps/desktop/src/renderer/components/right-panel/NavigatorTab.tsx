@@ -29,10 +29,11 @@ function sameOrigin(url: string, previewUrl: string | null): boolean {
 }
 
 /**
- * Se a aba dispara o preview sozinha. Só o que não precisa de pergunta: endereço fixo, comando aprovado que não
- * mudou, ou site estático. Uma aba com endereço nunca dispara, fora a aba restaurada do site estático que não
- * carregou (o servidor do app ainda não subiu nesta abertura). Depois de uma subida que não deu certo, quem tenta
- * de novo é a pessoa, pelo cartão: senão cada aba vazia abriria mais um terminal.
+ * Se a aba dispara o preview sozinha. Só o que não sobe nada novo: o endereço fixo (o app só navega) e o servidor do
+ * projeto que já está de pé ou subindo (a aba só vai até ele). Subir o servidor de desenvolvimento ou o do site
+ * estático é sempre um pedido da pessoa, pelo botão do cartão: abrir um projeto não abre um terminal. Uma aba com
+ * endereço nunca dispara, fora a aba restaurada do site estático que não carregou (a pessoa já tinha o site aberto,
+ * e o servidor do app ainda não subiu nesta abertura).
  */
 function startsAlone(tab: BrowserTabDto, state: PreviewStateDto): boolean {
   // O preview é da pessoa: a aba de um agente nunca o dispara, nem recebe o endereço dele.
@@ -41,10 +42,11 @@ function startsAlone(tab: BrowserTabDto, state: PreviewStateDto): boolean {
   const site = approval.kind === 'none' && detection.kind === 'static';
   if (tab.error !== null) return site && sameOrigin(tab.url, state.url);
   if (tab.url !== '') return false;
-  if (status !== 'idle' && status !== 'running' && status !== 'starting') return false;
-  if (approval.kind === 'address') return true;
-  if (approval.kind === 'script') return !approval.changed;
-  return site;
+  if (approval.kind === 'address') return status === 'idle' || status === 'running';
+  if (approval.kind === 'script') {
+    return !approval.changed && (status === 'running' || status === 'starting');
+  }
+  return false;
 }
 
 /**
@@ -190,7 +192,11 @@ export function NavigatorTab({
   } else if (empty && previewState !== null) {
     const managing = manageTab === tabId;
     // Um pedido recusado deixa o cartão no modo em que a pessoa age: "abrindo…" não seria verdade.
-    const mode = managing || preview.error !== null ? 'manage' : 'auto';
+    // O mesmo vale quando nada sobe sozinho: o cartão mostra o botão, e não "abrindo…".
+    const waitsForPerson =
+      previewSituation(previewState, 'auto') === 'opening' &&
+      !(activeTab !== null && startsAlone(activeTab, previewState));
+    const mode = managing || preview.error !== null || waitsForPerson ? 'manage' : 'auto';
     const situation = previewSituation(previewState, mode);
     if (managing || (situation !== null && !dismissed.has(tabId))) {
       emptyContent = (

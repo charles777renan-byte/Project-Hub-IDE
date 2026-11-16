@@ -77,7 +77,7 @@ function statusText(situation: PreviewSituation, state: PreviewStateDto): string
     case 'approved':
       return state.approval.kind === 'address'
         ? 'O app só abre este endereço e não sobe nada.'
-        : 'O app sobe este comando num terminal do projeto quando a aba Navegador abre vazia.';
+        : 'O app sobe este comando num terminal do projeto quando você pede.';
     case 'static':
       return 'Site estático: o app serve os arquivos desta pasta.';
     case 'nothing':

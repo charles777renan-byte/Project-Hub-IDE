@@ -16,9 +16,9 @@ import { evalInBrowserPage, viewState } from './local-site';
 import { addGitProject, openProject } from './missions';
 import { expectOpenSessions, fecharPainel } from './terminals';
 
-// O preview automático na janela real do Electron construído: a aba Navegador abre o projeto sozinha. Site
-// estático: o app serve a pasta e recarrega ao salvar. Projeto com servidor: a pessoa aprova o comando uma vez, o
-// servidor sobe num painel de terminal e a página abre quando ele anuncia o endereço. Tudo com projetos
+// O preview na janela real do Electron construído: a aba Navegador reconhece o projeto e nada sobe sem a pessoa
+// pedir. Site estático: com um clique, o app serve a pasta e recarrega ao salvar. Projeto com servidor: a pessoa
+// aprova o comando uma vez, o servidor sobe num painel de terminal e a página abre quando ele anuncia o endereço. Tudo com projetos
 // descartáveis (dev-project.ts): nada é instalado e nenhum teste usa a internet nem a pasta de dados da pessoa.
 
 const CHANGED = 'O comando do preview mudou';
@@ -60,7 +60,7 @@ const heading = (app: ElectronApplication): Promise<string> =>
 const focusInPane = (page: Page): Promise<boolean> =>
   page.evaluate(() => (document.activeElement?.closest('.pane') ?? null) !== null);
 
-test('preview: site estático abre sozinho, recarrega ao salvar e não entrega arquivo oculto', async ({
+test('preview: site estático abre quando a pessoa pede, recarrega ao salvar e não entrega arquivo oculto', async ({
   launchApp,
   gitRepo,
 }) => {
@@ -75,7 +75,15 @@ test('preview: site estático abre sozinho, recarrega ao salvar e não entrega a
   await openProject(page, name);
   await openNavigator(page);
 
-  // Sem pergunta: o app serve a pasta em 127.0.0.1 e a página abre.
+  // Abrir a aba não sobe nada: o cartão oferece o site, e nenhuma página abre antes do clique.
+  const offer = card(page);
+  await expect(offer).toBeVisible();
+  await expect(offer.getByRole('button', { name: 'Abrir o site' })).toBeVisible();
+  expect((await viewState(app)).attached).toBe(0);
+  await expect(address(page)).toHaveValue('');
+
+  // "Abrir o site": o app serve a pasta em 127.0.0.1 e a página abre.
+  await offer.getByRole('button', { name: 'Abrir o site' }).click();
   await expect
     .poll(() => shownUrl(app), { timeout: 30_000 })
     .toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);

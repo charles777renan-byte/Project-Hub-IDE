@@ -17,7 +17,14 @@ import type { ProjectWatcher } from '../files/project-watcher';
 import type { TerminalService } from '../terminals';
 import type { WorkspaceService } from '../workspaces';
 import { createAddressReader } from './address-reader';
-import { commandFor, discover, shownBody, type Discovery, type ProjectFacts } from './discovery';
+import {
+  commandFor,
+  discover,
+  isOneShotScript,
+  shownBody,
+  type Discovery,
+  type ProjectFacts,
+} from './discovery';
 import type { probePort } from './port-probe';
 import type { StaticServers } from './static-server';
 
@@ -109,6 +116,11 @@ function approvalOf(
   const { packageManager, script, scriptBody } = record;
   if (!isManager(packageManager) || script === null || scriptBody === null) return NONE;
   if (!PREVIEW_SCRIPT_NAME.test(script)) return NONE;
+  // Um script que roda e termina (`build`, `test`) nunca anuncia endereço: a aba ficaria esperando para sempre.
+  // Se o projeto tem um script que sobe servidor, essa aprovação não vale e o cartão pergunta de novo, já com o
+  // script certo sugerido. Sem outro candidato, a escolha da pessoa fica.
+  if (isOneShotScript(script) && found.suggested !== null && found.suggested !== script)
+    return NONE;
   const now = found.scripts.find((entry) => entry.name === script);
   return {
     kind: 'script',
