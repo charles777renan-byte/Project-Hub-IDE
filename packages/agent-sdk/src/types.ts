@@ -66,7 +66,8 @@ export type VerificationResult = {
 export type AgentEvent =
   | { type: 'session.started'; sessionId: string; at: string }
   | { type: 'message.delta'; content: string; at: string }
-  | { type: 'message.completed'; messageId: string; at: string }
+  /** `text` é o texto da resposta que terminou, quando o agente o informa. A aplicação o lê e não o grava. */
+  | { type: 'message.completed'; messageId: string; text?: string; at: string }
   | { type: 'tool.requested'; call: ToolCall; at: string }
   | { type: 'tool.started'; callId: string; at: string }
   | { type: 'tool.output'; callId: string; chunk: string; at: string }

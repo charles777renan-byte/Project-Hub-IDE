@@ -2,7 +2,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AgentEvent } from '@project-hub/agent-sdk';
 
-/** Eventos de hook que o Claude Code dispara e que o app grava. */
+/**
+ * Eventos de hook que o Claude Code dispara e que o app grava numa missão. `PostToolUseFailure` é o fim de
+ * uma ferramenta que falhou: um comando de teste com falhas sai por ele, e não pelo `PostToolUse`.
+ */
 export const HOOK_EVENTS = [
   'SessionStart',
   'SessionEnd',
@@ -10,6 +13,7 @@ export const HOOK_EVENTS = [
   'Notification',
   'PreToolUse',
   'PostToolUse',
+  'PostToolUseFailure',
 ] as const;
 
 /** Um evento de hook gravado pelo receptor do processo de terminais. */
@@ -21,15 +25,14 @@ export type HookRecord = {
 
 const HOOK_SCRIPT_NAME = 'project-hub-hook.cjs';
 
+/** Quanto do final da resposta do agente segue no evento de fim de mensagem. */
+const MAX_ANSWER_CHARS = 4_000;
+
 /**
  * Eventos que só o painel de terminal pede: dizem quando o Claude pede algo à pessoa (`PermissionRequest`) e quando
- * volta a trabalhar (`UserPromptSubmit`, `PostToolUseFailure`). A missão não os usa.
+ * volta a trabalhar (`UserPromptSubmit`). A missão não os usa.
  */
-export const PANEL_ONLY_HOOK_EVENTS = [
-  'PermissionRequest',
-  'UserPromptSubmit',
-  'PostToolUseFailure',
-] as const;
+export const PANEL_ONLY_HOOK_EVENTS = ['PermissionRequest', 'UserPromptSubmit'] as const;
 
 /** Campos que o hook envia no modo enxuto (`PROJECT_HUB_HOOK_SLIM=1`): os que o painel de terminal lê. */
 export const SLIM_HOOK_FIELDS = [
@@ -213,8 +216,31 @@ export function mapHookEntry(record: HookRecord): AgentEvent | undefined {
         result: { ok: true },
         at,
       };
-    case 'Stop':
-      return { type: 'message.completed', messageId: `stop-${seq}`, at };
+    case 'PostToolUseFailure':
+      return {
+        type: 'tool.completed',
+        callId: text(payload['tool_use_id'], `tool-${seq}`),
+        result: {
+          ok: false,
+          // A primeira linha do erro diz o motivo (`Exit code 1`); o resto é a saída do comando.
+          error: {
+            code: 'UNKNOWN',
+            message: text(payload['error'], 'A ferramenta falhou.').split(/\r?\n/)[0] ?? '',
+            retryable: false,
+          },
+        },
+        at,
+      };
+    case 'Stop': {
+      // O final da resposta: é onde o agente indica os critérios comprovados.
+      const answer = text(payload['last_assistant_message'], '').slice(-MAX_ANSWER_CHARS);
+      return {
+        type: 'message.completed',
+        messageId: `stop-${seq}`,
+        ...(answer === '' ? {} : { text: answer }),
+        at,
+      };
+    }
     case 'SessionEnd':
       if (isClearSessionEnd(record)) return undefined;
       return { type: 'session.completed', result: { summary: '' }, at };

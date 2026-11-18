@@ -230,6 +230,51 @@ describe('adaptador do Claude Code: eventos e sessão', () => {
     ]);
   });
 
+  it('comando de teste que o agente rodou vira verificação, logo depois do fim da ferramenta', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({ ...f, settingsDir: dir, env: {}, pollMs: 5 });
+    const session = await adapter.start(
+      { cwd: 'C:/projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    f.push({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_use_id: 't1',
+      tool_input: { command: 'pnpm lint' },
+      tool_response: { stdout: 'ok' },
+    });
+    f.push({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_use_id: 't2',
+      tool_input: { command: 'pnpm test' },
+      tool_response: { stdout: '      Tests  3 passed (3)' },
+      duration_ms: 50,
+    });
+    f.push({
+      hook_event_name: 'PostToolUseFailure',
+      tool_name: 'Bash',
+      tool_use_id: 't3',
+      tool_input: { command: 'pnpm test' },
+      error: 'Exit code 1\n      Tests  1 failed | 2 passed (3)',
+    });
+    f.push({ hook_event_name: 'SessionEnd' });
+
+    const events = await collect(session.events());
+    expect(events.map((event) => event.type)).toEqual([
+      'tool.completed',
+      'tool.completed',
+      'verification.completed',
+      'tool.completed',
+      'verification.completed',
+      'session.completed',
+    ]);
+    expect(events[2]).toMatchObject({ command: 'pnpm test', passed: 3, failed: 0, durationMs: 50 });
+    expect(events[3]).toMatchObject({ callId: 't3', result: { ok: false } });
+    expect(events[4]).toMatchObject({ command: 'pnpm test', passed: 2, failed: 1 });
+  });
+
   it('entrega os eventos dos hooks em ordem e termina no SessionEnd', async () => {
     const f = fakes();
     const adapter = createClaudeCodeAdapter({ ...f, settingsDir: dir, env: {}, pollMs: 5 });
@@ -441,9 +486,19 @@ describe('adaptador do Claude Code: gasto de tokens', () => {
     const first = transcript(SESSION_A, [transcriptLine('msg_1', 5)]);
     const second = transcript(SESSION_B, [transcriptLine('msg_2', 3)]);
     f.push({ hook_event_name: 'SessionStart', session_id: SESSION_A, transcript_path: first });
-    f.push({ hook_event_name: 'SessionEnd', reason: 'clear', session_id: SESSION_A, transcript_path: first });
+    f.push({
+      hook_event_name: 'SessionEnd',
+      reason: 'clear',
+      session_id: SESSION_A,
+      transcript_path: first,
+    });
     f.push({ hook_event_name: 'SessionStart', session_id: SESSION_B, transcript_path: second });
-    f.push({ hook_event_name: 'SessionEnd', reason: 'other', session_id: SESSION_B, transcript_path: second });
+    f.push({
+      hook_event_name: 'SessionEnd',
+      reason: 'other',
+      session_id: SESSION_B,
+      transcript_path: second,
+    });
 
     const events = await collect(session.events());
     const usage = events.filter((event) => event.type === 'usage.updated');

@@ -232,4 +232,56 @@ describe('verificações na linha do tempo e nos critérios', () => {
 
     expect(verified.size).toBe(0);
   });
+
+  /** A indicação do agente (`criteria.verified`): o que ele indicou e o que os testes da tentativa comprovam. */
+  function indication(
+    id: string,
+    sequence: number,
+    executionId: string,
+    payload: { claimed: string[]; criteria: string[] },
+  ): MissionEventDto {
+    return {
+      ...verification(id, sequence, {}),
+      aggregateId: executionId,
+      eventType: 'criteria.verified',
+      payload,
+    };
+  }
+
+  it('verifiedCriteria conta os critérios que o agente indicou e os testes comprovaram', () => {
+    const verified = verifiedCriteria([
+      indication('i1', 1, 'e1', { claimed: ['Critério A'], criteria: ['Critério A'] }),
+      // Indicação sem testes passando: fica registrada, mas não comprova.
+      indication('i2', 2, 'e2', { claimed: ['Critério B'], criteria: [] }),
+    ]);
+
+    expect([...verified]).toEqual(['Critério A']);
+  });
+
+  it('em cada tentativa vale a última indicação; tentativas diferentes se somam', () => {
+    const verified = verifiedCriteria([
+      indication('i1', 1, 'e1', { claimed: ['Critério A'], criteria: ['Critério A'] }),
+      indication('i2', 2, 'e1', { claimed: ['Critério B'], criteria: ['Critério B'] }),
+      indication('i3', 3, 'e2', { claimed: ['Critério C'], criteria: ['Critério C'] }),
+      indication('i4', 4, 'e3', { claimed: ['Critério D'], criteria: ['Critério D'] }),
+      indication('i5', 5, 'e3', { claimed: [], criteria: [] }),
+    ]);
+
+    expect([...verified].sort()).toEqual(['Critério B', 'Critério C']);
+  });
+
+  it('a linha do tempo diz o que o agente indicou e o que ficou comprovado', () => {
+    expect(
+      describeEvent(indication('i1', 1, 'e1', { claimed: ['A', 'B'], criteria: ['A', 'B'] })),
+    ).toBe('O agente indicou 2 critérios comprovados pelos testes.');
+    expect(describeEvent(indication('i2', 2, 'e1', { claimed: ['A'], criteria: ['A'] }))).toBe(
+      'O agente indicou 1 critério comprovado pelos testes.',
+    );
+    expect(describeEvent(indication('i3', 3, 'e1', { claimed: ['A'], criteria: [] }))).toBe(
+      'O agente indicou 1 critério, mas os testes da tentativa não passaram: nenhum foi marcado.',
+    );
+    expect(describeEvent(indication('i4', 4, 'e1', { claimed: [], criteria: [] }))).toBe(
+      'O agente não indicou critério comprovado pelos testes.',
+    );
+  });
 });

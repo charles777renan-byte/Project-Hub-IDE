@@ -180,13 +180,72 @@ export type HookEndpoint = {
 };
 
 /** Bytes de registros por resposta: abaixo do limite de linha do pipe. O resto vem na leitura seguinte. */
-const MAX_RECORD_BYTES = 40_000;
+export const MAX_RECORD_BYTES = 40_000;
+
+/** Texto curto de um evento grande: passa inteiro. Acima disso, só os campos de `LONG_TEXT` ficam, cortados. */
+const SHORT_TEXT_CHARS = 500;
+/**
+ * Textos longos que valem a pena num evento grande, com quantos caracteres ficam do começo e do final.
+ * O final da saída de um comando é onde está o resumo (os testes que passaram e os que falharam); o
+ * começo do erro diz o código de saída.
+ */
+const LONG_TEXT: Readonly<Record<string, { head: number; tail: number }>> = {
+  command: { head: 2_000, tail: 0 },
+  stdout: { head: 0, tail: 6_000 },
+  stderr: { head: 0, tail: 3_000 },
+  error: { head: 300, tail: 6_000 },
+};
+
+/** O trecho a partir da primeira linha inteira: o corte quase sempre cai no meio de uma linha. */
+function fromLineStart(cut: string): string {
+  const lineStart = cut.indexOf('\n');
+  return lineStart === -1 || lineStart === cut.length - 1 ? cut : cut.slice(lineStart + 1);
+}
+
+function shortText(key: string, text: string): string | undefined {
+  if (text.length <= SHORT_TEXT_CHARS) return text;
+  const keep = LONG_TEXT[key];
+  if (keep === undefined) return undefined;
+  if (text.length <= keep.head + keep.tail) return text;
+  const head = text.slice(0, keep.head);
+  const tail = keep.tail === 0 ? '' : fromLineStart(text.slice(text.length - keep.tail));
+  return head !== '' && tail !== '' ? `${head}\n…\n${tail}` : head + tail;
+}
+
+/** Os campos simples de um objeto: número, booleano e texto curto ou cortado. O resto fica de fora. */
+function shortFields(source: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'number' || typeof value === 'boolean') out[key] = value;
+    else if (typeof value === 'string') {
+      const text = shortText(key, value);
+      if (text !== undefined) out[key] = text;
+    }
+  }
+  return out;
+}
 
 /**
- * Corta a lista para caber numa linha do pipe. Um registro grande demais perde o conteúdo e fica só com o
- * nome do evento, para a sequência não travar nele.
+ * Resumo de um evento grande demais para a linha do pipe: os campos simples, o comando e o final da saída
+ * da ferramenta. Assim o evento ainda diz de qual sessão e de qual chamada é, e o resultado de um comando
+ * de teste com saída longa não se perde.
  */
-function fitRecords(
+function summarize(payload: Record<string, unknown>): Record<string, unknown> {
+  const out = shortFields(payload);
+  for (const key of ['tool_input', 'tool_response']) {
+    const value = payload[key];
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      out[key] = shortFields(value as Record<string, unknown>);
+    }
+  }
+  return { ...out, truncated: true };
+}
+
+/**
+ * Corta a lista para caber numa linha do pipe. Um registro grande demais fica com o resumo dele
+ * (`summarize`); se nem o resumo cabe, fica só com o nome do evento, para a sequência não travar nele.
+ */
+export function fitRecords(
   records: ReturnType<HookEndpoint['readAfter']>,
 ): ReturnType<HookEndpoint['readAfter']> {
   const out: ReturnType<HookEndpoint['readAfter']> = [];
@@ -194,6 +253,10 @@ function fitRecords(
   for (const record of records) {
     let size = Buffer.byteLength(JSON.stringify(record));
     let next = record;
+    if (size > MAX_RECORD_BYTES) {
+      next = { ...record, payload: summarize(record.payload) };
+      size = Buffer.byteLength(JSON.stringify(next));
+    }
     if (size > MAX_RECORD_BYTES) {
       next = {
         ...record,

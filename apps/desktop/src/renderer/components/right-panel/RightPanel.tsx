@@ -115,6 +115,11 @@ export function RightPanel({
               </Hint>
             );
           })}
+          {/* O nome da aba escolhida, para o painel dizer o que mostra: as abas são só ícones. Fora da árvore
+              de acessibilidade, porque a aba escolhida já tem esse nome. */}
+          <span aria-hidden="true" className="right-panel__title">
+            {TAB_INFO[tab].label}
+          </span>
         </RadixTabs.List>
         <RadixTabs.Content value={tab} className="right-panel__content">
           {tab === 'codigo' ? (

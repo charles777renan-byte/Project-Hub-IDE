@@ -170,8 +170,8 @@
 }
 
 /*
- * Cabeçalho, em duas linhas: em cima o "← Missões", a linha pequena com o projeto e, à direita, o worktree
- * (quando há); embaixo o título, o objetivo e, à direita, o selo e as ações.
+ * Cabeçalho, em até três linhas: em cima o "← Missões" e a linha pequena com o projeto; depois o título, o
+ * objetivo e, à direita, o selo e as ações; por último o worktree (quando há), que é dado de apoio.
  */
 .mission-head {
   display: grid;
@@ -239,15 +239,17 @@
   margin-left: auto;
 }
 
-/* "Ver no terminal", no resumo da missão: um botão fantasma com borda, como os da cabeça da missão. */
+/* "Ver no terminal", na linha do worktree: um botão fantasma baixo, do tamanho do "Copiar caminho" ao lado. */
 .mission-terminal-link {
   display: inline-flex;
   align-items: center;
-  padding: var(--space-1) var(--space-3);
+  padding: 0.125rem var(--space-2);
   border: 1px solid var(--field-line);
   border-radius: var(--radius);
   color: var(--text);
-  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-label);
 }
 
 .mission-terminal-link:hover {
@@ -267,34 +269,34 @@
   font-size: var(--text-sm);
 }
 
-/* O worktree, na linha de cima, à direita: o nome curto, o botão que copia o caminho e "Ver no terminal". */
+/* O worktree, na última linha do cabeçalho: o nome curto, o botão que copia o caminho e "Ver no terminal". */
 .mission-head .mission-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
-  flex: 0 1 auto;
-  max-width: 100%;
-  margin-left: auto;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  /* O parágrafo de leitura tem largura máxima (62ch); esta linha é de dados e botões, e usa a largura toda. */
+  max-width: none;
+  font-size: var(--text-xs);
 }
 
 /* O nome do worktree não alarga a linha: o caminho inteiro fica no título (`title`) e no botão que o copia. */
 .mission-head .mission-meta__path {
-  max-width: 14rem;
+  max-width: 20rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Títulos pequenos das seções do corpo: ARQUIVOS ALTERADOS e SUA DECISÃO. */
+/* Títulos das seções do corpo ("Sua decisão", "Arquivos alterados"): o título de seção da régua (tokens.css). */
 .mission-section-title {
   margin: 0 0 var(--space-2);
-  color: var(--muted);
+  color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--text-md);
+  font-weight: var(--weight-heading);
+  letter-spacing: 0;
 }
 
 .changed-files__empty {
@@ -313,13 +315,13 @@
 }
 
 .token-usage__headline {
-  font-size: var(--text-md);
+  font-size: var(--text-base);
 }
 
 .token-usage__figure {
   font-family: var(--font-mono);
   font-size: var(--text-lg);
-  font-weight: 600;
+  font-weight: var(--weight-heading);
 }
 
 .token-usage__detail,
@@ -375,15 +377,9 @@
   background: var(--surface);
 }
 
-/* Dentro do cartão, o título da seção sai da legenda em caixa-alta e vira título de cartão. */
+/* Dentro do cartão o vão entre os filhos é o `gap` dele: o título não leva margem própria. */
 .decision-block > .mission-section-title {
   margin: 0;
-  color: var(--text);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 /*
@@ -413,7 +409,7 @@
 .decision-block .conclusion__summary {
   max-width: none;
   margin: 0;
-  font-weight: 600;
+  font-weight: var(--weight-heading);
   overflow-wrap: anywhere;
 }
 

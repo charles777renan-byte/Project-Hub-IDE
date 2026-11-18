@@ -285,7 +285,7 @@
 /* A forma escolhida tem marca além da cor: o texto fica em negrito e ganha um traço à esquerda. */
 .checks-merge__item[aria-checked='true'] {
   box-shadow: inset 3px 0 0 var(--text);
-  font-weight: 800;
+  font-weight: var(--weight-title);
 }
 
 .checks-merge__item:hover,

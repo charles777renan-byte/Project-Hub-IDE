@@ -109,14 +109,34 @@
     rgb(181 131 255 / 0%) 70%
   );
 
-  /* Escala tipográfica. */
+  /*
+   * Escala tipográfica e a régua da hierarquia. Cada tamanho tem um papel, e é o papel que decide quem lidera
+   * a tela; tamanho, peso e cor mudam juntos de um papel para o outro, nunca um só:
+   * - título (--text-lg, --weight-title, --text): um por tela, o nome do que está aberto (a missão);
+   * - título de seção (--text-md, --weight-heading, --text): o nome de um cartão ou de um bloco;
+   * - corpo (--text-base, --weight-body, --text): o texto que a pessoa lê e os controles;
+   * - apoio (--text-sm, --muted): a frase que explica, o detalhe de uma linha;
+   * - rótulo (--text-xs, --weight-label, --muted): metadado, contagem, cabeçalho de coluna;
+   * - rótulo de grupo (--text-xs em caixa alta, --tracking-caps, --muted): só o terceiro nível, o nome de uma
+   *   coluna ou de um grupo dentro de uma seção. Nunca é o título da seção.
+   * --text-xl fica para a saudação do Início e para o número que é o dado da tela.
+   */
   /* Só para as duas linhas empilhadas dos limites na barra de status (12px de linha cada). */
   --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
-  --text-md: 0.9375rem;
-  --text-lg: 1.125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
   --text-xl: 1.5rem;
+
+  /* Pesos: os quatro que as fontes locais têm (fonts.css). Não existe 800. */
+  --weight-body: 400;
+  --weight-label: 500;
+  --weight-heading: 600;
+  --weight-title: 700;
+  /* Espaço entre letras do rótulo de grupo em caixa alta. */
+  --tracking-caps: 0.06em;
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   /* Saída: começa devagar e acelera, para o que some ser visto saindo (com --ease ele some no primeiro quadro). */

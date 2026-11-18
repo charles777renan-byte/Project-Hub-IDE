@@ -28,9 +28,10 @@ import type {
 import { isAvailable } from '../projects/list-projects';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
+import { claimedCriteria, verificationPassed } from './criteria';
 import { applyPlanEdit, planEditAudit, type PlanEdit } from './plan-edit';
 import { tasksToSteps, validatePlan } from './plan-validation';
-import { nextTask, taskPrompt } from './tasks';
+import { nextTask, stepsOfExecution, taskPrompt, withVerification } from './tasks';
 import { failInterruptedExecution, openExecutionsAtStart } from './startup-recovery';
 import { expirePendingApprovals, moveMission } from './transitions';
 
@@ -418,7 +419,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
           ...(task === undefined ? {} : { stepId: task.id }),
         });
       }
-      if (task !== undefined) repo.updateStep(task.id, { status: 'running', startedAt: at });
+      // A tarefa da tentativa, ou as etapas sem papel do plano, que acompanham a sessão da missão inteira.
+      for (const step of stepsOfExecution(repo.listSteps(mission.id), task?.id)) {
+        repo.updateStep(step.id, { status: 'running', startedAt: at });
+      }
       moveMission(repo, mission.id, 'running', {
         actor: 'user',
         at,
@@ -514,7 +518,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         finishedAt: at,
       });
       const stepId = repo.getExecution(executionId)?.stepId;
-      if (stepId !== undefined) repo.updateStep(stepId, { status: outcome.status, finishedAt: at });
+      for (const step of stepsOfExecution(repo.listSteps(run.missionId), stepId)) {
+        repo.updateStep(step.id, { status: outcome.status, finishedAt: at });
+      }
       expirePendingApprovals(repo, executionId, at);
       moveMission(repo, run.missionId, outcome.missionStatus ?? outcome.status, {
         actor: outcome.actor,
@@ -547,11 +553,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   /**
    * Fecha as execuções abertas (`running` ou `paused`) da missão como canceladas pelo usuário, na
    * transação do cancelamento. Vale com ou sem processo ativo: sem ele, a execução ficaria aberta e a
-   * recuperação depois teria de adivinhar o motivo (R136).
+   * recuperação depois teria de adivinhar o motivo (R136). As etapas que a execução deixou em andamento
+   * voltam a pendente: o trabalho foi interrompido pela pessoa, não falhou.
    */
   function cancelRunningExecutions(missionId: string, at: string): void {
     for (const execution of repo.listExecutions(missionId)) {
       if (!OPEN_EXECUTION_STATUSES.includes(execution.status)) continue;
+      for (const step of stepsOfExecution(repo.listSteps(missionId), execution.stepId)) {
+        if (step.status === 'running') repo.updateStep(step.id, { status: 'pending' });
+      }
       repo.updateExecution(execution.id, {
         status: 'cancelled',
         exitReason: 'cancelled_by_user',
@@ -713,10 +723,49 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         );
         return 'done';
 
+      case 'message.completed': {
+        // O texto da resposta não vai para a auditoria: dele só sai a indicação dos critérios.
+        const { text, ...completed } = event;
+        repo.transaction(() => {
+          recordEvent(executionId, completed);
+          if (text !== undefined) recordCriteriaClaim(run.missionId, executionId, text, event.at);
+        });
+        return 'continue';
+      }
+
       default:
         recordEvent(executionId, event);
         return 'continue';
     }
+  }
+
+  /**
+   * Grava a indicação do agente (`criteria.verified`), quando a resposta traz a linha dos critérios.
+   * `claimed` é o que ele indicou; `criteria` é o que fica comprovado: os mesmos, se os testes da tentativa
+   * passaram, ou nenhum. Cada resposta com a linha grava a indicação da vez, e a tela usa a última.
+   */
+  function recordCriteriaClaim(
+    missionId: string,
+    executionId: string,
+    text: string,
+    at: string,
+  ): void {
+    const mission = repo.getMission(missionId);
+    if (mission === undefined) return;
+    const claimed = claimedCriteria(text, mission.acceptanceCriteria);
+    if (claimed === undefined) return;
+    repo.appendAudit({
+      aggregateType: 'execution',
+      aggregateId: executionId,
+      eventType: 'criteria.verified',
+      severity: 'info',
+      actor: 'agent',
+      payload: {
+        claimed,
+        criteria: verificationPassed(repo.listAudit(executionId)) ? claimed : [],
+      },
+      createdAt: at,
+    });
   }
 
   /**
@@ -933,15 +982,21 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    */
   /**
    * O prompt da tentativa: o objetivo e, quando a revisão pediu ajustes, o último pedido. A auditoria
-   * guarda cada pedido; só o mais recente entra, porque é o que a tentativa precisa atender.
+   * guarda cada pedido; só o mais recente entra, porque é o que a tentativa precisa atender. O pedido de
+   * verificação fecha o prompt, como nas tarefas.
    */
   function promptFor(mission: Mission): string {
     const request = [...repo.listAudit(mission.id)]
       .reverse()
       .find((event) => event.eventType === 'review.changes_requested');
     const feedback = request?.payload['feedback'];
-    if (typeof feedback !== 'string' || feedback.trim() === '') return mission.objective;
-    return `${mission.objective}\n\nAjustes pedidos na revisão:\n${feedback.trim()}`;
+    if (typeof feedback !== 'string' || feedback.trim() === '') {
+      return withVerification(mission.objective, mission);
+    }
+    return withVerification(
+      `${mission.objective}\n\nAjustes pedidos na revisão:\n${feedback.trim()}`,
+      mission,
+    );
   }
 
   async function launch(

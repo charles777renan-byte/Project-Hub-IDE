@@ -11,7 +11,7 @@ export const MISSION_STEP_KINDS = [
   'review',
   'custom',
 ] as const;
-/** Papel de uma tarefa no plano. Sem papel, a etapa é só apresentação (a missão roda numa sessão só). */
+/** Papel de uma tarefa no plano. Sem papel, a etapa não tem sessão própria: a missão roda numa sessão só, e a etapa acompanha o estado dela. */
 export const MISSION_ROLES = ['frontend', 'backend', 'database', 'docs', 'qa', 'general'] as const;
 /** Programa que executa a tarefa. Só o Claude Code por enquanto; o banco confere os mesmos valores em `CHECK`. */
 export const MISSION_AGENTS = ['claude-code'] as const;

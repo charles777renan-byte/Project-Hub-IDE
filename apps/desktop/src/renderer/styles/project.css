@@ -249,14 +249,19 @@
  * Configurações: uma linha por item (rótulo, valor e ações), como numa IDE. Grupo e apelido editam em linha: o
  * campo aparece no clique, com folga dos botões ao lado, e o aviso de situação fica logo abaixo da linha.
  */
+/* Um cartão, com um fio entre os itens: cada linha é lida como uma unidade (rótulo, valor e ação). */
 .project-settings {
   max-width: 44rem;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
 }
 
+/* Sem vão entre as colunas (o fio de cada linha seria cortado nele): o respiro vai no rótulo e no valor. */
 .settings-list {
   display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr) auto;
-  column-gap: var(--space-4);
+  grid-template-columns: 9rem minmax(0, 1fr) auto;
   margin: 0;
 }
 
@@ -264,19 +269,30 @@
   display: contents;
 }
 
+/* As células esticam na altura da linha, para o fio de cima ficar reto, e centram o conteúdo. */
 .settings-row > dt,
 .settings-row > dd {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   margin: 0;
-  padding: var(--space-2) 0;
+  padding: var(--space-3) 0;
 }
 
+.settings-row:not(:first-child) > dt,
+.settings-row:not(:first-child) > dd:not(.settings-row__status) {
+  border-top: 1px solid var(--line);
+}
+
+/* Rótulo da régua (tokens.css): o valor ao lado é o que a pessoa lê. */
 .settings-row > dt {
+  padding-right: var(--space-3);
   color: var(--muted);
-  align-self: center;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-label);
 }
 
 .settings-row > dd {
-  align-self: center;
   min-width: 0;
 }
 
@@ -292,8 +308,11 @@
   color: var(--muted);
 }
 
+.settings-row > .settings-row__actions,
 .settings-row__actions {
   display: flex;
+  flex-direction: row;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
 }
@@ -389,6 +408,83 @@
   color: var(--muted);
 }
 
+/* Worktrees sem nenhum: o estado vazio num cartão, na largura da lista de missões. */
+.empty-state.worktrees-empty {
+  max-width: 56rem;
+  padding: var(--space-5) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+/*
+ * Cartão de um worktree, na largura da lista de missões: o título da missão e o selo na primeira linha; a pasta e
+ * a branch, cada uma com o rótulo, numa lista de dados; a remoção embaixo, à direita, num botão do tamanho do
+ * texto. A grade do cartão de missão esticava o selo e o botão na largura inteira.
+ */
+.project-tab__panel--worktrees .card-list {
+  max-width: 56rem;
+}
+
+.worktree-card {
+  gap: var(--space-3);
+}
+
+.worktree-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.worktree-card__head h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.worktree-card__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.worktree-card__facts dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-label);
+}
+
+.worktree-card__facts dd {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.worktree-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.worktree-card__foot button {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.worktree-card__note {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 /* O aviso sem Git e o botão de criar o repositório (ADR 0009): empilhados, o botão e a confirmação à esquerda. */
 .project-missions__git {
   display: grid;
@@ -413,6 +509,7 @@
 .mission-form .mission-form__title {
   margin: 0;
   font-size: var(--text-md);
+  font-weight: var(--weight-heading);
 }
 
 /* O compositor: um cartão só, com o título e o objetivo sem moldura própria, os critérios e o rodapé. */
@@ -441,7 +538,7 @@
 }
 
 .composer__title {
-  font-weight: 600;
+  font-weight: var(--weight-heading);
 }
 
 .composer__objective {
