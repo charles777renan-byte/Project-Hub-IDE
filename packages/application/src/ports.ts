@@ -9,6 +9,7 @@ import type {
   GitPushResultDto,
   GitStatusDto,
   MissionDiffDto,
+  GitIdentity,
   RepositoryInitPreview,
 } from '@project-hub/contracts';
 import type {
@@ -78,11 +79,12 @@ export interface GitDetector {
 /**
  * Cria o repositório Git de uma pasta que não tem Git (ADR 0009). `preview` diz o que a confirmação mostra e não
  * escreve nada; `init` roda os passos fixos (criar o repositório, adicionar os arquivos e fazer o primeiro commit)
- * e devolve a branch criada. A implementação real é `createRepositoryInitializer`, em `@project-hub/git-adapter`.
+ * e devolve a branch criada. `identity` é o autor do primeiro commit quando o Git da pessoa não tem um; ele
+ * fica gravado só no repositório criado. A implementação real é `createRepositoryInitializer`, em `@project-hub/git-adapter`.
  */
 export interface RepositoryInitializer {
   preview(path: string): Promise<AppResult<RepositoryInitPreview>>;
-  init(path: string): Promise<AppResult<{ defaultBranch: string }>>;
+  init(path: string, identity?: GitIdentity): Promise<AppResult<{ defaultBranch: string }>>;
 }
 
 /**

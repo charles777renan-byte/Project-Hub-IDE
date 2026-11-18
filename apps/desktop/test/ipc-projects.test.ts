@@ -496,4 +496,26 @@ describe('criar o repositório Git: entrada conferida antes da aplicação (ADR 
       handleInitRepository(neverCalledRepository, { path: 'C:\\x' }),
     ).resolves.toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
   });
+
+  it('a criação recusa um autor que o Git leria como opção, sem e-mail válido ou com quebra de linha', async () => {
+    const invalid = [
+      { name: '--global', email: 'ana@empresa.com' },
+      { name: 'Ana', email: 'sem-arroba' },
+      { name: 'Ana', email: '-x@empresa.com' },
+      { name: 'Ana\nSouza', email: 'ana@empresa.com' },
+      { name: '', email: 'ana@empresa.com' },
+      { name: 'Ana <x>', email: 'ana@empresa.com' },
+    ];
+    for (const identity of invalid) {
+      await expect(
+        handleInitRepository(neverCalledRepository, { projectId: 'p1', identity }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Informe o nome e um e-mail válido para o autor do commit.',
+        },
+      });
+    }
+  });
 });

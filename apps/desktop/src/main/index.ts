@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import {
   CHANNELS,
@@ -151,6 +151,18 @@ app.once('before-quit', () => {
  * destruída. É o estado, e não o código do erro, que separa o fechamento de uma falha real: ao
  * fechar durante o carregamento, o Chromium rejeita com ERR_FAILED, igual a uma falha de verdade.
  */
+/**
+ * Nome do usuário no sistema, para o autor proposto do primeiro commit de um repositório criado pelo app.
+ * `userInfo` falha quando o sistema não tem a entrada do usuário; nesse caso sai vazio, e a aplicação usa o padrão.
+ */
+function osUserName(): string {
+  try {
+    return userInfo().username;
+  } catch {
+    return '';
+  }
+}
+
 function isClosing(win: BrowserWindow, windowClosing: boolean): boolean {
   return quitting || windowClosing || win.isDestroyed();
 }
@@ -707,6 +719,7 @@ app
         initializer: services.initializer,
         fs: services.fs,
         now: services.now,
+        identity: { settings: services.profileDeps.settings, osUserName },
       },
       chooseDirectory: resolveDirectoryChooser(env, chooseProjectDirectory),
       openFolder: (path) => shell.openPath(path),

@@ -104,7 +104,49 @@ describe('criar o repositório com o primeiro commit (Git real)', () => {
     process.env.GIT_CONFIG_GLOBAL = noIdentityFile;
     writeFileSync(join(folder, 'a.txt'), 'olá\n');
 
-    await expect(initRepository({ path: folder })).rejects.toThrow('configure seu nome');
+    await expect(initRepository({ path: folder })).rejects.toThrow('Informe o nome e o e-mail');
+    expect(existsSync(join(folder, '.git'))).toBe(false);
+    expect(existsSync(join(folder, '.gitignore'))).toBe(false);
+  });
+
+  it('sem identidade no Git, a informada assina o primeiro commit e fica gravada só no repositório', async () => {
+    process.env.GIT_CONFIG_GLOBAL = noIdentityFile;
+    writeFileSync(join(folder, 'a.txt'), 'olá\n');
+
+    await initRepository({
+      path: folder,
+      identity: { name: 'Ana Souza', email: 'ana@project-hub.local' },
+    });
+
+    expect(git(folder, ['log', '-1', '--format=%an <%ae> / %cn <%ce>']).trim()).toBe(
+      'Ana Souza <ana@project-hub.local> / Ana Souza <ana@project-hub.local>',
+    );
+    expect(git(folder, ['config', '--local', '--get', 'user.name']).trim()).toBe('Ana Souza');
+    expect(git(folder, ['config', '--local', '--get', 'user.email']).trim()).toBe(
+      'ana@project-hub.local',
+    );
+    // O arquivo global da pessoa segue vazio: nada foi escrito fora da pasta.
+    expect(readFileSync(noIdentityFile, 'utf8')).toBe('');
+  });
+
+  it('com identidade no Git, a informada não é usada nem gravada', async () => {
+    await initRepository({
+      path: folder,
+      identity: { name: 'Outra Pessoa', email: 'outra@project-hub.local' },
+    });
+
+    expect(git(folder, ['log', '-1', '--format=%an <%ae>']).trim()).toBe(
+      'Teste Project Hub <teste@project-hub.invalid>',
+    );
+    expect(() => git(folder, ['config', '--local', '--get', 'user.name'])).toThrow();
+  });
+
+  it('identidade que o Git leria como opção é recusada, e a pasta volta como estava', async () => {
+    process.env.GIT_CONFIG_GLOBAL = noIdentityFile;
+
+    await expect(
+      initRepository({ path: folder, identity: { name: '--global', email: 'a@b.local' } }),
+    ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
     expect(existsSync(join(folder, '.git'))).toBe(false);
     expect(existsSync(join(folder, '.gitignore'))).toBe(false);
   });
@@ -147,5 +189,15 @@ describe('criar o repositório com o primeiro commit (Git real)', () => {
       ok: false,
       error: { code: 'UNKNOWN' },
     });
+  });
+
+  it('a porta repassa a identidade informada', async () => {
+    process.env.GIT_CONFIG_GLOBAL = noIdentityFile;
+    const initializer = createRepositoryInitializer();
+
+    await expect(
+      initializer.init(folder, { name: 'Ana Souza', email: 'ana@project-hub.local' }),
+    ).resolves.toEqual({ ok: true, data: { defaultBranch: 'main' } });
+    expect(git(folder, ['log', '-1', '--format=%an']).trim()).toBe('Ana Souza');
   });
 });

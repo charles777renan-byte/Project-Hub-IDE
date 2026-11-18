@@ -58,9 +58,10 @@ withIdentity(
   },
 );
 
-test('sem identidade no Git, o aviso diz o que configurar e não cria nada', async ({
+test('sem identidade no Git, a confirmação traz o autor preenchido e cria o repositório sem terminal', async ({
   launchApp,
   dataDir,
+  gitEnv,
 }) => {
   const folder = plainFolder(dataDir);
   const { page } = await launchApp({ dialogPath: folder });
@@ -71,12 +72,25 @@ test('sem identidade no Git, o aviso diz o que configurar e não cria nada', asy
 
   await page.getByRole('button', { name: 'Criar repositório Git' }).click();
 
-  await expect(
-    page.getByRole('alert').filter({ hasText: 'git config --global user.name' }),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Criar e fazer o primeiro commit' })).toHaveCount(
-    0,
-  );
-  await expect(page.getByText(NO_GIT_NOTICE)).toBeVisible();
-  expect(existsSync(join(folder, '.git'))).toBe(false);
+  // O autor chega pronto, com o e-mail local; nada de comandos `git config` na tela.
+  const question = page.getByRole('group', { name: /^Cria o repositório Git nesta pasta/ });
+  await expect(question.getByText(/^O commit sai como .+ <.+@project-hub\.local>\.$/)).toBeVisible();
+  await expect(page.getByText('git config')).toHaveCount(0);
+
+  // A pessoa troca o autor nos campos do app e confirma.
+  await question.getByRole('button', { name: 'Alterar' }).click();
+  await question.getByRole('textbox', { name: 'Nome do autor' }).fill('Pessoa Sem Git');
+  await question.getByRole('textbox', { name: 'E-mail do autor' }).fill('pessoa@project-hub.local');
+  await question.getByRole('button', { name: 'Criar e fazer o primeiro commit' }).click();
+
+  await expect(page.getByText(NO_GIT_NOTICE)).toHaveCount(0);
+  await expect(statusBarOf(page).getByText(`${PROJECT_NAME} · main`)).toBeVisible();
+
+  // No disco: o commit sai com o autor da tela, gravado só no repositório. O Git global segue sem identidade.
+  const env = { ...process.env, ...gitEnv };
+  const git = (args: string[]) =>
+    execFileSync('git', args, { cwd: folder, env, encoding: 'utf8' }).trim();
+  expect(git(['log', '-1', '--format=%an <%ae>'])).toBe('Pessoa Sem Git <pessoa@project-hub.local>');
+  expect(git(['config', '--local', '--get', 'user.name'])).toBe('Pessoa Sem Git');
+  expect(() => git(['config', '--global', '--get', 'user.name'])).toThrow();
 });

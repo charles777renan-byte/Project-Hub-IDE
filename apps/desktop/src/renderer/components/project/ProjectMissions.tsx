@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import type { ProjectSummary, RepositoryInitPreview } from '@project-hub/contracts';
+import type { GitIdentity, ProjectSummary, RepositoryInitPreview } from '@project-hub/contracts';
 import { HOME_TEXT, PROJECT_TEXT } from '../../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../../projects-events';
 import { NEW_MISSION_PARAM, VIEW_PARAM } from '../../project-views';
@@ -9,6 +9,7 @@ import { useMissionsBoard } from '../../use-missions-board';
 import { ConfirmInline } from '../ConfirmButton';
 import { MissionForm, type MissionFormValues } from '../MissionForm';
 import { MissionProgressList } from '../MissionProgressList';
+import { GitAuthor, isValidGitAuthor } from './GitAuthor';
 import { PROJECT_NO_GIT_NOTICE_ID } from './ProjectHeader';
 
 /** A pergunta da confirmação, com o que a prévia achou na pasta. */
@@ -55,8 +56,9 @@ export function ProjectMissions({
   // Criar o repositório Git (ADR 0009): a prévia vem antes da confirmação, e nada é escrito sem ela.
   const [gitPreview, setGitPreview] = useState<RepositoryInitPreview | null>(null);
   const [gitBusy, setGitBusy] = useState(false);
-  // Texto da área do Git: erro (vermelho) ou instrução (neutro, como o aviso de projeto sem Git).
-  const [gitFeedback, setGitFeedback] = useState<{ text: string; error: boolean } | null>(null);
+  // O autor do primeiro commit, só quando o Git da pessoa não tem identidade: nasce da proposta da prévia.
+  const [gitAuthor, setGitAuthor] = useState<GitIdentity | null>(null);
+  const [gitError, setGitError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const consumed = useRef<string | null>(null);
   const submitting = useRef(false);
@@ -92,39 +94,53 @@ export function ProjectMissions({
   }
 
   /**
-   * Pede a prévia da pasta e abre a confirmação. Sem a identidade do Git não há confirmação: a tela mostra a
-   * instrução para configurar, e o botão não cria nada. Nada é escrito aqui.
+   * Pede a prévia da pasta e abre a confirmação. Sem identidade no Git, a confirmação leva o autor que o
+   * aplicativo propõe, já preenchido, e a pessoa pode trocá-lo. Nada é escrito aqui.
    */
   async function openGitConfirm(projectId: string) {
-    setGitFeedback(null);
+    setGitError(null);
     try {
       const result = await window.projectHub.projects.repositoryPreview(projectId);
       if (!result.ok) {
-        setGitFeedback({ text: result.error.message, error: true });
-      } else if (!result.data.identityConfigured) {
-        setGitFeedback({ text: PROJECT_TEXT.gitIdentityMissing, error: false });
-      } else {
-        setGitPreview(result.data);
+        setGitError(result.error.message);
+        return;
       }
+      setGitAuthor(
+        result.data.identityConfigured
+          ? null
+          : (result.data.suggestedIdentity ?? { name: '', email: '' }),
+      );
+      setGitPreview(result.data);
     } catch {
-      setGitFeedback({ text: PROJECT_TEXT.genericError, error: true });
+      setGitError(PROJECT_TEXT.genericError);
     }
   }
 
-  /** Cria o repositório depois da confirmação. Sucesso avisa a barra lateral, que traz o projeto já como Git. */
+  /**
+   * Cria o repositório depois da confirmação, com o autor da tela quando o Git não tem identidade. Sucesso avisa
+   * a barra lateral, que traz o projeto já como Git.
+   */
   async function createGitRepository(projectId: string) {
+    if (gitAuthor !== null && !isValidGitAuthor(gitAuthor)) {
+      setGitError(PROJECT_TEXT.gitAuthorInvalid);
+      return;
+    }
+    const identity =
+      gitAuthor === null
+        ? undefined
+        : { name: gitAuthor.name.trim(), email: gitAuthor.email.trim() };
     setGitBusy(true);
-    setGitFeedback(null);
+    setGitError(null);
     try {
-      const result = await window.projectHub.projects.initRepository(projectId);
+      const result = await window.projectHub.projects.initRepository(projectId, identity);
       if (result.ok) {
         setGitPreview(null);
         window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
       } else {
-        setGitFeedback({ text: result.error.message, error: true });
+        setGitError(result.error.message);
       }
     } catch {
-      setGitFeedback({ text: PROJECT_TEXT.genericError, error: true });
+      setGitError(PROJECT_TEXT.genericError);
     } finally {
       setGitBusy(false);
     }
@@ -234,13 +250,21 @@ export function ProjectMissions({
               question={repositoryQuestion(gitPreview)}
               confirmLabel={PROJECT_TEXT.createGitRepoConfirm}
               disabled={gitBusy}
+              extra={
+                gitAuthor === null ? undefined : (
+                  <GitAuthor author={gitAuthor} disabled={gitBusy} onChange={setGitAuthor} />
+                )
+              }
               onConfirm={() => void createGitRepository(project.id)}
-              onCancel={() => setGitPreview(null)}
+              onCancel={() => {
+                setGitError(null);
+                setGitPreview(null);
+              }}
             />
           )}
-          {gitFeedback === null ? null : (
-            <p role="alert" className={gitFeedback.error ? 'page-alert' : 'project-missions__note'}>
-              {gitFeedback.text}
+          {gitError === null ? null : (
+            <p role="alert" className="page-alert">
+              {gitError}
             </p>
           )}
         </div>

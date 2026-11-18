@@ -1,13 +1,16 @@
-import type { AppResult, RepositoryInitPreview } from '@project-hub/contracts';
+import type { AppResult, GitIdentity, RepositoryInitPreview } from '@project-hub/contracts';
 import type { ProjectRecord } from '@project-hub/domain';
 import type { FileSystemPort, ProjectRepository, RepositoryInitializer } from '../ports';
 import { failure } from '../result';
+import { rememberGitIdentity, suggestGitIdentity, type GitIdentityDeps } from './git-identity';
 
 export type InitRepositoryDeps = {
   repo: ProjectRepository;
   initializer: RepositoryInitializer;
   fs: FileSystemPort;
   now: () => string;
+  /** De onde sai o autor proposto para o primeiro commit, quando o Git não tem identidade. */
+  identity: GitIdentityDeps;
 };
 
 /**
@@ -31,30 +34,37 @@ async function eligibleProject(
   return { ok: true, data: project };
 }
 
-/** O que a confirmação mostra. Não escreve nada: a leitura é do adaptador do Git. */
+/**
+ * O que a confirmação mostra. Não escreve nada: a leitura é do adaptador do Git. Sem identidade no Git, a
+ * prévia leva o autor que o aplicativo propõe, para a pessoa ver e confirmar.
+ */
 export async function previewRepositoryInit(
   deps: InitRepositoryDeps,
   input: { projectId: string },
 ): Promise<AppResult<RepositoryInitPreview>> {
   const eligible = await eligibleProject(deps, input.projectId);
   if (!eligible.ok) return eligible;
-  return deps.initializer.preview(eligible.data.path);
+  const preview = await deps.initializer.preview(eligible.data.path);
+  if (!preview.ok || preview.data.identityConfigured) return preview;
+  return { ok: true, data: { ...preview.data, suggestedIdentity: suggestGitIdentity(deps.identity) } };
 }
 
 /**
  * Cria o repositório Git da pasta e grava o tipo e a branch padrão no projeto. Os passos de escrita ficam no
- * adaptador; aqui só entra a checagem do projeto e a gravação do resultado.
+ * adaptador; aqui só entra a checagem do projeto e a gravação do resultado. `identity` é o autor que a pessoa
+ * confirmou quando o Git não tem identidade; criado o repositório, ele fica guardado para a próxima proposta.
  */
 export async function initProjectRepository(
   deps: InitRepositoryDeps,
-  input: { projectId: string },
+  input: { projectId: string; identity?: GitIdentity | undefined },
 ): Promise<AppResult<ProjectRecord>> {
   const eligible = await eligibleProject(deps, input.projectId);
   if (!eligible.ok) return eligible;
-  const created = await deps.initializer.init(eligible.data.path);
+  const created = await deps.initializer.init(eligible.data.path, input.identity);
   if (!created.ok) return created;
 
   const timestamp = deps.now();
+  if (input.identity !== undefined) rememberGitIdentity(deps.identity, input.identity, timestamp);
   deps.repo.setRepositoryKind(
     input.projectId,
     { repositoryKind: 'git', defaultBranch: created.data.defaultBranch },

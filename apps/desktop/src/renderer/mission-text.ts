@@ -590,8 +590,12 @@ export const PROJECT_TEXT = {
     const verb = files.length === 1 ? 'tem nome de segredo' : 'têm nome de segredo';
     return `Atenção: ${shown}${more} ${verb}. Entram no commit se o .gitignore não os ignorar.`;
   },
-  gitIdentityMissing:
-    'Antes de criar o repositório, configure seu nome e seu e-mail no Git: git config --global user.name e git config --global user.email.',
+  gitAuthorLine: (name: string, email: string) => `O commit sai como ${name} <${email}>.`,
+  gitAuthorChange: 'Alterar',
+  gitAuthorName: 'Nome do autor',
+  gitAuthorEmail: 'E-mail do autor',
+  gitAuthorNote: 'Fica gravado só neste repositório. O Git do computador não muda.',
+  gitAuthorInvalid: 'Informe o nome e um e-mail válido para o autor do commit.',
   moreActions: 'Mais ações',
   archive: 'Arquivar projeto',
   archiveQuestion: 'Arquivar o projeto? Ele sai da lista e fica em Arquivados.',
