@@ -6,6 +6,7 @@ import {
   listArchivedProjects,
   removeProject,
   setProjectGroup,
+  setProjectMuted,
   setProjectNickname,
   unarchiveProject,
   type ProjectLifecycleDeps,
@@ -299,6 +300,35 @@ describe('setProjectNickname', () => {
     const { deps } = harness();
 
     expect(setProjectNickname(deps, { projectId: 'nao-existe', nickname: 'Hub' })).toMatchObject({
+      ok: false,
+      error: { code: 'PROJECT_NOT_FOUND' },
+    });
+  });
+});
+
+describe('setProjectMuted', () => {
+  it('silencia o projeto, e o resumo traz muted só quando ligado', async () => {
+    const { deps, repo, fs } = harness();
+
+    expect(setProjectMuted(deps, { projectId: 'p1', muted: true })).toEqual({
+      ok: true,
+      data: undefined,
+    });
+    expect(repo.get('p1')).toMatchObject({ muted: true, updatedAt: NOW });
+    expect(await listProjects({ repo, fs })).toMatchObject({
+      ok: true,
+      data: [{ id: 'p1', muted: true }],
+    });
+
+    setProjectMuted(deps, { projectId: 'p1', muted: false });
+    const listed = await listProjects({ repo, fs });
+    expect(listed.ok && listed.data[0]).not.toHaveProperty('muted');
+  });
+
+  it('recusa projeto que não está na lista', () => {
+    const { deps } = harness();
+
+    expect(setProjectMuted(deps, { projectId: 'nao-existe', muted: true })).toMatchObject({
       ok: false,
       error: { code: 'PROJECT_NOT_FOUND' },
     });

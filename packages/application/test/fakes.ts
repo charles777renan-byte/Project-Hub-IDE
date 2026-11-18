@@ -67,6 +67,14 @@ export function fakeRepository(): ProjectRepository & { records(): ProjectRecord
       else named.nickname = nickname;
       byId.set(id, named);
     },
+    setMuted(id, muted, updatedAt) {
+      const record = byId.get(id);
+      if (record === undefined) return;
+      const next: ProjectRecord = { ...record, updatedAt };
+      if (muted) next.muted = true;
+      else delete next.muted;
+      byId.set(id, next);
+    },
     markRemoved(id, removedAt) {
       const record = byId.get(id);
       if (record !== undefined) byId.set(id, { ...record, removedAt, updatedAt: removedAt });

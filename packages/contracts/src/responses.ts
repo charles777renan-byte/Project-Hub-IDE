@@ -89,6 +89,8 @@ export const responseSchemas = {
   [CHANNELS.projectsInitRepository]: appResultSchema(projectSummarySchema),
   [CHANNELS.projectsSetGroup]: appResultSchema(z.undefined()),
   [CHANNELS.projectsSetNickname]: appResultSchema(z.undefined()),
+  [CHANNELS.projectsSetMuted]: appResultSchema(z.undefined()),
+  [CHANNELS.alertsNotify]: appResultSchema(z.undefined()),
   [CHANNELS.missionsCreate]: appResultSchema(missionDtoSchema),
   [CHANNELS.missionsList]: appResultSchema(z.array(missionDtoSchema)),
   [CHANNELS.missionsGet]: appResultSchema(missionViewSchema),

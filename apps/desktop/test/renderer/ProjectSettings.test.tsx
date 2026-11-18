@@ -24,6 +24,7 @@ function installApi(projects: ProjectSummary[] = [project]) {
       openFolder: vi.fn(ok),
       setGroup: vi.fn(ok),
       setNickname: vi.fn(ok),
+      setMuted: vi.fn(ok),
     },
     missions: {
       list: vi.fn(() => Promise.resolve({ ok: true, data: [] })),
@@ -348,5 +349,49 @@ describe('ProjectSettings: apelido', () => {
       'O apelido pode ter até 24 caracteres.',
     );
     expect(within(form).getByLabelText('Apelido')).toHaveValue('x');
+  });
+});
+
+describe('ProjectSettings: avisos', () => {
+  const muteBox = () => screen.getByRole('checkbox', { name: 'Silenciar avisos deste projeto' });
+
+  it('a caixa vem marcada para o projeto silenciado, com a nota do que continua', () => {
+    installApi();
+    renderSettings({ ...project, muted: true });
+
+    expect(muteBox()).toBeChecked();
+    expect(
+      screen.getByText('A faixa "Precisa de você" continua mostrando o que espera.'),
+    ).toBeInTheDocument();
+  });
+
+  it('desmarcar grava e avisa a barra lateral', async () => {
+    const api = installApi();
+    const changed = vi.fn();
+    window.addEventListener(PROJECTS_CHANGED_EVENT, changed);
+    renderSettings({ ...project, muted: true });
+
+    await userEvent.click(muteBox());
+
+    await waitFor(() => expect(changed).toHaveBeenCalled());
+    expect(api.projects.setMuted).toHaveBeenCalledWith('p1', false);
+    expect(muteBox()).not.toBeChecked();
+    window.removeEventListener(PROJECTS_CHANGED_EVENT, changed);
+  });
+
+  it('com falha, mostra o erro e a caixa volta ao estado anterior', async () => {
+    const api = installApi();
+    api.projects.setMuted.mockImplementation(() =>
+      Promise.resolve<AppResult<void>>({
+        ok: false,
+        error: { code: 'PROJECT_NOT_FOUND', message: 'Projeto não encontrado.', retryable: false },
+      }),
+    );
+    renderSettings();
+
+    await userEvent.click(muteBox());
+
+    expect(await screen.findByText('Projeto não encontrado.')).toBeInTheDocument();
+    expect(muteBox()).not.toBeChecked();
   });
 });

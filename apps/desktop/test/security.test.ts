@@ -468,6 +468,7 @@ describe('buildProjectHubApi', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
       'activity',
+      'alerts',
       'approvals',
       'browser',
       'files',
@@ -526,6 +527,7 @@ describe('buildProjectHubApi', () => {
       'remove',
       'repositoryPreview',
       'setGroup',
+      'setMuted',
       'setNickname',
       'unarchive',
     ]);
@@ -595,8 +597,10 @@ describe('buildProjectHubApi', () => {
     expect(Object.keys(api.github).sort()).toEqual(['comment', 'merge', 'openUrl', 'pr']);
     expect(Object.keys(api.providers)).toEqual(['list']);
     expect(Object.keys(api.sessions).sort()).toEqual(['list', 'resume']);
+    expect(Object.keys(api.alerts).sort()).toEqual(['notify', 'onOpen']);
     expect(Object.keys(api.terminals).sort()).toEqual([
       'list',
+      'onChanged',
       'onEvent',
       'resize',
       'subscribe',

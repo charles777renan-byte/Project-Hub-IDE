@@ -8,6 +8,7 @@ import {
   previewRepositoryInit,
   removeProject,
   setProjectGroup,
+  setProjectMuted,
   setProjectNickname,
   toProjectSummary,
   unarchiveProject,
@@ -21,6 +22,7 @@ import {
   initRepositoryInputSchema,
   projectIdInputSchema,
   setProjectGroupInputSchema,
+  setProjectMutedInputSchema,
   setProjectNicknameInputSchema,
   type AppResult,
   type ProjectSummary,
@@ -140,6 +142,13 @@ export function handleSetNickname(
   return setProjectNickname(deps, input.data);
 }
 
+/** Silencia ou volta a avisar o projeto. A entrada é conferida aqui (R28); a existência do projeto, na aplicação. */
+export function handleSetMuted(deps: ProjectLifecycleDeps, payload: unknown): AppResult<undefined> {
+  const input = setProjectMutedInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
+  return setProjectMuted(deps, input.data);
+}
+
 /** A prévia da confirmação de criar o repositório. Não escreve nada; o id é conferido aqui (R28). */
 export async function handleRepositoryPreview(
   deps: InitRepositoryDeps,
@@ -205,6 +214,9 @@ export function registerProjectHandlers(
   );
   registerTrustedHandler(registry, CHANNELS.projectsSetNickname, isTrusted, (_event, payload) =>
     Promise.resolve(handleSetNickname(deps.lifecycle, payload)),
+  );
+  registerTrustedHandler(registry, CHANNELS.projectsSetMuted, isTrusted, (_event, payload) =>
+    Promise.resolve(handleSetMuted(deps.lifecycle, payload)),
   );
   registerTrustedHandler(registry, CHANNELS.projectsOpenFolder, isTrusted, (_event, payload) =>
     handleOpenFolder(deps, payload),

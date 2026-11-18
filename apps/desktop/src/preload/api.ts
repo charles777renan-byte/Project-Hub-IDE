@@ -1,4 +1,7 @@
 import {
+  alertOpenEventSchema,
+  type AlertNotifyInput,
+  type AlertOpenEvent,
   CHANNELS,
   browserShortcutEventSchema,
   browserStateSchema,
@@ -143,6 +146,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<void>(CHANNELS.projectsSetGroup, { projectId, group }),
       setNickname: (projectId: string, nickname: string | null) =>
         call<void>(CHANNELS.projectsSetNickname, { projectId, nickname }),
+      setMuted: (projectId: string, muted: boolean) =>
+        call<void>(CHANNELS.projectsSetMuted, { projectId, muted }),
     },
     missions: {
       create: (input: CreateMissionInput) => call<MissionDto>(CHANNELS.missionsCreate, input),
@@ -216,6 +221,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
           }
           listener(parsed.data);
         }),
+      // Só o sinal: o canal não leva dados, e a tela relê a lista pelo canal de pedido.
+      onChanged: (listener: () => void) => subscribe(CHANNELS.terminalsChanged, () => listener()),
     },
     workspaces: {
       list: () => call<WorkspaceDto[]>(CHANNELS.workspacesList),
@@ -442,6 +449,21 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       comment: (input: GithubCommentInput) => call<void>(CHANNELS.githubComment, input),
       merge: (input: GithubMergeInput) => call<void>(CHANNELS.githubMerge, input),
       openUrl: (url: string) => call<void>(CHANNELS.githubOpenUrl, { url }),
+    },
+    alerts: {
+      notify: (input: AlertNotifyInput) => call<void>(CHANNELS.alertsNotify, input),
+      onOpen: (listener: (event: AlertOpenEvent) => void) =>
+        subscribe(CHANNELS.alertsOpen, (payload) => {
+          const parsed = alertOpenEventSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(
+              `Evento fora do contrato no canal ${CHANNELS.alertsOpen}:`,
+              parsed.error.issues,
+            );
+            return;
+          }
+          listener(parsed.data);
+        }),
     },
     approvals: {
       decide: (input: DecideApprovalInput) => call<void>(CHANNELS.approvalsDecide, input),

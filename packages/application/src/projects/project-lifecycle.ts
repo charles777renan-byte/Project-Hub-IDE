@@ -136,3 +136,17 @@ export function setProjectNickname(
   deps.repo.setNickname(input.projectId, nickname === '' ? null : nickname, deps.now());
   return { ok: true, data: undefined };
 }
+
+/**
+ * Silencia os avisos do projeto (`true`) ou volta a avisar: a notificação do sistema e o piscar da barra de tarefas.
+ * Só mexe em projeto que aparece na lista.
+ */
+export function setProjectMuted(
+  deps: Pick<ProjectLifecycleDeps, 'repo' | 'now'>,
+  input: { projectId: string; muted: boolean },
+): AppResult<undefined> {
+  const project = listedProject(deps as ProjectLifecycleDeps, input.projectId);
+  if (project === undefined) return failure('PROJECT_NOT_FOUND', NOT_FOUND);
+  deps.repo.setMuted(input.projectId, input.muted, deps.now());
+  return { ok: true, data: undefined };
+}

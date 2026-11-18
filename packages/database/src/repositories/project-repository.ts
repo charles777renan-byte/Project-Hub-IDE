@@ -19,6 +19,7 @@ export interface ProjectRepository {
   setGroup(id: string, groupName: string | null, updatedAt: string): void;
   /** Dá um apelido ao projeto, ou o tira (`null`). */
   setNickname(id: string, nickname: string | null, updatedAt: string): void;
+  setMuted(id: string, muted: boolean, updatedAt: string): void;
   markRemoved(id: string, removedAt: string): void;
   /**
    * Desfaz a remoção lógica (e o arquivamento): o mesmo registro volta à lista, sem inserir outro. A
@@ -59,6 +60,7 @@ function toRecord(row: ProjectRow): ProjectRecord {
   if (row.removedAt !== null) record.removedAt = row.removedAt;
   if (row.groupName !== null) record.groupName = row.groupName;
   if (row.nickname !== null) record.nickname = row.nickname;
+  if (row.notificationsMuted) record.muted = true;
   return record;
 }
 
@@ -131,6 +133,12 @@ export function createProjectRepository(db: AppDatabase): ProjectRepository {
 
     setNickname(id, nickname, updatedAt) {
       db.update(projects).set({ nickname, updatedAt }).where(eq(projects.id, id)).run();
+    },
+    setMuted(id, muted, updatedAt) {
+      db.update(projects)
+        .set({ notificationsMuted: muted, updatedAt })
+        .where(eq(projects.id, id))
+        .run();
     },
 
     markRemoved(id, removedAt) {

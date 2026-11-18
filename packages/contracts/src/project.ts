@@ -12,6 +12,8 @@ export type ProjectSummary = {
   group?: string | undefined;
   /** Apelido curto, mostrado no lugar do nome da pasta, quando a pessoa escolheu um. */
   nickname?: string | undefined;
+  /** O projeto silenciou os próprios avisos (notificação do sistema e piscar). Ausente é o mesmo que falso. */
+  muted?: boolean | undefined;
 };
 
 /** Schema de `ProjectSummary`, para conferir a resposta que vem do processo principal. */
@@ -24,6 +26,7 @@ export const projectSummarySchema: z.ZodType<ProjectSummary> = z.object({
   defaultBranch: z.string().optional(),
   group: z.string().optional(),
   nickname: z.string().optional(),
+  muted: z.boolean().optional(),
 });
 
 /** Entrada de `projects:add:v1`: o caminho da pasta do projeto. */
@@ -116,3 +119,11 @@ export const setProjectNicknameInputSchema = z.object({
 });
 
 export type SetProjectNicknameInput = z.infer<typeof setProjectNicknameInputSchema>;
+
+/** Entrada de `projects:set-muted:v1`: liga (`true`) ou desliga o silêncio dos avisos do projeto. */
+export const setProjectMutedInputSchema = z.object({
+  projectId: z.string().min(1),
+  muted: z.boolean(),
+});
+
+export type SetProjectMutedInput = z.infer<typeof setProjectMutedInputSchema>;

@@ -1,4 +1,5 @@
 import type { AgentActivity } from './agent-activity';
+import type { AlertNotifyInput, AlertOpenEvent } from './alerts';
 import type {
   ContentSearchDto,
   FileContentDto,
@@ -90,6 +91,8 @@ export type ProjectHubApi = {
     setGroup(projectId: string, group: string | null): Promise<AppResult<void>>;
     /** Dá um apelido ao projeto (até 24 caracteres), ou o tira (`null`). */
     setNickname(projectId: string, nickname: string | null): Promise<AppResult<void>>;
+    /** Silencia (`true`) ou volta a avisar: a notificação do sistema e o piscar da barra de tarefas do projeto. */
+    setMuted(projectId: string, muted: boolean): Promise<AppResult<void>>;
     /** Projetos arquivados, com a disponibilidade da pasta. */
     listArchived(): Promise<AppResult<ProjectSummary[]>>;
     /** Arquiva o projeto: sai da lista, e a pasta, o Git e as missões ficam como estão. */
@@ -161,6 +164,8 @@ export type ProjectHubApi = {
     unsubscribe(terminalId: string): Promise<AppResult<void>>;
     /** Recebe os eventos dos terminais assinados, já conferidos. Devolve a função que cancela. */
     onEvent(listener: (event: TerminalEvent) => void): () => void;
+    /** Algum terminal mudou de estado com a janela sem foco: hora de reler a lista. Devolve a função que cancela. */
+    onChanged(listener: () => void): () => void;
   };
   worktrees: {
     /** Worktrees do projeto que ainda existem em disco, derivados das missões. */
@@ -360,6 +365,12 @@ export type ProjectHubApi = {
      * sem usuário, senha nem porta; o resto volta como erro, sem abrir. Abre direto, sem confirmação.
      */
     openUrl(url: string): Promise<AppResult<void>>;
+  };
+  alerts: {
+    /** Pede a notificação do sistema para um item que passou a esperar a pessoa. O processo principal decide se mostra. */
+    notify(input: AlertNotifyInput): Promise<AppResult<void>>;
+    /** Assina os cliques nas notificações. Cada evento chega validado. Devolve a função que cancela. */
+    onOpen(listener: (event: AlertOpenEvent) => void): () => void;
   };
   approvals: {
     /** Aprova ou recusa uma ação protegida pedida pelo agente (seção 17.3). */
