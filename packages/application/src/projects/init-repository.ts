@@ -46,7 +46,10 @@ export async function previewRepositoryInit(
   if (!eligible.ok) return eligible;
   const preview = await deps.initializer.preview(eligible.data.path);
   if (!preview.ok || preview.data.identityConfigured) return preview;
-  return { ok: true, data: { ...preview.data, suggestedIdentity: suggestGitIdentity(deps.identity) } };
+  return {
+    ok: true,
+    data: { ...preview.data, suggestedIdentity: suggestGitIdentity(deps.identity) },
+  };
 }
 
 /**

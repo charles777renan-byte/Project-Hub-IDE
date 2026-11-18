@@ -39,14 +39,23 @@ function project(overrides: Partial<NewProject> = {}): NewProject {
 
 function initializer(overrides: Partial<RepositoryInitializer> = {}): RepositoryInitializer {
   return {
-    preview: vi.fn(() => Promise.resolve<AppResult<RepositoryInitPreview>>({ ok: true, data: PREVIEW })),
-    init: vi.fn(() => Promise.resolve<AppResult<{ defaultBranch: string }>>({ ok: true, data: { defaultBranch: 'main' } })),
+    preview: vi.fn(() =>
+      Promise.resolve<AppResult<RepositoryInitPreview>>({ ok: true, data: PREVIEW }),
+    ),
+    init: vi.fn(() =>
+      Promise.resolve<AppResult<{ defaultBranch: string }>>({
+        ok: true,
+        data: { defaultBranch: 'main' },
+      }),
+    ),
     ...overrides,
   };
 }
 
 /** Configurações em memória, com o que o teste semeia. */
-function settings(seed: Record<string, string> = {}): SettingsRepository & { all(): Record<string, string> } {
+function settings(
+  seed: Record<string, string> = {},
+): SettingsRepository & { all(): Record<string, string> } {
   const values = new Map(Object.entries(seed));
   return {
     get: (key) => values.get(key),
@@ -153,7 +162,9 @@ describe('previewRepositoryInit', () => {
 
   it('recusa projeto que já é Git, projeto inexistente e pasta indisponível', async () => {
     await expect(
-      previewRepositoryInit(deps({ seed: [project({ repositoryKind: 'git' })] }), { projectId: 'p1' }),
+      previewRepositoryInit(deps({ seed: [project({ repositoryKind: 'git' })] }), {
+        projectId: 'p1',
+      }),
     ).resolves.toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
     await expect(previewRepositoryInit(deps(), { projectId: 'x' })).resolves.toMatchObject({
       ok: false,

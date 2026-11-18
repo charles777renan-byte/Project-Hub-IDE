@@ -150,9 +150,9 @@ describe('getFileDiff', () => {
   it('caminho fora da pasta: recusa e não chama a porta', async () => {
     const { deps, git } = setup({ outside: ['link/segredo.txt'] });
 
-    await expect(
-      getFileDiff(deps, { projectId: 'p1', path: 'link/segredo.txt' }),
-    ).resolves.toEqual(OUTSIDE);
+    await expect(getFileDiff(deps, { projectId: 'p1', path: 'link/segredo.txt' })).resolves.toEqual(
+      OUTSIDE,
+    );
     expect(git.calls).toEqual([]);
   });
 

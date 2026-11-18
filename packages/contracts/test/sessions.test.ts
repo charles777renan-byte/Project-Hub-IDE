@@ -63,19 +63,31 @@ function summary(overrides: Record<string, unknown>) {
 
 describe('SessionSummary: limites de texto', () => {
   it('firstPrompt aceita 2 000 caracteres e recusa 2 001', () => {
-    expect(sessionSummarySchema.safeParse(summary({ firstPrompt: 'a'.repeat(2000) })).success).toBe(true);
-    expect(sessionSummarySchema.safeParse(summary({ firstPrompt: 'a'.repeat(2001) })).success).toBe(false);
+    expect(sessionSummarySchema.safeParse(summary({ firstPrompt: 'a'.repeat(2000) })).success).toBe(
+      true,
+    );
+    expect(sessionSummarySchema.safeParse(summary({ firstPrompt: 'a'.repeat(2001) })).success).toBe(
+      false,
+    );
   });
 
   it('lastAgentText aceita 400 caracteres e recusa 401', () => {
-    expect(sessionSummarySchema.safeParse(summary({ lastAgentText: 'a'.repeat(400) })).success).toBe(true);
-    expect(sessionSummarySchema.safeParse(summary({ lastAgentText: 'a'.repeat(401) })).success).toBe(false);
+    expect(
+      sessionSummarySchema.safeParse(summary({ lastAgentText: 'a'.repeat(400) })).success,
+    ).toBe(true);
+    expect(
+      sessionSummarySchema.safeParse(summary({ lastAgentText: 'a'.repeat(401) })).success,
+    ).toBe(false);
   });
 
   it('cada turno aceita 600 caracteres e recusa 601', () => {
     const turn = (text: string) => [{ role: 'user', text }];
-    expect(sessionSummarySchema.safeParse(summary({ lastTurns: turn('a'.repeat(600)) })).success).toBe(true);
-    expect(sessionSummarySchema.safeParse(summary({ lastTurns: turn('a'.repeat(601)) })).success).toBe(false);
+    expect(
+      sessionSummarySchema.safeParse(summary({ lastTurns: turn('a'.repeat(600)) })).success,
+    ).toBe(true);
+    expect(
+      sessionSummarySchema.safeParse(summary({ lastTurns: turn('a'.repeat(601)) })).success,
+    ).toBe(false);
   });
 });
 
