@@ -29,19 +29,27 @@ import { useSidebarData } from '../use-sidebar-data';
 /** Parâmetro do Início com o filtro por estado; os contadores da barra de status levam a ele. */
 const STATE_PARAM = 'estado';
 
-/** Faixa do Início: título pequeno, contagem em `--muted` ao lado e o corpo. A região leva o nome do título. */
+/**
+ * Faixa do Início: título de seção, a contagem numa pílula ao lado e o corpo. A região leva o nome do título.
+ * `attention` acende a faixa no âmbar de "aguarda você": só "Precisa de você" a usa, e só com algo esperando.
+ */
 function Band({
   title,
   count,
+  attention = false,
   children,
 }: {
   title: string;
   count?: number | string;
+  attention?: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
   return (
-    <section aria-labelledby={titleId} className="home-band">
+    <section
+      aria-labelledby={titleId}
+      className={attention ? 'home-band home-band--attention' : 'home-band'}
+    >
       <header className="home-band__head">
         <h2 id={titleId} className="home-band__title">
           {title}
@@ -85,7 +93,11 @@ function NeedsYou() {
   const rows = attention.entries.length;
 
   return (
-    <Band title={HOME_TEXT.needsYou} count={attention.known ? attention.count : '—'}>
+    <Band
+      title={HOME_TEXT.needsYou}
+      count={attention.known ? attention.count : '—'}
+      attention={rows > 0}
+    >
       {rows > 0 ? (
         <ul ref={motion} className="needs-list">
           {attention.entries.map((entry) => {

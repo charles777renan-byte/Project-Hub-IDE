@@ -4,6 +4,8 @@ import type { AppError, WorktreeDto } from '@project-hub/contracts';
 import { statusIcon, statusLabel, statusTone } from '../mission-text';
 import { missionPath } from '../routes';
 import { ConfirmButton } from './ConfirmButton';
+import { EmptyState } from './EmptyState';
+import { FolderGit2 } from './Icon';
 import { PathText } from './PathText';
 import { StatusChip } from './StatusChip';
 
@@ -87,43 +89,56 @@ export function WorktreesTab({ projectId }: { projectId: string }) {
     );
   }
   if (state.worktrees.length === 0) {
-    return <p className="empty">Nenhum worktree neste projeto.</p>;
+    return (
+      <EmptyState
+        icon={FolderGit2}
+        title="Nenhum worktree neste projeto."
+        hint="A pasta de uma missão que altera código aparece aqui quando a missão começa."
+        className="worktrees-empty"
+      />
+    );
   }
 
   return (
     <ul className="card-list" aria-label="Worktrees do projeto">
       {state.worktrees.map((worktree) => (
         <li key={worktree.missionId}>
-          <article className="mission-card">
-            <StatusChip
-              label={statusLabel(worktree.status)}
-              tone={statusTone(worktree.status)}
-              icon={statusIcon(worktree.status)}
-            />
-            <h2>
-              <Link to={missionPath(projectId, worktree.missionId)}>{worktree.missionTitle}</Link>
-            </h2>
-            <p className="project-path">
-              <PathText path={worktree.path} />
-            </p>
-            <p className="mission-meta">
-              Branch: <span>{worktree.branch ?? 'não registrada'}</span>
-            </p>
-            {worktree.status === 'succeeded' ? (
-              <ConfirmButton
-                label="Remover"
-                question="Remover este worktree? A branch continua no repositório."
-                confirmLabel="Remover worktree"
-                disabled={removing !== null}
-                onConfirm={() => void remove(worktree.missionId)}
+          <article className="mission-card worktree-card">
+            <header className="worktree-card__head">
+              <h2>
+                <Link to={missionPath(projectId, worktree.missionId)}>{worktree.missionTitle}</Link>
+              </h2>
+              <StatusChip
+                label={statusLabel(worktree.status)}
+                tone={statusTone(worktree.status)}
+                icon={statusIcon(worktree.status)}
               />
-            ) : (
-              <p className="mission-meta">
-                {worktree.status === 'failed' || worktree.status === 'cancelled'
-                  ? 'Só o worktree de uma missão concluída pode ser removido.'
-                  : 'Em uso pela missão.'}
-              </p>
-            )}
+            </header>
+            <dl className="worktree-card__facts">
+              <dt>Pasta</dt>
+              <dd className="project-path">
+                <PathText path={worktree.path} />
+              </dd>
+              <dt>Branch</dt>
+              <dd className="project-path">{worktree.branch ?? 'não registrada'}</dd>
+            </dl>
+            <div className="worktree-card__foot">
+              {worktree.status === 'succeeded' ? (
+                <ConfirmButton
+                  label="Remover"
+                  question="Remover este worktree? A branch continua no repositório."
+                  confirmLabel="Remover worktree"
+                  disabled={removing !== null}
+                  onConfirm={() => void remove(worktree.missionId)}
+                />
+              ) : (
+                <p className="worktree-card__note">
+                  {worktree.status === 'failed' || worktree.status === 'cancelled'
+                    ? 'Só o worktree de uma missão concluída pode ser removido.'
+                    : 'Em uso pela missão.'}
+                </p>
+              )}
+            </div>
             {refusal !== null && refusal.missionId === worktree.missionId ? (
               <div role="alert" className="page-alert">
                 <p>{refusal.message}</p>

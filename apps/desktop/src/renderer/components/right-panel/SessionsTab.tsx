@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { SessionSummary } from '@project-hub/contracts';
-import { CircleAlert, History, ICON_PROPS, Search } from '../Icon';
+import { CircleAlert, History, ICON_PROPS, RefreshCw, Search } from '../Icon';
 import { EmptyState } from '../EmptyState';
+import { Hint } from '../Hint';
 import { IndexingStrip } from './IndexingStrip';
 import { SessionCard } from './SessionCard';
 import { SessionDetail } from './SessionDetail';
@@ -98,9 +99,16 @@ export function SessionsTab({ projectId }: { projectId: string | null }) {
             </button>
           ))}
         </div>
-        <button type="button" className="sessions-tab__refresh" onClick={refresh}>
-          {SESSIONS_TEXT.refresh}
-        </button>
+        <Hint label={SESSIONS_TEXT.refresh}>
+          <button
+            type="button"
+            className="sessions-tab__refresh"
+            aria-label={SESSIONS_TEXT.refresh}
+            onClick={refresh}
+          >
+            <RefreshCw {...ICON_PROPS} />
+          </button>
+        </Hint>
       </div>
 
       <div className="sessions-tab__search">

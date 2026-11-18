@@ -1162,12 +1162,12 @@ describe('MissionPage: resumo de conclusão', () => {
     expect(screen.getAllByText('Login corrigido.')).toHaveLength(1);
     expect(within(summary).queryByRole('region', { name: 'Resumo da conclusão' })).toBeNull();
     expect(within(summary).queryByRole('list', { name: 'Indicadores da missão' })).toBeNull();
-    // Sem ação principal: só o menu "Mais ações" (com Excluir missão) e o caminho do worktree.
+    // Sem ação principal: só o menu "Mais ações" (com Excluir missão) e, na linha do worktree, o caminho.
     expect(
       within(summary)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Copiar caminho', 'Mais ações']);
+    ).toEqual(['Mais ações', 'Copiar caminho']);
     await openActionsMenu();
     expect(screen.getByRole('menuitem', { name: 'Excluir missão' })).toBeInTheDocument();
   });
@@ -1537,10 +1537,15 @@ describe('MissionPage: "Sua decisão" no fluxo da missão', () => {
     });
 
     it('o título do bloco é um título de cartão comum', () => {
-      const title = ruleDeclarations(css, '.decision-block > .mission-section-title');
-      expect(title.get('position')).toBeUndefined();
-      expect(title.get('line-height')).toBe('1.2');
-      expect(title.get('text-transform')).toBe('none');
+      // No bloco o título só perde a margem (o vão é o gap do cartão); o desenho é o do título de seção.
+      const inBlock = ruleDeclarations(css, '.decision-block > .mission-section-title');
+      expect(inBlock.get('position')).toBeUndefined();
+      expect(inBlock.get('margin')).toBe('0');
+      const title = ruleDeclarations(css, '.mission-section-title');
+      expect(title.get('color')).toBe('var(--text)');
+      expect(title.get('font-size')).toBe('var(--text-md)');
+      expect(title.get('font-weight')).toBe('var(--weight-heading)');
+      expect(title.get('text-transform')).toBeUndefined();
     });
 
     it('o formulário dentro do bloco não deixa margem embaixo: o vão entre os filhos é o gap do bloco', () => {

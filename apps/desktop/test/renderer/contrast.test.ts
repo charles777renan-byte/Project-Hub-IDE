@@ -388,7 +388,7 @@ describe('cores do chrome do workspace', () => {
   // Variáveis do chrome que não são cor: espaçamento, fonte, raio, movimento e os tokens compostos de
   // sombra e brilho, por nome exato. As cores desses três são conferidas no teste "sombras e brilho".
   const NOT_COLOR =
-    /^--(?:space|font|text|radius|ease|dur)(?:-|$)|^--(?:shadow-card|shadow-pop|glow-app)$/;
+    /^--(?:space|font|text|radius|ease|dur|weight|tracking)(?:-|$)|^--(?:shadow-card|shadow-pop|glow-app)$/;
 
   // A única exceção ao "sem cor de destaque": a tinta de lima a 7% do cabeçalho do painel com o teclado dentro (a regra
   // é conferida à parte, e o par de contraste dela está em "cabeçalho do painel de terminal").
@@ -518,7 +518,7 @@ describe.each([
     '--danger',
     '--board-line',
   ]);
-  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+  const NOT_COLOR = /^--(?:space|font|text|radius|weight|tracking)(?:-|$)/;
 
   it('só usa var() de tokens permitidos', () => {
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
@@ -564,7 +564,7 @@ describe('cores do painel direito (right-panel.css)', () => {
     '--violet',
     '--blue',
   ]);
-  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)|^--shadow-card$/;
+  const NOT_COLOR = /^--(?:space|font|text|radius|weight|tracking)(?:-|$)|^--shadow-card$/;
 
   it('só usa var() de tokens permitidos', () => {
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);
@@ -702,7 +702,7 @@ describe('cores do Início (home.css)', () => {
     '--danger',
     ...AGENT_COLORS,
   ]);
-  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+  const NOT_COLOR = /^--(?:space|font|text|radius|weight|tracking)(?:-|$)/;
   /** O preenchimento da barra de progresso, nos dois motores (WebKit e Gecko), por tom do estado. */
   const FILL = (tone: string) => [
     `.mission-progress__bar--${tone}::-webkit-progress-value`,
@@ -773,6 +773,9 @@ describe('cores do Início (home.css)', () => {
         ...FILL('warn'),
         // Barra de limites do Claude (<meter>): aviso de 75% a 90%. O normal é neutro (--muted).
         '.claude-limits__bar::-webkit-meter-suboptimum-value',
+        // "Precisa de você" com algo esperando: o contorno, o véu e a contagem, no âmbar de "aguarda você".
+        '.home-band--attention',
+        '.home-band--attention .home-band__count',
       ],
     ],
     ['--danger', [...FILL('red'), '.claude-limits__bar::-webkit-meter-even-less-good-value']],
@@ -912,7 +915,7 @@ describe('cores da aba Progresso (progress.css)', () => {
     '--warn',
     '--danger',
   ]);
-  const NOT_COLOR = /^--(?:space|font|text|radius)(?:-|$)/;
+  const NOT_COLOR = /^--(?:space|font|text|radius|weight|tracking)(?:-|$)/;
 
   it('só usa var() de tokens permitidos', () => {
     const used = [...css.matchAll(/var\(\s*(--[\w-]+)/g)].map(([, token = '']) => token);

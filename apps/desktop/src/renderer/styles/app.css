@@ -31,7 +31,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   line-height: 1.5;
 }
 
@@ -45,13 +45,25 @@ body {
   outline-offset: 2px;
 }
 
+/* O texto marcado e o cursor de digitação no tom do app, em toda tela, e não no azul do sistema. */
+::selection {
+  background: var(--fill);
+  color: var(--text);
+}
+
+input,
+textarea {
+  caret-color: var(--focus);
+}
+
+/* Título é --weight-title; o título de seção (cartão, bloco) baixa para --weight-heading na regra dele. */
 h1,
 h2,
 h3 {
   margin: 0;
-  font-weight: 800;
+  font-weight: var(--weight-title);
   letter-spacing: -0.01em;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 p {
@@ -108,7 +120,8 @@ a {
 
 /*
  * Botões. Lima só na ação principal (e em aprovar, que tem a mesma aparência); o resto é contorno ou
- * fantasma. Texto sobre lima usa --accent-ink. Só cor de fundo e de borda animam.
+ * fantasma. Texto sobre lima usa --accent-ink. Só cor de fundo e de borda animam. O peso também separa a
+ * ação principal das outras: ela leva --weight-heading, e o resto, --weight-label.
  */
 button {
   padding: var(--space-2) var(--space-3);
@@ -117,7 +130,7 @@ button {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-label);
   cursor: pointer;
   transition:
     background-color var(--dur-fast) var(--ease),
@@ -139,6 +152,7 @@ button:disabled {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
+  font-weight: var(--weight-heading);
 }
 
 .btn-primary:hover:not(:disabled),
@@ -201,13 +215,12 @@ button:disabled {
   color: var(--muted);
 }
 
+/* A linha de contexto acima de um título (de onde a pessoa veio): rótulo discreto, sem caixa alta. */
 .eyebrow {
   margin-bottom: var(--space-1);
   color: var(--muted);
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: var(--weight-label);
 }
 
 .mono {
@@ -219,7 +232,8 @@ button:disabled {
  * texto na cor do tom (o contrast.test.ts mede cada par). O tom vem de --tone. Lima = ativo/ok,
  * --warn = aguardando, --danger = erro, --brand = marca, --muted = neutro; blue, orange e cyan, que o
  * tipo Tone ainda aceita, ficam neutros. O estado nunca é só cor: o rótulo e a forma continuam, e o
- * selo é informação, sem hover.
+ * selo é informação, sem hover. É um rótulo (--text-xs, --weight-label), na fonte do texto e sem caixa
+ * alta: o selo acompanha o título ao lado dele, nunca fala mais alto que ele.
  */
 .chip,
 .state-mark {
@@ -235,11 +249,10 @@ button:disabled {
   padding: 2px 8px;
   border: 0;
   border-radius: var(--radius-pill);
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: var(--weight-label);
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .chip::before {
@@ -439,7 +452,7 @@ button:disabled {
 .panel__title {
   color: var(--text);
   font-size: var(--text-md);
-  font-weight: 700;
+  font-weight: var(--weight-heading);
   letter-spacing: 0;
 }
 
@@ -467,13 +480,15 @@ button:disabled {
 /*
  * Abas (components/Tabs.tsx): pílulas uniformes, sem cor por tipo. A inativa é transparente com texto
  * --muted; a ativa é uma pílula em gradiente (--fill -> --line) com texto
- * --text. O lima fica fora das abas (só ação principal, estado ativo e foco).
+ * --text. O lima fica fora das abas (só ação principal, estado ativo e foco). São abas de dentro de um bloco
+ * (as do painel da missão, as da Visão geral): têm o tamanho e a altura das visões do projeto (project.css),
+ * nunca mais, para não falarem mais alto que o título do bloco onde estão.
  */
 .tabs {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-3);
 }
 
 /*
@@ -491,9 +506,10 @@ button:disabled {
   isolation: isolate;
   border: 0;
   border-radius: var(--radius-pill);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
   background: transparent;
   color: var(--muted);
+  font-size: var(--text-sm);
 }
 
 .tab:hover {
@@ -526,7 +542,7 @@ button:disabled {
 .tab[aria-selected='true'] {
   color: var(--text);
   /* Peso maior: a segunda pista da aba ativa, além do preenchimento. */
-  font-weight: 700;
+  font-weight: var(--weight-title);
 }
 
 /* Contagem ao lado do nome da aba (etapas, arquivos, testes): número pequeno, em mono e discreto. */
@@ -576,7 +592,8 @@ button:disabled {
 }
 
 .mission-card h2 {
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-heading);
 }
 
 /* Tons neutros do selo (muted, e orange, blue e cyan das telas antigas): faixa neutra, como o chip. */
@@ -670,7 +687,8 @@ button:disabled {
 }
 
 .decision-card h3 {
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-heading);
 }
 
 .decision-card ul {
@@ -693,10 +711,9 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-/* Conversa: eventos com instante, em fonte mono. */
+/* Conversa: a frase do evento no texto do app, e o instante ao lado, menor e em mono (é dado, não leitura). */
 .timeline {
   display: grid;
-  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -704,18 +721,24 @@ button:disabled {
 
 .timeline li {
   display: grid;
-  grid-template-columns: 5.5rem 1fr;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: baseline;
   gap: var(--space-3);
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line);
   color: var(--text);
-  font-family: var(--font-mono);
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 
+.timeline li:last-child {
+  border-bottom: 0;
+}
+
 .timeline time {
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 /* Formulários: campos sólidos em --surface com borda de campo; o foco é o anel lima global. */
@@ -736,7 +759,8 @@ button:disabled {
 
 .field label,
 .check label {
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-label);
 }
 
 .field input,
@@ -797,7 +821,61 @@ button:disabled {
 .check input {
   width: 1rem;
   height: 1rem;
-  accent-color: var(--lime);
+}
+
+/*
+ * Caixa de marcar: desenho do app, nunca o do navegador. Vazia, é um campo (borda --field-line sobre --surface);
+ * marcada, enche de lima (estado ativo) e mostra o visto em --accent-ink. O visto é um ::before recortado, sem
+ * imagem e sem estilo escrito em texto (CSP). O foco é o anel global.
+ */
+input[type='checkbox'] {
+  appearance: none;
+  display: inline-grid;
+  flex: none;
+  place-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 0.625rem;
+  height: 0.625rem;
+  background: var(--accent-ink);
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+  opacity: 0;
+}
+
+input[type='checkbox']:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+input[type='checkbox']:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+input[type='checkbox']:checked::before {
+  opacity: 1;
+}
+
+input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  input[type='checkbox'] {
+    transition: none;
+  }
 }
 
 .form-actions {
@@ -1057,12 +1135,10 @@ button:disabled {
 .limits-panel__title {
   flex: 1;
   margin: 0;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-heading);
+  letter-spacing: 0;
 }
 
 .limits-panel__age {
@@ -1228,11 +1304,10 @@ button:disabled {
 
 .acceptance__title {
   margin: 0 0 var(--space-2);
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-heading);
+  letter-spacing: 0;
 }
 
 /* Logs do sistema: uma linha por evento, em fonte mono, com a hora e a fonte antes da frase. */
@@ -2299,7 +2374,7 @@ button:disabled {
   background: var(--surface-2);
   box-shadow: var(--shadow-pop);
   color: var(--text);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   line-height: 1.4;
   pointer-events: auto;
   animation: toast-in var(--dur) var(--ease);
@@ -2322,7 +2397,7 @@ button:disabled {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   overflow-wrap: anywhere;
 }
 

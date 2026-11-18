@@ -248,7 +248,7 @@ describe('MissionSummary: cabeçalho enxuto', () => {
     Reflect.deleteProperty(window, 'projectHub');
   });
 
-  it('o "← Missões", o projeto e o worktree dividem a linha de cima, antes do título', () => {
+  it('o "← Missões" e o projeto vêm em cima, depois o título, e o worktree fecha o cabeçalho', () => {
     window.projectHub = {
       terminals: { list: vi.fn(() => Promise.resolve({ ok: true, data: [] })) },
     } as unknown as ProjectHubApi;
@@ -261,28 +261,34 @@ describe('MissionSummary: cabeçalho enxuto', () => {
     const inTop = within(top as HTMLElement);
     expect(inTop.getByRole('link', { name: /Missões/ })).toBeInTheDocument();
     expect(inTop.getByText(/Missão · app/i)).toBeInTheDocument();
-    expect(inTop.getByRole('button', { name: 'Copiar caminho' })).toBeInTheDocument();
-    expect(inTop.getByRole('link', { name: 'Ver no terminal' })).toBeInTheDocument();
+    // O worktree é dado de apoio: não fica entre o caminho de volta e o título.
+    expect(inTop.queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
+    expect(inTop.queryByRole('link', { name: 'Ver no terminal' })).toBeNull();
     // O título, o objetivo, o selo e o menu ficam na linha de baixo.
     expect(inTop.queryByRole('heading', { name: 'Ajustar login' })).toBeNull();
     const row = header.querySelector('.mission-head__row');
     expect(top?.nextElementSibling).toBe(row);
-    expect(header.children).toHaveLength(2);
     expect(
       within(row as HTMLElement).getByRole('heading', { name: 'Ajustar login' }),
     ).toBeVisible();
     expect(within(row as HTMLElement).getByRole('button', { name: 'Mais ações' })).toBeVisible();
+    // Por último, a linha do worktree: o botão que copia o caminho e o link do terminal.
+    const meta = header.querySelector('.mission-meta');
+    expect(row?.nextElementSibling).toBe(meta);
+    expect(header.children).toHaveLength(3);
+    const inMeta = within(meta as HTMLElement);
+    expect(inMeta.getByRole('button', { name: 'Copiar caminho' })).toBeInTheDocument();
+    expect(inMeta.getByRole('link', { name: 'Ver no terminal' })).toBeInTheDocument();
   });
 
-  it('sem worktree, a linha de cima só tem o "← Missões" e o projeto', () => {
+  it('sem worktree, o cabeçalho tem só as duas linhas, sem a do worktree', () => {
     render(<MemoryRouter>{summaryOf(viewOf('review'))}</MemoryRouter>);
 
-    const top = screen
-      .getByRole('region', { name: 'Resumo da missão' })
-      .querySelector<HTMLElement>('.mission-head__top');
-    expect(top).not.toBeNull();
-    expect(top?.querySelector('.mission-meta')).toBeNull();
-    expect(within(top as HTMLElement).queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
+    const header = screen.getByRole('region', { name: 'Resumo da missão' });
+    expect(header.querySelector('.mission-head__top')).not.toBeNull();
+    expect(header.querySelector('.mission-meta')).toBeNull();
+    expect(header.children).toHaveLength(2);
+    expect(within(header).queryByRole('button', { name: 'Copiar caminho' })).toBeNull();
   });
 
   describe('folha de estilo (mission.css)', () => {
@@ -295,14 +301,19 @@ describe('MissionSummary: cabeçalho enxuto', () => {
       expect(top.get('align-items')).toBe('center');
     });
 
-    it('o worktree vai para a direita da linha de cima', () => {
-      expect(ruleDeclarations(css, '.mission-head .mission-meta').get('margin-left')).toBe('auto');
+    it('a linha do worktree começa à esquerda, quebra em janela estreita e usa o tamanho de rótulo', () => {
+      const meta = ruleDeclarations(css, '.mission-head .mission-meta');
+      expect(meta.get('display')).toBe('flex');
+      expect(meta.get('flex-wrap')).toBe('wrap');
+      expect(meta.has('margin-left')).toBe(false);
+      expect(meta.get('font-size')).toBe('var(--text-xs)');
     });
 
-    it('o "Ver no terminal" é um botão baixo, para não engordar a linha', () => {
-      expect(ruleDeclarations(css, '.mission-terminal-link').get('padding')).toBe(
-        'var(--space-1) var(--space-3)',
-      );
+    it('o "Ver no terminal" é um botão baixo, na fonte do texto, do tamanho do "Copiar caminho"', () => {
+      const link = ruleDeclarations(css, '.mission-terminal-link');
+      expect(link.get('padding')).toBe('0.125rem var(--space-2)');
+      expect(link.get('font-family')).toBe('var(--font-sans)');
+      expect(link.get('font-size')).toBe('var(--text-xs)');
     });
   });
 });

@@ -222,13 +222,14 @@ describe('tokens da identidade visual', () => {
     expect(root.get('--radius-card')).toBe('12px');
     expect(root.get('--radius-panel')).toBe('var(--radius-card)');
     expect(root.get('--radius-pill')).toBe('999px');
-    expect(['xs', 'sm', 'md', 'lg', 'xl'].map((size) => root.get(`--text-${size}`))).toEqual([
-      '0.75rem',
-      '0.8125rem',
-      '0.9375rem',
-      '1.125rem',
-      '1.5rem',
-    ]);
+    // A régua da hierarquia: rótulo (xs), apoio (sm), corpo (base), título de seção (md), título (lg) e xl.
+    expect(
+      ['xs', 'sm', 'base', 'md', 'lg', 'xl'].map((size) => root.get(`--text-${size}`)),
+    ).toEqual(['0.75rem', '0.8125rem', '0.875rem', '1rem', '1.25rem', '1.5rem']);
+    // Os quatro pesos que as fontes locais têm; não existe 800.
+    expect(
+      ['body', 'label', 'heading', 'title'].map((role) => root.get(`--weight-${role}`)),
+    ).toEqual(['400', '500', '600', '700']);
     expect(root.get('--dur-fast')).toBe('120ms');
     expect(root.get('--dur')).toBe('180ms');
     for (const token of ['--ease', '--shadow-card', '--shadow-pop', '--glow-app']) {
@@ -238,7 +239,7 @@ describe('tokens da identidade visual', () => {
 
   it('body define font-size e color, para o texto cru herdar do aplicativo', () => {
     const body = ruleDeclarations(readCss('app.css'), 'body');
-    expect(body.get('font-size')).toBe('var(--text-md)');
+    expect(body.get('font-size')).toBe('var(--text-base)');
     expect(body.get('color')).toBe('var(--text)');
   });
 
@@ -323,7 +324,7 @@ describe('botões, campos e anel de foco', () => {
 
   it('a aba ativa tem pistas além do preenchimento: peso 700 e anel de 1px em --muted', () => {
     // O anel mora na pílula (o ::before da aba), que acende na ativa; o peso fica na própria aba.
-    expect(rule(".tab[aria-selected='true']").get('font-weight')).toBe('700');
+    expect(rule(".tab[aria-selected='true']").get('font-weight')).toBe('var(--weight-title)');
     expect(rule('.tab::before').get('box-shadow')).toBe('inset 0 0 0 1px var(--muted)');
     expect(rule(".tab[aria-selected='true']::before").get('opacity')).toBe('1');
     // A inativa sob o mouse não usa a ponta do gradiente da ativa.
