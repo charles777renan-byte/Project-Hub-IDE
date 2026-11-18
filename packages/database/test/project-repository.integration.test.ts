@@ -263,3 +263,17 @@ describe('apelido do projeto', () => {
     expect(repo.get('p1')?.nickname).toBeUndefined();
   });
 });
+
+describe('silêncio dos avisos do projeto', () => {
+  it('começa desligado, liga e desliga, com o updatedAt novo', () => {
+    repo.insert(hub);
+    expect(repo.get('p1')?.muted).toBeUndefined();
+
+    repo.setMuted('p1', true, '2026-11-17T10:00:00.000Z');
+    expect(repo.get('p1')).toMatchObject({ muted: true, updatedAt: '2026-11-17T10:00:00.000Z' });
+    expect(repo.list()[0]?.muted).toBe(true);
+
+    repo.setMuted('p1', false, '2026-11-17T11:00:00.000Z');
+    expect(repo.get('p1')?.muted).toBeUndefined();
+  });
+});

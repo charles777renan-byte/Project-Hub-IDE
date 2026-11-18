@@ -6,6 +6,7 @@ export {
   unarchiveProject,
   type ProjectLifecycleDeps,
   setProjectGroup,
+  setProjectMuted,
   setProjectNickname,
 } from './projects/project-lifecycle';
 export { listProjects, toProjectSummary, type ListProjectsDeps } from './projects/list-projects';

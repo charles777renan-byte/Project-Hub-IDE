@@ -42,6 +42,8 @@ export interface ProjectRepository {
   unarchive(id: string, updatedAt: string): void;
   setGroup(id: string, groupName: string | null, updatedAt: string): void;
   setNickname(id: string, nickname: string | null, updatedAt: string): void;
+  /** Liga (`true`) ou desliga o silêncio dos avisos do projeto. */
+  setMuted(id: string, muted: boolean, updatedAt: string): void;
   markRemoved(id: string, removedAt: string): void;
   /**
    * Desfaz a remoção: o mesmo registro volta à lista, sem inserir outro. A pasta pode ter ganhado ou

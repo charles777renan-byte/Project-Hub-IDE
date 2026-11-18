@@ -87,7 +87,60 @@ export function ProjectSettings({ project }: { project: ProjectSummary }) {
             </p>
           </dd>
         </div>
+        <MuteRow project={project} />
       </dl>
+    </div>
+  );
+}
+
+/**
+ * Silêncio dos avisos do projeto: desliga a notificação do sistema e o piscar da barra de tarefas. A caixa muda na
+ * hora; se a gravação falha, volta ao que era e a mensagem fica na linha. Com sucesso, a barra lateral relê.
+ */
+function MuteRow({ project }: { project: ProjectSummary }) {
+  const saved = project.muted === true;
+  const [muted, setMuted] = useState(saved);
+  const [error, setError] = useState<string | null>(null);
+  const hintId = useId();
+  useEffect(() => setMuted(saved), [saved]);
+
+  async function change(next: boolean) {
+    setMuted(next);
+    setError(null);
+    let result: AppResult<void>;
+    try {
+      result = await window.projectHub.projects.setMuted(project.id, next);
+    } catch {
+      result = { ok: false, error: { code: 'UNKNOWN', message: TEXT.muteFailed, retryable: true } };
+    }
+    if (result.ok) {
+      window.dispatchEvent(new Event(PROJECTS_CHANGED_EVENT));
+      return;
+    }
+    setMuted(!next);
+    setError(result.error.message || TEXT.muteFailed);
+  }
+
+  return (
+    <div className="settings-row">
+      <dt>{TEXT.alerts}</dt>
+      <dd className="settings-row__wide">
+        <label className="settings-row__check">
+          <input
+            type="checkbox"
+            checked={muted}
+            aria-describedby={hintId}
+            onChange={(event) => void change(event.target.checked)}
+          />
+          {TEXT.mute}
+        </label>
+        <p id={hintId} className="settings-row__note">
+          {TEXT.muteHint}
+        </p>
+        <p role="status" className="settings-row__note">
+          {error}
+        </p>
+      </dd>
     </div>
   );
 }

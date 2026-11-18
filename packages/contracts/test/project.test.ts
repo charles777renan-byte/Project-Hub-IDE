@@ -7,9 +7,9 @@ import {
 
 describe('gitIdentitySchema', () => {
   it('apara os espaços e aceita um e-mail local, que não é caixa de correio', () => {
-    expect(gitIdentitySchema.parse({ name: '  Ana Souza ', email: ' ana@project-hub.local ' })).toEqual(
-      { name: 'Ana Souza', email: 'ana@project-hub.local' },
-    );
+    expect(
+      gitIdentitySchema.parse({ name: '  Ana Souza ', email: ' ana@project-hub.local ' }),
+    ).toEqual({ name: 'Ana Souza', email: 'ana@project-hub.local' });
   });
 
   it('recusa o que o Git leria como opção, caractere de controle, < e > e e-mail sem @', () => {
@@ -39,9 +39,9 @@ describe('initRepositoryInputSchema', () => {
         identity: { name: 'Ana', email: 'ana@empresa.com' },
       }).success,
     ).toBe(true);
-    expect(initRepositoryInputSchema.safeParse({ identity: { name: 'Ana', email: 'a@b' } }).success).toBe(
-      false,
-    );
+    expect(
+      initRepositoryInputSchema.safeParse({ identity: { name: 'Ana', email: 'a@b' } }).success,
+    ).toBe(false);
   });
 });
 

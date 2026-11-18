@@ -45,6 +45,9 @@ export const projects = sqliteTable(
     removedAt: text('removed_at'),
     groupName: text('group_name'),
     nickname: text('nickname'),
+    notificationsMuted: integer('notifications_muted', { mode: 'boolean' })
+      .notNull()
+      .default(sql`0`),
   },
   (table) => [
     check('projects_repository_kind_check', sql`${table.repositoryKind} IN ('git', 'none')`),

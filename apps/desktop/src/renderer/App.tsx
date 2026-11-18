@@ -8,6 +8,7 @@ import {
   type PanelImperativeHandle,
 } from 'react-resizable-panels';
 import { useMatch, useNavigate } from 'react-router';
+import { useAttentionAlerts } from './attention-alerts';
 import { PaletaComandos } from './components/PaletaComandos';
 import { RightPanel } from './components/right-panel/RightPanel';
 import { Sidebar } from './components/Sidebar';
@@ -131,6 +132,8 @@ export function App() {
   const [paletaAberta, setPaletaAberta] = useState(false);
   const sidebar = useSidebarData();
   const navigate = useNavigate();
+  // Avisos do sistema: cada espera nova vira um pedido de notificação, e o clique nela abre o item.
+  useAttentionAlerts();
   // O painel direito acompanha o projeto da aba ativa; fora de uma aba de projeto (o Início), não há projeto.
   const projectId = useMatch(ROUTE_PATHS.workspace)?.params.projectId ?? null;
   const itensPaleta = useMemo(() => buildPaletteItems(sidebar, navigate), [sidebar, navigate]);

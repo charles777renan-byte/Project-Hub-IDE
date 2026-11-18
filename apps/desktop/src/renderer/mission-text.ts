@@ -633,6 +633,10 @@ export const PROJECT_TEXT = {
     terminals: 'Terminais',
     askBeforeClosing: 'Perguntar antes de fechar um terminal com agente rodando',
     appWide: 'Vale para todos os projetos.',
+    alerts: 'Avisos',
+    mute: 'Silenciar avisos deste projeto',
+    muteHint: 'A faixa "Precisa de você" continua mostrando o que espera.',
+    muteFailed: 'Não foi possível mudar os avisos. Tente de novo.',
   },
 } as const;
 

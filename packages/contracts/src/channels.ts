@@ -17,6 +17,8 @@ export const CHANNELS = {
   projectsInitRepository: 'projects:init-repository:v1',
   projectsSetGroup: 'projects:set-group:v1',
   projectsSetNickname: 'projects:set-nickname:v1',
+  /** Liga ou desliga o silêncio dos avisos do projeto (notificação do sistema e piscar da barra de tarefas). */
+  projectsSetMuted: 'projects:set-muted:v1',
   missionsCreate: 'missions:create:v1',
   missionsList: 'missions:list:v1',
   missionsGet: 'missions:get:v1',
@@ -51,6 +53,8 @@ export const CHANNELS = {
   worktreesRemove: 'worktrees:remove:v1',
   /** Terminais dos agentes e shells (plano de agente real, Tarefa 7). Só entram ids, nunca caminho ou comando. */
   terminalsList: 'terminals:list:v1',
+  /** Algum terminal mudou de estado com a janela sem foco. Do processo principal para o renderer, sem dados; não tem resposta. */
+  terminalsChanged: 'terminals:changed:v1',
   terminalsWrite: 'terminals:write:v1',
   terminalsResize: 'terminals:resize:v1',
   terminalsSubscribe: 'terminals:subscribe:v1',
@@ -171,6 +175,10 @@ export const CHANNELS = {
   browserChanged: 'browser:changed:v1',
   /** Um atalho do app foi apertado com o foco na página. Do processo principal para o renderer; não tem resposta. */
   browserShortcut: 'browser:shortcut:v1',
+  /** Pede a notificação do sistema para um item que passou a esperar a pessoa. Só o tipo e o id. */
+  alertsNotify: 'alerts:notify:v1',
+  /** A pessoa clicou numa notificação. Do processo principal para o renderer; não tem resposta. */
+  alertsOpen: 'alerts:open:v1',
   /** Preview automático do navegador. Só entram ids, o nome de um script e o texto de um endereço local: nunca o texto de um comando. */
   previewState: 'preview:state:v1',
   /** Aprova o script do `package.json` que sobe o servidor. O processo principal relê o arquivo e monta o comando. */

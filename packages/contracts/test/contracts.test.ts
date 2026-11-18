@@ -278,6 +278,7 @@ describe('tipos públicos', () => {
       defaultBranch?: string | undefined;
       group?: string | undefined;
       nickname?: string | undefined;
+      muted?: boolean | undefined;
     }>();
   });
 
@@ -311,6 +312,8 @@ describe('responseSchemas', () => {
       CHANNELS.filesChanged,
       CHANNELS.browserChanged,
       CHANNELS.browserShortcut,
+      CHANNELS.alertsOpen,
+      CHANNELS.terminalsChanged,
       CHANNELS.previewChanged,
       CHANNELS.workspacesChanged,
     ];

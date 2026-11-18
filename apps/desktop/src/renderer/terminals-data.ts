@@ -101,9 +101,15 @@ function onVisibilityChange() {
 function start(): () => void {
   const timer = setInterval(tick, TERMINALS_POLL_MS);
   document.addEventListener('visibilitychange', onVisibilityChange);
+  // Com a janela sem foco, o processo principal relê os terminais e avisa quando algum muda (avisos do sistema). O
+  // sinal relê mesmo com a janela oculta: é ele que faz o "Aguardando" de um terminal chegar ao vigia dos avisos.
+  const api = terminalsApi();
+  const stopSignal =
+    typeof api?.onChanged === 'function' ? api.onChanged(() => void load()) : () => undefined;
   void load();
   return () => {
     clearInterval(timer);
+    stopSignal();
     document.removeEventListener('visibilitychange', onVisibilityChange);
     epoch += 1;
     shown = 0;

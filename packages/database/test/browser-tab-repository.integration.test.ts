@@ -15,7 +15,11 @@ let dir: string;
 let db: AppDatabase;
 let repo: BrowserTabRepository;
 
-function tab(projectId: string, id: string, overrides: Partial<BrowserTabRecord> = {}): BrowserTabRecord {
+function tab(
+  projectId: string,
+  id: string,
+  overrides: Partial<BrowserTabRecord> = {},
+): BrowserTabRecord {
   return {
     id,
     projectId,

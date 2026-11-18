@@ -385,6 +385,11 @@
   font-size: var(--text-sm);
 }
 
+/* A situação da caixa de avisos fica no documento (o leitor de tela anuncia a mudança), mas vazia não ocupa espaço. */
+.settings-row__note:empty {
+  margin: 0;
+}
+
 /*
  * Missões: a lista com progresso (.mission-progress*, de home.css) e o formulário Nova missão, compacto e sem
  * moldura: título, três campos com uma dica cada, duas opções e Cancelar e Criar no fim.

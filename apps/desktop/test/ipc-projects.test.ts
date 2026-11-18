@@ -16,6 +16,7 @@ import {
   handleProjectLifecycle,
   handleRepositoryPreview,
   handleSetGroup,
+  handleSetMuted,
   handleSetNickname,
   registerProjectHandlers,
 } from '../src/main/ipc/projects';
@@ -323,6 +324,7 @@ describe('registerProjectHandlers', () => {
         CHANNELS.projectsRepositoryPreview,
         CHANNELS.projectsInitRepository,
         CHANNELS.projectsSetGroup,
+        CHANNELS.projectsSetMuted,
         CHANNELS.projectsSetNickname,
         CHANNELS.projectsUnarchive,
       ].sort(),
@@ -517,5 +519,18 @@ describe('criar o repositório Git: entrada conferida antes da aplicação (ADR 
         },
       });
     }
+  });
+});
+
+describe('handleSetMuted', () => {
+  it('recusa entrada fora do contrato, sem chamar a aplicação', () => {
+    expect(handleSetMuted(neverCalledLifecycle, { projectId: 'p', muted: 'x' })).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
+    expect(handleSetMuted(neverCalledLifecycle, {})).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED' },
+    });
   });
 });

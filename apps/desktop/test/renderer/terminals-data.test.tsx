@@ -323,3 +323,37 @@ describe('useTerminals', () => {
     expect(result.current.error).toBeNull();
   });
 });
+
+describe('sinal do processo principal', () => {
+  it('com a janela oculta, o sinal relê a lista na hora, e sair cancela a assinatura', async () => {
+    let signal: (() => void) | undefined;
+    const unsubscribe = vi.fn();
+    const list = vi
+      .fn<() => Promise<AppResult<TerminalSummary[]>>>()
+      .mockImplementationOnce(() => ok([terminal('t1')]))
+      .mockImplementation(() => ok([terminal('t1', { state: 'waiting' })]));
+    window.projectHub = {
+      terminals: {
+        list,
+        onChanged: (listener: () => void) => {
+          signal = listener;
+          return unsubscribe;
+        },
+      },
+    } as unknown as ProjectHubApi;
+    const { result, unmount } = renderHook(() => useTerminals());
+    await advance(0);
+    setHidden(true);
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      signal?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(result.current.terminals[0]?.state).toBe('waiting');
+    unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+});

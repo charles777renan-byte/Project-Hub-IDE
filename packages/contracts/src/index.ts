@@ -1,4 +1,5 @@
 export * from './agent-activity';
+export * from './alerts';
 export * from './api';
 export * from './browser';
 export * from './channels';

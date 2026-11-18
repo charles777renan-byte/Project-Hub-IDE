@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `notifications_muted` integer DEFAULT 0 NOT NULL;

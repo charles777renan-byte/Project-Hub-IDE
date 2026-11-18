@@ -20,6 +20,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  Notification,
   session,
   shell,
   type IpcMainInvokeEvent,
@@ -94,6 +95,9 @@ import {
   createCodexSessionReader,
 } from './session-readers';
 import { createTerminalService } from './terminals';
+import { createAlertService, recordNotifications } from './alerts';
+import { createTerminalsWatch } from './terminals-watch';
+import { registerAlertHandlers } from './ipc/alerts';
 import { createWorkspaceService } from './workspaces';
 import { chooseProjectDirectory } from './dialogs';
 import { registerApprovalHandlers } from './ipc/approvals';
@@ -127,6 +131,12 @@ if (hiddenForTests) {
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+}
+
+// Sem um AppUserModelId, o Windows não mostra a notificação do app (ou a mostra sem nome e sem clique). Em
+// desenvolvimento, o id é o caminho do executável, como pede a documentação do Electron; o instalador fixa o seu.
+if (process.platform === 'win32') {
+  app.setAppUserModelId(app.isPackaged ? 'com.projecthub.desktop' : process.execPath);
 }
 
 const rendererDirectory = join(import.meta.dirname, '../renderer');
@@ -361,6 +371,20 @@ let closeAgentPages: () => void = () => undefined;
  */
 let agentWindowVisible: (visible: boolean) => void = () => undefined;
 
+/**
+ * Avisos do sistema: a janela ganhou (`true`) ou perdeu (`false`) o foco. Com foco, para o piscar e a releitura dos
+ * terminais; sem foco, liga a releitura. Vira a função de verdade quando o serviço de avisos é criado.
+ */
+let mainWindowFocusChanged: (focused: boolean) => void = () => undefined;
+
+/** O registro das notificações nos testes de ponta a ponta, num global que o Playwright lê pelo processo principal. */
+function testAlertsRecord(): { title: string; body: string }[] {
+  const record: { title: string; body: string }[] = [];
+  Object.assign(globalThis, { __projectHubAlerts: record });
+  return record;
+}
+
+
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -401,6 +425,8 @@ function createMainWindow(): void {
   win.on('hide', () => agentWindowVisible(false));
   win.on('restore', () => agentWindowVisible(true));
   win.on('show', () => agentWindowVisible(true));
+  win.on('focus', () => mainWindowFocusChanged(true));
+  win.on('blur', () => mainWindowFocusChanged(false));
   // "Salvar": o renderer grava os arquivos sujos e responde; a janela só fecha se tudo foi gravado e nada ficou sujo.
   const saving = createSaveBeforeClose({
     requestSave: (requestId) => {
@@ -830,6 +856,31 @@ app
       browserAccess: agentAccess,
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
+    // Avisos do sistema (RF-OBS-008 a RF-OBS-011): a tela diz qual item passou a esperar; daqui saem o texto, a
+    // notificação, o piscar e o clique. Sem foco, os terminais são relidos aqui, porque a tela escondida não relê.
+    const alerts = createAlertService({
+      missions: services.missions.queryDeps.repo,
+      projects: services.missions.queryDeps.projects,
+      terminals: terminalService,
+      window: liveMainWindow,
+      // Nos testes de ponta a ponta, a notificação vira registro (`globalThis.__projectHubAlerts`, lido pelo E2E).
+      createNotification: hiddenForTests
+        ? recordNotifications(testAlertsRecord())
+        : (options) => new Notification(options),
+      publishOpen: (event) => liveMainWindow()?.webContents.send(CHANNELS.alertsOpen, event),
+    });
+    registerAlertHandlers(ipcMain, isTrustedSender, alerts);
+    const terminalsWatch = createTerminalsWatch({
+      list: () => terminalService.list(),
+      publishChanged: () => liveMainWindow()?.webContents.send(CHANNELS.terminalsChanged),
+    });
+    mainWindowFocusChanged = (focused) => {
+      if (focused) alerts.windowFocused();
+      terminalsWatch.setActive(!focused);
+    };
+    app.once('will-quit', () => {
+      terminalsWatch.dispose();
+    });
     const baseWorkspaceService = createWorkspaceService({
       repo: services.workspaceDeps.repo,
       projects: services.workspaceDeps.projects,

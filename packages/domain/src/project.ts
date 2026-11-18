@@ -21,6 +21,8 @@ export type ProjectRecord = {
   groupName?: string;
   /** Apelido curto que a interface mostra no lugar do nome da pasta. Sem apelido, ausente. */
   nickname?: string;
+  /** A pessoa silenciou os avisos do projeto (notificação do sistema e piscar). Sem silêncio, ausente. */
+  muted?: true;
 };
 
 /** Dados que o usuário informa ao adicionar um projeto. O restante é preenchido pelo banco. */
