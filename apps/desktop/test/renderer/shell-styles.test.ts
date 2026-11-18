@@ -63,15 +63,15 @@ describe('casca do app', () => {
     expect(tabs.get('min-width')).toBe('0');
   });
 
-  // Formato A (abas de navegador, escolhido pela pessoa em 2026-10-26): a aba ocupa a altura da barra, com
-  // cantos só em cima; a ativa tem o fundo da página (--bg) e cobre a linha de baixo; a inativa fica
-  // transparente com --muted; nada de lima nem de cor por tipo.
-  it('a aba é de navegador: cantos só em cima e a ativa com o fundo da página', () => {
+  // A aba ocupa a altura da barra, com cantos só em cima. A ativa (linha de destaque, escolhida pela pessoa em
+  // 2026-11-17) tem o fundo --surface-2; a inativa fica transparente com --muted. O lima só entra na linha
+  // da aba ativa; nenhuma outra regra de aba ou do "+" usa cor de destaque.
+  it('a aba ocupa a altura da barra, com cantos só em cima, e a ativa tem fundo --surface-2', () => {
     const tab = ruleDeclarations(workspaceCss, '.topbar__tab');
     expect(tab.get('border-radius')).toBe('var(--radius) var(--radius) 0 0');
     expect(tab.get('height')).toBe('100%');
     const active = ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])");
-    expect(active.get('background')).toBe('var(--bg)');
+    expect(active.get('background')).toBe('var(--surface-2)');
     expect(ruleDeclarations(workspaceCss, '.topbar__tab').get('background')).toBeUndefined();
     expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('color')).toBe('var(--muted)');
     expect(
@@ -79,12 +79,15 @@ describe('casca do app', () => {
     ).toBe('var(--text)');
     const rules = workspaceCss.match(/[^{}]*\.topbar__(?:tab|add)[^{}]*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
-    for (const rule of rules) expect(rule).not.toMatch(/--accent|--lime|--tab-accent/);
+    for (const rule of rules) {
+      if (rule.trim().startsWith(".topbar__tab:has(> a[aria-current='page'])")) continue;
+      expect(rule).not.toMatch(/--accent|--lime|--tab-accent/);
+    }
   });
 
-  it('o botão de abrir workspace é redondo', () => {
+  it('o botão de abrir workspace é quadrado, com o raio dos botões', () => {
     const add = ruleDeclarations(workspaceCss, '.topbar__add');
-    expect(add.get('border-radius')).toBe('50%');
+    expect(add.get('border-radius')).toBe('var(--radius)');
     expect(add.get('width')).toBe(add.get('height'));
   });
 
@@ -235,13 +238,11 @@ describe('ícones da barra superior e da barra lateral', () => {
 describe('barra superior: pistas da aba ativa e do botão +', () => {
   const workspaceCss = readCss('workspace.css');
 
-  it('a aba ativa tem anel de 1px em --muted nos lados e no topo, e o link arredonda o foco', () => {
+  it('a aba ativa tem linha de 2px em --accent no pé, sem contorno, e o link arredonda o foco', () => {
     const shadow = ruleDeclarations(workspaceCss, ".topbar__tab:has(> a[aria-current='page'])").get(
       'box-shadow',
     );
-    expect(shadow?.replace(/\s+/g, ' ')).toBe(
-      'inset 1px 0 0 var(--muted), inset -1px 0 0 var(--muted), inset 0 1px 0 var(--muted)',
-    );
+    expect(shadow?.replace(/\s+/g, ' ')).toBe('inset 0 -2px 0 var(--accent)');
     expect(ruleDeclarations(workspaceCss, '.topbar__tab-link').get('border-radius')).toBe(
       'var(--radius-pill)',
     );
@@ -280,10 +281,21 @@ describe('barra superior: pistas da aba ativa e do botão +', () => {
     );
   });
 
-  it('o botão + tem fundo próprio em repouso, para o formato redondo aparecer', () => {
-    expect(ruleDeclarations(workspaceCss, '.topbar__add').get('background')).toBe(
-      'var(--surface-2)',
+  it('o botão + fica sem fundo em repouso e ganha o fundo de hover ao passar o mouse', () => {
+    // O fundo em repouso vem da regra que o "+" divide com o "×".
+    expect(ruleDeclarations(workspaceCss, '.topbar__add').get('background')).toBe('transparent');
+    expect(ruleDeclarations(workspaceCss, '.topbar__add:hover').get('background')).toBe(
+      'var(--topbar-hover)',
     );
+  });
+
+  it('o "×" das abas inativas some até o mouse ou o foco entrarem; na ativa fica à vista', () => {
+    expect(
+      ruleDeclarations(
+        workspaceCss,
+        ".topbar__tab:not(:hover):not(:focus-within):not(:has(> a[aria-current='page'])) .topbar__close",
+      ).get('opacity'),
+    ).toBe('0');
   });
 });
 

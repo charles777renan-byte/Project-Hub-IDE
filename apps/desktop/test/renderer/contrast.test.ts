@@ -432,29 +432,36 @@ describe('cores do chrome do workspace', () => {
     expect(workspaceCss.match(/var\(--lime\)/g)).toHaveLength(1);
   });
 
-  it('a aba ativa sobre --bg tem texto --text legível, e o anel --muted passa de 3:1', () => {
-    // A aba ativa usa o fundo da página (--bg). O anel de 1px em --muted é a marca do estado além do peso
-    // do texto, e precisa de 3:1 sobre o fundo (WCAG 1.4.11).
-    const background = tokens.get('--bg') ?? '';
+  it('a aba ativa sobre --surface-2 tem texto --text legível, e a linha --accent passa de 3:1', () => {
+    // A aba ativa tem fundo --surface-2. A linha de 2px em --accent no pé é a marca do estado além do peso
+    // do texto, e precisa de 3:1 sobre o fundo da aba e o da barra (WCAG 1.4.11).
+    const background = tokens.get('--surface-2') ?? '';
     expect(contrastRatio(tokens.get('--text') ?? '', background)).toBeGreaterThanOrEqual(
       MIN_CONTRAST,
     );
-    expect(contrastRatio(tokens.get('--muted') ?? '', background)).toBeGreaterThanOrEqual(3);
+    for (const ground of [background, tokens.get('--bg') ?? '']) {
+      expect(contrastRatio(tokens.get('--accent') ?? '', ground)).toBeGreaterThanOrEqual(3);
+    }
   });
 
-  it('o lima (--accent) só aparece na barra do link atual da lateral', () => {
-    const allowed = [".sidebar__link[aria-current='page']"];
+  it('o lima (--accent) só marca onde a pessoa está: o link atual da lateral e a aba ativa da barra', () => {
+    // Cada regra permitida e a linha que ela desenha: 3px à esquerda na lateral, 2px no pé da aba.
+    const allowed = new Map([
+      [".sidebar__link[aria-current='page']", /box-shadow:\s*inset 3px 0 0 var\(--accent\)/],
+      [".topbar__tab:has(> a[aria-current='page'])", /box-shadow:\s*inset 0 -2px 0 var\(--accent\)/],
+    ]);
     const rules = [...workspaceCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
     const using = rules.filter(([, , body = '']) => body.includes('var(--accent)'));
     expect(using.length).toBeGreaterThan(0);
     for (const [, selectors = '', body = ''] of using) {
       const list = selectors.split(',').map((item) => item.trim());
       expect(
-        list.every((item) => allowed.includes(item)),
+        list.every((item) => allowed.has(item)),
         selectors.trim(),
       ).toBe(true);
-      // A barra de 3px do link atual.
-      expect(body, selectors.trim()).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--accent\)/);
+      for (const item of list) {
+        expect(body, item).toMatch(allowed.get(item) ?? /$^/);
+      }
     }
   });
 
