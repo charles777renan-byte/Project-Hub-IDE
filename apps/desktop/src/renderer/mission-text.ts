@@ -1060,15 +1060,31 @@ export function verificationEntries(events: readonly MissionEventDto[]): Verific
     });
 }
 
+/** Lista de textos de um campo do payload; o que não é texto fica de fora. */
+function textsOf(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
 /**
- * Textos dos critérios de aceite comprovados: só os que o agente associou a uma verificação que passou
- * (sem falhas e com ao menos um teste). Critério sem associação não entra, e continua "não verificado".
+ * Textos dos critérios de aceite comprovados. Entram os que uma verificação que passou (sem falhas e com ao
+ * menos um teste) traz associados, e os que o agente indicou na resposta com os testes da tentativa
+ * passando (`criteria.verified`; em cada tentativa vale a última indicação). Critério sem associação não
+ * entra, e continua "não verificado".
  */
 export function verifiedCriteria(events: readonly MissionEventDto[]): Set<string> {
   const verified = new Set<string>();
   for (const entry of verificationEntries(events)) {
     if (entry.failed > 0 || entry.passed === 0) continue;
     for (const criterion of entry.criteria) verified.add(criterion.trim());
+  }
+  const indicated = new Map<string, MissionEventDto>();
+  for (const event of [...events].sort((a, b) => a.sequence - b.sequence)) {
+    if (event.eventType === 'criteria.verified') indicated.set(event.aggregateId, event);
+  }
+  for (const event of indicated.values()) {
+    for (const criterion of textsOf(event.payload['criteria'])) verified.add(criterion.trim());
   }
   return verified;
 }
@@ -1236,6 +1252,17 @@ export function describeEvent(event: MissionEventDto): string | null {
         return `Verificação sem testes: ${run.command}, nenhum teste rodou em ${time}.`;
       }
       return `Verificação concluída: ${run.command}, ${run.passed}/${total} testes passaram em ${time}.`;
+    }
+    case 'criteria.verified': {
+      const claimed = textsOf(payload['claimed']).length;
+      const proven = textsOf(payload['criteria']).length;
+      if (claimed === 0) return 'O agente não indicou critério comprovado pelos testes.';
+      if (proven === 0) {
+        return `O agente indicou ${claimed} ${claimed === 1 ? 'critério' : 'critérios'}, mas os testes da tentativa não passaram: nenhum foi marcado.`;
+      }
+      return proven === 1
+        ? 'O agente indicou 1 critério comprovado pelos testes.'
+        : `O agente indicou ${proven} critérios comprovados pelos testes.`;
     }
     case 'approval.requested': {
       const title = textOf(asRecord(payload['request'])?.['title']);

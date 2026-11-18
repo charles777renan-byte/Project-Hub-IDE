@@ -14,6 +14,7 @@ import {
   type FakeWorktrees,
 } from './fakes-missions';
 import type { PlannedTask } from '../src/missions/plan-validation';
+import { verificationRequest } from '../src/missions/criteria';
 
 const T0 = '2026-10-20T09:00:00.000Z';
 
@@ -1830,9 +1831,11 @@ describe('revisão da conclusão', () => {
     expect(h.worktrees.created).toHaveLength(1);
     expect(h.agent.starts[1]?.cwd).toBe(h.agent.starts[0]?.cwd);
     expect(h.agent.starts[1]?.prompt).toBe(
-      'Corrigir o login\n\nAjustes pedidos na revisão:\nTrocar o nome da função',
+      `Corrigir o login\n\nAjustes pedidos na revisão:\nTrocar o nome da função\n\n${verificationRequest(missionFixture().acceptanceCriteria)}`,
     );
-    expect(h.agent.starts[0]?.prompt).toBe('Corrigir o login');
+    expect(h.agent.starts[0]?.prompt).toBe(
+      `Corrigir o login\n\n${verificationRequest(missionFixture().acceptanceCriteria)}`,
+    );
     expect(h.repo.getMission(MISSION)?.status).toBe('review');
   });
 
@@ -1911,6 +1914,11 @@ describe('tarefas do plano, em sequência', () => {
       expect.stringContaining('Tarefa c'),
     ]);
     expect(h.agent.starts[2]?.prompt).toContain('Tarefas já concluídas');
+    // Cada tarefa termina pedindo os testes: é deles que sai a verificação da revisão.
+    for (const start of h.agent.starts)
+      expect(start.prompt.endsWith(verificationRequest(missionFixture().acceptanceCriteria))).toBe(
+        true,
+      );
     expect(new Set(h.agent.starts.map((s) => s.cwd)).size).toBe(1);
     expect(h.worktrees.created).toHaveLength(1);
     expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'succeeded', 'succeeded']);
@@ -1960,15 +1968,177 @@ describe('tarefas do plano, em sequência', () => {
     expect(h.repo.getMission(MISSION)?.status).toBe('review');
   });
 
-  it('etapas sem papel continuam numa sessão só, com o objetivo da missão', async () => {
+  /** Etapas sem papel: o plano de uma etapa por critério, que roda numa sessão só. */
+  function plainSteps() {
+    return [task('a', 1), task('b', 2)].map(({ role: _role, ...plain }) => plain);
+  }
+
+  it('etapas sem papel continuam numa sessão só, com o objetivo da missão, e terminam como ela', async () => {
     const h = harness();
     h.repo.insertMission(missionFixture());
-    h.repo.insertSteps([task('a', 1), task('b', 2)].map(({ role: _role, ...plain }) => plain));
+    h.repo.insertSteps(plainSteps());
 
     data(await h.orchestrator.startMission(MISSION));
 
     expect(h.agent.starts).toHaveLength(1);
-    expect(h.agent.starts[0]?.prompt).toBe('Corrigir o login');
+    expect(h.agent.starts[0]?.prompt).toBe(
+      `Corrigir o login\n\n${verificationRequest(missionFixture().acceptanceCriteria)}`,
+    );
+    // A sessão é da missão inteira: as etapas acompanham o fim dela, e não ficam "Pendente" para sempre.
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'succeeded']);
+    expect(
+      h.repo.steps().every((s) => s.startedAt !== undefined && s.finishedAt !== undefined),
+    ).toBe(true);
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+  });
+
+  it('etapas sem papel ficam em execução enquanto a sessão espera uma aprovação', async () => {
+    const h = harness({ scripts: [[{ kind: 'approval' }]] });
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps(plainSteps());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('waiting_approval');
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['running', 'running']);
+  });
+
+  it('etapas sem papel falham com a sessão, e a nova tentativa as conclui', async () => {
+    const h = harness({ scripts: [[{ kind: 'fail', message: 'quebrou' }]] });
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps(plainSteps());
+
+    data(await h.orchestrator.startMission(MISSION));
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['failed', 'failed']);
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+
+    data(await h.orchestrator.retryMission(MISSION));
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'succeeded']);
+  });
+
+  it('etapa ignorada não acompanha a sessão', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture());
+    const [first, second] = plainSteps();
+    h.repo.insertSteps([first!, { ...second!, status: 'skipped' as const }]);
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'skipped']);
+  });
+
+  it('cancelar a missão devolve a pendente as etapas que estavam em execução', async () => {
+    const h = harness({ scripts: [[{ kind: 'approval' }]] });
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps(plainSteps());
+    data(await h.orchestrator.startMission(MISSION));
+
+    data(await h.orchestrator.cancelMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('cancelled');
     expect(h.repo.steps().map((s) => s.status)).toEqual(['pending', 'pending']);
+  });
+
+  it('cancelar a missão devolve a pendente a tarefa que estava em execução, e mantém as concluídas', async () => {
+    const h = harness({ scripts: [[], [{ kind: 'approval' }]] });
+    h.repo.insertMission(missionFixture());
+    h.repo.insertSteps([task('a', 1), task('b', 2, ['a'])]);
+    data(await h.orchestrator.startMission(MISSION));
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'running']);
+
+    data(await h.orchestrator.cancelMission(MISSION));
+
+    expect(h.repo.steps().map((s) => s.status)).toEqual(['succeeded', 'pending']);
+  });
+});
+
+describe('critérios indicados pelo agente', () => {
+  const tests = (passed: number, failed: number): FakeStep => ({
+    kind: 'event',
+    event: { type: 'verification.completed', command: 'pnpm test', passed, failed, durationMs: 5 },
+  });
+  const answer = (text: string): FakeStep => ({
+    kind: 'event',
+    event: { type: 'message.completed', messageId: 'm1', text },
+  });
+  const verifiedOf = (h: ReturnType<typeof harness>) =>
+    h.repo
+      .audit()
+      .filter((e) => e.eventType === 'criteria.verified')
+      .map((e) => e.payload);
+
+  it('com os testes passando, os critérios que o agente indicou ficam comprovados', async () => {
+    const h = harness({
+      scripts: [[tests(3, 0), answer('Pronto.' + '\n' + 'Critérios comprovados: 2')]],
+    });
+    h.repo.insertMission(missionFixture());
+
+    const execution = data(await h.orchestrator.startMission(MISSION));
+
+    expect(verifiedOf(h)).toEqual([{ claimed: ['Testes passam'], criteria: ['Testes passam'] }]);
+    const event = h.repo.audit().find((e) => e.eventType === 'criteria.verified');
+    expect(event).toMatchObject({
+      aggregateType: 'execution',
+      aggregateId: execution.id,
+      actor: 'agent',
+    });
+  });
+
+  it('a resposta do agente não fica na auditoria: só o fim da mensagem', async () => {
+    const h = harness({
+      scripts: [
+        [tests(3, 0), answer('Texto longo da resposta.' + '\n' + 'Critérios comprovados: 1')],
+      ],
+    });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    const message = h.repo.audit().find((e) => e.eventType === 'message.completed');
+    expect(message?.payload).toMatchObject({ type: 'message.completed', messageId: 'm1' });
+    expect(message?.payload).not.toHaveProperty('text');
+  });
+
+  it('com teste falhando, a indicação fica registrada mas nenhum critério é comprovado', async () => {
+    const h = harness({ scripts: [[tests(2, 1), answer('Critérios comprovados: 1, 2')]] });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(verifiedOf(h)).toEqual([{ claimed: ['Login funciona', 'Testes passam'], criteria: [] }]);
+  });
+
+  it('sem teste nenhum na tentativa, a indicação não comprova critério', async () => {
+    const h = harness({ scripts: [[answer('Critérios comprovados: 1')]] });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(verifiedOf(h)).toEqual([{ claimed: ['Login funciona'], criteria: [] }]);
+  });
+
+  it('resposta sem a linha dos critérios não registra nada', async () => {
+    const h = harness({ scripts: [[tests(3, 0), answer('Terminei.')]] });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(verifiedOf(h)).toEqual([]);
+  });
+
+  it('cada resposta com a linha registra a indicação da vez', async () => {
+    const h = harness({
+      scripts: [
+        [tests(3, 0), answer('Critérios comprovados: 1'), answer('Critérios comprovados: nenhum')],
+      ],
+    });
+    h.repo.insertMission(missionFixture());
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(verifiedOf(h)).toEqual([
+      { claimed: ['Login funciona'], criteria: ['Login funciona'] },
+      { claimed: [], criteria: [] },
+    ]);
   });
 });

@@ -119,6 +119,62 @@ describe('mapHookEntry', () => {
     ).toEqual({ type: 'tool.completed', callId: 't1', result: { ok: true }, at });
   });
 
+  it('a missão pede também a falha de ferramenta, e ela fecha a chamada com o motivo', () => {
+    expect(HOOK_EVENTS).toContain('PostToolUseFailure');
+    expect(
+      mapHookEntry({
+        seq: 7,
+        receivedAt: at,
+        payload: {
+          hook_event_name: 'PostToolUseFailure',
+          tool_use_id: 't9',
+          error: 'Exit code 1\nError: quebrou',
+        },
+      }),
+    ).toEqual({
+      type: 'tool.completed',
+      callId: 't9',
+      result: { ok: false, error: { code: 'UNKNOWN', message: 'Exit code 1', retryable: false } },
+      at,
+    });
+    expect(
+      mapHookEntry({ seq: 8, receivedAt: at, payload: { hook_event_name: 'PostToolUseFailure' } }),
+    ).toEqual({
+      type: 'tool.completed',
+      callId: 'tool-8',
+      result: {
+        ok: false,
+        error: { code: 'UNKNOWN', message: 'A ferramenta falhou.', retryable: false },
+      },
+      at,
+    });
+  });
+
+  it('a resposta concluída leva o texto final do agente, só o final quando é longo', () => {
+    const stop = (message: unknown) =>
+      mapHookEntry({
+        seq: 9,
+        receivedAt: at,
+        payload: { hook_event_name: 'Stop', last_assistant_message: message },
+      });
+
+    expect(stop('Pronto.\nCritérios comprovados: 1')).toEqual({
+      type: 'message.completed',
+      messageId: 'stop-9',
+      text: 'Pronto.\nCritérios comprovados: 1',
+      at,
+    });
+
+    const long = stop(`${'x'.repeat(10_000)}\nCritérios comprovados: 2`);
+    if (long?.type !== 'message.completed') throw new Error('era para ser o fim da mensagem');
+    expect(long.text?.length).toBeLessThanOrEqual(4_000);
+    expect(long.text?.endsWith('Critérios comprovados: 2')).toBe(true);
+
+    // Sem texto, o evento sai como antes.
+    expect(stop('')).toEqual({ type: 'message.completed', messageId: 'stop-9', at });
+    expect(stop(undefined)).toEqual({ type: 'message.completed', messageId: 'stop-9', at });
+  });
+
   it('converte a resposta concluída e o fim da sessão', () => {
     expect(mapHookEntry({ seq: 5, receivedAt: at, payload: { hook_event_name: 'Stop' } })).toEqual({
       type: 'message.completed',

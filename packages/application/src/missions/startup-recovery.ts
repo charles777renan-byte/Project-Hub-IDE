@@ -1,5 +1,6 @@
 import type { Execution, MissionStatus } from '@project-hub/domain';
 import type { MissionRepository } from '../ports';
+import { stepsOfExecution } from './tasks';
 import { expirePendingApprovals, moveMission } from './transitions';
 
 /** Estados em que a missão espera algo do usuário ou está pausada, com a execução ainda aberta. */
@@ -30,7 +31,8 @@ export function openExecutionsAtStart(repo: MissionRepository): Execution[] {
 
 /**
  * Fecha uma execução aberta que o agente não retoma, como `interrupted_by_restart`. Usada quando a
- * sessão não existe mais, e também quando o adaptador não consegue reanexar.
+ * sessão não existe mais, e também quando o adaptador não consegue reanexar. As etapas que ela deixou
+ * em andamento falham junto, para o plano não mostrar trabalho em execução sem agente.
  */
 export function failInterruptedExecution(
   repo: MissionRepository,
@@ -54,6 +56,9 @@ export function failInterruptedExecution(
       createdAt: at,
     });
     expirePendingApprovals(repo, execution.id, at);
+    for (const step of stepsOfExecution(repo.listSteps(execution.missionId), execution.stepId)) {
+      if (step.status === 'running') repo.updateStep(step.id, { status: 'failed', finishedAt: at });
+    }
 
     const mission = repo.getMission(execution.missionId);
     if (mission === undefined) throw new Error(`Missão ausente: ${execution.missionId}.`);

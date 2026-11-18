@@ -16,6 +16,7 @@ import {
   writeSettingsFile,
   type HookRecord,
 } from './settings';
+import { verificationOf } from './verification';
 import {
   claudeConfigDirOf,
   createTranscriptUsageTracker,
@@ -276,6 +277,9 @@ async function* watchEvents(
           }
           yield event;
           if (event.type === 'input.requested') waiting = true;
+          // O comando de teste que o agente rodou: a verificação sai logo depois do fim da ferramenta.
+          const verification = verificationOf(record);
+          if (verification !== undefined) yield verification;
         } else if (waiting && record.payload['hook_event_name'] === 'UserPromptSubmit') {
           waiting = false;
           yield { type: 'input.received', at: record.receivedAt };

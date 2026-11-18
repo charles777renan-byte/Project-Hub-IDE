@@ -135,4 +135,50 @@ describe('recoverInterruptedExecutions', () => {
     expect(repo.getMission('missao-1')?.status).toBe('succeeded');
     expect(repo.audit()).toHaveLength(0);
   });
+
+  it('as etapas em execução da tentativa interrompida viram failed; as outras ficam como estavam', () => {
+    const repo = fakeMissionRepository();
+    seed(repo);
+    const step = (id: string, position: number, status: 'running' | 'succeeded') => ({
+      id,
+      missionId: 'missao-1',
+      position,
+      title: `Etapa ${id}`,
+      description: '',
+      kind: 'custom' as const,
+      status,
+      dependsOn: [],
+      agent: 'claude-code' as const,
+    });
+    // Plano sem tarefas (etapas sem papel): a sessão é da missão inteira.
+    repo.insertSteps([step('a', 1, 'running'), step('b', 2, 'succeeded')]);
+
+    recoverInterruptedExecutions(repo, now);
+
+    expect(repo.steps().map((s) => s.status)).toEqual(['failed', 'succeeded']);
+    expect(repo.steps()[0]?.finishedAt).toBe(NOW);
+  });
+
+  it('a tarefa da tentativa interrompida vira failed, e a tarefa seguinte segue pendente', () => {
+    const repo = fakeMissionRepository();
+    repo.insertMission(mission());
+    repo.insertExecution(execution({ stepId: 'a' }));
+    const task = (id: string, position: number, status: 'running' | 'pending') => ({
+      id,
+      missionId: 'missao-1',
+      position,
+      title: `Tarefa ${id}`,
+      description: '',
+      kind: 'custom' as const,
+      status,
+      dependsOn: [],
+      agent: 'claude-code' as const,
+      role: 'general' as const,
+    });
+    repo.insertSteps([task('a', 1, 'running'), task('b', 2, 'pending')]);
+
+    recoverInterruptedExecutions(repo, now);
+
+    expect(repo.steps().map((s) => s.status)).toEqual(['failed', 'pending']);
+  });
 });
