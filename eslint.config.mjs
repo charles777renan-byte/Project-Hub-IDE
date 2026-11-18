@@ -5,7 +5,20 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-  globalIgnores(['**/node_modules/', '**/dist/', '**/out/', '**/coverage/', '.superpowers/']),
+  globalIgnores([
+    '**/node_modules/',
+    '**/dist/',
+    '**/out/',
+    '**/coverage/',
+    '.superpowers/',
+    // Pastas que só existem na máquina, fora do git: o ESLint não lê o .gitignore, então elas entram aqui.
+    // Skills instaladas, worktrees e configuração do agente, o cérebro, o grafo e o material do trailer.
+    '.agents/',
+    '.claude/',
+    'brain/',
+    'graphify-out/',
+    'trailer/',
+  ]),
 
   js.configs.recommended,
   tseslint.configs.recommended,
