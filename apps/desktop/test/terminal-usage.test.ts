@@ -81,7 +81,7 @@ function setup(log = hookLog()) {
   let clock = 10_000;
   const service = createTerminalUsageService({
     hooks: log.hooks,
-    configDir,
+    roots: { claude: configDir, codex: join(configDir, 'codex') },
     now: () => clock,
   });
   return {
@@ -98,13 +98,13 @@ describe('gasto de tokens por terminal', () => {
     const h = setup();
     expect(await h.service.usageOf('t1')).toBeUndefined();
 
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     expect(await h.service.usageOf('t1')).toBeUndefined();
   });
 
   it('aprende o transcript pelo SessionStart e soma as respostas', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
     answer(SESSION, 'msg_2', 5, 20);
@@ -114,7 +114,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('lê os hooks em ordem, de onde parou, mesmo quando a resposta vem cortada', async () => {
     const h = setup(hookLog(1));
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', { hook_event_name: 'SessionEnd', reason: 'other' });
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 1, 7);
@@ -125,7 +125,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('um /clear abre outra sessão, que entra na mesma soma', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
     expect(await h.service.usageOf('t1')).toMatchObject({ outputTokens: 100 });
@@ -141,7 +141,7 @@ describe('gasto de tokens por terminal', () => {
   it('terminal recuperado depois de reiniciar o app relê o log do começo e refaz o total', async () => {
     const log = hookLog();
     const before = setup(log);
-    before.service.track('t1');
+    before.service.track('t1', 'claude');
     log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
     log.push('t1', { hook_event_name: 'SessionEnd', reason: 'clear' });
@@ -152,7 +152,7 @@ describe('gasto de tokens por terminal', () => {
     // Outra execução do app: serviço novo, mesmo log de hooks em disco e mesmos transcripts.
     log.reads.length = 0;
     const after = setup(log);
-    after.service.track('t1');
+    after.service.track('t1', 'claude');
 
     expect(await after.service.usageOf('t1')).toEqual(original);
     expect(log.reads[0]).toEqual({ terminalId: 't1', afterSeq: 0 });
@@ -160,7 +160,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('ignora o hook truncado, que chega sem conteúdo, e segue para o próximo', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', { ...sessionStart(SESSION), truncated: true });
     answer(SESSION, 'msg_1', 10, 100);
 
@@ -177,7 +177,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('lê no máximo a cada 1,5 s por terminal e, no intervalo, devolve o último total', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
     expect(await h.service.usageOf('t1')).toMatchObject({ outputTokens: 100 });
@@ -195,7 +195,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('total sem mudança continua sendo devolvido (o leitor só avisa quando muda)', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
     await h.service.usageOf('t1');
@@ -206,7 +206,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('pedidos ao mesmo tempo esperam a mesma leitura, sem ler duas vezes', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
 
@@ -222,7 +222,7 @@ describe('gasto de tokens por terminal', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       const h = setup();
-      h.service.track('t1');
+      h.service.track('t1', 'claude');
       h.log.push('t1', sessionStart(SESSION));
       answer(SESSION, 'msg_1', 10, 100);
       await h.service.usageOf('t1');
@@ -243,7 +243,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('terminal esquecido solta o leitor: sem número e sem ler mais nada', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
     await h.service.usageOf('t1');
@@ -259,8 +259,8 @@ describe('gasto de tokens por terminal', () => {
 
   it('cada terminal tem a sua soma', async () => {
     const h = setup();
-    h.service.track('t1');
-    h.service.track('t2');
+    h.service.track('t1', 'claude');
+    h.service.track('t2', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     h.log.push('t2', sessionStart(CLEARED));
     answer(SESSION, 'msg_1', 10, 100);
@@ -272,7 +272,7 @@ describe('gasto de tokens por terminal', () => {
 
   it('contexto: depois da leitura traz modelo, tokens usados e a janela do modelo', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     answer(SESSION, 'msg_1', 10, 100);
 
@@ -290,7 +290,7 @@ describe('gasto de tokens por terminal', () => {
     const h = setup();
     expect(h.service.contextOf('t1')).toBeUndefined();
 
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     expect(h.service.contextOf('t1')).toBeUndefined();
 
     h.log.push('t1', sessionStart(SESSION));
@@ -312,7 +312,7 @@ describe('gasto de tokens por terminal', () => {
     const log = hookLog();
     const service = createTerminalUsageService({
       hooks: log.hooks,
-      configDir,
+      roots: { claude: configDir, codex: join(configDir, 'codex') },
       now: () => clock,
       createTracker: () => ({
         addSession: () => undefined,
@@ -323,7 +323,7 @@ describe('gasto de tokens por terminal', () => {
         },
       }),
     });
-    service.track('t1');
+    service.track('t1', 'claude');
     log.push('t1', sessionStart(SESSION));
     await service.usageOf('t1');
     expect(service.contextOf('t1')).toMatchObject({ usedTokens: 500 });
@@ -343,7 +343,7 @@ describe('gasto de tokens por terminal', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       const h = setup();
-      h.service.track('t1');
+      h.service.track('t1', 'claude');
       h.log.push('t1', sessionStart(SESSION));
       answer(SESSION, 'msg_1', 10, 100);
       await h.service.usageOf('t1');
@@ -370,7 +370,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
   it('terminal não acompanhado ou sem pedido não aguarda', async () => {
     const h = setup();
     expect(h.service.waitingOf('t1')).toBe(false);
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     await h.service.usageOf('t1');
     expect(h.service.waitingOf('t1')).toBe(false);
@@ -378,7 +378,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
 
   it('um pedido de permissão deixa o terminal aguardando, mesmo sem transcript nem número', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', permission);
     expect(await h.service.usageOf('t1')).toBeUndefined();
     expect(h.service.waitingOf('t1')).toBe(true);
@@ -391,7 +391,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
     'agent_needs_input',
   ])('o aviso %s também deixa aguardando', async (type) => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', notice(type));
     await h.service.usageOf('t1');
     expect(h.service.waitingOf('t1')).toBe(true);
@@ -401,7 +401,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
     'o aviso %s não é pedido: resposta terminada continua ociosa',
     async (type) => {
       const h = setup();
-      h.service.track('t1');
+      h.service.track('t1', 'claude');
       h.log.push('t1', notice(type));
       await h.service.usageOf('t1');
       expect(h.service.waitingOf('t1')).toBe(false);
@@ -417,7 +417,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
     'SessionStart',
   ])('o evento %s depois do pedido encerra a espera', async (event) => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', permission);
     await h.service.usageOf('t1');
     expect(h.service.waitingOf('t1')).toBe(true);
@@ -430,7 +430,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
 
   it('o aviso de permissão que chega segundos depois do pedido mantém a espera', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', permission);
     h.log.push('t1', notice('permission_prompt'));
     await h.service.usageOf('t1');
@@ -439,7 +439,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
 
   it('um aviso que não é pedido não encerra a espera de um pedido', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', permission);
     h.log.push('t1', notice('auth_success'));
     await h.service.usageOf('t1');
@@ -448,7 +448,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
 
   it('registro cortado ainda conta como evento: encerra a espera', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', permission);
     h.log.push('t1', { hook_event_name: 'PostToolUse', truncated: true });
     await h.service.usageOf('t1');
@@ -461,7 +461,7 @@ describe('atenção do terminal (o Claude pede algo)', () => {
     h.log.push('t1', permission);
     h.log.push('t1', { hook_event_name: 'PostToolUse' });
     h.log.push('t1', permission);
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     await h.service.usageOf('t1');
     expect(h.service.waitingOf('t1')).toBe(true);
 
@@ -474,7 +474,7 @@ describe('modelo dito pelo SessionStart', () => {
   it('o modelo do SessionStart vale antes de haver resposta', async () => {
     const h = setup();
     expect(h.service.modelOf('t1')).toBeUndefined();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', { ...sessionStart(SESSION), model: 'claude-haiku-5-5' });
     await h.service.usageOf('t1');
     expect(h.service.modelOf('t1')).toBe('claude-haiku-5-5');
@@ -483,7 +483,7 @@ describe('modelo dito pelo SessionStart', () => {
 
   it('SessionStart sem modelo, com modelo que não é texto ou longo demais não diz nada', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', sessionStart(SESSION));
     h.log.push('t1', { ...sessionStart(SESSION), model: 42 });
     h.log.push('t1', { ...sessionStart(SESSION), model: 'm'.repeat(101) });
@@ -494,7 +494,7 @@ describe('modelo dito pelo SessionStart', () => {
 
   it('o SessionStart mais recente com modelo vence, e um sem modelo não apaga o anterior', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', { ...sessionStart(SESSION), model: 'claude-haiku-5-5' });
     h.log.push('t1', { ...sessionStart(CLEARED, 'clear'), model: 'claude-opus-5-5' });
     h.log.push('t1', sessionStart(CLEARED, 'resume'));
@@ -502,9 +502,50 @@ describe('modelo dito pelo SessionStart', () => {
     expect(h.service.modelOf('t1')).toBe('claude-opus-5-5');
   });
 
+  it('terminal de codex usa o leitor do codex e o de claude, o do claude', async () => {
+    const created: { provider: string; root: string; sessions: string[] }[] = [];
+    let clock = 10_000;
+    const log = hookLog();
+    const service = createTerminalUsageService({
+      hooks: log.hooks,
+      roots: { claude: '/raiz-claude', codex: '/raiz-codex' },
+      now: () => clock,
+      createTracker: (provider, root) => {
+        const entry = { provider, root, sessions: [] as string[] };
+        created.push(entry);
+        return {
+          addSession: (path) => {
+            entry.sessions.push(path);
+          },
+          poll: () => Promise.resolve(undefined),
+          latestContext: () => undefined,
+        };
+      },
+    });
+    service.track('t1', 'codex');
+    service.track('t2', 'claude');
+    expect(created.map(({ provider, root }) => ({ provider, root }))).toEqual([
+      { provider: 'codex', root: '/raiz-codex' },
+      { provider: 'claude', root: '/raiz-claude' },
+    ]);
+
+    log.push('t1', {
+      hook_event_name: 'SessionStart',
+      session_id: 'sessao-codex',
+      transcript_path: '/raiz-codex/sessions/2026/11/15/rollout-x-sessao-codex.jsonl',
+    });
+    await service.usageOf('t1');
+    clock += 2000;
+    await service.usageOf('t2');
+    expect(created[0]?.sessions).toEqual([
+      '/raiz-codex/sessions/2026/11/15/rollout-x-sessao-codex.jsonl',
+    ]);
+    expect(created[1]?.sessions).toEqual([]);
+  });
+
   it('o modelo de outro evento não conta', async () => {
     const h = setup();
-    h.service.track('t1');
+    h.service.track('t1', 'claude');
     h.log.push('t1', { hook_event_name: 'Stop', model: 'claude-haiku-5-5' });
     await h.service.usageOf('t1');
     expect(h.service.modelOf('t1')).toBeUndefined();
