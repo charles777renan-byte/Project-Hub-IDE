@@ -389,26 +389,99 @@ describe('ProjectMissions: criar missão', () => {
         await screen.findByRole('button', { name: 'Criar e fazer o primeiro commit' }),
       );
 
-      await waitFor(() => expect(api.projects.initRepository).toHaveBeenCalledWith('p1'));
+      await waitFor(() => expect(api.projects.initRepository).toHaveBeenCalledWith('p1', undefined));
       await waitFor(() => expect(changed).toHaveBeenCalled());
       window.removeEventListener('project-hub:projects-changed', changed);
     });
 
-    it('sem identidade no Git, a tela diz o que configurar e não abre a confirmação', async () => {
+    const withoutIdentity = {
+      ok: true,
+      data: {
+        identityConfigured: false,
+        suggestedIdentity: { name: 'Ana Souza', email: 'ana@project-hub.local' },
+        createsGitignore: true,
+        sensitiveFiles: [],
+      },
+    };
+
+    it('sem identidade no Git, a confirmação já traz o autor proposto e um clique cria com ele', async () => {
       const api = installApi();
-      api.projects.repositoryPreview.mockResolvedValueOnce({
-        ok: true,
-        data: { identityConfigured: false, createsGitignore: true, sensitiveFiles: [] },
-      } as never);
+      api.projects.repositoryPreview.mockResolvedValueOnce(withoutIdentity as never);
       renderMissions({ shownProject: noGit });
 
       await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(/configure seu nome/);
       expect(
-        screen.queryByRole('button', { name: 'Criar e fazer o primeiro commit' }),
-      ).not.toBeInTheDocument();
+        await screen.findByText('O commit sai como Ana Souza <ana@project-hub.local>.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/git config/)).not.toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Criar e fazer o primeiro commit' }),
+      );
+
+      await waitFor(() =>
+        expect(api.projects.initRepository).toHaveBeenCalledWith('p1', {
+          name: 'Ana Souza',
+          email: 'ana@project-hub.local',
+        }),
+      );
+    });
+
+    it('Alterar abre os campos do autor, e a criação leva o que a pessoa digitou', async () => {
+      const api = installApi();
+      api.projects.repositoryPreview.mockResolvedValueOnce(withoutIdentity as never);
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Alterar' }));
+      const name = screen.getByRole('textbox', { name: 'Nome do autor' });
+      const email = screen.getByRole('textbox', { name: 'E-mail do autor' });
+      expect(name).toHaveValue('Ana Souza');
+      expect(name).toHaveFocus();
+      await userEvent.clear(name);
+      await userEvent.type(name, '  Ana S.  ');
+      await userEvent.clear(email);
+      await userEvent.type(email, 'ana@empresa.com');
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Criar e fazer o primeiro commit' }),
+      );
+
+      await waitFor(() =>
+        expect(api.projects.initRepository).toHaveBeenCalledWith('p1', {
+          name: 'Ana S.',
+          email: 'ana@empresa.com',
+        }),
+      );
+    });
+
+    it('autor sem nome ou com e-mail inválido não cria nada e diz o que falta', async () => {
+      const api = installApi();
+      api.projects.repositoryPreview.mockResolvedValueOnce(withoutIdentity as never);
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Alterar' }));
+      await userEvent.clear(screen.getByRole('textbox', { name: 'E-mail do autor' }));
+      await userEvent.type(screen.getByRole('textbox', { name: 'E-mail do autor' }), 'sem-arroba');
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Criar e fazer o primeiro commit' }),
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Informe o nome e um e-mail válido para o autor do commit.',
+      );
       expect(api.projects.initRepository).not.toHaveBeenCalled();
+    });
+
+    it('com identidade no Git, a confirmação não fala de autor', async () => {
+      installApi();
+      renderMissions({ shownProject: noGit });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Criar repositório Git' }));
+
+      await screen.findByRole('button', { name: 'Criar e fazer o primeiro commit' });
+      expect(screen.queryByText(/O commit sai como/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Alterar' })).not.toBeInTheDocument();
     });
 
     it('arquivos com nome de segredo aparecem na confirmação', async () => {

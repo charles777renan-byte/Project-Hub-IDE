@@ -17,7 +17,7 @@ const execFileMock = vi.mocked(execFile);
  * Responde como o Git faria a cada passo: a identidade existe, `init` cria a pasta `.git`, `add` passa, e o
  * `commit` falha quando `failCommit` é verdadeiro. Os argumentos chegam depois do `-c core.fsmonitor=false`.
  */
-function fakeGit(failCommit: boolean): void {
+function fakeGit(failCommit: boolean, identity = true): void {
   execFileMock.mockImplementation(((
     _file: string,
     args: string[],
@@ -25,7 +25,10 @@ function fakeGit(failCommit: boolean): void {
     callback: Callback,
   ) => {
     const [, , subcommand] = args;
-    if (subcommand === 'config') return callback(null, 'Teste\n', '');
+    if (subcommand === 'config' && args[3] === '--get') {
+      if (identity) return callback(null, 'Teste\n', '');
+      return callback(Object.assign(new Error('sem valor'), { code: 1 }), '', '');
+    }
     if (subcommand === 'init') {
       mkdirSync(join(options.cwd, '.git'));
       return callback(null, '', '');
@@ -76,6 +79,25 @@ describe('initRepository: desfazer em falha', () => {
       ['config', '--get', 'user.name'],
       ['config', '--get', 'user.email'],
       ['init', '--initial-branch=main'],
+      ['add', '--all'],
+      ['commit', '--no-verify', '--allow-empty', '-m', 'Estado inicial do projeto'],
+    ]);
+  });
+
+  it('sem identidade no Git, a informada é gravada no repositório depois do init e antes do commit', async () => {
+    fakeGit(false, false);
+
+    await initRepository({
+      path: folder,
+      identity: { name: 'Ana Souza', email: 'ana@project-hub.local' },
+    });
+
+    const subcommands = execFileMock.mock.calls.map((call) => (call[1] as string[]).slice(2));
+    expect(subcommands).toEqual([
+      ['config', '--get', 'user.name'],
+      ['init', '--initial-branch=main'],
+      ['config', '--local', 'user.name', 'Ana Souza'],
+      ['config', '--local', 'user.email', 'ana@project-hub.local'],
       ['add', '--all'],
       ['commit', '--no-verify', '--allow-empty', '-m', 'Estado inicial do projeto'],
     ]);

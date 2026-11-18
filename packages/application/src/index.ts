@@ -14,6 +14,12 @@ export {
   previewRepositoryInit,
   type InitRepositoryDeps,
 } from './projects/init-repository';
+export {
+  GIT_IDENTITY_EMAIL_KEY,
+  GIT_IDENTITY_NAME_KEY,
+  suggestGitIdentity,
+  type GitIdentityDeps,
+} from './projects/git-identity';
 export { normalizePath, type Platform } from './projects/normalize-path';
 export { getGitStatus } from './git-panel/status';
 export { getFileDiff } from './git-panel/diff';

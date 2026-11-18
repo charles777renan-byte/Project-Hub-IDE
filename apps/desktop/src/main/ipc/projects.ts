@@ -18,6 +18,7 @@ import {
 import {
   addProjectInputSchema,
   CHANNELS,
+  initRepositoryInputSchema,
   projectIdInputSchema,
   setProjectGroupInputSchema,
   setProjectNicknameInputSchema,
@@ -57,6 +58,7 @@ export function handleRemoveProject(deps: ProjectsIpcDeps, payload: unknown): Ap
 }
 
 const INVALID_PROJECT = 'Informe o projeto.';
+const INVALID_GIT_AUTHOR = 'Informe o nome e um e-mail válido para o autor do commit.';
 
 export function handleListProjects(services: AddProjectDeps): Promise<AppResult<ProjectSummary[]>> {
   return listProjects({ repo: services.repo, fs: services.fs });
@@ -153,8 +155,11 @@ export async function handleInitRepository(
   deps: InitRepositoryDeps,
   payload: unknown,
 ): Promise<AppResult<ProjectSummary>> {
-  const input = projectIdInputSchema.safeParse(payload);
-  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
+  const input = initRepositoryInputSchema.safeParse(payload);
+  if (!input.success) {
+    const author = input.error.issues.some((issue) => issue.path[0] === 'identity');
+    return failure('VALIDATION_FAILED', author ? INVALID_GIT_AUTHOR : INVALID_PROJECT);
+  }
   const result = await initProjectRepository(deps, input.data);
   if (!result.ok) return result;
   // A aplicação confere a pasta antes de criar o repositório, então ela segue disponível.

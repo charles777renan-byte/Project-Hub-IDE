@@ -1,6 +1,6 @@
 # ADR 0009: Criar o repositório Git pelo aplicativo
 
-- Status: aceita (aprovada pelo usuário em 2026-11-02; implementada no mesmo dia)
+- Status: aceita (aprovada pelo usuário em 2026-11-02; implementada no mesmo dia). Item 5 revisto em 2026-11-17, por escolha do usuário
 - Data: 2026-11-02
 - Origem: conversa sobre o aviso "Este projeto não é um repositório Git" na visão Missões
 - Altera: ADR 0004 e ADR 0007, na parte que proíbe commit pelo aplicativo
@@ -17,7 +17,7 @@ O ADR 0004 e o RF-GIT-007 proíbem commit, push, merge, fetch e pull. Esta decis
 2. **Confirmação antes.** Ao clicar, aparece uma confirmação que diz que o primeiro commit leva os arquivos que o `.gitignore` não ignora, e lista os arquivos com nome sensível que a pasta tem (`.env`, `*.pem`, `*.key`), com o aviso de que eles entram no commit se o `.gitignore` não os ignorar.
 3. **Sequência fixa.** Ao confirmar, o adaptador roda, nesta ordem: `init --initial-branch=main`, `add` (respeitando o `.gitignore`) e `commit` com a mensagem "Estado inicial do projeto". Essas formas ficam numa função só, sem exportação de commit.
 4. **`.gitignore` básico.** Se o projeto não tiver `.gitignore`, o aplicativo cria um com `node_modules/`, `.env`, `*.pem`, `*.key` e `dist/`, antes do `add`. A confirmação mostra que isso vai acontecer.
-5. **Identidade.** O commit usa o `user.name` e o `user.email` que já estão no Git da pessoa. Se faltar qualquer um dos dois, o botão não cria nada e mostra a instrução para configurar. O aplicativo não inventa autor.
+5. **Identidade.** O commit usa o `user.name` e o `user.email` que já estão no Git da pessoa. Se faltar qualquer um dos dois, a confirmação traz o autor já preenchido pelo aplicativo, numa linha "O commit sai como Nome <e-mail>", com "Alterar" para trocá-lo. O nome proposto vem do perfil local (ou do usuário do sistema) e o e-mail é local, no formato `usuario@project-hub.local`; depois da primeira vez, a proposta repete o que a pessoa confirmou. O autor confirmado é gravado só no repositório criado (`config --local`), depois do `init` e antes do commit. O Git global nunca é escrito, e quando ele já tem identidade a da tela não é usada. O aplicativo não grava autor que a pessoa não viu. (Até 2026-11-17, sem identidade o botão só mostrava os comandos `git config` para a pessoa rodar no terminal.)
 6. **Desfazer em falha.** Se algum passo falhar depois do `init`, o aplicativo remove a pasta `.git` que criou e o `.gitignore` que criou, e mostra o erro. Só remove o que ele mesmo criou.
 7. **Depois de dar certo,** o projeto passa a ser tratado como Git na hora, e Nova missão fica habilitado.
 
@@ -45,5 +45,6 @@ Commit de rotina, push, merge, fetch e pull continuam proibidos. A fase 2 do pai
 - Testes com repositório temporário: criação com `.gitignore` existente e ausente, `.env` fora do primeiro commit, falta de identidade, falha no commit com remoção do `.git` criado.
 - Ajuste em relação à proposta: a confirmação não conta os arquivos do primeiro commit. A contagem depende do índice do Git, que só existe depois do `add`; por isso o aviso é sobre os nomes sensíveis e a regra do `.gitignore`.
 - A identidade do Git é lida por `config --get user.name` e `user.email`, duas formas novas na lista de leitura do adaptador. Tudo o mais continua só de leitura.
+- Revisão de 2026-11-17: a lista de formas de `runGitInitRepository` ganha `config --local user.name <valor>` e `config --local user.email <valor>`, e nenhuma outra forma de `config` que escreve. O valor não começa com `-` nem tem caractere de controle; o contrato (`gitIdentitySchema`) recusa também `<` e `>`. A prévia leva `suggestedIdentity` quando falta a identidade, e a criação aceita `identity` opcional: os dois campos são acréscimos, e os canais continuam em `v1`. O autor confirmado fica em `app_settings` (`git.identidade.nome` e `git.identidade.email`).
 - A prévia (`projects:repository-preview:v1`) não escreve nada; a criação (`projects:init-repository:v1`) só roda depois da confirmação.
 - Pendente: a fase 2 decide se o aplicativo pode commitar em geral.

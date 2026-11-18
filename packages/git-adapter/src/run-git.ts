@@ -418,11 +418,18 @@ export async function runGit(
 }
 
 /**
- * Lista de permissão de `runGitInitRepository`: os três passos de criar o repositório do primeiro estado
- * (ADR 0009), nas formas fixas e nenhuma outra. `init` só com a branch `main`; `add` só com `--all`; `commit`
+ * Lista de permissão de `runGitInitRepository`: os passos de criar o repositório do primeiro estado
+ * (ADR 0009), nas formas fixas e nenhuma outra. `init` só com a branch `main`; `config` só como
+ * `config --local user.name|user.email <valor>`, a identidade que a pessoa confirmou; `add` só com `--all`; `commit`
  * sem hooks, sem exigir mudança (`--allow-empty`) e com uma mensagem que não começa com `-`. Nada de `push`,
  * `reset`, `checkout` nem `commit` com `--amend`.
  */
+/** Quebra de linha e outros caracteres de controle, que não cabem num valor de configuração. */
+function hasControlCharacter(value: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /[\u0000-\u001f\u007f]/u.test(value);
+}
+
 function isInitWrite(args: readonly string[]): boolean {
   const [command, ...rest] = args;
   switch (command) {
@@ -430,6 +437,18 @@ function isInitWrite(args: readonly string[]): boolean {
       return rest.length === 1 && rest[0] === '--initial-branch=main';
     case 'add':
       return rest.length === 1 && rest[0] === '--all';
+    case 'config': {
+      // Só a identidade, e só no repositório que acabou de nascer (`--local`): nunca o global da pessoa.
+      const [scope, key, value, ...extra] = rest;
+      return (
+        scope === '--local' &&
+        key !== undefined &&
+        IDENTITY_KEYS.has(key) &&
+        isOperand(value) &&
+        !hasControlCharacter(value) &&
+        extra.length === 0
+      );
+    }
     case 'commit': {
       const [noVerify, allowEmpty, flag, message, ...extra] = rest;
       return (
@@ -447,7 +466,7 @@ function isInitWrite(args: readonly string[]): boolean {
 
 /**
  * Roda um passo de criação do repositório do primeiro estado (ADR 0009), com as mesmas proteções de
- * `runGit`: sem shell, argumentos em array, tempo limite e `-c core.fsmonitor=false`. Só as três formas de
+ * `runGit`: sem shell, argumentos em array, tempo limite e `-c core.fsmonitor=false`. Só as formas de
  * `isInitWrite` passam; qualquer outra rejeita com PERMISSION_DENIED, sem criar processo.
  */
 export async function runGitInitRepository(

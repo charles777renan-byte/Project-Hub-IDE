@@ -63,6 +63,7 @@ import {
   type SessionsListResult,
   type SessionsResumeInput,
   type ProvideInput,
+  type GitIdentity,
   type RepositoryInitPreview,
   type RequestChanges,
   type TerminalEvent,
@@ -133,8 +134,11 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       openFolder: (projectId: string) => call<void>(CHANNELS.projectsOpenFolder, { projectId }),
       repositoryPreview: (projectId: string) =>
         call<RepositoryInitPreview>(CHANNELS.projectsRepositoryPreview, { projectId }),
-      initRepository: (projectId: string) =>
-        call<ProjectSummary>(CHANNELS.projectsInitRepository, { projectId }),
+      initRepository: (projectId: string, identity?: GitIdentity) =>
+        call<ProjectSummary>(
+          CHANNELS.projectsInitRepository,
+          identity === undefined ? { projectId } : { projectId, identity },
+        ),
       setGroup: (projectId: string, group: string | null) =>
         call<void>(CHANNELS.projectsSetGroup, { projectId, group }),
       setNickname: (projectId: string, nickname: string | null) =>

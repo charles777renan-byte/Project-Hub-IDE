@@ -492,6 +492,30 @@
   gap: var(--space-2);
 }
 
+/* O autor do primeiro commit, dentro da confirmação: a linha com "Alterar" ou os dois campos lado a lado. */
+.git-author {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  flex-basis: 100%;
+  color: var(--muted);
+}
+
+.git-author--editing {
+  align-items: start;
+  color: inherit;
+}
+
+.git-author .field {
+  flex: 1 1 14rem;
+  max-width: 22rem;
+}
+
+.git-author__note {
+  flex-basis: 100%;
+}
+
 .project-missions__empty {
   display: flex;
   flex-wrap: wrap;

@@ -1,7 +1,7 @@
 import { readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { failure, type RepositoryInitializer } from '@project-hub/application';
-import type { AppResult, RepositoryInitPreview } from '@project-hub/contracts';
+import type { AppResult, GitIdentity, RepositoryInitPreview } from '@project-hub/contracts';
 import { GitError, runGit, runGitInitRepository } from './run-git';
 
 /** Mensagem do primeiro commit. Igual em todo repositório criado pelo aplicativo (ADR 0009). */
@@ -15,8 +15,7 @@ export const DEFAULT_GITIGNORE = ['node_modules/', '.env', '.env.*', '*.pem', '*
   '\n',
 );
 
-const IDENTITY_MESSAGE =
-  'Antes de criar o repositório, configure seu nome e seu e-mail no Git: git config --global user.name "Seu nome" e git config --global user.email "voce@exemplo.com".';
+const IDENTITY_MESSAGE = 'Informe o nome e o e-mail do autor para fazer o primeiro commit.';
 const CREATE_FAILED = 'Não foi possível criar o repositório Git. A pasta voltou como estava.';
 /** Pastas que a busca por arquivos sensíveis não entra: são do Git ou dependências, não código do projeto. */
 const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set(['.git', 'node_modules']);
@@ -90,19 +89,24 @@ export async function previewRepositoryInit(
 
 /**
  * Cria o repositório da pasta com o primeiro commit (ADR 0009): `init` na branch `main`, `add --all` e o commit
- * sem hooks. Antes de tudo confere que não há `.git` e que a identidade está configurada. Se um passo falhar, remove
- * o `.git` e o `.gitignore` que este processo criou, e a pasta volta como estava.
+ * sem hooks. Antes de tudo confere que não há `.git` e que há um autor para o commit: o que o Git da pessoa já
+ * tem ou, na falta dele, a `identity` que ela confirmou na tela. Essa identidade é gravada só no repositório
+ * criado (`config --local`), depois do `init`; o Git global não é tocado, e quando ele já tem identidade a
+ * informada não é usada. Se um passo falhar, remove o `.git` e o `.gitignore` que este processo criou, e a
+ * pasta volta como estava.
  */
 export async function initRepository(options: {
   path: string;
   gitBinary?: string | undefined;
+  identity?: GitIdentity | undefined;
 }): Promise<void> {
-  const { path, gitBinary } = options;
+  const { path, gitBinary, identity } = options;
   const gitDir = join(path, '.git');
   if (await exists(gitDir)) {
     throw new GitError('UNKNOWN', 'Já existe uma pasta .git aqui. O Project Hub não a altera.');
   }
-  if (!(await identityConfigured(path, gitBinary))) {
+  const configured = await identityConfigured(path, gitBinary);
+  if (!configured && identity === undefined) {
     throw new GitError('UNKNOWN', IDENTITY_MESSAGE);
   }
 
@@ -113,6 +117,10 @@ export async function initRepository(options: {
   const run = { cwd: path, gitBinary };
   try {
     await runGitInitRepository(['init', '--initial-branch=main'], run);
+    if (!configured && identity !== undefined) {
+      await runGitInitRepository(['config', '--local', 'user.name', identity.name], run);
+      await runGitInitRepository(['config', '--local', 'user.email', identity.email], run);
+    }
     await runGitInitRepository(['add', '--all'], run);
     await runGitInitRepository(
       ['commit', '--no-verify', '--allow-empty', '-m', INITIAL_COMMIT_MESSAGE],
@@ -145,9 +153,9 @@ export function createRepositoryInitializer(
         return asFailure(error);
       }
     },
-    async init(path) {
+    async init(path, identity) {
       try {
-        await initRepository({ path, gitBinary });
+        await initRepository({ path, gitBinary, identity });
         return { ok: true, data: { defaultBranch: 'main' } };
       } catch (error) {
         return asFailure(error);
