@@ -1,47 +1,32 @@
 import { useId, useRef, useState, type ReactNode, type Ref } from 'react';
-import { Link, useMatch, useNavigate } from 'react-router';
+import { Link, NavLink, useMatch, useNavigate } from 'react-router';
 import type { LayoutNode, ProjectSummary, TerminalSummary } from '@project-hub/contracts';
 import { attentionEntries } from '../attention';
 import { useListMotion } from '../list-motion';
 import { formatTime, statusIcon, statusLabel } from '../mission-text';
 import { notify } from '../notify';
 import { colorOf } from '../project-color';
-import { missionPath, ROUTE_PATHS, workspacePath } from '../routes';
+import { missionPath, ROUTE_PATHS, SETTINGS_ROOT, workspacePath } from '../routes';
 import { barLevels, hasActivity, isIdle, useActivity } from '../sidebar-activity';
+import { setSidebarView, useSidebarView, type SidebarView } from '../sidebar-view';
 import { useTerminals } from '../terminals-data';
 import { useProjectActions, type ProjectActions } from '../use-project-actions';
 import { useSidebarData, type SidebarData } from '../use-sidebar-data';
 import { ArchivedProjects } from './ArchivedProjects';
-import { ChevronRight, Clock, ICON_PROPS, Plus, Search } from './Icon';
+import { Hint } from './Hint';
+import { ChevronRight, Clock, ICON_PROPS, Plus, Search, Settings } from './Icon';
 import { ProviderIcon } from './ProviderIcon';
 import { StatusChip } from './StatusChip';
 
 /** Quantos agentes de um projeto aparecem como ícones ao lado do nome, antes do "+N". */
 const AVATAR_LIMIT = 3;
 
-const VIEW_KEY = 'project-hub:sidebar-view';
 const NO_GROUP = 'Sem grupo';
 
-type View = 'list' | 'grid';
+type View = SidebarView;
 
 /** O que a pessoa pediu para mostrar no workspace; o workspace lê isto em `location.state`. */
 type ShowTerminal = (projectId: string, terminalId: string) => void;
-
-function readView(): View {
-  try {
-    return window.localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list';
-  } catch {
-    return 'list';
-  }
-}
-
-function saveView(view: View): void {
-  try {
-    window.localStorage.setItem(VIEW_KEY, view);
-  } catch {
-    // Sem armazenamento, a escolha vale só até fechar a janela.
-  }
-}
 
 /**
  * Barra lateral, o explorador da janela: a busca, o aviso do que espera a pessoa e o botão Adicionar projeto
@@ -61,7 +46,7 @@ export function Sidebar({ onSearch }: { onSearch?: () => void }) {
   const { terminals, error: terminalsError, reload } = useTerminals();
   const activity = useActivity(terminals);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
-  const [view, setView] = useState<View>(readView);
+  const view = useSidebarView();
   const ids = useId();
 
   const showTerminal: ShowTerminal = (targetProjectId, terminalId) => {
@@ -74,10 +59,7 @@ export function Sidebar({ onSearch }: { onSearch?: () => void }) {
       return next;
     });
   };
-  const changeView = (next: View) => {
-    setView(next);
-    saveView(next);
-  };
+  const changeView = (next: View) => setSidebarView(next);
   // O botão Restaurar some com o projeto: o foco vai para a seção Arquivados, se ainda restar algum, e senão
   // para Adicionar projeto, em vez de cair no corpo da página.
   const restore = async (projectId: string) => {
@@ -129,11 +111,19 @@ export function Sidebar({ onSearch }: { onSearch?: () => void }) {
         </div>
       </section>
 
-      <ArchivedProjects
-        projects={projectActions.archived}
-        onRestore={(projectId) => void restore(projectId)}
-        toggleRef={archivedToggle}
-      />
+      {/* O pé: os arquivados à esquerda e, sempre no canto direito, a engrenagem das Configurações. */}
+      <div className="sidebar__foot">
+        <ArchivedProjects
+          projects={projectActions.archived}
+          onRestore={(projectId) => void restore(projectId)}
+          toggleRef={archivedToggle}
+        />
+        <Hint label="Configurações (Ctrl+,)" side="top">
+          <NavLink to={SETTINGS_ROOT} aria-label="Configurações" className="sidebar__settings">
+            <Settings size={16} strokeWidth={2} aria-hidden />
+          </NavLink>
+        </Hint>
+      </div>
     </aside>
   );
 }

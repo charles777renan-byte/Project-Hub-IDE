@@ -1,4 +1,14 @@
 import type { AgentActivity } from './agent-activity';
+import type {
+  AccountDto,
+  AccountsDto,
+  AccountTargetInput,
+  AddAccountInput,
+  LoginDto,
+  LoginEvent,
+  RemoveAccountInput,
+  RenameAccountInput,
+} from './accounts';
 import type { AlertNotifyInput, AlertOpenEvent } from './alerts';
 import type {
   ContentSearchDto,
@@ -38,7 +48,7 @@ import type { LimitsDto } from './limits';
 import type { PreviewStateDto } from './preview';
 import type { ProfileDto } from './profile';
 import type { SessionsListInput, SessionsListResult, SessionsResumeInput } from './sessions';
-import type { SystemUsageDto } from './system';
+import type { AppInfoDto, SystemUsageDto } from './system';
 import type {
   AddProjectInput,
   GitIdentity,
@@ -365,6 +375,40 @@ export type ProjectHubApi = {
      * sem usuário, senha nem porta; o resto volta como erro, sem abrir. Abre direto, sem confirmação.
      */
     openUrl(url: string): Promise<AppResult<void>>;
+  };
+  accounts: {
+    /** As contas de cada programa, com o estado lido do próprio programa. */
+    list(): Promise<AppResult<AccountsDto>>;
+    add(input: AddAccountInput): Promise<AppResult<AccountDto>>;
+    rename(input: RenameAccountInput): Promise<AppResult<void>>;
+    /** `accountId` nulo devolve a padrão à Principal. */
+    setDefault(input: AccountTargetInput): Promise<AppResult<void>>;
+    /** Sai da conta pelo comando oficial do programa. */
+    disconnect(input: AccountTargetInput): Promise<AppResult<void>>;
+    /** Apaga a conta extra e a pasta dela. `force` apaga mesmo quando a saída pelo programa falhou. */
+    remove(input: RemoveAccountInput): Promise<AppResult<void>>;
+    login: {
+      start(input: AccountTargetInput): Promise<AppResult<LoginDto>>;
+      get(): Promise<AppResult<LoginDto | null>>;
+      cancel(): Promise<AppResult<void>>;
+      /** A pessoa conferiu a conta conectada. */
+      confirm(): Promise<AppResult<void>>;
+      /** "Não é esta conta": sai dela e recomeça o login. */
+      reject(): Promise<AppResult<void>>;
+      /** Abre de novo no navegador o endereço que o programa informou. Não recebe endereço. */
+      openUrl(): Promise<AppResult<void>>;
+      /** Copia o endereço que o programa informou. Não recebe endereço. */
+      copyUrl(): Promise<AppResult<void>>;
+      write(data: string): Promise<AppResult<void>>;
+      resize(cols: number, rows: number): Promise<AppResult<void>>;
+      /** Assina o estado e a saída do login. Cada evento chega validado. Devolve a função que cancela. */
+      subscribe(listener: (event: LoginEvent) => void): () => void;
+    };
+  };
+  app: {
+    info(): Promise<AppResult<AppInfoDto>>;
+    /** Abre a pasta de dados do app. O caminho é do processo principal. */
+    openDataFolder(): Promise<AppResult<void>>;
   };
   alerts: {
     /** Pede a notificação do sistema para um item que passou a esperar a pessoa. O processo principal decide se mostra. */

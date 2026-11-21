@@ -12,3 +12,11 @@ export const systemUsageDtoSchema = z.object({
 });
 
 export type SystemUsageDto = z.infer<typeof systemUsageDtoSchema>;
+
+/** Informações do app para a seção Geral das Configurações. A pasta de dados é só para exibição. */
+export const appInfoDtoSchema = z.strictObject({
+  version: z.string().min(1).max(40),
+  dataDir: z.string().min(1),
+});
+
+export type AppInfoDto = z.infer<typeof appInfoDtoSchema>;

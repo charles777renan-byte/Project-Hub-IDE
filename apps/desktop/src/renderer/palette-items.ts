@@ -8,6 +8,7 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
+  Settings,
   UserPen,
 } from './components/Icon';
 import type { ItemComando } from './components/PaletaComandos';
@@ -15,7 +16,7 @@ import { boardStatusLabel, statusTone } from './mission-text';
 import type { SidebarData } from './overview-data';
 import { ADD_PROJECT_REQUEST_EVENT } from './projects-events';
 import { TOGGLE_RIGHT_PANEL_EVENT } from './right-panel-events';
-import { EDIT_NAME_PARAM, missionPath, projectPath, ROUTE_PATHS } from './routes';
+import { EDIT_NAME_PARAM, missionPath, projectPath, ROUTE_PATHS, settingsPath } from './routes';
 import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 
 /** "1 missão", "3 missões"; sem missão, nada. */
@@ -160,6 +161,15 @@ export function buildPaletteItems(sidebar: SidebarData, navigate: NavigateFuncti
       icone: House,
       tipo: 'acao',
       executar: () => navigate(ROUTE_PATHS.home),
+    },
+    {
+      id: 'acao:configuracoes',
+      rotulo: 'Abrir Configurações',
+      grupo: 'Ações',
+      icone: Settings,
+      tipo: 'acao',
+      atalho: 'Ctrl ,',
+      executar: () => navigate(settingsPath()),
     },
     {
       id: 'acao:alterar-nome',

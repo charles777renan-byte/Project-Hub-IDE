@@ -313,6 +313,7 @@ describe('responseSchemas', () => {
       CHANNELS.browserChanged,
       CHANNELS.browserShortcut,
       CHANNELS.alertsOpen,
+      CHANNELS.accountsLoginEvent,
       CHANNELS.terminalsChanged,
       CHANNELS.previewChanged,
       CHANNELS.workspacesChanged,

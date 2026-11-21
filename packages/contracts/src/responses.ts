@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { accountDtoSchema, accountsDtoSchema, loginDtoSchema } from './accounts';
 import { agentActivityResponseSchema } from './agent-activity';
 import { browserAgentAccessSchema, browserStateSchema } from './browser';
 import { CHANNELS } from './channels';
@@ -24,7 +25,7 @@ import { githubPanelSchema } from './github';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { sessionsListResultSchema } from './sessions';
-import { systemUsageDtoSchema } from './system';
+import { appInfoDtoSchema, systemUsageDtoSchema } from './system';
 import { projectSummarySchema, repositoryInitPreviewSchema } from './project';
 import {
   MISSION_STATUS_VALUES,
@@ -115,6 +116,23 @@ export const responseSchemas = {
   [CHANNELS.profileGet]: appResultSchema(profileDtoSchema),
   [CHANNELS.profileSetDisplayName]: appResultSchema(z.undefined()),
   [CHANNELS.systemUsage]: appResultSchema(systemUsageDtoSchema),
+  [CHANNELS.accountsList]: appResultSchema(accountsDtoSchema),
+  [CHANNELS.accountsAdd]: appResultSchema(accountDtoSchema),
+  [CHANNELS.accountsRename]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsSetDefault]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsDisconnect]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsRemove]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginStart]: appResultSchema(loginDtoSchema),
+  [CHANNELS.accountsLoginGet]: appResultSchema(loginDtoSchema.nullable()),
+  [CHANNELS.accountsLoginCancel]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginConfirm]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginReject]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginOpenUrl]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginCopyUrl]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginWrite]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsLoginResize]: appResultSchema(z.undefined()),
+  [CHANNELS.appInfo]: appResultSchema(appInfoDtoSchema),
+  [CHANNELS.appOpenDataFolder]: appResultSchema(z.undefined()),
   [CHANNELS.limitsGet]: appResultSchema(limitsDtoSchema),
   [CHANNELS.limitsRefresh]: appResultSchema(limitsDtoSchema),
   [CHANNELS.filesList]: appResultSchema(z.array(fileEntrySchema)),
