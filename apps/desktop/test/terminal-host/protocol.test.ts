@@ -130,6 +130,13 @@ describe('parseRequest: pedidos de terminal', () => {
     expect(parseRequest({ ...base, cwd: 'C:\\', rows: 1.5 })).toBeNull();
   });
 
+  it('aceita o pedido de esquecer um terminal encerrado', () => {
+    expect(parseRequest({ id: '1', type: 'terminal.remove', terminalId: 't1' })).toMatchObject({
+      type: 'terminal.remove',
+      terminalId: 't1',
+    });
+  });
+
   it('recusa um pedido de terminal sem terminalId', () => {
     expect(parseRequest({ id: '1', type: 'terminal.kill' })).toBeNull();
   });

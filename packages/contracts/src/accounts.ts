@@ -1,0 +1,136 @@
+import { z } from 'zod';
+import { providerIdSchema } from './workspace';
+
+/** Programas que aceitam mais de uma conta. O GitHub entra com a conta por projeto. */
+export const ACCOUNT_PROVIDERS = ['claude', 'codex'] as const;
+export const accountProviderSchema = z.enum(ACCOUNT_PROVIDERS);
+export type AccountProviderId = (typeof ACCOUNT_PROVIDERS)[number];
+
+/** Tamanho máximo do nome que a pessoa dá a uma conta, depois de aparado. */
+export const ACCOUNT_NAME_MAX = 40;
+export const accountNameSchema = z.string().trim().min(1).max(ACCOUNT_NAME_MAX);
+
+/** Id de uma conta extra: gerado pelo processo principal, e o único dado que a tela manda sobre ela. */
+export const accountIdSchema = z.uuid();
+/** Uma conta: o id da extra, ou `null` para a Principal (a pasta do programa na máquina). */
+export const accountRefSchema = accountIdSchema.nullable();
+
+/** `unknown`: o programa não respondeu, não está instalado ou respondeu algo que o app não reconhece. */
+export const ACCOUNT_STATES = ['connected', 'signed-out', 'unknown'] as const;
+export type AccountState = (typeof ACCOUNT_STATES)[number];
+
+/**
+ * Uma conta na tela. `identity` (o e-mail) e `organization` vêm do comando de estado do programa, a cada leitura:
+ * o app não os grava. Estrito: caminho de pasta ou qualquer outro dado não passa.
+ */
+export const accountDtoSchema = z.strictObject({
+  id: accountRefSchema,
+  provider: accountProviderSchema,
+  name: z.string().min(1).max(ACCOUNT_NAME_MAX),
+  isPrincipal: z.boolean(),
+  isDefault: z.boolean(),
+  state: z.enum(ACCOUNT_STATES),
+  identity: z.string().max(254).optional(),
+  organization: z.string().max(200).optional(),
+});
+export type AccountDto = z.infer<typeof accountDtoSchema>;
+
+export const accountGroupDtoSchema = z.strictObject({
+  provider: accountProviderSchema,
+  installed: z.boolean(),
+  accounts: z.array(accountDtoSchema),
+});
+export type AccountGroupDto = z.infer<typeof accountGroupDtoSchema>;
+
+/** Programa com uma conta só: a tela mostra apenas se está instalado. */
+export const otherProgramDtoSchema = z.strictObject({
+  provider: providerIdSchema,
+  label: z.string().min(1).max(60),
+  installed: z.boolean(),
+});
+export type OtherProgramDto = z.infer<typeof otherProgramDtoSchema>;
+
+export const accountsDtoSchema = z.strictObject({
+  groups: z.array(accountGroupDtoSchema),
+  others: z.array(otherProgramDtoSchema),
+});
+export type AccountsDto = z.infer<typeof accountsDtoSchema>;
+
+/** Entrada de `accounts:add:v1`. A pasta e o id nascem no processo principal. */
+export const addAccountInputSchema = z.strictObject({
+  provider: accountProviderSchema,
+  name: accountNameSchema,
+});
+export type AddAccountInput = z.infer<typeof addAccountInputSchema>;
+
+export const renameAccountInputSchema = z.strictObject({
+  accountId: accountIdSchema,
+  name: accountNameSchema,
+});
+export type RenameAccountInput = z.infer<typeof renameAccountInputSchema>;
+
+/** Uma conta de um programa, a Principal inclusive: conta padrão, desconectar e iniciar o login. */
+export const accountTargetInputSchema = z.strictObject({
+  provider: accountProviderSchema,
+  accountId: accountRefSchema,
+});
+export type AccountTargetInput = z.infer<typeof accountTargetInputSchema>;
+
+/** Só conta extra. `force`: apagar a pasta mesmo quando a saída pelo programa falhou. */
+export const removeAccountInputSchema = z.strictObject({
+  accountId: accountIdSchema,
+  force: z.boolean(),
+});
+export type RemoveAccountInput = z.infer<typeof removeAccountInputSchema>;
+
+export const LOGIN_PHASES = [
+  'starting',
+  'browser',
+  'verifying',
+  'confirm',
+  'done',
+  'failed',
+  'cancelled',
+  'timed-out',
+] as const;
+export type LoginPhase = (typeof LOGIN_PHASES)[number];
+
+export const LOGIN_PROBLEMS = [
+  'not-installed',
+  'start-failed',
+  'not-connected',
+  'status-failed',
+] as const;
+export type LoginProblem = (typeof LOGIN_PROBLEMS)[number];
+
+/**
+ * O login em andamento. Não tem o endereço: a tela recebe só o servidor (`host`), e abrir ou copiar o endereço
+ * é feito pelo processo principal. Estrito, para um campo a mais nunca passar.
+ */
+export const loginDtoSchema = z.strictObject({
+  provider: accountProviderSchema,
+  accountId: accountRefSchema,
+  phase: z.enum(LOGIN_PHASES),
+  host: z.string().min(1).max(253).optional(),
+  identity: z.string().max(254).optional(),
+  /** Nome de outra conta do mesmo programa com a mesma identidade. */
+  duplicateOf: z.string().max(ACCOUNT_NAME_MAX).optional(),
+  /** Quando o login expira (ISO). */
+  expiresAt: z.string(),
+  problem: z.enum(LOGIN_PROBLEMS).optional(),
+});
+export type LoginDto = z.infer<typeof loginDtoSchema>;
+
+/** Evento de `accounts:login-event:v1`: o estado do login, ou um trecho da saída do terminal do programa. */
+export const loginEventSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('state'), login: loginDtoSchema.nullable() }),
+  z.strictObject({ type: z.literal('data'), data: z.string() }),
+]);
+export type LoginEvent = z.infer<typeof loginEventSchema>;
+
+/** Digitação no terminal do login, com o mesmo teto da digitação dos terminais. */
+export const loginWriteInputSchema = z.strictObject({ data: z.string().max(16_384) });
+export const loginResizeInputSchema = z.strictObject({
+  cols: z.number().int().min(1).max(1000),
+  rows: z.number().int().min(1).max(1000),
+});

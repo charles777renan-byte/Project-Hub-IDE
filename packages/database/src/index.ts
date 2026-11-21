@@ -1,6 +1,12 @@
 export { openDatabase, type AppDatabase } from './client';
 export { migrateDatabase, type MigrationReport } from './migrate';
 export {
+  createAccountRepository,
+  type AccountProvider,
+  type AccountRecord,
+  type AccountRepository,
+} from './repositories/account-repository';
+export {
   createAppSettingsRepository,
   type AppSettingsRepository,
 } from './repositories/app-settings-repository';

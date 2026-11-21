@@ -1,8 +1,10 @@
-import { useNavigate } from 'react-router';
-import { workspacePath } from '../routes';
+import { NavLink, useNavigate } from 'react-router';
+import { SETTINGS_ROOT, workspacePath } from '../routes';
 import { isIdle, useActivity } from '../sidebar-activity';
 import { MARKS, markOfTerminal } from '../state-mark';
 import { useTerminals } from '../terminals-data';
+import { Hint } from './Hint';
+import { Settings } from './Icon';
 import { ProviderIcon } from './ProviderIcon';
 
 /** Quem aguarda vem primeiro; depois os que rodam. Sessões encerradas não entram no trilho. */
@@ -11,7 +13,8 @@ const ORDER = { waiting: 0, running: 1, exited: 2 } as const;
 /**
  * A barra lateral recolhida: um trilho de 48 px com um botão por agente vivo, na cor e na forma do estado (a cor
  * nunca é a única pista: a marca tem forma própria, e o nome acessível diz "título — estado"). Clicar leva ao
- * terminal no workspace do projeto, como o cartão da lateral aberta. No topo, o botão que expande a lateral.
+ * terminal no workspace do projeto, como o cartão da lateral aberta. No topo, o botão que expande a lateral; no pé,
+ * a engrenagem das Configurações.
  */
 export function SidebarRail({ onExpand }: { onExpand: () => void }) {
   const navigate = useNavigate();
@@ -59,6 +62,11 @@ export function SidebarRail({ onExpand }: { onExpand: () => void }) {
           );
         })}
       </ul>
+      <Hint label="Configurações (Ctrl+,)" side="top">
+        <NavLink to={SETTINGS_ROOT} aria-label="Configurações" className="sidebar-rail__settings">
+          <Settings size={16} strokeWidth={2} aria-hidden />
+        </NavLink>
+      </Hint>
     </nav>
   );
 }

@@ -44,4 +44,12 @@ describe('buildTerminalEnv', () => {
     const env = buildTerminalEnv({ PATH: 'C:\\Windows' }, { TERM: 'xterm-256color', PATH: 'X' });
     expect(env).toEqual({ PATH: 'X', TERM: 'xterm-256color' });
   });
+
+  it('a variável extra substitui a do ambiente mesmo com outra caixa no nome, sem sobrar duplicata', () => {
+    const env = buildTerminalEnv(
+      { Claude_Config_Dir: 'C:/principal', Path: 'C:/Windows' },
+      { CLAUDE_CONFIG_DIR: 'C:/extra' },
+    );
+    expect(env).toEqual({ CLAUDE_CONFIG_DIR: 'C:/extra', Path: 'C:/Windows' });
+  });
 });

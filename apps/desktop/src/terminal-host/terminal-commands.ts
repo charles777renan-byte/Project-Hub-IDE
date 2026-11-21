@@ -54,6 +54,10 @@ export class TerminalCommands {
         await this.manager.kill(request.terminalId);
         this.onChange();
         return {};
+      case 'terminal.remove':
+        this.manager.remove(request.terminalId);
+        this.onChange();
+        return {};
       case 'terminal.snapshot': {
         this.requireExisting(request.terminalId);
         const exit = this.manager.exitOf(request.terminalId);

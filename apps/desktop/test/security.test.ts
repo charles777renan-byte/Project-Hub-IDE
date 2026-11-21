@@ -467,8 +467,10 @@ describe('buildProjectHubApi', () => {
   it('a API exposta tem só os métodos de ping, projetos, missões, terminais, workspaces, provedores, sessões, worktrees, atividade, perfil, limites, arquivos, Git, GitHub e aprovações, sem envio genérico', () => {
     const api = hubApi(() => Promise.resolve(undefined));
     expect(Object.keys(api).sort()).toEqual([
+      'accounts',
       'activity',
       'alerts',
+      'app',
       'approvals',
       'browser',
       'files',
@@ -553,6 +555,29 @@ describe('buildProjectHubApi', () => {
       'subscribeUsage',
     ]);
     expect(Object.keys(api.limits).sort()).toEqual(['get', 'refresh', 'subscribe']);
+    // As contas só mandam o programa, o id e o nome; o login não tem método que receba endereço.
+    expect(Object.keys(api.accounts).sort()).toEqual([
+      'add',
+      'disconnect',
+      'list',
+      'login',
+      'remove',
+      'rename',
+      'setDefault',
+    ]);
+    expect(Object.keys(api.accounts.login).sort()).toEqual([
+      'cancel',
+      'confirm',
+      'copyUrl',
+      'get',
+      'openUrl',
+      'reject',
+      'resize',
+      'start',
+      'subscribe',
+      'write',
+    ]);
+    expect(Object.keys(api.app).sort()).toEqual(['info', 'openDataFolder']);
     expect(Object.keys(api.approvals)).toEqual(['decide']);
     expect(Object.keys(api.activity)).toEqual(['agents']);
     expect(Object.keys(api.worktrees).sort()).toEqual(['list', 'remove']);

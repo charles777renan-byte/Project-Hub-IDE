@@ -1,7 +1,9 @@
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  accountCliProviders,
   applicationEnvironment,
+  resolveAccountCliScript,
   startsHidden,
   resolveAgentCommand,
   resolvePanelClaudeScript,
@@ -460,5 +462,48 @@ describe('pasta do Codex para os limites (resolveCodexLimitsHome)', () => {
     );
 
     expect(resolveCodexLimitsHome(env, {})).toMatch(/[\\/]\.codex$/);
+  });
+});
+
+describe('CLI falso das contas (APP_ACCOUNT_CLI_SCRIPT)', () => {
+  it('só vale com PROJECT_HUB_ENV=test, e vazio não conta', () => {
+    const script = '/e2e/fake-account-cli.mjs';
+    expect(resolveAccountCliScript({ PROJECT_HUB_ENV: 'test', APP_ACCOUNT_CLI_SCRIPT: script })).toBe(
+      script,
+    );
+    expect(resolveAccountCliScript({ APP_ACCOUNT_CLI_SCRIPT: script })).toBeUndefined();
+    expect(
+      resolveAccountCliScript({ PROJECT_HUB_ENV: 'test', APP_ACCOUNT_CLI_SCRIPT: '' }),
+    ).toBeUndefined();
+  });
+
+  it('empacotado, o ambiente filtrado não traz o gancho', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', APP_ACCOUNT_CLI_SCRIPT: '/e2e/fake.mjs' },
+      true,
+    );
+    expect(resolveAccountCliScript(env)).toBeUndefined();
+  });
+
+  const real = {
+    list: () => [],
+    resolve: () => ({ ok: true as const, launch: { command: 'C:\\bin\\real.exe', args: [] } }),
+  };
+
+  it('sem o gancho, as contas usam o registro de verdade', () => {
+    expect(accountCliProviders(real, undefined, 'win32')).toBe(real);
+  });
+
+  it('com o gancho, o claude e o codex das contas viram o script, e os outros programas não', () => {
+    const providers = accountCliProviders(real, '/e2e/fake.mjs', 'win32');
+    expect(providers.resolve('claude')).toEqual({
+      ok: true,
+      launch: { command: 'node.exe', prefix: ['/e2e/fake.mjs', 'claude'], args: [] },
+    });
+    expect(providers.resolve('codex')).toEqual({
+      ok: true,
+      launch: { command: 'node.exe', prefix: ['/e2e/fake.mjs', 'codex'], args: [] },
+    });
+    expect(providers.resolve('opencode')).toEqual(real.resolve());
   });
 });

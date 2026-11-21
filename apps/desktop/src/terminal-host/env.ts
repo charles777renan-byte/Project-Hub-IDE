@@ -49,9 +49,13 @@ export function buildTerminalEnv(
   extra: Record<string, string> = {},
 ): Record<string, string> {
   const allowed = new Set(TERMINAL_ENV_ALLOWLIST);
+  // No Windows o nome da variável não diferencia maiúsculas, e num bloco com duas vale a primeira: a do ambiente
+  // sai quando há uma extra de mesmo nome em outra caixa, para a extra ser a única.
+  const replaced = new Set(Object.keys(extra).map((key) => key.toUpperCase()));
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(source)) {
-    if (value !== undefined && allowed.has(key.toUpperCase())) env[key] = value;
+    const name = key.toUpperCase();
+    if (value !== undefined && allowed.has(name) && !replaced.has(name)) env[key] = value;
   }
   return { ...env, ...extra };
 }

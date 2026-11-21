@@ -296,6 +296,11 @@ export interface TerminalPort {
   write(id: string, data: string): Promise<void>;
   resize(id: string, cols: number, rows: number): Promise<void>;
   kill(id: string): Promise<void>;
+  /**
+   * Tira da memória do processo de terminais um terminal que já encerrou, com a saída guardada dele. Terminal
+   * vivo não é removido. Opcional: só quem guarda saída depois do fim precisa oferecer.
+   */
+  remove?(id: string): Promise<void>;
   snapshot(id: string): Promise<TerminalSnapshot | undefined>;
   /**
    * Entrega a saída guardada e depois a saída ao vivo. Uma assinatura nova no mesmo id substitui a

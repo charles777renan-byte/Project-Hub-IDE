@@ -23,7 +23,7 @@ import {
   TOGGLE_RIGHT_EXPANDED_EVENT,
   TOGGLE_RIGHT_PANEL_EVENT,
 } from './right-panel-events';
-import { AppRoutes, ROUTE_PATHS, workspacePath } from './routes';
+import { AppRoutes, ROUTE_PATHS, settingsPath, workspacePath } from './routes';
 import { TOGGLE_SIDEBAR_EVENT } from './sidebar-events';
 import { useSidebarData } from './use-sidebar-data';
 
@@ -234,6 +234,24 @@ export function App() {
     window.addEventListener('keydown', atalhoLateral);
     return () => window.removeEventListener('keydown', atalhoLateral);
   }, [toggleSidebar]);
+
+  // Ctrl+, abre as Configurações. Não vale dentro do terminal nem de um campo de texto, onde a vírgula é texto.
+  useEffect(() => {
+    function atalhoConfiguracoes(event: KeyboardEvent) {
+      const ctrlComma =
+        (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key === ',';
+      if (!ctrlComma || event.defaultPrevented) return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest('.terminal-view, input, textarea, select, [contenteditable]') !== null
+      )
+        return;
+      event.preventDefault();
+      void navigate(settingsPath());
+    }
+    window.addEventListener('keydown', atalhoConfiguracoes);
+    return () => window.removeEventListener('keydown', atalhoConfiguracoes);
+  }, [navigate]);
 
   // Ctrl+Alt+B esconde ou mostra o painel direito. Como os outros dois atalhos, dentro do terminal ele segue para o
   // programa.

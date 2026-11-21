@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router';
 import { HomePage } from './pages/HomePage';
+import { SettingsPage } from './pages/SettingsPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { VIEW_PARAM, type ProjectView } from './project-views';
 
@@ -22,7 +23,21 @@ export const ROUTE_PATHS = {
   missionDetail: '/workspaces/:projectId/missoes/:missionId',
   /** A aba do projeto. O `/*` faz a missão (`missionDetail`) cair na mesma rota: a página não é remontada. */
   workspace: '/workspaces/:projectId/*',
+  /** As Configurações do app. O `/*` é a seção (`SETTINGS_SECTIONS`); sem ela, ou com uma que não existe, vale a primeira. */
+  settings: '/settings/*',
 } as const;
+
+/** Raiz das Configurações: quem aponta para ela cai na primeira seção. */
+export const SETTINGS_ROOT = '/settings';
+
+/** As seções das Configurações, na ordem da navegação. */
+export const SETTINGS_SECTIONS = ['contas', 'geral'] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
+/** Endereço de uma seção das Configurações. Sem seção, a primeira. */
+export function settingsPath(section: SettingsSection = SETTINGS_SECTIONS[0]): string {
+  return `${SETTINGS_ROOT}/${section}`;
+}
 
 /** Parâmetro do Início (`/?editar-nome=1`) que abre o campo do nome na saudação; a paleta o pede. */
 export const EDIT_NAME_PARAM = 'editar-nome';
@@ -71,6 +86,7 @@ export function AppRoutes() {
       <Route path={ROUTE_PATHS.projectDetail} element={<ProjectRedirect />} />
       <Route path={ROUTE_PATHS.legacyMissionDetail} element={<MissionRedirect />} />
       <Route path={ROUTE_PATHS.workspace} element={<WorkspacePage />} />
+      <Route path={ROUTE_PATHS.settings} element={<SettingsPage />} />
     </Routes>
   );
 }

@@ -1,5 +1,15 @@
 import {
   alertOpenEventSchema,
+  loginEventSchema,
+  type AccountDto,
+  type AccountsDto,
+  type AccountTargetInput,
+  type AddAccountInput,
+  type AppInfoDto,
+  type LoginDto,
+  type LoginEvent,
+  type RemoveAccountInput,
+  type RenameAccountInput,
   type AlertNotifyInput,
   type AlertOpenEvent,
   CHANNELS,
@@ -449,6 +459,40 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       comment: (input: GithubCommentInput) => call<void>(CHANNELS.githubComment, input),
       merge: (input: GithubMergeInput) => call<void>(CHANNELS.githubMerge, input),
       openUrl: (url: string) => call<void>(CHANNELS.githubOpenUrl, { url }),
+    },
+    accounts: {
+      list: () => call<AccountsDto>(CHANNELS.accountsList),
+      add: (input: AddAccountInput) => call<AccountDto>(CHANNELS.accountsAdd, input),
+      rename: (input: RenameAccountInput) => call<void>(CHANNELS.accountsRename, input),
+      setDefault: (input: AccountTargetInput) => call<void>(CHANNELS.accountsSetDefault, input),
+      disconnect: (input: AccountTargetInput) => call<void>(CHANNELS.accountsDisconnect, input),
+      remove: (input: RemoveAccountInput) => call<void>(CHANNELS.accountsRemove, input),
+      login: {
+        start: (input: AccountTargetInput) => call<LoginDto>(CHANNELS.accountsLoginStart, input),
+        get: () => call<LoginDto | null>(CHANNELS.accountsLoginGet),
+        cancel: () => call<void>(CHANNELS.accountsLoginCancel),
+        confirm: () => call<void>(CHANNELS.accountsLoginConfirm),
+        reject: () => call<void>(CHANNELS.accountsLoginReject),
+        openUrl: () => call<void>(CHANNELS.accountsLoginOpenUrl),
+        copyUrl: () => call<void>(CHANNELS.accountsLoginCopyUrl),
+        write: (data: string) => call<void>(CHANNELS.accountsLoginWrite, { data }),
+        resize: (cols: number, rows: number) =>
+          call<void>(CHANNELS.accountsLoginResize, { cols, rows }),
+        subscribe: (listener: (event: LoginEvent) => void) =>
+          subscribe(CHANNELS.accountsLoginEvent, (payload) => {
+            const parsed = loginEventSchema.safeParse(payload);
+            if (!parsed.success) {
+              // Sem os detalhes: o evento pode levar a saída do login, que não vai para log.
+              console.warn(`Evento fora do contrato no canal ${CHANNELS.accountsLoginEvent}.`);
+              return;
+            }
+            listener(parsed.data);
+          }),
+      },
+    },
+    app: {
+      info: () => call<AppInfoDto>(CHANNELS.appInfo),
+      openDataFolder: () => call<void>(CHANNELS.appOpenDataFolder),
     },
     alerts: {
       notify: (input: AlertNotifyInput) => call<void>(CHANNELS.alertsNotify, input),
