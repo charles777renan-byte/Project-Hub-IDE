@@ -30,6 +30,10 @@ function viewOf(
       projectId: 'p1',
       title: 'Ajustar login',
       objective: 'Corrigir o login',
+      accountId: null,
+      accountName: 'Principal',
+      accountRemoved: false,
+      accountLocked: false,
       status: 'planned',
       altersCode: false,
       acceptanceCriteria: [{ id: 'c1', position: 1, text: 'Login funciona' }],
@@ -161,6 +165,50 @@ afterEach(() => {
   notify.clear();
   Reflect.deleteProperty(window, 'projectHub');
   vi.restoreAllMocks();
+});
+
+describe('MissionPage: a conta da missão', () => {
+  it('com duas contas do Claude Code, trocar a conta em "Sua decisão" chama setAccount só com os ids', async () => {
+    const conta = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const { api } = installApi(viewOf({ status: 'draft' }));
+    const setAccount = vi.fn(() => Promise.resolve(OK));
+    const hub = window.projectHub as unknown as {
+      missions: { setAccount: unknown };
+      accounts: unknown;
+    };
+    hub.missions.setAccount = setAccount;
+    const account = (id: string | null, name: string) => ({
+      id,
+      provider: 'claude',
+      name,
+      isPrincipal: id === null,
+      isDefault: id === null,
+      state: 'connected',
+    });
+    hub.accounts = {
+      list: vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            groups: [
+              {
+                provider: 'claude',
+                installed: true,
+                accounts: [account(null, 'Principal'), account(conta, 'Trabalho')],
+              },
+            ],
+            others: [],
+          },
+        }),
+      ),
+    };
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('option', { name: /Trabalho/ }));
+
+    expect(setAccount).toHaveBeenCalledWith({ missionId: 'm1', accountId: conta });
+    await waitFor(() => expect(api.missions.get.mock.calls.length).toBeGreaterThan(1));
+  });
 });
 
 describe('MissionPage: cabeçalho', () => {

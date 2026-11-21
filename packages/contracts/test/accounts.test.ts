@@ -19,13 +19,15 @@ describe('contas: entradas', () => {
       provider: 'claude',
       name: 'Trabalho',
     });
-    expect(addAccountInputSchema.safeParse({ provider: 'claude', name: '   ' }).success).toBe(false);
-    expect(addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(41) }).success).toBe(
+    expect(addAccountInputSchema.safeParse({ provider: 'claude', name: '   ' }).success).toBe(
       false,
     );
-    expect(addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(40) }).success).toBe(
-      true,
-    );
+    expect(
+      addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(41) }).success,
+    ).toBe(false);
+    expect(
+      addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(40) }).success,
+    ).toBe(true);
   });
 
   it('as entradas recusam campo a mais', () => {
@@ -58,7 +60,9 @@ describe('contas: entradas', () => {
     expect(
       accountTargetInputSchema.safeParse({ provider: 'codex', accountId: '../../x' }).success,
     ).toBe(false);
-    expect(removeAccountInputSchema.safeParse({ accountId: null, force: false }).success).toBe(false);
+    expect(removeAccountInputSchema.safeParse({ accountId: null, force: false }).success).toBe(
+      false,
+    );
   });
 
   it('a digitação no terminal do login tem teto', () => {
@@ -103,7 +107,9 @@ describe('contas: saídas', () => {
   });
 
   it('as informações do app têm versão e pasta de dados', () => {
-    expect(appInfoDtoSchema.safeParse({ version: '0.1.0', dataDir: 'C:/dados' }).success).toBe(true);
+    expect(appInfoDtoSchema.safeParse({ version: '0.1.0', dataDir: 'C:/dados' }).success).toBe(
+      true,
+    );
     expect(appInfoDtoSchema.safeParse({ version: '0.1.0' }).success).toBe(false);
   });
 });

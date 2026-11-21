@@ -24,6 +24,8 @@ import {
   type ClaudeHooks,
   type HookEventName,
 } from '@project-hub/agent-adapters';
+import { accountLaunchArgs } from './accounts/account-paths';
+import { ACCOUNT_REMOVED, type AccountUse } from './accounts/account-use';
 import { buildTerminalEnv } from '../terminal-host/env';
 import { BROWSER_PERMISSION, type AgentBrowserAccess } from './browser/agent/agent-launch';
 import { shellStartArgs, type ProviderRegistry } from './providers';
@@ -79,6 +81,14 @@ export type TerminalServiceDeps = {
    * como sempre, sem o recurso.
    */
   browserAccess?: AgentBrowserAccess;
+  /**
+   * As contas dos programas. `launchEnv` é o ambiente da conta no lançamento; os leitores de gasto só recebem a
+   * pasta (`dataRootOf`). Ausente: só existe a Principal, e pedir uma conta extra falha.
+   */
+  accounts?: Pick<
+    AccountUse,
+    'launchEnv' | 'dataRootOf' | 'labelOf' | 'isAccountProvider' | 'hasExtras'
+  >;
 };
 
 /**
@@ -91,6 +101,8 @@ export type OpenSessionOptions = {
   args?: readonly string[];
   startCommand?: string;
   title?: string;
+  /** A conta do programa em que a sessão abre. Ausente ou `null`: a Principal. Só o Claude Code e o Codex têm conta. */
+  accountId?: string | null;
 };
 
 /** Maior comando de partida aceito. O do preview é `<gerenciador> run <script>`, bem menor. */
@@ -120,6 +132,8 @@ export type TerminalService = {
   closeSession(terminalId: string): Promise<AppResult<undefined>>;
   /** Se o terminal é a sessão de uma missão em andamento (o agente), que só termina pela missão. */
   isMissionSession(terminalId: string): boolean;
+  /** A conta gravada na sessão do terminal, aberta ou encerrada: `null` é a Principal; sem resposta se o app não conhece a sessão. */
+  accountOfSession(terminalId: string): string | null | undefined;
   /** Ids de terminal do projeto: sessões abertas dele e terminais de missões em andamento dele. */
   knownIds(projectId: string): Promise<Set<string>>;
   /** 'running' (processo vivo), 'exited' (o processo de terminais conhece e acabou, ou ele não respondeu e a sessão está aberta no banco) ou 'unknown' (ele não conhece o id: a linha aberta do banco é fechada aqui). */
@@ -169,6 +183,44 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
 
   function isAgentTerminal(terminalId: string): boolean {
     return agentExecutions().some((e) => e.agentSessionId === terminalId);
+  }
+
+  /**
+   * O ambiente de uma conta no lançamento. A Principal não leva nada. Conta que não vale, ou conta pedida para um
+   * programa que não tem contas, é falha: o painel nunca abre na Principal no lugar dela.
+   */
+  function accountEnvOf(
+    provider: ProviderId,
+    accountId: string | null,
+  ): AppResult<Record<string, string>> {
+    if (accountId === null) return { ok: true, data: {} };
+    const accounts = deps.accounts;
+    if (accounts === undefined || !accounts.isAccountProvider(provider)) {
+      return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+    }
+    return accounts.launchEnv(provider, accountId);
+  }
+
+  /** A pasta de dados da conta de um terminal, para o leitor de gasto. A Principal usa a de `roots`. */
+  function usageRootOf(provider: UsageProvider, accountId: string | undefined): string | undefined {
+    return accountId === undefined ? undefined : deps.accounts?.dataRootOf(provider, accountId);
+  }
+
+  /** A conta de um terminal como a lista a mostra. Programa sem contas, ou serviço sem contas: nada. */
+  function accountOf(
+    provider: ProviderId,
+    accountId: string | undefined,
+  ): Pick<TerminalSummary, 'accountId' | 'accountName' | 'accountRemoved'> {
+    const accounts = deps.accounts;
+    if (accounts === undefined || !accounts.isAccountProvider(provider)) return {};
+    const id = accountId ?? null;
+    const label = accounts.labelOf(provider, id);
+    return {
+      accountId: id,
+      // Programa só com a Principal: não há o que distinguir, e a tela fica como sempre foi.
+      ...(id === null && !accounts.hasExtras(provider) ? {} : { accountName: label.name }),
+      ...(label.removed ? { accountRemoved: true } : {}),
+    };
   }
 
   /** A sessão do banco, só se ainda estiver aberta. */
@@ -327,8 +379,11 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     provider: UsageProvider,
   ): Promise<UsageSummaryDto | undefined> {
     // A sessão pode ter sido fechada enquanto a lista era montada: aí o leitor não volta.
-    if (openSessionRecord(terminalId) === undefined) return undefined;
-    if (!openedHere.has(terminalId)) usage.track(terminalId, provider);
+    const record = openSessionRecord(terminalId);
+    if (record === undefined) return undefined;
+    if (!openedHere.has(terminalId)) {
+      usage.track(terminalId, provider, usageRootOf(provider, record.accountId));
+    }
     try {
       return await usage.usageOf(terminalId);
     } catch {
@@ -393,22 +448,31 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     }
     const resolution = providers.resolve(provider);
     if (!resolution.ok) return failure('PROCESS_START_FAILED', resolution.reason);
+    // A conta vem antes de tudo o que precisa ser desfeito (navegador, hooks, processo).
+    const accountId = options.accountId ?? null;
+    const accountEnv = accountEnvOf(provider, accountId);
+    if (!accountEnv.ok) return accountEnv;
 
     const terminalId = deps.newId();
     const browser = browserLaunchOf(terminalId, projectId, provider);
     const base = {
       // O que vai depois dos argumentos do programa (`cmd.exe /d /c x.cmd`, numa instalação `.cmd`): antes deles,
       // quem leria as opções seria o `cmd.exe`. Os do navegador são opções gerais e vêm antes dos extras (a
-      // retomada); o token dele nunca está neles, só no ambiente.
+      // retomada); o token dele nunca está neles, só no ambiente. As opções da conta também vêm antes da retomada.
       args: [
         ...(browser?.args ?? []),
+        ...accountLaunchArgs(provider, accountId),
         ...(options.args ?? []),
         ...(startCommand === undefined
           ? []
           : shellStartArgs(startCommand, deps.platform ?? process.platform)),
       ],
       // COLORTERM fica fora da lista de permitidos (que protege segredos): o valor é fixo e nosso.
-      env: { ...buildTerminalEnv(deps.env, { COLORTERM: 'truecolor' }), ...(browser?.env ?? {}) },
+      // As variáveis da conta entram como extras: vencem a pasta que o app herdou do ambiente.
+      env: {
+        ...buildTerminalEnv(deps.env, { COLORTERM: 'truecolor', ...accountEnv.data }),
+        ...(browser?.env ?? {}),
+      },
     };
     // O Claude Code e o Codex informam o gasto de tokens; os outros programas e o shell abrem como estão.
     // As opções do Codex levam aspas e `<`, que um `.cmd` entregaria ao `cmd.exe`: só o executável as recebe.
@@ -443,6 +507,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
         provider,
         title: options.title ?? `${label} · ${target.name}`,
         createdAt: deps.now(),
+        ...(accountId === null ? {} : { accountId }),
       });
     } catch (error) {
       // Sem a linha, o processo ficaria órfão: nenhuma tela o listaria nem o fecharia.
@@ -452,7 +517,13 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     }
     openedHere.add(terminalId);
     if (browser !== undefined) deps.browserAccess?.opened(terminalId);
-    if (launch.hooked && usageProvider !== undefined) usage.track(terminalId, usageProvider);
+    if (launch.hooked && usageProvider !== undefined) {
+      usage.track(
+        terminalId,
+        usageProvider,
+        usageRootOf(usageProvider, accountId === null ? undefined : accountId),
+      );
+    }
     return { ok: true, data: { terminalId } };
   }
 
@@ -506,6 +577,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
                 : 'running',
             provider: 'claude',
             origin: 'new',
+            ...accountOf('claude', mission.accountId),
             ...(worktreeName === undefined ? {} : { worktreeName }),
             ...(agentBytes === undefined ? {} : { outputBytes: agentBytes }),
             ...(changedFiles === undefined ? {} : { changedFiles }),
@@ -553,6 +625,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
             provider: provider.data,
             origin: openedHere.has(record.id) ? 'new' : 'recovered',
             startedAt: record.createdAt,
+            ...accountOf(provider.data, record.accountId),
             ...browserAccessOf(record.id, provider.data),
             ...(outputBytes === undefined ? {} : { outputBytes }),
             ...(changedFiles === undefined ? {} : { changedFiles }),
@@ -594,6 +667,11 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     stateOf: async (terminalId) => (await reconcile(terminalId)).state,
 
     isMissionSession: (terminalId) => isAgentTerminal(terminalId),
+
+    accountOfSession: (terminalId) => {
+      const record = sessions.get(terminalId);
+      return record === undefined ? undefined : (record.accountId ?? null);
+    },
 
     write: (terminalId, data) =>
       known(terminalId, async () => {

@@ -31,6 +31,7 @@ export const CHANNELS = {
   missionsApprovePlan: 'missions:approve-plan:v1',
   /** Interrompe o planejamento em andamento da missão, sem cancelar a missão. */
   missionsCancelPlanning: 'missions:cancel-planning:v1',
+  missionsSetAccount: 'missions:set-account:v1',
   missionsStart: 'missions:start:v1',
   missionsCancel: 'missions:cancel:v1',
   missionsPause: 'missions:pause:v1',
@@ -90,6 +91,7 @@ export const CHANNELS = {
   limitsGet: 'limits:get:v1',
   /** Pede uma leitura nova dos limites. Devolve o estado depois da leitura (ou o de antes, se ela é recente). */
   limitsRefresh: 'limits:refresh:v1',
+  limitsRefreshAccount: 'limits:refresh-account:v1',
   /** Mudança nos limites (leitura nova ou em andamento), do processo principal para o renderer. Não tem resposta. */
   limitsEvent: 'limits:event:v1',
   /** Arquivos do projeto (painel direito, fase 1). Só entram o id do projeto e um caminho relativo POSIX. */

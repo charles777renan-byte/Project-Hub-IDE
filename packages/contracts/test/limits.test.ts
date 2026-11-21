@@ -19,13 +19,17 @@ describe('contrato de limites', () => {
           refreshing: false,
         },
       ],
+      accounts: [],
     };
     expect(limitsDtoSchema.safeParse(dto).success).toBe(true);
   });
 
   it('aceita o provedor codex', () => {
     expect(LIMIT_PROVIDER_VALUES).toContain('codex');
-    const dto = { providers: [{ provider: 'codex', windows: [], refreshing: false }] };
+    const dto = {
+      providers: [{ provider: 'codex', windows: [], refreshing: false }],
+      accounts: [],
+    };
     expect(limitsDtoSchema.safeParse(dto).success).toBe(true);
   });
 
@@ -33,6 +37,7 @@ describe('contrato de limites', () => {
     expect(LIMIT_PROBLEM_VALUES).toContain('no-data');
     const dto = {
       providers: [{ provider: 'codex', windows: [], refreshing: false, problem: 'no-data' }],
+      accounts: [],
     };
     expect(limitsDtoSchema.safeParse(dto).success).toBe(true);
   });

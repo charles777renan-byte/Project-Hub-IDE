@@ -1594,6 +1594,35 @@
   font-weight: 600;
 }
 
+/* A conta do painel, quando o programa tem mais de uma: uma etiqueta logo depois do título. */
+.pane__account {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Conta removida: a borda tracejada e o texto dizem; o workspace só usa as cores neutras. */
+.pane__account--removed {
+  border-style: dashed;
+  color: var(--text);
+}
+
+/* Com a etiqueta ao lado, o título do painel sem sessão também só cresce até o texto; as ações seguem à direita. */
+.pane__title:has(+ .pane__account) {
+  flex: 0 1 auto;
+}
+
+.pane__account + .pane__actions {
+  margin-left: auto;
+}
+
 /* Na sessão viva a marca de estado fica logo depois do título: o título só cresce até o que o texto pede. */
 .pane__head--live .pane__title {
   flex: 0 1 auto;

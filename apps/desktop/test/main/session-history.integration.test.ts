@@ -33,7 +33,7 @@ const services: SessionHistory[] = [];
 
 describe('session-history com os leitores reais, em pastas temporárias', () => {
   let root: string;
-  let env: Record<string, string>;
+  let env: { CLAUDE_CONFIG_DIR: string; CODEX_HOME: string };
   let historyFile: string;
   let indexFile: string;
 
@@ -116,8 +116,8 @@ describe('session-history com os leitores reais, em pastas temporárias', () => 
 
   function realReaders(): SessionReader[] {
     return [
-      createClaudeSessionReader(env),
-      createCodexSessionReader(env),
+      createClaudeSessionReader(env.CLAUDE_CONFIG_DIR, null),
+      createCodexSessionReader(env.CODEX_HOME, null),
       createAntigravitySessionReader(historyFile),
     ];
   }
@@ -125,7 +125,8 @@ describe('session-history com os leitores reais, em pastas temporárias', () => 
   function history(readers: SessionReader[]): SessionHistory {
     const service = createSessionHistory({
       indexFile,
-      readers,
+      readers: () => readers,
+      accountLabel: () => ({ name: 'Principal', removed: false }),
       projects: () => [{ id: 'p1', path: root }],
       worktreesOf: async () => [],
       resumeState: createResumeVerdict({
@@ -227,8 +228,8 @@ describe('session-history com os leitores reais, em pastas temporárias', () => 
     );
 
     const service = history([
-      createClaudeSessionReader(env),
-      createCodexSessionReader(env, 50_000),
+      createClaudeSessionReader(env.CLAUDE_CONFIG_DIR, null),
+      createCodexSessionReader(env.CODEX_HOME, null, 50_000),
       createAntigravitySessionReader(historyFile),
     ]);
     await service.refresh();

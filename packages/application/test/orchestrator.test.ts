@@ -34,6 +34,8 @@ type HarnessOptions = {
   planner?: FakePlanner;
   /** Consulta à pasta do projeto. Sem ela, a pasta não é conferida. */
   isDirectory?: (path: string) => Promise<boolean>;
+  /** Contas removidas, pelo id. Sem a opção, o orquestrador não conhece contas. */
+  removedAccounts?: readonly string[];
 };
 
 type Harness = {
@@ -81,6 +83,16 @@ function harness(options: HarnessOptions = {}): Harness {
     ...(options.diff === undefined ? {} : { diff: { diff: options.diff } }),
     ...(options.planner === undefined ? {} : { planner: options.planner }),
     ...(options.isDirectory === undefined ? {} : { fs: { isDirectory: options.isDirectory } }),
+    ...(options.removedAccounts === undefined
+      ? {}
+      : {
+          accounts: {
+            labelOf: (_provider: 'claude', accountId: string | null) => ({
+              name: 'Conta',
+              removed: accountId !== null && (options.removedAccounts ?? []).includes(accountId),
+            }),
+          },
+        }),
     now: () => new Date(Date.UTC(2026, 9, 20, 10, 0, tick++)).toISOString(),
     newId: () => `id-${++ids}`,
   });
@@ -2140,5 +2152,123 @@ describe('critérios indicados pelo agente', () => {
       { claimed: ['Login funciona'], criteria: ['Login funciona'] },
       { claimed: [], criteria: [] },
     ]);
+  });
+});
+
+describe('conta da missão no orquestrador', () => {
+  const WORK = '11111111-1111-4111-8111-111111111111';
+
+  it('o planejador recebe a conta da missão', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft', accountId: WORK }));
+
+    data(await h.orchestrator.planMission(MISSION));
+
+    expect(planner.calls[0]?.accountId).toBe(WORK);
+  });
+
+  it('missão na Principal não manda conta ao planejador nem ao agente', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    data(await h.orchestrator.planMission(MISSION));
+
+    expect(planner.calls[0]).not.toHaveProperty('accountId');
+  });
+
+  it('o agente recebe a conta da missão em todas as tarefas', async () => {
+    const h = harness({ scripts: [[], []] });
+    h.repo.insertMission(missionFixture({ accountId: WORK }));
+    h.repo.insertSteps([
+      {
+        id: 'a',
+        missionId: MISSION,
+        position: 1,
+        title: 'Tarefa a',
+        description: '',
+        kind: 'custom',
+        status: 'pending',
+        dependsOn: [],
+        agent: 'claude-code',
+        role: 'general',
+      },
+      {
+        id: 'b',
+        missionId: MISSION,
+        position: 2,
+        title: 'Tarefa b',
+        description: '',
+        kind: 'custom',
+        status: 'pending',
+        dependsOn: ['a'],
+        agent: 'claude-code',
+        role: 'general',
+      },
+    ]);
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.agent.starts).toHaveLength(2);
+    expect(h.agent.starts.map((start) => start.accountId)).toEqual([WORK, WORK]);
+  });
+
+  it('isRunning vale desde o pedido de início, antes de o agente abrir', async () => {
+    const h = harness();
+    h.repo.insertMission(missionFixture());
+
+    expect(h.orchestrator.isRunning(MISSION)).toBe(false);
+    const pending = h.orchestrator.startMission(MISSION);
+    // O pedido passa pela fila do orquestrador: espera o primeiro instante em que a execução existe.
+    for (let tick = 0; tick < 50 && !h.orchestrator.isRunning(MISSION); tick += 1) {
+      await Promise.resolve();
+    }
+    expect(h.orchestrator.isRunning(MISSION)).toBe(true);
+    expect(h.repo.getMission(MISSION)?.startedAt).toBeUndefined();
+    await pending;
+  });
+
+  it('isPlanning diz se o plano da missão está sendo gerado agora', async () => {
+    const gate = deferred<AppResult<PlannedTask[]>>();
+    const planner = fakePlanner(() => gate.promise);
+    const h = harness({ planner });
+    h.repo.insertMission(missionFixture({ status: 'draft' }));
+
+    expect(h.orchestrator.isPlanning(MISSION)).toBe(false);
+    const pending = h.orchestrator.planMission(MISSION);
+    await h.orchestrator.cancelMission('nao-existe');
+    expect(h.orchestrator.isPlanning(MISSION)).toBe(true);
+    gate.resolve(OK_PLAN);
+    await pending;
+    expect(h.orchestrator.isPlanning(MISSION)).toBe(false);
+  });
+
+  it('conta removida: não planeja, não inicia e não tenta de novo, e a missão fica como estava', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const h = harness({ planner, removedAccounts: [WORK] });
+    h.repo.insertMission(missionFixture({ status: 'draft', accountId: WORK }));
+
+    const planned = await h.orchestrator.planMission(MISSION);
+    expect(planned).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.' },
+    });
+    expect(planner.calls).toHaveLength(0);
+
+    h.repo.updateMission(MISSION, { status: 'queued' });
+    expect(await h.orchestrator.startMission(MISSION)).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.' },
+    });
+    expect(h.agent.starts).toHaveLength(0);
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+
+    h.repo.updateMission(MISSION, { status: 'failed' });
+    expect(await h.orchestrator.retryMission(MISSION)).toMatchObject({
+      ok: false,
+      error: { message: 'A conta foi removida.' },
+    });
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
   });
 });

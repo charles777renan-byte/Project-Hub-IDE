@@ -550,11 +550,17 @@ describe('buildProjectHubApi', () => {
       'requestChanges',
       'resume',
       'retry',
+      'setAccount',
       'start',
       'subscribe',
       'subscribeUsage',
     ]);
-    expect(Object.keys(api.limits).sort()).toEqual(['get', 'refresh', 'subscribe']);
+    expect(Object.keys(api.limits).sort()).toEqual([
+      'get',
+      'refresh',
+      'refreshAccount',
+      'subscribe',
+    ]);
     // As contas só mandam o programa, o id e o nome; o login não tem método que receba endereço.
     expect(Object.keys(api.accounts).sort()).toEqual([
       'add',
@@ -1068,6 +1074,10 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
     acceptanceCriteria: [{ id: 'c1', position: 1, text: 'Login funciona' }],
     createdAt: '2026-10-20T09:00:00.000Z',
     updatedAt: '2026-10-20T09:00:00.000Z',
+    accountId: null,
+    accountName: 'Principal',
+    accountRemoved: false,
+    accountLocked: false,
     worktreeId: 'wt-interno',
   };
 
@@ -1113,6 +1123,10 @@ describe('buildProjectHubApi: missões e aprovações (R165, R28)', () => {
         acceptanceCriteria: [{ id: 'c1', position: 1, text: 'Login funciona' }],
         createdAt: '2026-10-20T09:00:00.000Z',
         updatedAt: '2026-10-20T09:00:00.000Z',
+        accountId: null,
+        accountName: 'Principal',
+        accountRemoved: false,
+        accountLocked: false,
       },
     });
   });

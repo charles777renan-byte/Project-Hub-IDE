@@ -60,6 +60,18 @@ export {
   type CreateMissionInput,
 } from './missions/create-mission';
 export {
+  ACCOUNT_UNAVAILABLE,
+  missionAccountOf,
+  withMissionAccount,
+  type MissionAccountDeps,
+  type MissionAccountView,
+} from './missions/mission-account';
+export {
+  ACCOUNT_LOCKED,
+  setMissionAccount,
+  type SetMissionAccountDeps,
+} from './missions/set-mission-account';
+export {
   getMissionDiff,
   getMissionView,
   listMissions,
@@ -73,6 +85,7 @@ export { deleteMission, type DeleteMissionDeps } from './missions/delete-mission
 export { recoverInterruptedExecutions } from './missions/startup-recovery';
 export { DISPLAY_NAME_KEY, getProfile, setDisplayName, type ProfileDeps } from './profile/profile';
 export type {
+  AccountDirectory,
   ApprovalChanges,
   DiffPort,
   ExecutionChanges,

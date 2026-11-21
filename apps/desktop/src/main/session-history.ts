@@ -12,13 +12,18 @@ import {
   saveSessionIndex,
   type SessionIndex,
 } from './session-history-index';
+import { ACCOUNT_REMOVED } from './accounts/account-use';
 import type { ResumeCheckInput } from './resume-verdict';
 
 export type SessionFileInfo = { path: string; mtimeMs: number; size: number };
 
-/** Um leitor por programa: lista os arquivos dele e lê as sessões de cada um. `read` lança quando o arquivo não lê. */
+/**
+ * Um leitor por conta de cada programa: lista os arquivos dela e lê as sessões de cada um. `read` lança quando o
+ * arquivo não lê. `accountId` nulo é a Principal (e a única conta de quem não tem contas).
+ */
 export type SessionReader = {
   provider: SessionProvider;
+  accountId: string | null;
   files(): Promise<SessionFileInfo[]>;
   read(path: string): Promise<SessionActivity[]>;
 };
@@ -33,7 +38,13 @@ export type ResumeState = { resumable: boolean; resumeBlockedReason: string | nu
 export type SessionHistoryDeps = {
   /** Onde fica o `session-index.json` (em `userData` no app; pasta temporária nos testes). */
   indexFile: string;
-  readers: readonly SessionReader[];
+  /** Os leitores de agora. É função porque as contas mudam com o app aberto. */
+  readers: () => readonly SessionReader[];
+  /** O nome de uma conta, e se ela foi removida. Só é consultada para programa com contas. */
+  accountLabel(
+    provider: SessionProvider,
+    accountId: string | null,
+  ): { name: string; removed: boolean };
   projects(): readonly SessionHistoryProject[];
   /** Worktrees do projeto. Falha vira lista vazia, com o erro no console. */
   worktreesOf(projectPath: string): Promise<readonly WorktreeInfo[]>;
@@ -49,6 +60,8 @@ export type SessionHistoryDeps = {
 export type IndexedSession = {
   id: string;
   provider: SessionProvider;
+  /** A conta em que a sessão foi gravada: retomar é nela, e não na padrão. */
+  accountId: string | null;
   folder: string;
   projectId: string | null;
   resumable: boolean;
@@ -88,9 +101,32 @@ function byMostRecent(a: { lastActivityAt: string }, b: { lastActivityAt: string
 /** Uma sessão do índice, com o programa e o arquivo de onde veio. */
 type IndexedActivity = {
   provider: SessionProvider;
+  accountId: string | null;
   path: string;
   activity: NonNullable<SessionIndex['files'][string]['sessions']>[number];
 };
+
+function sum(a: Progress, b: Progress): Progress {
+  return {
+    read: a.read + b.read,
+    total: a.total + b.total,
+    unreadable: a.unreadable + b.unreadable,
+  };
+}
+
+/** Os programas dos leitores, uma vez cada, na ordem em que aparecem. */
+function providersOf(readers: readonly SessionReader[]): SessionProvider[] {
+  return [...new Set(readers.map((reader) => reader.provider))];
+}
+
+function readerKey(provider: SessionProvider, accountId: string | null): string {
+  return JSON.stringify([provider, accountId]);
+}
+
+/** A conta como o índice a guarda: a Principal fica sem o campo. */
+function accountOf(reader: SessionReader): { accountId?: string } {
+  return reader.accountId === null ? {} : { accountId: reader.accountId };
+}
 
 /** `a` ganha de `b`: atividade mais recente; no empate, o caminho menor, para a escolha não depender da ordem do índice. */
 function isNewer(a: IndexedActivity, b: IndexedActivity): boolean {
@@ -109,7 +145,7 @@ function uniqueSessions(index: SessionIndex): IndexedActivity[] {
   for (const [path, file] of Object.entries(index.files)) {
     if (file.sessions === null) continue;
     for (const activity of file.sessions) {
-      const entry = { provider: file.provider, path, activity };
+      const entry = { provider: file.provider, accountId: file.accountId ?? null, path, activity };
       const key = JSON.stringify([file.provider, activity.id]);
       const current = best.get(key);
       if (current === undefined || isNewer(entry, current)) best.set(key, entry);
@@ -186,15 +222,21 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
     return best;
   }
 
+  /** Sessão de conta removida não retoma: reabriria noutra conta, sem a conversa. O resto decide o `resumeState`. */
+  function resumeOf(accountId: string | null, session: ResumeCheckInput): ResumeState {
+    if (accountId !== null && deps.accountLabel(session.provider, accountId).removed) {
+      return { resumable: false, resumeBlockedReason: ACCOUNT_REMOVED };
+    }
+    return deps.resumeState(session);
+  }
+
   function loaded(): Promise<void> {
     loading ??= loadSessionIndex(deps.indexFile).then((value) => {
       index = value;
       progress.clear();
-      for (const reader of deps.readers) {
-        const files = Object.values(value.files).filter(
-          (file) => file.provider === reader.provider,
-        );
-        progress.set(reader.provider, {
+      for (const provider of providersOf(deps.readers())) {
+        const files = Object.values(value.files).filter((file) => file.provider === provider);
+        progress.set(provider, {
           read: files.filter((file) => file.sessions !== null).length,
           total: files.length,
           unreadable: files.filter((file) => file.sessions === null).length,
@@ -219,20 +261,32 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
     await loaded();
     if (index === undefined) return;
     const current = index;
-    for (const reader of deps.readers) {
+    const readers = deps.readers();
+    // A faixa é uma por programa: soma os leitores já varridos (`done`) com o que está em curso.
+    const done = new Map<SessionProvider, Progress>();
+    const show = (provider: SessionProvider, counts: Progress): void => {
+      const base = done.get(provider);
+      progress.set(provider, base === undefined ? { ...counts } : sum(base, counts));
+    };
+    const finish = (provider: SessionProvider, counts: Progress): void => {
+      const base = done.get(provider);
+      done.set(provider, base === undefined ? { ...counts } : sum(base, counts));
+      progress.set(provider, { ...(done.get(provider) ?? counts) });
+    };
+    for (const reader of readers) {
       const counts: Progress = { read: 0, total: 0, unreadable: 0 };
       let files: SessionFileInfo[];
       try {
         files = await reader.files();
       } catch (error) {
-        // A listagem do programa falhou: conta como um ilegível, e não como zero arquivos.
+        // A listagem falhou: conta como um ilegível, e não como zero arquivos. O que já estava no índice fica.
         console.error(`Falha ao listar as sessões de ${reader.provider}:`, error);
-        progress.set(reader.provider, { read: 0, total: 1, unreadable: 1 });
+        finish(reader.provider, { read: 0, total: 1, unreadable: 1 });
         continue;
       }
       counts.total = files.length;
       // O progresso só troca por um número completo: nunca aparece um zero provisório na faixa.
-      progress.set(reader.provider, { ...counts });
+      show(reader.provider, counts);
       const present = new Set<string>();
       for (const file of files) {
         present.add(file.path);
@@ -240,18 +294,20 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
         if (
           cached !== undefined &&
           cached.provider === reader.provider &&
+          (cached.accountId ?? null) === reader.accountId &&
           cached.mtimeMs === file.mtimeMs &&
           cached.size === file.size
         ) {
           if (cached.sessions === null) counts.unreadable += 1;
           else counts.read += 1;
-          progress.set(reader.provider, { ...counts });
+          show(reader.provider, counts);
           continue;
         }
         try {
           const sessions = await reader.read(file.path);
           current.files[file.path] = {
             provider: reader.provider,
+            ...accountOf(reader),
             mtimeMs: file.mtimeMs,
             size: file.size,
             sessions,
@@ -261,6 +317,7 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
         } catch (error) {
           current.files[file.path] = {
             provider: reader.provider,
+            ...accountOf(reader),
             mtimeMs: file.mtimeMs,
             size: file.size,
             sessions: null,
@@ -268,16 +325,27 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
           };
           counts.unreadable += 1;
         }
-        progress.set(reader.provider, { ...counts });
+        show(reader.provider, counts);
         await yieldToEventLoop();
       }
-      // Arquivo que sumiu deste programa sai do índice.
+      finish(reader.provider, counts);
+      // Arquivo que sumiu desta conta do programa sai do índice.
       current.files = Object.fromEntries(
         Object.entries(current.files).filter(
-          ([path, entry]) => entry.provider !== reader.provider || present.has(path),
+          ([path, entry]) =>
+            entry.provider !== reader.provider ||
+            (entry.accountId ?? null) !== reader.accountId ||
+            present.has(path),
         ),
       );
     }
+    // Conta que já não tem leitor (foi removida): os arquivos dela saem do índice.
+    const known = new Set(readers.map((reader) => readerKey(reader.provider, reader.accountId)));
+    current.files = Object.fromEntries(
+      Object.entries(current.files).filter(([, entry]) =>
+        known.has(readerKey(entry.provider, entry.accountId ?? null)),
+      ),
+    );
     try {
       await saveSessionIndex(deps.indexFile, current);
     } catch (error) {
@@ -319,10 +387,18 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
     const dropped = new Map<SessionProvider, number>();
     const valid = new Map<SessionProvider, number>();
     const rows: SessionSummary[] = [];
+    const readers = deps.readers();
+    // Programa com mais de uma conta: só aí a lista diz de qual conta é cada sessão.
+    const perProvider = new Map<SessionProvider, number>();
+    for (const reader of readers) {
+      perProvider.set(reader.provider, (perProvider.get(reader.provider) ?? 0) + 1);
+    }
 
-    for (const { provider, activity } of uniqueSessions(snapshot)) {
+    for (const { provider, accountId, activity } of uniqueSessions(snapshot)) {
       const owner = ownerOf(activity.cwd, candidates);
-      const resume = deps.resumeState({
+      const named = accountId !== null || (perProvider.get(provider) ?? 0) > 1;
+      const account = named ? deps.accountLabel(provider, accountId) : undefined;
+      const resume = resumeOf(accountId, {
         id: activity.id,
         provider,
         folder: activity.cwd,
@@ -333,6 +409,8 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
       const parsed = sessionSummarySchema.safeParse({
         id: activity.id,
         provider,
+        accountId,
+        accountName: account === undefined || account.name === '' ? null : account.name,
         title: detail?.title ?? null,
         folder: activity.cwd,
         projectId: owner?.project.id ?? null,
@@ -368,14 +446,14 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
       rows.push(parsed.data);
     }
 
-    const indexing = deps.readers.map((reader) => {
-      const counts = progress.get(reader.provider) ?? { read: 0, total: 0, unreadable: 0 };
+    const indexing = providersOf(readers).map((provider) => {
+      const counts = progress.get(provider) ?? { read: 0, total: 0, unreadable: 0 };
       return {
-        provider: reader.provider,
+        provider,
         read: counts.read,
         total: counts.total,
-        unreadable: counts.unreadable + (dropped.get(reader.provider) ?? 0),
-        sessions: valid.get(reader.provider) ?? 0,
+        unreadable: counts.unreadable + (dropped.get(provider) ?? 0),
+        sessions: valid.get(provider) ?? 0,
       };
     });
     return { sessions: rows.sort(byMostRecent), indexing };
@@ -391,10 +469,10 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
       if (found === undefined || isNewer(entry, found)) found = entry;
     }
     if (found === undefined) return undefined;
-    const { provider, activity } = found;
+    const { provider, accountId, activity } = found;
     const owner = ownerOf(activity.cwd, candidates);
     // Sem projeto de referência: só o programa e a pasta contam aqui. O `resumeSession` confere o projeto do workspace.
-    const resume = deps.resumeState({
+    const resume = resumeOf(accountId, {
       id: activity.id,
       provider,
       folder: activity.cwd,
@@ -404,6 +482,7 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
     return {
       id: sessionId,
       provider,
+      accountId,
       folder: activity.cwd,
       projectId: owner?.project.id ?? null,
       resumable: resume.resumable,

@@ -99,7 +99,10 @@ test.describe('renderer isolado', () => {
 
     expect(surface).not.toBeNull();
     expect(surface?.root).toEqual([
+      'accounts',
       'activity',
+      'alerts',
+      'app',
       'approvals',
       'browser',
       'files',
@@ -118,7 +121,7 @@ test.describe('renderer isolado', () => {
       'workspaces',
       'worktrees',
     ]);
-    expect(surface?.limits).toEqual(['get', 'refresh', 'subscribe']);
+    expect(surface?.limits).toEqual(['get', 'refresh', 'refreshAccount', 'subscribe']);
     expect(surface?.files).toEqual([
       'list',
       'onSaveAllRequest',
@@ -147,6 +150,7 @@ test.describe('renderer isolado', () => {
     expect(surface?.github).toEqual(['comment', 'merge', 'openUrl', 'pr']);
     expect(surface?.terminals).toEqual([
       'list',
+      'onChanged',
       'onEvent',
       'resize',
       'subscribe',

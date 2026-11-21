@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ACCOUNT_NAME_MAX } from '@project-hub/contracts';
+import { ACCOUNT_NAME_MAX } from '@project-hub/contracts/account-name';
 
 const TEXT = {
   field: 'Nome da conta',

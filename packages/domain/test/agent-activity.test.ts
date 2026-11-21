@@ -50,6 +50,21 @@ describe('linkToApp', () => {
     expect(linkToApp([session({ startedAt: at(30, 12) })], [closed], NOW)).toEqual([]);
   });
 
+  it('só liga a sessão ao terminal da mesma conta, e sem conta vale a Principal', () => {
+    const account = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const inAccount = session({ accountId: account });
+    const inPrincipal = session({ accountId: null });
+    const untagged = session();
+
+    expect(
+      linkToApp([inAccount, inPrincipal, untagged], [terminal({ accountId: account })], NOW),
+    ).toEqual([inAccount]);
+    expect(linkToApp([inAccount, inPrincipal, untagged], [terminal()], NOW)).toEqual([
+      inPrincipal,
+      untagged,
+    ]);
+  });
+
   it('não liga quando a pasta é outra', () => {
     expect(linkToApp([session({ cwd: 'C:\\proj\\y' })], [terminal()], NOW)).toEqual([]);
   });

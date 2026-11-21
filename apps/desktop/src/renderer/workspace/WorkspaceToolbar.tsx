@@ -2,9 +2,11 @@ import type { CSSProperties, KeyboardEvent } from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { LayoutPreset } from '@project-hub/contracts/layout-ops';
 import type { ProviderId, ProviderInfo } from '@project-hub/contracts';
+import { AccountChoice, type AccountChoiceItem } from '../components/AccountChoice';
 import { ProviderIcon } from '../components/ProviderIcon';
 import { Hint } from '../components/Hint';
 import {
+  ArrowLeft,
   ChevronDown,
   ICON_PROPS,
   LayoutGrid,
@@ -61,6 +63,9 @@ function rowStyle(index: number): CSSProperties {
  * instalado aparece marcado como "Não instalado", com o motivo na dica, e não abre nada. Com o limite de
  * painéis, o botão fica desabilitado com a dica do limite. Com `unavailableReason` (a pasta do projeto sumiu), o
  * botão também fica desabilitado, e a dica é o motivo. Um bloqueio que chega com o menu aberto fecha o menu.
+ * Programa com mais de uma conta (`accounts`) pede a conta antes de abrir: o menu dá lugar à lista de contas, com a
+ * padrão marcada e o foco nela; escolher abre o painel nessa conta, e Esc (ou "Voltar") devolve ao menu dos
+ * programas. Programa com uma conta só abre direto, como sempre.
  * `focusToken` novo leva o foco ao botão, como quando o
  * último painel é fechado. Com `soloAuto`
  * (a janela está pequena para o layout e o modo Abas valeu sozinho), "Abas" fica apertado, "Grade" fica desabilitado e as dicas
@@ -79,6 +84,8 @@ export function WorkspaceToolbar({
   onPreset,
   onLayout,
   onOpen,
+  accounts,
+  onMenuOpen,
 }: {
   providers: readonly ProviderInfo[];
   busy: boolean;
@@ -101,11 +108,18 @@ export function WorkspaceToolbar({
   onPreset?(preset: LayoutPreset): void;
   /** A pessoa escolheu como os painéis aparecem. Sem ele, o seletor não aparece. */
   onLayout?(mode: PaneLayoutMode): void;
-  onOpen(provider: ProviderId): void;
+  /** Abre um painel do programa. `accountId` só vem quando a pessoa escolheu a conta (`null` é a Principal). */
+  onOpen(provider: ProviderId, accountId?: string | null): void;
+  /** As contas de cada programa que tem contas. Com duas ou mais, o menu pergunta a conta antes de abrir. */
+  accounts?: Partial<Record<ProviderId, readonly AccountChoiceItem[]>> | undefined;
+  /** O menu abriu: a página relê as contas, que podem ter mudado nas Configurações. */
+  onMenuOpen?(): void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [marked, setMarked] = useState<ProviderId | null>(null);
+  // O programa cuja conta está sendo escolhida; `null` é o menu dos programas.
+  const [picking, setPicking] = useState<ProviderInfo | null>(null);
   const wrapper = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -147,7 +161,13 @@ export function WorkspaceToolbar({
     if (open) return;
     setQuery('');
     setMarked(null);
+    setPicking(null);
   }, [open]);
+
+  // De volta da lista de contas, o foco retorna à busca.
+  useEffect(() => {
+    if (open && picking === null) search.current?.focus();
+  }, [open, picking]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,6 +181,14 @@ export function WorkspaceToolbar({
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!open) return;
+    if (picking !== null) {
+      // Na lista de contas as setas e o Enter são dela; aqui só o Esc de fora da lista (o botão "Voltar").
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPicking(null);
+      }
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       setOpen(false);
@@ -204,9 +232,21 @@ export function WorkspaceToolbar({
 
   function choose(provider: ProviderInfo) {
     if (blocked || provider.available === false) return;
+    if ((accounts?.[provider.id]?.length ?? 0) > 1) {
+      setPicking(provider);
+      return;
+    }
     setOpen(false);
     onOpen(provider.id);
   }
+
+  function chooseAccount(provider: ProviderInfo, accountId: string | null) {
+    if (blocked) return;
+    setOpen(false);
+    onOpen(provider.id, accountId);
+  }
+
+  const pickingAccounts = picking === null ? [] : (accounts?.[picking.id] ?? []);
 
   const trigger = (
     <button
@@ -217,7 +257,10 @@ export function WorkspaceToolbar({
       aria-label="Abrir terminal"
       aria-haspopup="menu"
       aria-expanded={open}
-      onClick={() => setOpen((current) => !current)}
+      onClick={() => {
+        if (!open) onMenuOpen?.();
+        setOpen((current) => !current);
+      }}
     >
       <Plus {...ICON_PROPS} />
       <span className="workspace__open-label">Terminal</span>
@@ -293,7 +336,35 @@ export function WorkspaceToolbar({
           trigger
         )}
       </div>
-      {open ? (
+      {open && picking !== null ? (
+        <div className="workspace__popup">
+          <div className="workspace__account-head" style={rowStyle(0)}>
+            <button
+              type="button"
+              className="workspace__account-back"
+              aria-label="Voltar aos programas"
+              onClick={() => setPicking(null)}
+            >
+              <ArrowLeft {...ICON_PROPS} />
+            </button>
+            <span className="workspace__menu-icon">
+              <ProviderIcon provider={picking.id} />
+            </span>
+            <span className="workspace__account-title">{`Conta do ${picking.label}`}</span>
+          </div>
+          <AccountChoice
+            label={`Conta do ${picking.label}`}
+            accounts={pickingAccounts}
+            value={pickingAccounts.find((account) => account.isDefault)?.id ?? null}
+            autoFocus
+            onChange={(accountId) => chooseAccount(picking, accountId)}
+            onCancel={() => setPicking(null)}
+          />
+          <p className="workspace__menu-foot" aria-hidden="true" style={rowStyle(1)}>
+            <kbd>↑↓</kbd> navegar · <kbd>↵</kbd> abrir · <kbd>Esc</kbd> voltar
+          </p>
+        </div>
+      ) : open ? (
         <div className="workspace__popup">
           <div className="workspace__menu-search" style={rowStyle(0)}>
             <Search {...ICON_PROPS} />

@@ -1,7 +1,12 @@
 import { lstat, mkdir, realpath, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { failure } from '@project-hub/application';
-import { accountIdSchema, type AccountProviderId, type AppResult } from '@project-hub/contracts';
+import {
+  accountIdSchema,
+  type AccountProviderId,
+  type AppResult,
+  type ProviderId,
+} from '@project-hub/contracts';
 import type { AccountRepository } from '@project-hub/database';
 
 /** A variável que faz cada programa usar outra pasta de configuração, e com ela outra conta. */
@@ -9,6 +14,20 @@ export const ACCOUNT_ENV_VARIABLE: Record<AccountProviderId, string> = {
   claude: 'CLAUDE_CONFIG_DIR',
   codex: 'CODEX_HOME',
 };
+
+/**
+ * Opções que uma conta extra põe na linha do programa, antes dos extras do lançamento (a retomada). O Codex
+ * interativo abre um servidor de fundo com um socket dentro da pasta da conta, e o caminho do socket tem limite
+ * (108 caracteres no Windows): a pasta de uma conta extra, dentro da pasta de dados do app, passa dele, e o Codex
+ * nem abre. Com `--no-daemon`, ele roda sem o servidor de fundo, como ele mesmo sugere no erro. A Principal
+ * (`~/.codex`) fica como sempre.
+ */
+export function accountLaunchArgs(
+  provider: ProviderId,
+  accountId: string | null,
+): readonly string[] {
+  return provider === 'codex' && accountId !== null ? ['--no-daemon'] : [];
+}
 
 /** A área das contas extras, dentro da pasta de dados do app. A Principal não mora aqui. */
 export function accountsRoot(dataDir: string): string {
@@ -60,7 +79,10 @@ export function createAccountPaths(deps: {
       if (!account || account.removedAt !== undefined || account.provider !== provider) {
         return failure('VALIDATION_FAILED', GONE);
       }
-      return { ok: true, data: { [ACCOUNT_ENV_VARIABLE[provider]]: folderOf(provider, accountId) } };
+      return {
+        ok: true,
+        data: { [ACCOUNT_ENV_VARIABLE[provider]]: folderOf(provider, accountId) },
+      };
     },
 
     async removeFolder(provider, id) {

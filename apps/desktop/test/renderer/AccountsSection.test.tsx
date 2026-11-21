@@ -5,6 +5,7 @@ import type {
   AccountDto,
   AccountsDto,
   AppResult,
+  LimitsDto,
   LoginDto,
   LoginEvent,
   ProjectHubApi,
@@ -136,7 +137,9 @@ async function group(name: string): Promise<HTMLElement> {
 function rowOf(groupElement: HTMLElement, name: string): HTMLElement {
   const item = within(groupElement)
     .getAllByRole('listitem')
-    .find((element) => within(element).queryByText(name, { selector: '.acct__name-text' }) !== null);
+    .find(
+      (element) => within(element).queryByText(name, { selector: '.acct__name-text' }) !== null,
+    );
   if (item === undefined) throw new Error(`conta ${name} não está na lista`);
   return item;
 }
@@ -255,7 +258,9 @@ describe('AccountsSection: adicionar e renomear', () => {
     expect(field).toHaveAttribute('maxlength', '40');
     await userEvent.type(field, 'Estudos{Enter}');
 
-    await waitFor(() => expect(api.add).toHaveBeenCalledWith({ provider: 'claude', name: 'Estudos' }));
+    await waitFor(() =>
+      expect(api.add).toHaveBeenCalledWith({ provider: 'claude', name: 'Estudos' }),
+    );
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
     expect(within(claude).queryByRole('textbox', { name: 'Nome da conta' })).toBeNull();
   });
@@ -268,7 +273,10 @@ describe('AccountsSection: adicionar e renomear', () => {
     render(<AccountsSection />);
     const claude = await group('Claude Code');
     await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar conta' }));
-    await userEvent.type(within(claude).getByRole('textbox', { name: 'Nome da conta' }), 'Trabalho');
+    await userEvent.type(
+      within(claude).getByRole('textbox', { name: 'Nome da conta' }),
+      'Trabalho',
+    );
     await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar' }));
 
     expect(await within(claude).findByRole('alert')).toHaveTextContent(
@@ -405,7 +413,8 @@ describe('AccountsSection: padrão, desconectar e remover', () => {
   it('a falha de uma ação aparece na linha da conta', async () => {
     const { api } = installApi();
     api.disconnect.mockImplementationOnce(
-      () => fail('VALIDATION_FAILED', 'Feche antes os painéis que usam esta conta: Painel 1.') as never,
+      () =>
+        fail('VALIDATION_FAILED', 'Feche antes os painéis que usam esta conta: Painel 1.') as never,
     );
     render(<AccountsSection />);
     const row = rowOf(await group('Claude Code'), 'Cliente');
@@ -435,7 +444,9 @@ describe('AccountsSection: login guiado', () => {
     render(<AccountsSection />);
     const claude = await group('Claude Code');
     await within(rowOf(claude, 'Cliente')).findByText('Conectando');
-    expect(within(rowOf(claude, 'Trabalho')).getByRole('button', { name: 'Conectar' })).toBeDisabled();
+    expect(
+      within(rowOf(claude, 'Trabalho')).getByRole('button', { name: 'Conectar' }),
+    ).toBeDisabled();
   });
 
   it('mostra os três passos, com o servidor do login, e nunca o endereço', async () => {
@@ -519,7 +530,9 @@ describe('AccountsSection: login guiado', () => {
     render(<AccountsSection />);
     const row = rowOf(await group('Claude Code'), 'Trabalho');
     expect(
-      await within(row).findByText('É a mesma conta de “Principal”. Se não era a intenção, escolha “Não é esta conta”.'),
+      await within(row).findByText(
+        'É a mesma conta de “Principal”. Se não era a intenção, escolha “Não é esta conta”.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -597,5 +610,128 @@ describe('AccountsSection: login guiado', () => {
     expect(await within(row).findByRole('alert')).toHaveTextContent(
       'O login expirou sem a autorização no navegador.',
     );
+  });
+});
+
+describe('AccountsSection: uso por conta', () => {
+  type Entry = LimitsDto['accounts'][number];
+  const entry = (overrides: Partial<Entry>): Entry => ({
+    provider: 'claude',
+    accountId: null,
+    accountName: 'Principal',
+    windows: [],
+    refreshing: false,
+    ...overrides,
+  });
+  const read = (overrides: Partial<Entry>): Entry =>
+    entry({
+      windows: [
+        {
+          id: 'five_hour',
+          usedPercent: 40,
+          resetsAt: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      ],
+      capturedAt: new Date(Date.now() - 12 * 60_000 - 5_000).toISOString(),
+      ...overrides,
+    });
+
+  function installLimits(accounts: Entry[]) {
+    const state: LimitsDto = { providers: [], accounts };
+    const limits = {
+      get: vi.fn(() => ok(state)),
+      refresh: vi.fn(() => ok(state)),
+      refreshAccount: vi.fn((_input: { provider: string; accountId: string | null }) => ok(state)),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    (window.projectHub as unknown as { limits: unknown }).limits = limits;
+    return limits;
+  }
+
+  it('cada conta com leitura mostra a barra de uso e a idade da leitura', async () => {
+    installApi();
+    installLimits([read({}), read({ accountId: B, accountName: 'Cliente' })]);
+    render(<AccountsSection />);
+
+    const row = rowOf(await group('Claude Code'), 'Cliente');
+    const usage = await within(row).findByRole('group', { name: 'Uso da conta Cliente' });
+    expect(within(usage).getByRole('meter')).toHaveAttribute('aria-valuenow', '40');
+    expect(within(usage).getByText('Lido há 12 min')).toBeInTheDocument();
+  });
+
+  it('"Atualizar uso" pede a leitura daquela conta, só pelo programa e pelo id', async () => {
+    installApi();
+    const limits = installLimits([read({}), read({ accountId: B, accountName: 'Cliente' })]);
+    render(<AccountsSection />);
+
+    const row = rowOf(await group('Claude Code'), 'Cliente');
+    await userEvent.click(await within(row).findByRole('button', { name: 'Atualizar uso' }));
+
+    expect(limits.refreshAccount.mock.calls).toEqual([[{ provider: 'claude', accountId: B }]]);
+  });
+
+  it('enquanto lê, o botão fica desabilitado, com rótulo próprio', async () => {
+    installApi();
+    installLimits([read({}), read({ accountId: B, accountName: 'Cliente', refreshing: true })]);
+    render(<AccountsSection />);
+
+    const row = rowOf(await group('Claude Code'), 'Cliente');
+    expect(await within(row).findByRole('button', { name: 'Lendo o uso…' })).toBeDisabled();
+  });
+
+  it('problema de leitura vira a frase fixa, sem barra', async () => {
+    installApi();
+    installLimits([
+      read({}),
+      entry({ accountId: B, accountName: 'Cliente', problem: 'not-logged-in' }),
+    ]);
+    render(<AccountsSection />);
+
+    const row = rowOf(await group('Claude Code'), 'Cliente');
+    const usage = await within(row).findByRole('group', { name: 'Uso da conta Cliente' });
+    expect(within(usage).getByText(/pede login/)).toBeInTheDocument();
+    expect(within(usage).queryByRole('meter')).toBeNull();
+  });
+
+  it('conta sem login não mostra uso nem pede leitura', async () => {
+    installApi();
+    const limits = installLimits([
+      read({}),
+      entry({ accountId: A, accountName: 'Trabalho' }),
+      read({ accountId: B, accountName: 'Cliente' }),
+    ]);
+    render(<AccountsSection />);
+
+    const row = rowOf(await group('Claude Code'), 'Trabalho');
+    await waitFor(() => expect(limits.get).toHaveBeenCalled());
+    expect(within(row).queryByRole('group', { name: 'Uso da conta Trabalho' })).toBeNull();
+    expect(limits.refreshAccount).not.toHaveBeenCalled();
+  });
+
+  it('abrir a seção pede a leitura das contas conectadas sem leitura, uma por vez, e não repete', async () => {
+    installApi();
+    const limits = installLimits([entry({}), entry({ accountId: B, accountName: 'Cliente' })]);
+    let release: (() => void) | undefined;
+    limits.refreshAccount.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ ok: true, data: { providers: [], accounts: [] } });
+        }) as ReturnType<typeof limits.refreshAccount>,
+    );
+    render(<AccountsSection />);
+
+    await waitFor(() => expect(limits.refreshAccount).toHaveBeenCalledTimes(1));
+    expect(limits.refreshAccount.mock.calls[0]).toEqual([{ provider: 'claude', accountId: null }]);
+    await act(async () => {
+      release?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(limits.refreshAccount).toHaveBeenCalledTimes(2));
+    expect(limits.refreshAccount.mock.calls[1]).toEqual([{ provider: 'claude', accountId: B }]);
+    // A resposta ainda diz "sem leitura": com a seção aberta, o pedido não se repete.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(limits.refreshAccount).toHaveBeenCalledTimes(2);
   });
 });

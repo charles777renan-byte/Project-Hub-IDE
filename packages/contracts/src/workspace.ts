@@ -30,6 +30,8 @@ export type LayoutLeaf = {
   provider: ProviderId;
   /** `null` enquanto o painel não tem sessão aberta. */
   terminalId: string | null;
+  /** A conta extra do programa em que o painel abre. Ausente: a Principal (é o caso dos layouts antigos). */
+  accountId?: string | undefined;
 };
 
 export type LayoutSplit = {
@@ -101,6 +103,8 @@ const leafShape = z.object({
   id: z.string().min(1).max(128),
   provider: providerIdSchema,
   terminalId: z.string().min(1).max(128).nullable(),
+  // O mesmo formato de `accountIdSchema`; não é importado de `accounts` para os dois módulos não se cruzarem.
+  accountId: z.uuid().optional(),
 });
 
 // Só o formato, recursivo. As regras do conjunto (limites, ids únicos, tamanhos) rodam uma
@@ -163,17 +167,28 @@ export const saveLayoutInputSchema = z.object({
 });
 
 /** Entrada de `workspaces:add-pane:v1`: o workspace e o programa; o comando sai do registro de provedores. */
-export const addPaneInputSchema = z.object({ workspaceId: idSchema, provider: providerIdSchema });
+/**
+ * A conta de um painel novo. Ausente: a conta padrão do programa, que o processo principal resolve. `null`: a
+ * Principal. Só o id: a pasta e o ambiente nunca vêm da tela.
+ */
+const paneAccountSchema = z.uuid().nullable().optional();
+
+export const addPaneInputSchema = z.strictObject({
+  workspaceId: idSchema,
+  provider: providerIdSchema,
+  accountId: paneAccountSchema,
+});
 
 /**
  * Entrada de `workspaces:split-pane:v1`: o painel que cede espaço, o lado em que o novo entra e o programa dele.
  * Nunca comando ou caminho.
  */
-export const splitPaneInputSchema = z.object({
+export const splitPaneInputSchema = z.strictObject({
   workspaceId: idSchema,
   leafId: idSchema,
   side: z.enum(['left', 'right', 'top', 'bottom']),
   provider: providerIdSchema,
+  accountId: paneAccountSchema,
 });
 
 /** Entrada dos canais que agem num painel: o workspace e a folha, nunca comando ou caminho. */

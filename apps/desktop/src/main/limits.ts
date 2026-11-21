@@ -102,7 +102,7 @@ export function createLimitsService(options: LimitsServiceOptions): LimitsServic
   }
 
   function get(): LimitsDto {
-    return { providers: [snapshot()] };
+    return { providers: [snapshot()], accounts: [] };
   }
 
   /** A janela pode ter fechado entre a leitura e o envio; um erro de envio não pode derrubar a leitura. */

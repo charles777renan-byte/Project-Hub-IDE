@@ -12,6 +12,7 @@ const iso = (day: number, hour: number, minute: number) =>
 
 function claude(overrides: Partial<ProviderLimitsDto> = {}): LimitsDto {
   return {
+    accounts: [],
     providers: [
       {
         provider: 'claude',
@@ -40,7 +41,7 @@ function codexProvider(overrides: Partial<ProviderLimitsDto> = {}): ProviderLimi
 }
 
 function withCodex(base: LimitsDto, overrides: Partial<ProviderLimitsDto> = {}): LimitsDto {
-  return { providers: [...base.providers, codexProvider(overrides)] };
+  return { accounts: [], providers: [...base.providers, codexProvider(overrides)] };
 }
 
 function install(initial: LimitsDto) {
@@ -108,7 +109,7 @@ describe('LimitsIndicator: o resumo na barra', () => {
   });
 
   it('com uma janela só, há uma linha só, marcada para a folha de estilo centrar', async () => {
-    install(withCodex({ providers: [] }));
+    install(withCodex({ providers: [], accounts: [] }));
     const { container } = render(<LimitsIndicator />);
     await screen.findByRole('button', { name: /^Limites do Codex/ });
 
@@ -120,7 +121,7 @@ describe('LimitsIndicator: o resumo na barra', () => {
   it('com mais de duas janelas, mostra só a mais curta e a mais longa', async () => {
     install(
       withCodex(
-        { providers: [] },
+        { providers: [], accounts: [] },
         {
           windows: [
             { id: 'five_hour', usedPercent: 10, resetsAt: iso(28, 18, 0) },
@@ -138,7 +139,7 @@ describe('LimitsIndicator: o resumo na barra', () => {
   });
 
   it('sem leitura, mostra um traço e nunca um zero', () => {
-    install({ providers: [] });
+    install({ providers: [], accounts: [] });
     render(<LimitsIndicator />);
 
     const button = screen.getByRole('button', { name: 'Limites do Claude: sem leitura' });
@@ -279,7 +280,7 @@ describe('LimitsIndicator: o painel', () => {
   });
 
   it('sem nenhuma leitura, diz isso no lugar das janelas', () => {
-    install({ providers: [] });
+    install({ providers: [], accounts: [] });
     render(<LimitsIndicator />);
     fireEvent.click(screen.getByRole('button', { name: /^Limites do Claude/ }));
 

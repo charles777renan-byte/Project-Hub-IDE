@@ -117,7 +117,8 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
       // Terminal que já não existe, ou processo de terminais sem o pedido.
     }
     // Um login novo pode ter começado enquanto este encerrava: a anotação dele não é apagada.
-    if (deps.settings.get(LOGIN_TERMINAL_KEY) === terminalId) deps.settings.remove(LOGIN_TERMINAL_KEY);
+    if (deps.settings.get(LOGIN_TERMINAL_KEY) === terminalId)
+      deps.settings.remove(LOGIN_TERMINAL_KEY);
   }
 
   /** Esquece o terminal do login: escuta, prazo, anotação, saída guardada e endereço. Mata o processo se pedido. */

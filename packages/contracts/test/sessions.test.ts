@@ -57,6 +57,8 @@ function summary(overrides: Record<string, unknown>) {
     lastTurns: null,
     resumable: true,
     resumeBlockedReason: null,
+    accountId: null,
+    accountName: null,
     ...overrides,
   };
 }

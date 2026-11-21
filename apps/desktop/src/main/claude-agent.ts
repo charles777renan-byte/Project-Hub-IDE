@@ -27,6 +27,8 @@ export type ClaudeAgentOptions = {
   commandPrefix?: readonly string[];
   /** Variáveis somadas ao ambiente filtrado do terminal (`ELECTRON_RUN_AS_NODE` do CLI falso). Só os testes usam. */
   extraEnv?: Record<string, string>;
+  /** As contas do Claude Code: o ambiente e a pasta de dados da conta de cada missão. Sem elas, só a Principal. */
+  account?: NonNullable<Parameters<typeof createClaudeCodeAdapter>[0]['account']>;
 };
 
 /**
@@ -81,6 +83,7 @@ export function createClaudeAgent(
     ...(options.commandPrefix === undefined ? {} : { commandPrefix: options.commandPrefix }),
     settingsDir: join(options.dataDir, 'terminal-host', 'settings'),
     env: buildTerminalEnv(options.env, options.extraEnv),
+    ...(options.account === undefined ? {} : { account: options.account }),
   });
 }
 

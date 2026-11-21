@@ -60,6 +60,11 @@ export function SessionDetail({
         <p className="sessions-tab__detail-meta">
           <ProviderIcon provider={session.provider} size={14} />
           <span>{SESSION_PROVIDER_LABEL[session.provider]}</span>
+          {session.accountName === null ? null : (
+            <span className="sessions-tab__account">
+              {SESSIONS_TEXT.account(session.accountName)}
+            </span>
+          )}
           <span>{relativeTime(session.lastActivityAt, Date.now())}</span>
         </p>
         <p className="sessions-tab__folder" title={session.folder}>

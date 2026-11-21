@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
 
 /**
  * Limites da assinatura de um programa de IA, como o cartão de uso do Início os mostra. Cada programa tem
@@ -50,7 +51,17 @@ export const providerLimitsDtoSchema = z.object({
 });
 export type ProviderLimitsDto = z.infer<typeof providerLimitsDtoSchema>;
 
+/** Os limites de uma conta de um programa (`accountId` nulo: a Principal). */
+export const accountLimitsDtoSchema = providerLimitsDtoSchema.extend({
+  accountId: accountRefSchema,
+  accountName: z.string().max(ACCOUNT_NAME_MAX),
+});
+export type AccountLimitsDto = z.infer<typeof accountLimitsDtoSchema>;
+
 export const limitsDtoSchema = z.object({
+  /** Uma entrada por programa: a da conta padrão dele. É o que o indicador da barra de estado mostra. */
   providers: z.array(providerLimitsDtoSchema),
+  /** Uma entrada por conta que já tem leitura ou está sendo lida. */
+  accounts: z.array(accountLimitsDtoSchema),
 });
 export type LimitsDto = z.infer<typeof limitsDtoSchema>;

@@ -5,12 +5,16 @@ import {
   getMissionDiff,
   getMissionView,
   listMissions,
+  setMissionAccount,
+  withMissionAccount,
   type CreateMissionDeps,
   type DeleteMissionDeps,
   type MissionDiffDeps,
+  type MissionAccountDeps,
   type MissionQueryDeps,
   type Orchestrator,
   type PlanEdit,
+  type SetMissionAccountDeps,
 } from '@project-hub/application';
 import {
   CHANNELS,
@@ -21,6 +25,7 @@ import {
   planMissionInputSchema,
   provideInputSchema,
   requestChangesInputSchema,
+  setMissionAccountInputSchema,
   type AppResult,
 } from '@project-hub/contracts';
 import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
@@ -35,33 +40,68 @@ export type MissionsIpcDeps = {
   queryDeps: MissionQueryDeps;
   diffDeps: MissionDiffDeps;
   deleteDeps: DeleteMissionDeps;
+  /** A conta de cada missão (nome, removida, travada) e a troca dela. Só ids e nomes passam por aqui. */
+  accountDeps: SetMissionAccountDeps;
 };
 
 const INVALID_MISSION = 'Confira os campos da missão: título, objetivo e um critério de aceite.';
 const INVALID_PROJECT = 'Informe o projeto da missão.';
 const INVALID_MISSION_ID = 'Informe a missão.';
 const INVALID_INPUT = 'Confira a resposta antes de enviar.';
+const INVALID_ACCOUNT = 'Informe a missão e a conta.';
 const INVALID_PLAN_REQUEST = 'Informe a missão e, se quiser, um pedido de até 1000 caracteres.';
 const INVALID_PLAN_EDIT =
   'Confira a edição da tarefa: o título tem de 1 a 120 caracteres, a descrição até 2000 e a posição começa em 1.';
 
 /** Cria a missão em rascunho. A entrada é conferida pelo schema antes de qualquer gravação (R165). */
-export function handleCreateMission(deps: CreateMissionDeps, payload: unknown) {
+export function handleCreateMission(
+  deps: CreateMissionDeps,
+  payload: unknown,
+  account?: MissionAccountDeps,
+) {
   const input = createMissionInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION);
-  return createMission(deps, input.data);
+  const created = createMission(deps, input.data);
+  if (!created.ok || account === undefined) return created;
+  return { ok: true as const, data: withMissionAccount(account, created.data) };
 }
 
-export function handleListMissions(deps: MissionQueryDeps, payload: unknown) {
+/** As missões do projeto. Com `account`, cada uma sai com a conta dela, na forma que a tela espera. */
+export function handleListMissions(
+  deps: MissionQueryDeps,
+  payload: unknown,
+  account?: MissionAccountDeps,
+) {
   const input = listMissionsInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROJECT);
-  return listMissions(deps, input.data.projectId);
+  const listed = listMissions(deps, input.data.projectId);
+  if (!listed.ok || account === undefined) return listed;
+  return {
+    ok: true as const,
+    data: listed.data.map((mission) => withMissionAccount(account, mission)),
+  };
 }
 
-export function handleGetMission(deps: MissionQueryDeps, payload: unknown) {
+export function handleGetMission(
+  deps: MissionQueryDeps,
+  payload: unknown,
+  account?: MissionAccountDeps,
+) {
   const input = missionIdInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_MISSION_ID);
-  return getMissionView(deps, input.data.missionId);
+  const view = getMissionView(deps, input.data.missionId);
+  if (!view.ok || account === undefined) return view;
+  return {
+    ok: true as const,
+    data: { ...view.data, mission: withMissionAccount(account, view.data.mission) },
+  };
+}
+
+/** Troca a conta da missão. Só o id da missão e o da conta: a regra (antes de começar, conta que vale) é do caso de uso. */
+export function handleSetMissionAccount(deps: SetMissionAccountDeps, payload: unknown) {
+  const input = setMissionAccountInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_ACCOUNT);
+  return setMissionAccount(deps, input.data);
 }
 
 /** Alterações do worktree da missão. Só lê; a missão sem worktree devolve a lista vazia. */
@@ -179,9 +219,11 @@ export function registerMissionHandlers(
       Promise.resolve(run(payload)),
     );
 
-  on(CHANNELS.missionsCreate, (payload) => handleCreateMission(deps.createDeps, payload));
-  on(CHANNELS.missionsList, (payload) => handleListMissions(deps.queryDeps, payload));
-  on(CHANNELS.missionsGet, (payload) => handleGetMission(deps.queryDeps, payload));
+  const account = deps.accountDeps;
+  on(CHANNELS.missionsCreate, (payload) => handleCreateMission(deps.createDeps, payload, account));
+  on(CHANNELS.missionsList, (payload) => handleListMissions(deps.queryDeps, payload, account));
+  on(CHANNELS.missionsGet, (payload) => handleGetMission(deps.queryDeps, payload, account));
+  on(CHANNELS.missionsSetAccount, (payload) => handleSetMissionAccount(account, payload));
   on(CHANNELS.missionsDiff, (payload) => handleMissionDiff(deps.diffDeps, payload));
   on(CHANNELS.missionsPlan, (payload) => handleMissionAction(orchestrator, 'plan', payload));
   on(CHANNELS.missionsEditPlan, (payload) => handleEditPlanStep(orchestrator, payload));

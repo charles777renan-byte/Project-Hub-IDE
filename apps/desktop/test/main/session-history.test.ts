@@ -55,9 +55,11 @@ function fakeReader(
   provider: SessionProvider,
   files: Record<string, FakeFile>,
   calls: string[],
+  accountId: string | null = null,
 ): SessionReader {
   return {
     provider,
+    accountId,
     async files(): Promise<SessionFileInfo[]> {
       return Object.entries(files).map(([path, file]) => ({
         path,
@@ -84,7 +86,8 @@ function makeHistory(
 ): SessionHistory {
   const service = createSessionHistory({
     indexFile,
-    readers,
+    readers: () => readers,
+    accountLabel: () => ({ name: 'Principal', removed: false }),
     projects: () => PROJECTS,
     worktreesOf: async () => [],
     resumeState: () => ({ resumable: true, resumeBlockedReason: null }),
@@ -440,5 +443,168 @@ describe('createSessionHistory', () => {
       resumable: false,
       resumeBlockedReason: 'sem comando de retomada',
     });
+  });
+});
+
+describe('sessões por conta', () => {
+  const ACCOUNT_X = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  let dir: string;
+  let indexFile: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'ph-session-accounts-'));
+    indexFile = join(dir, 'session-index.json');
+  });
+
+  afterEach(async () => {
+    await Promise.all(services.splice(0).map((service) => service.refresh()));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const principalFiles = (): Record<string, FakeFile> => ({
+    principal: { mtimeMs: 10, size: 5, sessions: [activity(ID_A, PROJECT_PATH)] },
+  });
+  const extraFiles = (): Record<string, FakeFile> => ({
+    extra: { mtimeMs: 10, size: 5, sessions: [activity(ID_B, PROJECT_PATH)] },
+  });
+  const label = (_provider: string, accountId: string | null) =>
+    accountId === null
+      ? { name: 'Principal', removed: false }
+      : { name: 'Trabalho', removed: false };
+
+  it('dois leitores do mesmo programa: cada sessão sai com a conta do leitor dela', async () => {
+    const history = makeHistory(
+      indexFile,
+      [
+        fakeReader('claude', principalFiles(), []),
+        fakeReader('claude', extraFiles(), [], ACCOUNT_X),
+      ],
+      { accountLabel: label },
+    );
+
+    const result = await history.list({ scope: 'all' });
+
+    const byId = new Map(result.sessions.map((session) => [session.id, session]));
+    expect(byId.get(ID_A)).toMatchObject({ accountId: null, accountName: 'Principal' });
+    expect(byId.get(ID_B)).toMatchObject({ accountId: ACCOUNT_X, accountName: 'Trabalho' });
+    expect(history.find(ID_B)).toMatchObject({ accountId: ACCOUNT_X });
+    expect(history.find(ID_A)).toMatchObject({ accountId: null });
+  });
+
+  it('a faixa do programa soma os arquivos de todas as contas, numa linha só', async () => {
+    const history = makeHistory(
+      indexFile,
+      [
+        fakeReader('claude', principalFiles(), []),
+        fakeReader('claude', extraFiles(), [], ACCOUNT_X),
+      ],
+      { accountLabel: label },
+    );
+
+    const result = await history.list({ scope: 'all' });
+
+    expect(result.indexing).toEqual([
+      { provider: 'claude', read: 2, total: 2, unreadable: 0, sessions: 2 },
+    ]);
+  });
+
+  it('a listagem de uma conta falha: conta um ilegível, e os arquivos da outra seguem', async () => {
+    const broken: SessionReader = {
+      ...fakeReader('claude', {}, [], ACCOUNT_X),
+      files: () => Promise.reject(new Error('sem acesso')),
+    };
+    const history = makeHistory(indexFile, [fakeReader('claude', principalFiles(), []), broken], {
+      accountLabel: label,
+    });
+
+    const result = await history.list({ scope: 'all' });
+
+    expect(result.sessions.map((session) => session.id)).toEqual([ID_A]);
+    expect(result.indexing).toEqual([
+      { provider: 'claude', read: 1, total: 2, unreadable: 1, sessions: 1 },
+    ]);
+  });
+
+  it('programa só com a Principal não mostra nome de conta', async () => {
+    const history = makeHistory(indexFile, [fakeReader('claude', principalFiles(), [])], {
+      accountLabel: label,
+    });
+
+    const result = await history.list({ scope: 'all' });
+
+    expect(result.sessions[0]).toMatchObject({ accountId: null, accountName: null });
+  });
+
+  it('conta removida entre duas varreduras: os arquivos dela saem do índice', async () => {
+    let readers = [
+      fakeReader('claude', principalFiles(), []),
+      fakeReader('claude', extraFiles(), [], ACCOUNT_X),
+    ];
+    const history = makeHistory(indexFile, [], {
+      readers: () => readers,
+      accountLabel: label,
+    });
+    await history.refresh();
+
+    readers = [readers[0] as SessionReader];
+    const result = await history.list({ scope: 'all' });
+
+    expect(result.sessions.map((session) => session.id)).toEqual([ID_A]);
+    const saved = JSON.parse(readFileSync(indexFile, 'utf8')) as { files: Record<string, unknown> };
+    expect(Object.keys(saved.files)).toEqual(['principal']);
+  });
+
+  it('sessão de conta removida ainda no índice não pode ser retomada', async () => {
+    let removed = false;
+    const history = makeHistory(
+      indexFile,
+      [
+        fakeReader('claude', principalFiles(), []),
+        fakeReader('claude', extraFiles(), [], ACCOUNT_X),
+      ],
+      {
+        accountLabel: (_provider, accountId) =>
+          accountId === null
+            ? { name: 'Principal', removed: false }
+            : { name: 'Trabalho', removed },
+      },
+    );
+    await history.refresh();
+
+    removed = true;
+
+    expect(history.find(ID_B)).toMatchObject({
+      accountId: ACCOUNT_X,
+      resumable: false,
+      resumeBlockedReason: 'A conta foi removida.',
+    });
+    expect(history.find(ID_A)).toMatchObject({ resumable: true });
+  });
+
+  it('índice gravado sem conta carrega, e as sessões saem na Principal', async () => {
+    writeFileSync(
+      indexFile,
+      JSON.stringify({
+        version: 1,
+        files: {
+          principal: {
+            provider: 'claude',
+            mtimeMs: 10,
+            size: 5,
+            sessions: [activity(ID_A, PROJECT_PATH)],
+            error: null,
+          },
+        },
+      }),
+    );
+    const calls: string[] = [];
+    const history = makeHistory(indexFile, [fakeReader('claude', principalFiles(), calls)], {
+      accountLabel: label,
+    });
+
+    const result = await history.list({ scope: 'all' });
+
+    expect(calls).toEqual([]);
+    expect(result.sessions[0]).toMatchObject({ id: ID_A, accountId: null });
   });
 });

@@ -334,6 +334,14 @@ export function needsDecision(status: MissionStatus): boolean {
 }
 
 /** A ação principal que o resumo da missão oferece, quando a situação pede uma. */
+/** A conta do Claude Code em que a missão roda, no bloco "Sua decisão". */
+export const MISSION_ACCOUNT_TEXT = {
+  label: 'Conta do Claude Code',
+  fixed: (name: string) => `Conta: ${name}`,
+  removedChoose: 'A conta foi removida. Escolha outra conta para continuar.',
+  removedLocked: 'A conta foi removida. A missão não pode continuar nela.',
+} as const;
+
 export type PrimaryAction = 'generate_plan' | 'approve_plan' | 'start' | 'resume' | 'retry';
 
 const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {

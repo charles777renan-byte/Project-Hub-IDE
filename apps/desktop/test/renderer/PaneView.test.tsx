@@ -1212,3 +1212,72 @@ describe('PaneView: navegador perdido no reinício', () => {
     expect(screen.queryByRole('note')).toBeNull();
   });
 });
+
+describe('PaneView: a conta do painel', () => {
+  const X = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  it('sessão viva de programa com mais de uma conta mostra o nome da conta no cabeçalho', () => {
+    const { container } = setup({
+      terminal: { ...session, accountId: X, accountName: 'Trabalho' },
+    });
+
+    expect(container.querySelector('.pane__head .pane__account')).toHaveTextContent('Trabalho');
+  });
+
+  it('programa só com a Principal não mostra conta nenhuma', () => {
+    const { container } = setup({ terminal: { ...session, accountId: null } });
+
+    expect(container.querySelector('.pane__account')).toBeNull();
+  });
+
+  it('conta removida: o cabeçalho diz isso no lugar do nome', () => {
+    const { container } = setup({
+      terminal: { ...session, accountId: X, accountName: 'Trabalho', accountRemoved: true },
+    });
+
+    expect(container.querySelector('.pane__account')).toHaveTextContent('A conta foi removida');
+  });
+
+  it('painel sem sessão mostra a conta em que vai abrir', () => {
+    const { container } = setup({
+      leaf: { ...emptyLeaf, accountId: X },
+      terminal: undefined,
+      account: { name: 'Trabalho' },
+    });
+
+    expect(container.querySelector('.pane__head .pane__account')).toHaveTextContent('Trabalho');
+  });
+
+  it('sessão que terminou também mostra a conta, e a removida diz isso', () => {
+    const first = setup({
+      terminal: { ...session, state: 'exited', accountId: X, accountName: 'Trabalho' },
+    });
+    expect(first.container.querySelector('.pane__head .pane__account')).toHaveTextContent(
+      'Trabalho',
+    );
+    first.unmount();
+
+    const { container } = setup({
+      terminal: {
+        ...session,
+        state: 'exited',
+        accountId: X,
+        accountName: 'Trabalho',
+        accountRemoved: true,
+      },
+    });
+    expect(container.querySelector('.pane__account--removed')).toHaveTextContent(
+      'A conta foi removida',
+    );
+  });
+
+  it('painel sem sessão de conta removida diz que a conta foi removida', () => {
+    const { container } = setup({
+      leaf: { ...emptyLeaf, accountId: X },
+      terminal: undefined,
+      account: { removed: true },
+    });
+
+    expect(container.querySelector('.pane__account')).toHaveTextContent('A conta foi removida');
+  });
+});

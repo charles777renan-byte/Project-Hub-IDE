@@ -10,6 +10,7 @@ import {
   listExecutionTokens,
   type MissionRepository,
 } from '../src/repositories/mission-repository';
+import { createAccountRepository } from '../src/repositories/account-repository';
 import { createProjectRepository } from '../src/repositories/project-repository';
 
 let dir: string;
@@ -605,5 +606,40 @@ describe('listExecutionTokens', () => {
 
   it('banco sem execuções devolve lista vazia', () => {
     expect(listExecutionTokens(db)).toEqual([]);
+  });
+
+  describe('conta da missão', () => {
+    const ACCOUNT = 'c0ffee00-0000-4000-8000-000000000001';
+
+    it('nasce sem conta, guarda a escolhida e volta para a Principal com null', () => {
+      createAccountRepository(db).insert({
+        id: ACCOUNT,
+        provider: 'claude',
+        name: 'Trabalho',
+        createdAt: T0,
+      });
+      repo.insertMission(mission({ id: 'missao-conta', acceptanceCriteria: [] }));
+      expect(repo.getMission('missao-conta')).not.toHaveProperty('accountId');
+
+      repo.setMissionAccount('missao-conta', ACCOUNT, '2026-10-20T11:00:00.000Z');
+      expect(repo.getMission('missao-conta')?.accountId).toBe(ACCOUNT);
+      expect(repo.getMission('missao-conta')?.updatedAt).toBe('2026-10-20T11:00:00.000Z');
+
+      repo.setMissionAccount('missao-conta', null, '2026-10-20T12:00:00.000Z');
+      expect(repo.getMission('missao-conta')).not.toHaveProperty('accountId');
+    });
+
+    it('insere a missão já com a conta', () => {
+      createAccountRepository(db).insert({
+        id: ACCOUNT,
+        provider: 'claude',
+        name: 'Trabalho',
+        createdAt: T0,
+      });
+      repo.insertMission(
+        mission({ id: 'missao-conta', acceptanceCriteria: [], accountId: ACCOUNT }),
+      );
+      expect(repo.getMission('missao-conta')?.accountId).toBe(ACCOUNT);
+    });
   });
 });

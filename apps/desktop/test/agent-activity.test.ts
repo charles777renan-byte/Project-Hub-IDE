@@ -339,7 +339,7 @@ describe('createSessionReader', () => {
       writeCodex(codexHome, '2026', '10', '30', 'rollout-b.jsonl', codexSession(at));
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'codex', createdAt: at })],
-        env: { CODEX_HOME: codexHome },
+        rootOf: () => codexHome,
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
@@ -367,7 +367,7 @@ describe('createSessionReader', () => {
       writeCodex(codexHome, '2026', '10', '30', 'rollout-b.jsonl', codexSession(at));
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'codex', createdAt: at })],
-        env: { CODEX_HOME: codexHome },
+        rootOf: () => codexHome,
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
@@ -384,7 +384,7 @@ describe('createSessionReader', () => {
       writeCodex(codexHome, '2026', '10', '30', 'rollout-velha.jsonl', codexSession(started));
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'codex', createdAt: created })],
-        env: { CODEX_HOME: codexHome },
+        rootOf: () => codexHome,
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
@@ -397,7 +397,7 @@ describe('createSessionReader', () => {
     it('pasta do Codex inexistente devolve lista vazia', async () => {
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'codex' })],
-        env: { CODEX_HOME: join(dir, 'nao-existe') },
+        rootOf: () => join(dir, 'nao-existe'),
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
@@ -429,7 +429,7 @@ describe('createSessionReader', () => {
             createdAt: new Date(2026, 9, 30, 9, 30).toISOString(),
           }),
         ],
-        env: { CLAUDE_CONFIG_DIR: configDir },
+        rootOf: () => configDir,
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
@@ -454,7 +454,7 @@ describe('createSessionReader', () => {
       utimesSync(file, new Date(2026, 0, 5), new Date(2026, 0, 5));
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'claude', folder })],
-        env: { CLAUDE_CONFIG_DIR: configDir },
+        rootOf: () => configDir,
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
@@ -464,11 +464,108 @@ describe('createSessionReader', () => {
     it('pasta de transcripts inexistente devolve lista vazia', async () => {
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'claude', folder: join(dir, 'sem-transcript') })],
-        env: { CLAUDE_CONFIG_DIR: join(dir, 'claude') },
+        rootOf: () => join(dir, 'claude'),
         antigravityHistory: join(dir, 'nada.jsonl'),
       });
 
       expect(await read('claude', '2026-10-30T10:00:00.000Z')).toEqual([]);
+    });
+  });
+
+  describe('contas', () => {
+    const ACCOUNT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const at = new Date(2026, 9, 30, 10, 0).toISOString();
+
+    function writeTranscript(configDir: string, folder: string, name: string) {
+      const encoded = folder.replace(/[^A-Za-z0-9]/g, '-');
+      mkdirSync(join(configDir, 'projects', encoded), { recursive: true });
+      writeFileSync(join(configDir, 'projects', encoded, name), `${userLine(at)}\n`);
+    }
+
+    it('Claude: lê o transcript de cada conta na pasta dela, e marca a sessão com a conta', async () => {
+      const principal = join(dir, 'claude');
+      const extra = join(dir, 'contas', 'x');
+      const folder = join(dir, 'proj', 'x');
+      writeTranscript(principal, folder, 'p.jsonl');
+      writeTranscript(extra, folder, 'x1.jsonl');
+      writeTranscript(extra, folder, 'x2.jsonl');
+      const asked: (string | null)[] = [];
+      const read = createSessionReader({
+        terminals: () => [
+          terminal({ provider: 'claude', folder, createdAt: at }),
+          terminal({ provider: 'claude', folder, createdAt: at, accountId: ACCOUNT }),
+        ],
+        rootOf: (_provider, accountId) => {
+          asked.push(accountId);
+          return accountId === null ? principal : extra;
+        },
+        antigravityHistory: join(dir, 'nada.jsonl'),
+      });
+
+      const sessions = await read('claude', at);
+
+      expect(sessions.map((session) => session.accountId ?? null).sort()).toEqual(
+        [ACCOUNT, ACCOUNT, null].sort(),
+      );
+      expect(asked.sort()).toEqual([ACCOUNT, null].sort());
+    });
+
+    it('Claude: conta sem pasta deixa os terminais dela sem sessão, e os outros seguem', async () => {
+      const principal = join(dir, 'claude');
+      const folder = join(dir, 'proj', 'x');
+      writeTranscript(principal, folder, 'p.jsonl');
+      const read = createSessionReader({
+        terminals: () => [
+          terminal({ provider: 'claude', folder, createdAt: at }),
+          terminal({ provider: 'claude', folder, createdAt: at, accountId: ACCOUNT }),
+        ],
+        rootOf: (_provider, accountId) => (accountId === null ? principal : undefined),
+        antigravityHistory: join(dir, 'nada.jsonl'),
+      });
+
+      const sessions = await read('claude', at);
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]?.accountId ?? null).toBeNull();
+    });
+
+    it('Codex: lista as sessões de cada conta com terminal, uma vez cada', async () => {
+      const principal = join(dir, 'codex');
+      const extra = join(dir, 'contas', 'codex-x');
+      writeCodex(principal, '2026', '10', '30', 'rollout-p.jsonl', codexSession(at));
+      writeCodex(extra, '2026', '10', '30', 'rollout-x.jsonl', codexSession(at));
+      const read = createSessionReader({
+        terminals: () => [
+          terminal({ provider: 'codex', createdAt: at }),
+          terminal({ provider: 'codex', createdAt: at }),
+          terminal({ provider: 'codex', createdAt: at, accountId: ACCOUNT }),
+        ],
+        rootOf: (_provider, accountId) => (accountId === null ? principal : extra),
+        antigravityHistory: join(dir, 'nada.jsonl'),
+      });
+
+      const sessions = await read('codex', at);
+
+      expect(sessions.map((session) => session.accountId ?? null).sort()).toEqual(
+        [ACCOUNT, null].sort(),
+      );
+    });
+
+    it('Codex: conta sem terminal não é lida', async () => {
+      const principal = join(dir, 'codex');
+      writeCodex(principal, '2026', '10', '30', 'rollout-p.jsonl', codexSession(at));
+      const asked: (string | null)[] = [];
+      const read = createSessionReader({
+        terminals: () => [terminal({ provider: 'codex', createdAt: at, accountId: ACCOUNT })],
+        rootOf: (_provider, accountId) => {
+          asked.push(accountId);
+          return accountId === null ? principal : join(dir, 'vazia');
+        },
+        antigravityHistory: join(dir, 'nada.jsonl'),
+      });
+
+      expect(await read('codex', at)).toEqual([]);
+      expect(asked).toEqual([ACCOUNT]);
     });
   });
 
@@ -481,7 +578,7 @@ describe('createSessionReader', () => {
       );
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'antigravity' })],
-        env: {},
+        rootOf: () => undefined,
         antigravityHistory: history,
       });
 
@@ -494,7 +591,7 @@ describe('createSessionReader', () => {
     it('histórico inexistente (CLI nunca usado) devolve lista vazia, sem erro', async () => {
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'antigravity' })],
-        env: {},
+        rootOf: () => undefined,
         antigravityHistory: join(dir, 'nao-existe.jsonl'),
       });
 
@@ -505,7 +602,7 @@ describe('createSessionReader', () => {
       // Uma pasta no lugar do arquivo: a leitura falha com EISDIR, não com ENOENT.
       const read = createSessionReader({
         terminals: () => [terminal({ provider: 'antigravity' })],
-        env: {},
+        rootOf: () => undefined,
         antigravityHistory: dir,
       });
 
@@ -516,7 +613,7 @@ describe('createSessionReader', () => {
   it('agente sem leitor devolve lista vazia', async () => {
     const read = createSessionReader({
       terminals: () => [],
-      env: {},
+      rootOf: () => undefined,
       antigravityHistory: join(dir, 'x'),
     });
 

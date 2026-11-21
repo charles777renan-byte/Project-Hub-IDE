@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./account-name": "./src/account-name.ts",
     "./layout-limits": "./src/layout-limits.ts",
     "./layout-ops": "./src/layout-ops.ts"
   },

@@ -1992,3 +1992,15 @@
 .sessions-tab__retry {
   align-self: flex-start;
 }
+
+/* A conta da sessão, quando o programa tem mais de uma: uma etiqueta entre o programa e as contagens. */
+.sessions-tab__account {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px var(--field-line);
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -20,7 +20,7 @@ import {
   splitLeaf,
   type LayoutPreset,
 } from '@project-hub/contracts/layout-ops';
-import type { LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
+import type { AccountDto, LayoutLeaf, ProviderId, ProviderInfo } from '@project-hub/contracts';
 import { ConfirmInline } from '../components/ConfirmButton';
 import { EmptyState } from '../components/EmptyState';
 import { TopographicBackground } from '../components/TopographicBackground';
@@ -37,6 +37,7 @@ import { notify } from '../notify';
 import { MissionPage } from './MissionPage';
 import { projectPanelId, projectViewFromParams, type ProjectView } from '../project-views';
 import { projectViewPath, ROUTE_PATHS } from '../routes';
+import { useAccounts } from '../use-accounts';
 import { useSidebarData } from '../use-sidebar-data';
 import { hideTerminal, unhideTerminal, useTerminals } from '../terminals-data';
 import {
@@ -299,6 +300,30 @@ function WorkspaceBody({
   const unavailable = unavailableReason !== undefined;
 
   const { terminals, loaded, reload } = useTerminals();
+  // As contas de cada programa: com duas ou mais, o menu pergunta a conta antes de abrir o painel.
+  const { state: accountsState, reload: reloadAccounts } = useAccounts();
+  const accountsByProvider = useMemo(
+    () =>
+      accountsState.status === 'ready'
+        ? Object.fromEntries(
+            accountsState.data.groups.map((group) => [group.provider, group.accounts]),
+          )
+        : {},
+    [accountsState],
+  );
+  /** A conta de um painel: a da sessão viva, ou a gravada na folha. Indefinido: o painel não tem conta gravada. */
+  const accountOfLeaf = (leaf: LayoutLeaf): string | null | undefined => {
+    const live =
+      leaf.terminalId === null ? undefined : terminals.find((item) => item.id === leaf.terminalId);
+    return live?.accountId !== undefined ? live.accountId : leaf.accountId;
+  };
+  /** A conta que o painel sem sessão mostra: só quando o programa tem mais de uma. */
+  const launcherAccount = (leaf: LayoutLeaf): { name?: string; removed?: boolean } | undefined => {
+    const list: readonly AccountDto[] | undefined = accountsByProvider[leaf.provider];
+    if (list === undefined || (list.length < 2 && leaf.accountId === undefined)) return undefined;
+    const found = list.find((account) => account.id === (leaf.accountId ?? null));
+    return found === undefined ? { removed: true } : { name: found.name };
+  };
   // Sessão viva e parada há algumas leituras: a marca dela vira o ponto vazado "Ocioso" (painel, aba e ficha).
   const activity = useActivity(terminals);
   const idleIds = new Set(
@@ -567,12 +592,12 @@ function WorkspaceBody({
     }
   };
 
-  const openPane = async (provider: ProviderId) => {
+  const openPane = async (provider: ProviderId, accountId?: string | null) => {
     if (openingRef.current) return;
     openingRef.current = true;
     setOpening(true);
     try {
-      const message = await workspace.addPane(provider);
+      const message = await workspace.addPane(provider, accountId);
       if (message !== null) notify.error(message);
       // A lista de terminais só se atualiza a cada 2 s: sem ler agora, o painel novo diria que a sessão terminou.
       else await reload();
@@ -583,12 +608,17 @@ function WorkspaceBody({
   };
 
   // Dividir pelo cabeçalho do painel: o novo entra no lado pedido, com metade do espaço daquele painel.
-  const splitPane = async (leafId: string, side: SplitSide, provider: ProviderId) => {
+  const splitPane = async (
+    leafId: string,
+    side: SplitSide,
+    provider: ProviderId,
+    accountId?: string | null,
+  ) => {
     if (openingRef.current) return;
     openingRef.current = true;
     setOpening(true);
     try {
-      const message = await workspace.splitPane(leafId, side, provider);
+      const message = await workspace.splitPane(leafId, side, provider, accountId);
       if (message !== null) notify.error(message);
       else await reload();
     } finally {
@@ -739,7 +769,9 @@ function WorkspaceBody({
       presets={presets}
       onPreset={choosePreset}
       onLayout={chooseLayout}
-      onOpen={(provider) => void openPane(provider)}
+      onOpen={(provider, accountId) => void openPane(provider, accountId)}
+      accounts={accountsByProvider}
+      onMenuOpen={reloadAccounts}
     />
   );
   const motion: PaneMotion = { entering, leaving, onEntered: settle, onLeft: finishLeaving };
@@ -814,7 +846,8 @@ function WorkspaceBody({
           ? 'right'
           : 'bottom';
     if (splitBlocked(active.id, side) !== undefined) return;
-    void splitPane(active.id, side, providerOf(active));
+    // Dividir o painel ativo abre na mesma conta dele, sem perguntar.
+    void splitPane(active.id, side, providerOf(active), accountOfLeaf(active));
   };
 
   const renderLeaf = (leaf: LayoutLeaf) => {
@@ -852,6 +885,7 @@ function WorkspaceBody({
         busy={busy.has(leaf.id)}
         unavailable={unavailable}
         {...(errors[leaf.id] !== undefined ? { error: errors[leaf.id] } : {})}
+        account={terminal === undefined ? launcherAccount(leaf) : undefined}
         onActivate={() => workspace.activate(leaf.id)}
         onPointerActivate={() => workspace.activateWithFocus(leaf.id)}
         onStart={() => void run(leaf.id, workspace.startSession)}
@@ -880,7 +914,14 @@ function WorkspaceBody({
                 others: providers
                   .filter((item) => item.id !== providerId && item.available !== false)
                   .map((item) => ({ id: item.id, label: item.label })),
-                onSplit: (side, other) => void splitPane(leaf.id, side, other ?? providerId),
+                // O mesmo programa segue na conta deste painel; outro programa abre na conta padrão dele.
+                onSplit: (side, other) =>
+                  void splitPane(
+                    leaf.id,
+                    side,
+                    other ?? providerId,
+                    other === undefined ? accountOfLeaf(leaf) : undefined,
+                  ),
               }
         }
         // Com a janela estreita o modo Abas não é escolha da pessoa: não há "maximizar" nem "voltar à grade".

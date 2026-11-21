@@ -49,8 +49,9 @@ beforeEach(() => {
   api.addPane.mockReset();
   api.splitPane
     .mockReset()
-    .mockImplementation((id: string, _leafId: string, _side: string, provider: string) =>
-      api.addPane(id, provider),
+    .mockImplementation(
+      (id: string, _leafId: string, _side: string, provider: string, ...account: unknown[]) =>
+        api.addPane(id, provider, ...account),
     );
   api.removePane.mockReset();
   window.projectHub = { workspaces: api } as unknown as typeof window.projectHub;
@@ -438,6 +439,36 @@ describe('useWorkspace', () => {
       expect(state.status === 'ready' && state.workspace.layout).toEqual(tres());
       expect(result.current.activeLeafId).toBe('c');
       expect(result.current.focusLeafId).toBe('c');
+    });
+
+    it('addPane com conta manda o id dela (null é a Principal); sem conta, não manda nada', async () => {
+      api.addPane.mockResolvedValue({ ok: true, data: dto(tres()) });
+      const { result } = await mount();
+      await act(async () => {
+        await result.current.addPane('claude', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+        await result.current.addPane('claude', null);
+        await result.current.addPane('claude');
+      });
+
+      expect(api.addPane.mock.calls).toEqual([
+        ['w-p1', 'claude', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+        ['w-p1', 'claude', null],
+        ['w-p1', 'claude'],
+      ]);
+    });
+
+    it('splitPane com conta manda o id dela junto', async () => {
+      api.splitPane.mockReset().mockResolvedValue({ ok: true, data: dto(tres()) });
+      const { result } = await mount();
+      await act(async () => {
+        await result.current.splitPane('a', 'right', 'claude', null);
+        await result.current.splitPane('a', 'right', 'claude');
+      });
+
+      expect(api.splitPane.mock.calls).toEqual([
+        ['w-p1', 'a', 'right', 'claude', null],
+        ['w-p1', 'a', 'right', 'claude'],
+      ]);
     });
 
     it('addPane com erro do IPC devolve o texto e não muda o layout', async () => {

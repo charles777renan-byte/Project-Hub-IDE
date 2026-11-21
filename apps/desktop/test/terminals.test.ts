@@ -20,7 +20,7 @@ import type { TerminalSessionRecord, TerminalSessionRepository } from '@project-
 import type { AgentBrowserAccess } from '../src/main/browser/agent/agent-launch';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderRegistry } from '../src/main/providers';
-import { createTerminalService } from '../src/main/terminals';
+import { createTerminalService, type TerminalServiceDeps } from '../src/main/terminals';
 
 type Execution = NonNullable<ReturnType<MissionRepository['getExecution']>>;
 type Mission = NonNullable<ReturnType<MissionRepository['getMission']>>;
@@ -167,6 +167,7 @@ function setup(
     settingsDir?: string;
     providers?: ProviderRegistry;
     browserAccess?: AgentBrowserAccess;
+    accounts?: NonNullable<TerminalServiceDeps['accounts']>;
   } = {},
 ) {
   const hooks = options.hooks ?? fakeHooks();
@@ -253,6 +254,7 @@ function setup(
     settingsDir: options.settingsDir ?? settingsDir(),
     platform: 'win32',
     ...(options.browserAccess === undefined ? {} : { browserAccess: options.browserAccess }),
+    ...(options.accounts === undefined ? {} : { accounts: options.accounts }),
   });
   return {
     service,
@@ -1504,5 +1506,199 @@ describe('navegador ao alcance do agente do terminal', () => {
     const list = await h.service.list();
     if (!list.ok) throw new Error('lista falhou');
     expect(list.data[0]).not.toHaveProperty('browserAccess');
+  });
+});
+
+describe('painel aberto numa conta do programa', () => {
+  const WORK = '11111111-1111-4111-8111-111111111111';
+  const GONE = '22222222-2222-4222-8222-222222222222';
+  let workDir = '';
+  beforeEach(() => {
+    workDir = mkdtempSync(join(tmpdir(), 'ph-terminals-conta-'));
+  });
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  /** Uma conta extra do Claude ("Trabalho") e uma removida ("Antiga"). */
+  function accounts(): NonNullable<TerminalServiceDeps['accounts']> {
+    return {
+      isAccountProvider: (provider): provider is 'claude' | 'codex' =>
+        provider === 'claude' || provider === 'codex',
+      hasExtras: (provider) => provider === 'claude',
+      launchEnv: (
+        provider,
+        accountId,
+      ): ReturnType<NonNullable<TerminalServiceDeps['accounts']>['launchEnv']> => {
+        if (accountId === null) return { ok: true, data: {} };
+        if (provider === 'claude' && accountId === WORK) {
+          return { ok: true, data: { CLAUDE_CONFIG_DIR: workDir } };
+        }
+        if (provider === 'codex' && accountId === WORK) {
+          return { ok: true, data: { CODEX_HOME: workDir } };
+        }
+        return {
+          ok: false,
+          error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
+        };
+      },
+      dataRootOf: (provider, accountId) =>
+        provider === 'claude' && accountId === WORK ? workDir : undefined,
+      labelOf: (_provider, accountId) => {
+        if (accountId === null) return { name: 'Principal', removed: false };
+        if (accountId === WORK) return { name: 'Trabalho', removed: false };
+        return { name: 'Antiga', removed: true };
+      },
+    };
+  }
+
+  it('abre o Claude com a pasta da conta, grava a conta na sessão e a mostra na lista', async () => {
+    const h = setup({ accounts: accounts() });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: WORK });
+
+    expect(opened.ok).toBe(true);
+    // A variável da conta vence a que o app herdou do ambiente.
+    expect(h.opened[0]?.env['CLAUDE_CONFIG_DIR']).toBe(workDir);
+    expect(h.sessions.repo.get('shell-1')?.accountId).toBe(WORK);
+    const listed = await h.service.list();
+    expect(listed.ok && listed.data[0]).toMatchObject({ accountId: WORK, accountName: 'Trabalho' });
+    expect(listed.ok && listed.data[0]).not.toHaveProperty('accountRemoved');
+  });
+
+  it('accountOfSession diz a conta gravada na sessão: a extra, a Principal, ou nada se não conhece', async () => {
+    const h = setup({ accounts: accounts() });
+    await h.service.openSession('p1', 'claude', { accountId: WORK });
+    await h.service.openSession('p1', 'claude');
+
+    expect(h.service.accountOfSession('shell-1')).toBe(WORK);
+    expect(h.service.accountOfSession('shell-2')).toBeNull();
+    expect(h.service.accountOfSession('nao-existe')).toBeUndefined();
+  });
+
+  it('sem conta, abre na Principal com o ambiente de sempre e sem gravar conta', async () => {
+    const plain = setup();
+    await plain.service.openSession('p1', 'claude');
+    const h = setup({ accounts: accounts() });
+
+    await h.service.openSession('p1', 'claude');
+    await h.service.openSession('p1', 'claude', { accountId: null });
+
+    expect(h.opened[0]?.env).toEqual(plain.opened[0]?.env);
+    expect(h.opened[1]?.env['CLAUDE_CONFIG_DIR']).toBe(claudeDir);
+    expect(h.sessions.repo.get('shell-1')).not.toHaveProperty('accountId');
+    const listed = await h.service.list();
+    expect(listed.ok && listed.data[0]).toMatchObject({
+      accountId: null,
+      accountName: 'Principal',
+    });
+  });
+
+  it('conta removida não abre nada: sem processo, sem linha e sem registro de hooks', async () => {
+    const h = setup({ accounts: accounts() });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: GONE });
+
+    expect(opened).toEqual({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
+    });
+    expect(h.opened).toEqual([]);
+    expect(h.sessions.repo.listOpen()).toEqual([]);
+    expect(h.hooks.registered).toEqual([]);
+  });
+
+  it('o Codex de uma conta extra abre sem o servidor de fundo, antes da retomada; a Principal e o Claude, como sempre', async () => {
+    // O Codex abre um socket dentro da pasta da conta, e o caminho do socket tem limite (108 caracteres no
+    // Windows). A pasta de uma conta extra, dentro da pasta de dados do app, passa dele.
+    const codexInstalled: ProviderRegistry = {
+      ...providers,
+      resolve: (id) =>
+        id === 'codex'
+          ? { ok: true, launch: { command: 'C:/bin/codex.exe', args: [] } }
+          : providers.resolve(id),
+    };
+    const h = setup({ accounts: accounts(), providers: codexInstalled });
+
+    await h.service.openSession('p1', 'codex', { accountId: WORK, args: ['resume', 'abc'] });
+    await h.service.openSession('p1', 'codex', { args: ['resume', 'abc'] });
+    await h.service.openSession('p1', 'claude', { accountId: WORK });
+
+    const [extra, principal, claude] = h.opened;
+    expect(extra?.env['CODEX_HOME']).toBe(workDir);
+    expect(extra?.args.slice(-3)).toEqual(['--no-daemon', 'resume', 'abc']);
+    expect(principal?.args).not.toContain('--no-daemon');
+    expect(principal?.args.slice(-2)).toEqual(['resume', 'abc']);
+    expect(claude?.args).not.toContain('--no-daemon');
+  });
+
+  it('programa sem contas não aceita conta', async () => {
+    const h = setup({ accounts: accounts() });
+
+    const shell = await h.service.openSession('p1', 'shell', { accountId: WORK });
+    const other = await h.service.openSession('p1', 'antigravity', { accountId: WORK });
+
+    expect(shell.ok).toBe(false);
+    expect(other.ok).toBe(false);
+    expect(h.opened).toEqual([]);
+  });
+
+  it('sem o serviço de contas ligado, pedir uma conta extra falha em vez de abrir na Principal', async () => {
+    const h = setup();
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: WORK });
+
+    expect(opened.ok).toBe(false);
+    expect(h.opened).toEqual([]);
+  });
+
+  it('painel de conta que foi removida aparece marcado', async () => {
+    const h = setup({
+      accounts: accounts(),
+      sessions: [
+        {
+          id: 'orfa',
+          projectId: 'p1',
+          provider: 'claude',
+          title: 'Claude Code · app',
+          createdAt: '2026-10-21T09:00:00.000Z',
+          accountId: GONE,
+        },
+      ],
+    });
+
+    const listed = await h.service.list();
+
+    expect(listed.ok && listed.data[0]).toMatchObject({
+      accountId: GONE,
+      accountName: 'Antiga',
+      accountRemoved: true,
+    });
+  });
+
+  it('o agente de uma missão mostra a conta da missão', async () => {
+    const h = setup({
+      accounts: accounts(),
+      executions: [agentExecution],
+      missions: [{ ...mission, accountId: WORK } as Mission],
+    });
+
+    const listed = await h.service.list();
+
+    expect(listed.ok && listed.data[0]).toMatchObject({
+      kind: 'agent',
+      accountId: WORK,
+      accountName: 'Trabalho',
+    });
+  });
+
+  it('shell não tem conta na lista', async () => {
+    const h = setup({ accounts: accounts() });
+    await h.service.openSession('p1', 'shell');
+
+    const listed = await h.service.list();
+
+    expect(listed.ok && listed.data[0]).not.toHaveProperty('accountId');
+    expect(listed.ok && listed.data[0]).not.toHaveProperty('accountName');
   });
 });

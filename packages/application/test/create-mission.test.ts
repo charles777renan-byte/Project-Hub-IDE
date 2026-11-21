@@ -101,3 +101,26 @@ describe('createMission', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'PROJECT_NOT_FOUND' } });
   });
 });
+
+describe('conta da missão nova', () => {
+  const WORK = '11111111-1111-4111-8111-111111111111';
+
+  it('nasce na conta padrão do Claude Code', () => {
+    const h = harness();
+
+    const result = createMission({ ...h.deps, accounts: { defaultOf: () => WORK } }, VALID);
+
+    expect(result.ok && result.data.accountId).toBe(WORK);
+    expect(h.repo.listMissions('p1')[0]?.accountId).toBe(WORK);
+  });
+
+  it('sem padrão (ou sem contas), nasce na Principal', () => {
+    const h = harness();
+
+    const withDirectory = createMission({ ...h.deps, accounts: { defaultOf: () => null } }, VALID);
+    const without = createMission(h.deps, VALID);
+
+    expect(withDirectory.ok && withDirectory.data).not.toHaveProperty('accountId');
+    expect(without.ok && without.data).not.toHaveProperty('accountId');
+  });
+});

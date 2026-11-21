@@ -38,6 +38,9 @@ export type PaneSplit = {
   onSplit(side: SplitSide, provider?: ProviderId): void;
 };
 
+/** O que o painel e a lista lateral dizem de uma sessão cuja conta não existe mais. */
+export const ACCOUNT_REMOVED_TEXT = 'A conta foi removida';
+
 export type PaneViewProps = {
   leaf: LayoutLeaf;
   /** O item de `terminals.list` com o id da folha; indefinido se a sessão sumiu da lista. */
@@ -53,6 +56,11 @@ export type PaneViewProps = {
   /** A pasta do projeto sumiu: iniciar e reiniciar ficam desabilitados, com o aviso da página como descrição. */
   unavailable?: boolean;
   error?: string;
+  /**
+   * A conta do painel sem sessão, quando o programa tem mais de uma: o nome dela, ou `removed` se ela não existe
+   * mais. Com sessão, vale a conta que a própria sessão informa.
+   */
+  account?: { name?: string; removed?: boolean } | undefined;
   /** O painel recebeu o foco do teclado: marca como ativo, sem levar o foco ao terminal. */
   onActivate(): void;
   /** Clique no painel: ativa e leva o foco ao terminal. Sem ele, vale `onActivate`. */
@@ -179,6 +187,23 @@ export function PaneView(props: PaneViewProps) {
     : {};
   const label = provider?.label ?? terminal?.provider ?? leaf.provider;
   const split = props.split;
+  // A conta só aparece quando o programa tem mais de uma: quem não usa contas extras vê o painel de sempre.
+  const account =
+    terminal === undefined
+      ? props.account
+      : terminal.accountRemoved === true
+        ? { removed: true }
+        : terminal.accountName === undefined
+          ? undefined
+          : { name: terminal.accountName };
+  const accountChip =
+    account === undefined ? null : account.removed === true ? (
+      <span className="pane__account pane__account--removed">{ACCOUNT_REMOVED_TEXT}</span>
+    ) : account.name === undefined ? null : (
+      <span className="pane__account" title={`Conta: ${account.name}`}>
+        {account.name}
+      </span>
+    );
   // A alça não é botão (não faz nada ao clicar nem entra na ordem do Tab): quem usa o teclado move o painel pelos
   // atalhos. O nome fica na dica.
   const grip =
@@ -254,6 +279,7 @@ export function PaneView(props: PaneViewProps) {
         <div className="pane__head">
           {grip}
           <span className="pane__title">{label}</span>
+          {accountChip}
           <span className="pane__actions">
             {maximize}
             <CloseButton disabled={busy} onClick={props.onClose} hint="Fecha o painel" />
@@ -305,6 +331,7 @@ export function PaneView(props: PaneViewProps) {
           {grip}
           <div className="pane__notice">
             <span role="status">A sessão terminou.</span>
+            {accountChip}
             <span className="pane__actions">
               {canRestart &&
                 (isAgent ? (
@@ -420,6 +447,7 @@ export function PaneView(props: PaneViewProps) {
           <span className="pane__title" title={details}>
             {terminal.title}
           </span>
+          {accountChip}
           <span className={`pane__state state-mark state-mark--${mark}`} title={markTitle}>
             <span aria-hidden="true" className="state-mark__glyph">
               {glyph}

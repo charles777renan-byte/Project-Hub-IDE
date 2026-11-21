@@ -30,7 +30,8 @@ function renewalText(window: LimitWindowDto, now: Date, exhausted: boolean): str
   return `${exhausted ? 'volta' : 'renova'} em ${countdown} · ${moment}`;
 }
 
-function WindowRow({
+/** Uma janela de uso: o rótulo, o percentual, a barra com a marca do tempo e a renovação. */
+export function WindowRow({
   window,
   now,
   provider,

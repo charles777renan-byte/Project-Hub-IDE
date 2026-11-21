@@ -23,6 +23,7 @@ import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database
 import { resumeArgs } from './providers';
 import type { ResumeCheckInput, ResumeVerdict } from './resume-verdict';
 import type { SessionHistory } from './session-history';
+import type { AccountUse } from './accounts/account-use';
 import type { OpenSessionOptions, TerminalService } from './terminals';
 
 export type WorkspaceServiceDeps = {
@@ -30,7 +31,12 @@ export type WorkspaceServiceDeps = {
   projects: Pick<ProjectRepository, 'get'>;
   terminals: Pick<
     TerminalService,
-    'openSession' | 'closeSession' | 'knownIds' | 'stateOf' | 'isMissionSession'
+    | 'openSession'
+    | 'closeSession'
+    | 'knownIds'
+    | 'stateOf'
+    | 'isMissionSession'
+    | 'accountOfSession'
   >;
   /** O histórico de sessões: a retomada acha a sessão pelo id que o renderer manda. */
   history: Pick<SessionHistory, 'find'>;
@@ -43,6 +49,8 @@ export type WorkspaceServiceDeps = {
    * pedidas pela tela não passam por aqui: ela já recebe o workspace na resposta.
    */
   publish?: (workspace: WorkspaceDto) => void;
+  /** As contas dos programas: a padrão de cada um, para o painel novo que não diz a conta. Ausente: só a Principal. */
+  accounts?: Pick<AccountUse, 'defaultOf' | 'isAccountProvider'>;
 };
 
 /** O que a interface pede ao app. Entram ids e, em `addPane`, o provedor do painel novo; o provedor e o caminho dos painéis existentes saem do banco. */
@@ -58,7 +66,11 @@ export type WorkspaceService = {
   startSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
   /** Abre a sessão do provedor e cria o painel dela, dividindo o maior painel. Sem sessão aberta, sem painel. */
-  addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
+  addPane(
+    workspaceId: string,
+    provider: ProviderId,
+    accountId?: string | null,
+  ): Promise<AppResult<WorkspaceDto>>;
   /**
    * O painel do servidor do preview: um shell que roda `startCommand` ao abrir, no workspace aberto do projeto,
    * dividindo o maior painel. Quem chama é o serviço de preview, nunca um canal do renderer. A tela é avisada por
@@ -74,6 +86,7 @@ export type WorkspaceService = {
     leafId: string,
     side: Side,
     provider: ProviderId,
+    accountId?: string | null,
   ): Promise<AppResult<WorkspaceDto>>;
   /**
    * Retoma uma sessão do histórico: abre o programa na pasta dela, já com a conversa retomada, e põe o painel no
@@ -268,14 +281,23 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     const leaf = leavesOf(layout).find((candidate) => candidate.id === leafId);
     if (layout === null || leaf === undefined) return failure('VALIDATION_FAILED', NO_PANE);
 
+    // A sessão encerrada do painel manda na conta: o terminal pode ter vindo de outra folha, e o cabeçalho
+    // mostra a conta dele. Sem sessão conhecida, vale a conta em que a folha nasceu.
+    let accountId: string | null | undefined = leaf.accountId;
     if (leaf.terminalId !== null) {
       if ((await terminals.stateOf(leaf.terminalId)) === 'running') {
         return failure('VALIDATION_FAILED', 'A sessão deste painel ainda está ativa.');
       }
+      const held = terminals.accountOfSession(leaf.terminalId);
+      if (held !== undefined) accountId = held;
       // A sessão antiga acabou: sai do banco antes da nova. Se já não existe, tanto faz.
       await terminals.closeSession(leaf.terminalId);
     }
-    const session = await terminals.openSession(record.projectId, leaf.provider);
+    // Sem conta nenhuma (layout antigo), é a Principal, e não a padrão de agora.
+    const session =
+      accountId === undefined
+        ? await terminals.openSession(record.projectId, leaf.provider)
+        : await terminals.openSession(record.projectId, leaf.provider, { accountId });
     if (!session.ok) return session;
     return {
       ok: true,
@@ -337,7 +359,14 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     if (!session.ok) return session;
     const { terminalId } = session.data;
     try {
-      const pane: LayoutLeaf = { type: 'leaf', id: newId(), provider, terminalId };
+      const account = options?.accountId ?? null;
+      const pane: LayoutLeaf = {
+        type: 'leaf',
+        id: newId(),
+        provider,
+        terminalId,
+        ...(account === null ? {} : { accountId: account }),
+      };
       const where = placement ?? (layout === null ? undefined : defaultPlacement(layout));
       const next =
         layout === null || where === undefined
@@ -356,13 +385,30 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     }
   }
 
+  /**
+   * As opções de um painel novo com a conta já resolvida: sem conta no pedido, vale a padrão do programa; `null`
+   * é a Principal. Programa sem contas não consulta nada. Na Principal, não há opção nenhuma.
+   */
+  function accountOptions(
+    provider: ProviderId,
+    requested: string | null | undefined,
+  ): OpenSessionOptions | undefined {
+    const accounts = deps.accounts;
+    const accountId =
+      requested !== undefined || accounts === undefined || !accounts.isAccountProvider(provider)
+        ? (requested ?? null)
+        : accounts.defaultOf(provider);
+    return accountId === null ? undefined : { accountId };
+  }
+
   async function addPane(
     workspaceId: string,
     provider: ProviderId,
+    accountId?: string | null,
   ): Promise<AppResult<WorkspaceDto>> {
     const record = repo.get(workspaceId);
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
-    return openPane(record, provider);
+    return openPane(record, provider, accountOptions(provider, accountId));
   }
 
   async function addPreviewPane(
@@ -383,10 +429,11 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
     leafId: string,
     side: Side,
     provider: ProviderId,
+    accountId?: string | null,
   ): Promise<AppResult<WorkspaceDto>> {
     const record = repo.get(workspaceId);
     if (record === undefined) return failure('VALIDATION_FAILED', NO_WORKSPACE);
-    return openPane(record, provider, undefined, { leafId, side });
+    return openPane(record, provider, accountOptions(provider, accountId), { leafId, side });
   }
 
   /**
@@ -420,7 +467,12 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
         verdict.resumeBlockedReason ?? 'Esta sessão não pode ser retomada.',
       );
     }
-    return openPane(record, session.provider, { cwd: session.folder, args });
+    // A conversa está na pasta da conta em que foi gravada: retomar é nela, e não na padrão de agora.
+    return openPane(record, session.provider, {
+      cwd: session.folder,
+      args,
+      ...(session.accountId === null ? {} : { accountId: session.accountId }),
+    });
   }
 
   async function removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>> {
@@ -466,13 +518,14 @@ export function createWorkspaceService(deps: WorkspaceServiceDeps): WorkspaceSer
 
     endSession: (workspaceId, leafId) => serial(() => endSession(workspaceId, leafId)),
 
-    addPane: (workspaceId, provider) => serial(() => addPane(workspaceId, provider)),
+    addPane: (workspaceId, provider, accountId) =>
+      serial(() => addPane(workspaceId, provider, accountId)),
     addPreviewPane: (projectId, options) => serial(() => addPreviewPane(projectId, options)),
 
     resumeSession: (workspaceId, sessionId) => serial(() => resumeSession(workspaceId, sessionId)),
 
-    splitPane: (workspaceId, leafId, side, provider) =>
-      serial(() => splitPane(workspaceId, leafId, side, provider)),
+    splitPane: (workspaceId, leafId, side, provider, accountId) =>
+      serial(() => splitPane(workspaceId, leafId, side, provider, accountId)),
 
     removePane: (workspaceId, leafId) => serial(() => removePane(workspaceId, leafId)),
 

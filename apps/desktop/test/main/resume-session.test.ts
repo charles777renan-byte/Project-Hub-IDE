@@ -228,12 +228,14 @@ function terminalsFake(result: OpenResult = { ok: true, data: { terminalId: 'ter
     knownIds: vi.fn(() => Promise.resolve(new Set<string>())),
     stateOf: vi.fn(() => Promise.resolve('unknown' as const)),
     isMissionSession: vi.fn(() => false),
+    accountOfSession: vi.fn(() => undefined),
   };
 }
 
 const claudeSession: IndexedSession = {
   id: SESSION,
   provider: 'claude',
+  accountId: null,
   folder: FOLDER,
   projectId: 'p1',
   resumable: true,
@@ -282,6 +284,28 @@ describe('WorkspaceService.resumeSession', () => {
       ok: true,
       data: { layout: { type: 'leaf', provider: 'claude', terminalId: 'term-1' } },
     });
+  });
+
+  it('sessão gravada numa conta retoma nessa conta, e o painel novo fica com ela', async () => {
+    const account = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const { service, terminals } = setup({ sessions: [{ ...claudeSession, accountId: account }] });
+
+    const result = await service.resumeSession('w1', SESSION);
+
+    expect(terminals.openSession).toHaveBeenCalledWith('p1', 'claude', {
+      cwd: FOLDER,
+      args: ['--resume', SESSION],
+      accountId: account,
+    });
+    expect(result).toMatchObject({ ok: true, data: { layout: { accountId: account } } });
+  });
+
+  it('sessão da Principal retoma sem conta, e o painel fica sem conta', async () => {
+    const { service } = setup({ sessions: [claudeSession] });
+
+    const result = await service.resumeSession('w1', SESSION);
+
+    expect(result.ok && result.data.layout).not.toHaveProperty('accountId');
   });
 
   it('sessão que não está no índice não abre terminal', async () => {

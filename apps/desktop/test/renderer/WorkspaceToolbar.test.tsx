@@ -471,3 +471,92 @@ describe('layouts prontos', () => {
     expect(screen.queryByRole('button', { name: 'Layouts prontos' })).not.toBeInTheDocument();
   });
 });
+
+describe('WorkspaceToolbar: escolha da conta', () => {
+  const X = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const duas = {
+    claude: [
+      { id: null, name: 'Principal', isDefault: false, state: 'connected' as const },
+      { id: X, name: 'Trabalho', isDefault: true, state: 'signed-out' as const },
+    ],
+  };
+  const abrirClaude = async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Claude Code/ }));
+  };
+
+  it('programa só com a Principal abre direto, sem passo a mais e sem conta', async () => {
+    const { onOpen } = setup({
+      accounts: {
+        claude: [{ id: null, name: 'Principal', isDefault: true, state: 'connected' }],
+      },
+    });
+
+    await abrirClaude();
+
+    expect(onOpen.mock.calls).toEqual([['claude']]);
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('programa com duas contas pergunta a conta, com a padrão marcada e o foco nela', async () => {
+    const { onOpen } = setup({ accounts: duas });
+
+    await abrirClaude();
+
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox', { name: 'Conta do Claude Code' })).toBeInTheDocument();
+    const padrao = screen.getByRole('option', { name: /Trabalho/ });
+    expect(padrao).toHaveAttribute('aria-selected', 'true');
+    expect(padrao).toHaveFocus();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('escolher a conta abre o painel nela e fecha o menu; a "Sem login" também abre', async () => {
+    const { onOpen } = setup({ accounts: duas });
+
+    await abrirClaude();
+    await userEvent.click(screen.getByRole('option', { name: /Trabalho/ }));
+
+    expect(onOpen.mock.calls).toEqual([['claude', X]]);
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('escolher a Principal manda null, e não a falta de conta', async () => {
+    const { onOpen } = setup({ accounts: duas });
+
+    await abrirClaude();
+    await userEvent.click(screen.getByRole('option', { name: /Principal/ }));
+
+    expect(onOpen.mock.calls).toEqual([['claude', null]]);
+  });
+
+  it('Esc na lista de contas volta ao menu dos programas, sem abrir nada', async () => {
+    const { onOpen } = setup({ accounts: duas });
+
+    await abrirClaude();
+    await userEvent.keyboard('{Escape}');
+
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('menu', { name: 'Abrir terminal' })).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Buscar programa' })).toHaveFocus();
+  });
+
+  it('pelo teclado: setas e Enter escolhem a conta', async () => {
+    const { onOpen } = setup({ accounts: duas });
+
+    await abrirClaude();
+    await userEvent.keyboard('{ArrowUp}{Enter}');
+
+    expect(onOpen.mock.calls).toEqual([['claude', null]]);
+  });
+
+  it('abrir o menu avisa a página, que relê as contas', async () => {
+    const onMenuOpen = vi.fn();
+    setup({ onMenuOpen });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir terminal' }));
+
+    expect(onMenuOpen).toHaveBeenCalledTimes(1);
+  });
+});

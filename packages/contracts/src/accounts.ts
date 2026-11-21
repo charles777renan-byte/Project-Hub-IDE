@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCOUNT_NAME_MAX } from './account-name';
 import { providerIdSchema } from './workspace';
 
 /** Programas que aceitam mais de uma conta. O GitHub entra com a conta por projeto. */
@@ -7,7 +8,7 @@ export const accountProviderSchema = z.enum(ACCOUNT_PROVIDERS);
 export type AccountProviderId = (typeof ACCOUNT_PROVIDERS)[number];
 
 /** Tamanho máximo do nome que a pessoa dá a uma conta, depois de aparado. */
-export const ACCOUNT_NAME_MAX = 40;
+export { ACCOUNT_NAME_MAX };
 export const accountNameSchema = z.string().trim().min(1).max(ACCOUNT_NAME_MAX);
 
 /** Id de uma conta extra: gerado pelo processo principal, e o único dado que a tela manda sobre ela. */

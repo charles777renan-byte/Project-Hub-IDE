@@ -35,6 +35,8 @@ function summary(digit: string, overrides: Partial<SessionSummary> = {}): Sessio
     lastTurns: null,
     resumable: true,
     resumeBlockedReason: null,
+    accountId: null,
+    accountName: null,
     ...overrides,
   };
 }
@@ -227,5 +229,23 @@ describe('SessionsTab', () => {
     expect(screen.queryByRole('searchbox', { name: SESSIONS_TEXT.search })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: SESSIONS_TEXT.back }));
     expect(screen.getByRole('searchbox', { name: SESSIONS_TEXT.search })).toBeInTheDocument();
+  });
+});
+
+describe('SessionsTab: a conta da sessão', () => {
+  it('o cartão mostra a conta quando o nome vem, e não mostra quando é null', async () => {
+    installApi({
+      ...LIST,
+      sessions: [
+        summary('1', { accountId: sid('a'), accountName: 'Trabalho' }),
+        summary('2', { title: 'Outra sessão' }),
+      ],
+    });
+    render(<SessionsTab projectId="p1" />);
+
+    const [first] = await screen.findAllByRole('button', { name: /^Sessão 1/ });
+    expect(first?.querySelector('.sessions-tab__account')).toHaveTextContent('Trabalho');
+    const other = screen.getByRole('button', { name: /^Outra sessão/ });
+    expect(other.querySelector('.sessions-tab__account')).toBeNull();
   });
 });

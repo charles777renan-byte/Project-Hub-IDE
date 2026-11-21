@@ -534,3 +534,176 @@ describe('adaptador do Claude Code: gasto de tokens', () => {
     expect(events.map((event) => event.type)).toEqual(['session.completed']);
   });
 });
+
+describe('adaptador do Claude Code: conta da missão', () => {
+  const ACCOUNT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const SESSION = '11111111-2222-3333-4444-555555555555';
+
+  function accountOption(asked: (string | null)[] = []) {
+    return {
+      env: (accountId: string | null): Record<string, string> =>
+        accountId === null ? {} : { CLAUDE_CONFIG_DIR: join(dir, 'contas', accountId) },
+      configDir: (accountId: string | null) => {
+        asked.push(accountId);
+        return accountId === null ? join(dir, 'claude') : join(dir, 'contas', accountId);
+      },
+    };
+  }
+
+  function transcriptIn(root: string): string {
+    const folder = join(root, 'projects', 'C--projeto');
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, `${SESSION}.jsonl`);
+    writeFileSync(
+      file,
+      `${JSON.stringify({
+        type: 'assistant',
+        message: {
+          id: 'msg_1',
+          model: 'claude-sonnet-5-5',
+          usage: { input_tokens: 1, output_tokens: 5, cache_read_input_tokens: 10 },
+        },
+      })}\n`,
+    );
+    return file;
+  }
+
+  it('o terminal recebe as variáveis da conta por cima do ambiente base', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: { PATH: 'C:\\bin', CLAUDE_CONFIG_DIR: 'C:\\herdada' },
+      account: accountOption(),
+    });
+
+    await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x', accountId: ACCOUNT },
+      new AbortController().signal,
+    );
+
+    expect(f.opened[0]?.env).toMatchObject({
+      PATH: 'C:\\bin',
+      CLAUDE_CONFIG_DIR: join(dir, 'contas', ACCOUNT),
+    });
+    expect(f.opened[0]?.env['PROJECT_HUB_HOOK_TOKEN']).toBeDefined();
+  });
+
+  it('a variável herdada em outra caixa sai: no Windows valeria a primeira, e não a da conta', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: { Claude_Config_Dir: 'C:\\herdada' },
+      account: accountOption(),
+    });
+
+    await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x', accountId: ACCOUNT },
+      new AbortController().signal,
+    );
+
+    expect(f.opened[0]?.env).not.toHaveProperty('Claude_Config_Dir');
+    expect(f.opened[0]?.env['CLAUDE_CONFIG_DIR']).toBe(join(dir, 'contas', ACCOUNT));
+  });
+
+  it('sem conta na entrada, vale a Principal: o ambiente base segue como está', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: { CLAUDE_CONFIG_DIR: 'C:\\herdada' },
+      account: accountOption(),
+    });
+
+    await adapter.start({ cwd: 'C:\\projeto', prompt: 'x' }, new AbortController().signal);
+
+    expect(f.opened[0]?.env['CLAUDE_CONFIG_DIR']).toBe('C:\\herdada');
+  });
+
+  it('conta que não vale: o início rejeita, nenhum terminal abre e não sobra registro de hooks', async () => {
+    const f = fakes();
+    const registered: string[] = [];
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      hooks: {
+        ...f.hooks,
+        registerExecution: (executionId) => {
+          registered.push(executionId);
+          return f.hooks.registerExecution(executionId);
+        },
+      },
+      settingsDir: dir,
+      env: {},
+      account: {
+        ...accountOption(),
+        env: () => {
+          throw new Error('A conta foi removida.');
+        },
+      },
+    });
+
+    await expect(
+      adapter.start(
+        { cwd: 'C:\\projeto', prompt: 'x', accountId: ACCOUNT },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('A conta foi removida.');
+
+    expect(f.opened).toEqual([]);
+    expect(registered.filter((id) => !f.unregistered.includes(id))).toEqual([]);
+  });
+
+  it('o gasto da sessão é lido na pasta da conta', async () => {
+    const f = fakes();
+    const asked: (string | null)[] = [];
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: {},
+      pollMs: 5,
+      usageIntervalMs: 0,
+      usageDrainDelayMs: 0,
+      account: accountOption(asked),
+    });
+    const session = await adapter.start(
+      { cwd: 'C:\\projeto', prompt: 'x', accountId: ACCOUNT },
+      new AbortController().signal,
+    );
+    const file = transcriptIn(join(dir, 'contas', ACCOUNT));
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION, transcript_path: file });
+    f.push({ hook_event_name: 'SessionEnd', session_id: SESSION, transcript_path: file });
+
+    const events = await collect(session.events());
+
+    expect(asked).toEqual([ACCOUNT]);
+    expect(events.find((event) => event.type === 'usage.updated')).toMatchObject({
+      usage: { outputTokens: 5 },
+    });
+  });
+
+  it('na reanexação, o gasto também é lido na pasta da conta da missão', async () => {
+    const f = fakes();
+    const asked: (string | null)[] = [];
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: {},
+      pollMs: 5,
+      usageIntervalMs: 0,
+      usageDrainDelayMs: 0,
+      account: accountOption(asked),
+    });
+    const file = transcriptIn(join(dir, 'contas', ACCOUNT));
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION, transcript_path: file });
+    f.push({ hook_event_name: 'Stop' });
+    f.push({ hook_event_name: 'SessionEnd' });
+
+    const attached = await adapter.attach?.('exec-1', '2', { accountId: ACCOUNT });
+    if (attached === undefined) throw new Error('a reanexação deveria acontecer');
+    const events = await collect(attached.events());
+
+    expect(asked).toEqual([ACCOUNT]);
+    expect(events[0]).toMatchObject({ type: 'usage.updated', usage: { outputTokens: 5 } });
+  });
+});

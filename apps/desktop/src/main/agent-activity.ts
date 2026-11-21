@@ -1,8 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import {
   antigravityHistoryFile,
-  claudeConfigDirOf,
-  codexHomeOf,
   listClaudeTranscripts,
   listCodexSessions,
   localDayOf,
@@ -143,8 +141,11 @@ export function agentActivityAgents(providers: ProviderInfo[]): AgentActivityAge
 export type SessionReaderDeps = {
   /** Os terminais do app com a pasta do projeto: dizem onde procurar os transcripts do Claude. */
   terminals(): AppTerminal[];
-  /** O ambiente que o terminal recebe (já filtrado): dele saem a pasta do Claude e a do Codex. */
-  env: Readonly<Record<string, string | undefined>>;
+  /**
+   * A pasta de dados do programa na conta do terminal (`null` é a Principal). `undefined`: a conta já não vale, e
+   * os terminais dela ficam sem sessão. O leitor recebe só a pasta, nunca o ambiente do lançamento.
+   */
+  rootOf(provider: 'claude' | 'codex', accountId: string | null): string | undefined;
   /** Histórico do Antigravity. Padrão: `~/.gemini/antigravity-cli/history.jsonl`. */
   antigravityHistory?: string;
 };
@@ -174,9 +175,10 @@ function nonEmpty(value: string | undefined): string | undefined {
  * lerem as sessões da pessoa; em qualquer outro caso elas não valem. O ambiente que o terminal de verdade
  * recebe não muda: só o do leitor.
  */
-export function sessionSourcesOf(
-  processEnv: NodeJS.ProcessEnv,
-): Pick<SessionReaderDeps, 'env' | 'antigravityHistory'> {
+export function sessionSourcesOf(processEnv: NodeJS.ProcessEnv): {
+  env: Readonly<Record<string, string | undefined>>;
+  antigravityHistory?: string;
+} {
   let env: Record<string, string | undefined> = buildTerminalEnv(processEnv);
   if (processEnv['PROJECT_HUB_ENV'] !== 'test') return { env };
 
@@ -211,48 +213,68 @@ function dayBefore(iso: string): string {
 export function createSessionReader(
   deps: SessionReaderDeps,
 ): (agent: string, sinceIso: string) => Promise<SessionForLink[]> {
-  async function readClaude(sinceIso: string): Promise<SessionActivity[]> {
-    const configDir = claudeConfigDirOf(deps.env);
-    const folders = [
-      ...new Set(
-        deps
-          .terminals()
-          .filter((terminal) => terminal.provider === 'claude')
-          .map((terminal) => terminal.folder),
-      ),
-    ];
+  /** As contas dos terminais de um programa, com a pasta de dados de cada uma e as pastas de projeto dos terminais. */
+  function accountsOf(
+    provider: 'claude' | 'codex',
+  ): { accountId: string | null; root: string; folders: string[] }[] {
+    const folders = new Map<string | null, Set<string>>();
+    for (const terminal of deps.terminals()) {
+      if (terminal.provider !== provider) continue;
+      const accountId = terminal.accountId ?? null;
+      const own = folders.get(accountId) ?? new Set<string>();
+      own.add(terminal.folder);
+      folders.set(accountId, own);
+    }
+    const out: { accountId: string | null; root: string; folders: string[] }[] = [];
+    for (const [accountId, own] of folders) {
+      const root = deps.rootOf(provider, accountId);
+      // Conta que já não vale: os terminais dela ficam sem sessão, e as outras seguem.
+      if (root !== undefined) out.push({ accountId, root, folders: [...own] });
+    }
+    return out;
+  }
+
+  /** A sessão com a conta de onde foi lida. A Principal fica sem o campo. */
+  function tagged(activity: SessionActivity, accountId: string | null): SessionForLink {
+    return accountId === null ? activity : { ...activity, accountId };
+  }
+
+  async function readClaude(sinceIso: string): Promise<SessionForLink[]> {
     // Transcript sem alteração desde antes do terminal mais antigo não pode ter sessão dele.
     const oldest = Date.parse(sinceIso) - LINK_SLACK_MS;
-    const sessions: SessionActivity[] = [];
-    for (const folder of folders) {
-      for (const file of listClaudeTranscripts(configDir, folder)) {
-        try {
-          if ((await stat(file)).mtimeMs < oldest) continue;
-          const activity = readClaudeTranscriptActivity(await readFile(file, 'utf8'), folder);
-          if (activity !== undefined) sessions.push(activity);
-        } catch {
-          // Arquivo que sumiu ou não abre: aquela sessão fica de fora, as outras seguem.
+    const sessions: SessionForLink[] = [];
+    for (const account of accountsOf('claude')) {
+      for (const folder of account.folders) {
+        for (const file of listClaudeTranscripts(account.root, folder)) {
+          try {
+            if ((await stat(file)).mtimeMs < oldest) continue;
+            const activity = readClaudeTranscriptActivity(await readFile(file, 'utf8'), folder);
+            if (activity !== undefined) sessions.push(tagged(activity, account.accountId));
+          } catch {
+            // Arquivo que sumiu ou não abre: aquela sessão fica de fora, as outras seguem.
+          }
+          await yieldToEventLoop();
         }
-        await yieldToEventLoop();
       }
     }
     return sessions;
   }
 
-  async function readCodex(sinceIso: string): Promise<SessionActivity[]> {
-    // A pasta do dia é a do início da sessão: um dia antes do terminal mais antigo, para não perder
-    // a que começou antes da meia-noite e continuou depois.
-    const files = listCodexSessions(codexHomeOf(deps.env), dayBefore(sinceIso));
-    const sessions: SessionActivity[] = [];
-    for (const file of files) {
-      try {
-        // Por `readCodexSessionFile`, que descomprime as sessões `.zst`; direto do disco elas viram zero.
-        const activity = readCodexSessionActivity(readCodexSessionFile(file));
-        if (activity !== undefined) sessions.push(activity);
-      } catch {
-        // Arquivo ilegível ou zstd corrompido: aquela sessão fica de fora, nunca entra como zero.
+  async function readCodex(sinceIso: string): Promise<SessionForLink[]> {
+    const sessions: SessionForLink[] = [];
+    for (const account of accountsOf('codex')) {
+      // A pasta do dia é a do início da sessão: um dia antes do terminal mais antigo, para não perder
+      // a que começou antes da meia-noite e continuou depois.
+      for (const file of listCodexSessions(account.root, dayBefore(sinceIso))) {
+        try {
+          // Por `readCodexSessionFile`, que descomprime as sessões `.zst`; direto do disco elas viram zero.
+          const activity = readCodexSessionActivity(readCodexSessionFile(file));
+          if (activity !== undefined) sessions.push(tagged(activity, account.accountId));
+        } catch {
+          // Arquivo ilegível ou zstd corrompido: aquela sessão fica de fora, nunca entra como zero.
+        }
+        await yieldToEventLoop();
       }
-      await yieldToEventLoop();
     }
     return sessions;
   }

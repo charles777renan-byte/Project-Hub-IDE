@@ -10,9 +10,7 @@ const detailSchema = z.object({
   title: z.string().nullable(),
   firstPrompt: z.string().nullable(),
   lastAgentText: z.string().nullable(),
-  lastTurns: z
-    .array(z.object({ role: z.enum(['user', 'agent']), text: z.string() }))
-    .nullable(),
+  lastTurns: z.array(z.object({ role: z.enum(['user', 'agent']), text: z.string() })).nullable(),
   model: z.string().nullable(),
   subagents: z.number().nullable(),
   messages: z.number(),
@@ -32,6 +30,8 @@ const activitySchema = z.object({
 
 const indexedFileSchema = z.object({
   provider: sessionProviderSchema,
+  /** A conta do programa de onde o arquivo veio. Ausente (índice antigo, ou a própria Principal): a Principal. */
+  accountId: z.uuid().optional(),
   mtimeMs: z.number(),
   size: z.number().int().min(0),
   /** Sessões lidas do arquivo; `null` quando ele falhou na leitura. */

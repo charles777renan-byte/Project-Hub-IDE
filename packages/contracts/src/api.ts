@@ -66,6 +66,7 @@ import type {
   ExecutionDto,
   MissionDiffDto,
   MissionDto,
+  SetMissionAccountInput,
   MissionEventDto,
   MissionPlanDto,
   MissionUsageEventDto,
@@ -135,6 +136,8 @@ export type ProjectHubApi = {
      * ficam como estavam; a chamada de `plan` que estava esperando termina com falha.
      */
     cancelPlanning(missionId: string): Promise<AppResult<void>>;
+    /** Troca a conta do Claude Code da missão, antes de ela começar. `null` é a Principal. */
+    setAccount(input: SetMissionAccountInput): Promise<AppResult<MissionDto>>;
     /** Inicia a execução de uma missão aprovada. Devolve a tentativa no estado em que parou. */
     start(missionId: string): Promise<AppResult<ExecutionDto>>;
     /** Cancela a missão, encerrando o agente se ele estiver rodando (também a pausada). */
@@ -199,14 +202,22 @@ export type ProjectHubApi = {
     startSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
     /** Encerra a sessão do painel. Terminal de missão não encerra por aqui. */
     endSession(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
-    /** Abre uma sessão do programa e cria o painel dela, dividindo o maior painel. Devolve o workspace inteiro. */
-    addPane(workspaceId: string, provider: ProviderId): Promise<AppResult<WorkspaceDto>>;
+    /**
+     * Abre uma sessão do programa e cria o painel dela, dividindo o maior painel. Devolve o workspace inteiro.
+     * `accountId` ausente: a conta padrão do programa. `null`: a Principal.
+     */
+    addPane(
+      workspaceId: string,
+      provider: ProviderId,
+      accountId?: string | null,
+    ): Promise<AppResult<WorkspaceDto>>;
     /** Abre uma sessão do programa num painel novo, no lado `side` do painel `leafId`. Devolve o workspace inteiro. */
     splitPane(
       workspaceId: string,
       leafId: string,
       side: 'left' | 'right' | 'top' | 'bottom',
       provider: ProviderId,
+      accountId?: string | null,
     ): Promise<AppResult<WorkspaceDto>>;
     /** Encerra a sessão do painel (a de missão segue) e o tira do layout; o vizinho fica com o espaço. Devolve o workspace inteiro. */
     removePane(workspaceId: string, leafId: string): Promise<AppResult<WorkspaceDto>>;
@@ -298,6 +309,8 @@ export type ProjectHubApi = {
      * devolve o estado que já tem. Espera a leitura terminar.
      */
     refresh(): Promise<AppResult<LimitsDto>>;
+    /** Pede a leitura dos limites de uma conta só. Gasta da assinatura dela; o intervalo mínimo vale. */
+    refreshAccount(input: AccountTargetInput): Promise<AppResult<LimitsDto>>;
     /** Assina as mudanças dos limites. Cada evento chega validado. Devolve a função que cancela a assinatura. */
     subscribe(listener: (limits: LimitsDto) => void): () => void;
   };

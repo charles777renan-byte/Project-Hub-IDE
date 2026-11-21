@@ -5,8 +5,8 @@ import { relativeTime, SESSION_PROVIDER_LABEL, sessionTitle } from './sessions-s
 import { SESSIONS_TEXT } from './sessions-text';
 
 /**
- * Um cartão da lista: o nome da sessão, a última fala do agente em duas linhas e, embaixo, o programa, as
- * contagens, o modelo e o branch quando é worktree. Todo texto entra como filho de texto do React.
+ * Um cartão da lista: o nome da sessão, a última fala do agente em duas linhas e, embaixo, o programa, a conta
+ * (quando o programa tem mais de uma), as contagens, o modelo e o branch quando é worktree. Todo texto entra como filho de texto do React.
  */
 export function SessionCard({ session, onOpen }: { session: SessionSummary; onOpen: () => void }) {
   const lastAgent = session.lastAgentText;
@@ -23,6 +23,14 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
         {lastAgent === null ? null : <span className="sessions-tab__card-last">{lastAgent}</span>}
         <span className="sessions-tab__card-meta">
           <span>{SESSION_PROVIDER_LABEL[session.provider]}</span>
+          {session.accountName === null ? null : (
+            <span
+              className="sessions-tab__account"
+              title={SESSIONS_TEXT.account(session.accountName)}
+            >
+              {session.accountName}
+            </span>
+          )}
           {session.messages === null ? null : (
             <span>{SESSIONS_TEXT.messages(session.messages)}</span>
           )}

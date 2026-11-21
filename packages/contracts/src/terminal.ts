@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { tokenCount, usageSummaryDtoSchema } from './mission';
+import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
 import { providerIdSchema } from './workspace';
 
 /**
@@ -56,6 +57,13 @@ export const terminalSummarySchema = z.object({
    * (não é zero).
    */
   context: z.object({ usedTokens: tokenCount, windowTokens: tokenCount }).optional(),
+  /**
+   * A conta do programa em que o terminal roda (`null`: a Principal) e o nome dela. Só o Claude Code e o Codex
+   * têm conta; nos outros programas e no shell os campos não vêm. `accountRemoved`: a conta foi removida depois.
+   */
+  accountId: accountRefSchema.optional(),
+  accountName: z.string().max(ACCOUNT_NAME_MAX).optional(),
+  accountRemoved: z.boolean().optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 

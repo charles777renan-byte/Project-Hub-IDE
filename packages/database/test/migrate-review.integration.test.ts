@@ -86,7 +86,30 @@ describe('migração da revisão (0005)', () => {
       createdAt: T0,
       updatedAt: T0,
     };
-    before.insertMission(mission);
+    // A coluna da conta (0016) ainda não existe neste banco: a missão e os critérios entram por SQL.
+    legacy.$client
+      .prepare(
+        'INSERT INTO missions (id, project_id, title, objective, status, priority, agent_profile_id, execution_profile_id, alters_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
+      )
+      .run(
+        mission.id,
+        mission.projectId,
+        mission.title,
+        mission.objective,
+        mission.status,
+        mission.priority,
+        mission.agentProfileId,
+        mission.executionProfileId,
+        T0,
+        T0,
+      );
+    for (const criterion of mission.acceptanceCriteria) {
+      legacy.$client
+        .prepare(
+          'INSERT INTO mission_acceptance_criteria (id, mission_id, position, text) VALUES (?, ?, ?, ?)',
+        )
+        .run(criterion.id, mission.id, criterion.position, criterion.text);
+    }
     // As colunas de tarefa (0009) ainda não existem neste banco: etapa e tentativa entram por SQL.
     legacy.$client
       .prepare(
