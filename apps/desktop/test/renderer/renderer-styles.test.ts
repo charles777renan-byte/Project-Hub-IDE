@@ -68,6 +68,7 @@ describe('index.html do renderer', () => {
       './styles/right-panel.css',
       './styles/checks.css',
       './styles/browser.css',
+      './styles/settings.css',
       './styles/motion.css',
     ]);
   });
@@ -163,6 +164,7 @@ describe('fontes locais', () => {
       'terminal-tools.css',
       'right-panel.css',
       'browser.css',
+      'settings.css',
       'motion.css',
     ]) {
       const css = readFileSync(join(stylesDirectory, name), 'utf8').replace(

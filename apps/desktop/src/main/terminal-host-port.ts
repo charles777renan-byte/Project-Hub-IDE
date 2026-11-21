@@ -158,6 +158,10 @@ export function createTerminalHostPort(options: TerminalHostPortOptions): Termin
       await call({ type: 'terminal.kill', terminalId: id });
     },
 
+    async remove(id: string): Promise<void> {
+      await call({ type: 'terminal.remove', terminalId: id });
+    },
+
     async snapshot(id: string): Promise<TerminalSnapshot | undefined> {
       try {
         const data = await call({ type: 'terminal.snapshot', terminalId: id });

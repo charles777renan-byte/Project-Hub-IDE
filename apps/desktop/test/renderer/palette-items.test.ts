@@ -65,6 +65,17 @@ describe('buildPaletteItems', () => {
     expect(items.some((item) => item.rotulo === 'Ir para Projetos')).toBe(false);
   });
 
+  it('Abrir Configurações leva à área de configurações, com o atalho à vista', () => {
+    const navigate = vi.fn();
+    const items = buildPaletteItems(COM_DADOS, navigate);
+    const item = itemNamed(items, 'Abrir Configurações');
+
+    expect(item.grupo).toBe('Ações');
+    expect(item.atalho).toBe('Ctrl ,');
+    item.executar();
+    expect(navigate).toHaveBeenLastCalledWith('/settings/contas');
+  });
+
   it('Alterar meu nome leva ao Início com o pedido de edição do nome', () => {
     const navigate = vi.fn();
     const items = buildPaletteItems(COM_DADOS, navigate);
@@ -123,6 +134,7 @@ describe('buildPaletteItems', () => {
       'Mostrar ou ocultar a barra lateral',
       'Mostrar/Esconder painel direito',
       'Ir para Início',
+      'Abrir Configurações',
       'Alterar meu nome',
     ]);
   });

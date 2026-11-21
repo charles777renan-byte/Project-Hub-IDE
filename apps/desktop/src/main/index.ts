@@ -6,10 +6,12 @@ import {
   type BrowserShortcutEvent,
   type BrowserStateDto,
   type LimitsDto,
+  type LoginEvent,
   type MissionEventDto,
   type MissionUsageEventDto,
   type PreviewStateDto,
   type TerminalEvent,
+  type TerminalSummary,
   type WorkspaceDto,
 } from '@project-hub/contracts';
 import { getStatus, listWorktrees } from '@project-hub/git-adapter';
@@ -22,6 +24,7 @@ import {
   Menu,
   Notification,
   session,
+  clipboard,
   shell,
   type IpcMainInvokeEvent,
 } from 'electron';
@@ -32,6 +35,9 @@ import {
   platformOf,
   resolveAgentCommand,
   resolveCodexLimitsHome,
+  accountCliProviders,
+  resolveAccountCliScript,
+  resolveDataDir,
   resolvePanelClaudeScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
@@ -42,7 +48,13 @@ import {
 } from './composition';
 import { createClaudeAgent, createTerminalBackend, resolveExecutable } from './claude-agent';
 import { createClaudeLimitsProbe } from './claude-limits';
-import { createClaudePlanner } from './claude-planner';
+import { createClaudePlanner, runPlannerProcess } from './claude-planner';
+import { createAccountCli } from './accounts/account-cli';
+import { accountsRoot, createAccountPaths } from './accounts/account-paths';
+import { createAccountsService } from './accounts/accounts-service';
+import { liveSessionsOfAccount } from './accounts/live-sessions';
+import { createLoginService } from './accounts/login-service';
+import { registerAccountsHandlers, registerAppHandlers } from './ipc/accounts';
 import { createCodexLimitsReader } from './codex-limits';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
@@ -278,6 +290,13 @@ function publishLimitsEvent(limits: LimitsDto): void {
   const target = mainWindow;
   if (target === undefined || target.isDestroyed()) return;
   target.webContents.send(CHANNELS.limitsEvent, limits);
+}
+
+/** Entrega o estado e a saída do login de uma conta ao quadro principal. Nada daqui é registrado. */
+function publishLoginEvent(event: LoginEvent): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.accountsLoginEvent, event);
 }
 
 /** Entrega um evento de terminal ao quadro principal. */
@@ -795,6 +814,63 @@ app
       // Do ambiente filtrado (`env`), não do processo: empacotado, o gancho de teste não existe.
       ...(panelClaudeScript === undefined ? {} : { panelClaudeScript }),
     });
+    // Contas dos programas (Configurações). A tela manda só o programa e o id: a pasta e a variável de ambiente de
+    // cada conta saem de `accountPaths`, aqui. O login roda o comando oficial num terminal próprio, fora de
+    // `terminal_sessions`; a saída dele só passa pela memória.
+    const dataDir = resolveDataDir(env, app.getPath('userData'));
+    const accountPaths = createAccountPaths({
+      root: accountsRoot(dataDir),
+      accounts: services.accounts,
+    });
+    const accountCli = createAccountCli({
+      // Do ambiente filtrado (`env`): empacotado, o gancho de teste não existe.
+      providers: accountCliProviders(providers, resolveAccountCliScript(env), process.platform),
+      paths: accountPaths,
+      env: process.env,
+      run: runPlannerProcess,
+      cwd: dataDir,
+    });
+    let listLiveTerminals: () => Promise<TerminalSummary[]> = () => Promise.resolve([]);
+    const accountsService = createAccountsService({
+      accounts: services.accounts,
+      settings: services.profileDeps.settings,
+      paths: accountPaths,
+      cli: accountCli,
+      providers,
+      newId: randomUUID,
+      now: () => new Date().toISOString(),
+      // Os painéis ainda não abrem com conta escolhida: todos rodam na Principal, e só ela é presa por eles.
+      liveSessionsOf: async (provider, accountId) =>
+        liveSessionsOfAccount(await listLiveTerminals(), provider, accountId),
+    });
+    const loginService = createLoginService({
+      port: terminalBackend.port,
+      cli: accountCli,
+      accounts: accountsService,
+      settings: services.profileDeps.settings,
+      publish: publishLoginEvent,
+      openExternal: (url) => shell.openExternal(url),
+      writeClipboard: (text) => clipboard.writeText(text),
+      newId: randomUUID,
+      now: () => Date.now(),
+      setTimer: (run, ms) => setTimeout(run, ms),
+      clearTimer: (handle) => clearTimeout(handle as NodeJS.Timeout),
+      cwd: dataDir,
+    });
+    // O processo de terminais sobrevive ao app: um login que ficou de uma execução anterior é encerrado.
+    void loginService.recover();
+    app.once('will-quit', () => {
+      void loginService.dispose();
+    });
+    registerAccountsHandlers(ipcMain, isTrustedSender, {
+      accounts: accountsService,
+      login: loginService,
+    });
+    registerAppHandlers(ipcMain, isTrustedSender, {
+      version: app.getVersion(),
+      dataDir,
+      openPath: (path) => shell.openPath(path),
+    });
     // Aba Sessões: os leitores dos três programas, o índice em disco e a mesma regra de retomada para a lista e para o
     // botão (ver resume-verdict.ts). O índice fica em `userData`, ou na pasta de teste.
     const resumeVerdict = createResumeVerdict({
@@ -856,6 +932,11 @@ app
       browserAccess: agentAccess,
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
+    // O serviço de contas nasce antes do de terminais: a lista entra aqui quando ele existe.
+    listLiveTerminals = async () => {
+      const listed = await terminalService.list();
+      return listed.ok ? listed.data : [];
+    };
     // Avisos do sistema (RF-OBS-008 a RF-OBS-011): a tela diz qual item passou a esperar; daqui saem o texto, a
     // notificação, o piscar e o clique. Sem foco, os terminais são relidos aqui, porque a tela escondida não relê.
     const alerts = createAlertService({

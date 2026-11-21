@@ -51,6 +51,8 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'packages/database/test/project-repository.integration.test.ts': 3, // 2 s
   'packages/agent-adapters/test/simulated-adapter.integration.test.ts': 3, // 0 s
   'packages/database/test/app-settings.integration.test.ts': 3, // 0 s
+  'packages/database/test/account-repository.integration.test.ts': 3, // 0 s
+  'apps/desktop/test/accounts/account-paths.integration.test.ts': 3, // 0 s
   'packages/database/test/browser-tab-repository.integration.test.ts': 3, // 1 s
   'packages/database/test/project-preview-repository.integration.test.ts': 3, // 1 s (estimativa; medir no CI)
   'packages/database/test/migrate-review.integration.test.ts': 3, // 0 s

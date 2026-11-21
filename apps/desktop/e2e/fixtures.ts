@@ -37,6 +37,9 @@ export const FAKE_GH = join(
   'fake-gh.mjs',
 );
 
+/** O `claude` e o `codex` falsos dos comandos de conta (entrar, estado e sair). Ver `accountCliScript`. */
+export const FAKE_ACCOUNT_CLI = join(import.meta.dirname, 'fixtures', 'fake-account-cli.mjs');
+
 /** Variáveis do `gh` falso que não podem vir da máquina de quem roda: só as opções do teste as definem. */
 const GH_ENV = ['PROJECT_HUB_GH_BIN', 'FAKE_GH_SCENARIO', 'FAKE_GH_LOG', 'FAKE_GH_HEAD'];
 
@@ -124,6 +127,12 @@ export type LaunchOptions = {
    * executável. O Git continua no PATH.
    */
   ghMissing?: boolean;
+  /**
+   * Caminho de um `.mjs` que faz o papel do `claude` e do `codex` nos comandos de conta: entrar, estado e sair
+   * (`APP_ACCOUNT_CLI_SCRIPT`). Com ele, as pastas de programa da máquina (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) saem
+   * do ambiente do app, e a conta Principal do teste fica numa pasta dentro da pasta de dados.
+   */
+  accountCliScript?: string;
   /** Espera a interface ficar pronta. O padrão confere a navegação principal. */
   waitForReady?: (page: Page) => Promise<void>;
   /** Chamado assim que o processo abre, antes de qualquer espera. */
@@ -382,6 +391,17 @@ export const test = base.extend<Fixtures>({
       // Nenhum gancho dos limites vem da máquina de quem roda: só a opção do teste liga o CLI falso.
       delete env['APP_LIMITS_SCRIPT'];
       if (options.limitsScript !== undefined) env['APP_LIMITS_SCRIPT'] = options.limitsScript;
+      delete env['APP_ACCOUNT_CLI_SCRIPT'];
+      if (options.accountCliScript !== undefined) {
+        env['APP_ACCOUNT_CLI_SCRIPT'] = options.accountCliScript;
+        // A Principal do CLI falso mora na pasta de dados do teste: sem isto, uma pasta de programa definida na
+        // máquina de quem roda viraria a Principal, e o teste leria ou mexeria na pasta de verdade.
+        const programFolders = ['CODEX_HOME'];
+        if (options.agentScript === undefined) programFolders.push('CLAUDE_CONFIG_DIR');
+        for (const name of Object.keys(env)) {
+          if (programFolders.includes(name.toUpperCase())) delete env[name];
+        }
+      }
       if (options.rendererUrl !== undefined) env['ELECTRON_RENDERER_URL'] = options.rendererUrl;
       // O bloco "Visão geral" do Início lê as sessões dos CLIs. As três pastas vêm sempre da pasta de dados do
       // teste (o app só as aceita com `PROJECT_HUB_ENV=test`), e nenhuma delas é a da pessoa.

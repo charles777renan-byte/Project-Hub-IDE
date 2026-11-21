@@ -37,6 +37,8 @@ export type TerminalRequestBody =
   | { type: 'terminal.write'; terminalId: string; data: string }
   | { type: 'terminal.resize'; terminalId: string; cols: number; rows: number }
   | { type: 'terminal.kill'; terminalId: string }
+  /** Esquece um terminal que já encerrou, com a saída guardada dele. */
+  | { type: 'terminal.remove'; terminalId: string }
   | { type: 'terminal.snapshot'; terminalId: string }
   | { type: 'terminal.subscribe'; terminalId: string }
   | { type: 'terminal.unsubscribe'; terminalId: string }
@@ -181,6 +183,8 @@ function parseTerminalBody(
     }
     case 'terminal.kill':
       return { type: 'terminal.kill', terminalId };
+    case 'terminal.remove':
+      return { type: 'terminal.remove', terminalId };
     case 'terminal.snapshot':
       return { type: 'terminal.snapshot', terminalId };
     case 'terminal.subscribe':

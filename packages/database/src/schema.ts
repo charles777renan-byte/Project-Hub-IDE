@@ -292,6 +292,28 @@ export const projectPreviews = sqliteTable('project_previews', {
   updatedAt: text('updated_at').notNull(),
 });
 
+/** Programas que aceitam mais de uma conta. A Principal de cada um não tem linha: é a conta nula. */
+export const ACCOUNT_PROVIDERS = ['claude', 'codex', 'github'] as const;
+
+/**
+ * Contas extras de um programa. Guarda só o id (que dá nome à pasta de dados da conta), o programa e o nome que a
+ * pessoa deu. E-mail, usuário e credencial nunca entram aqui.
+ */
+export const accounts = sqliteTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider', { enum: ACCOUNT_PROVIDERS }).notNull(),
+    name: text('name').notNull(),
+    createdAt: text('created_at').notNull(),
+    removedAt: text('removed_at'),
+  },
+  (table) => [
+    index('accounts_provider_idx').on(table.provider),
+    check('accounts_provider_check', sql`${table.provider} IN (${oneOf(ACCOUNT_PROVIDERS)})`),
+  ],
+);
+
 export const schema = {
   projects,
   missions,
@@ -305,4 +327,5 @@ export const schema = {
   appSettings,
   browserTabs,
   projectPreviews,
+  accounts,
 };

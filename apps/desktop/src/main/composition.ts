@@ -24,6 +24,7 @@ import {
   type RepositoryInitializer,
 } from '@project-hub/application';
 import {
+  createAccountRepository,
   createAppSettingsRepository,
   createMissionRepository,
   createProjectRepository,
@@ -34,6 +35,7 @@ import {
   listExecutionTokens,
   migrateDatabase,
   openDatabase,
+  type AccountRepository,
   type TerminalSessionRepository,
   type BrowserTabRepository,
   type ProjectPreviewRepository,
@@ -58,6 +60,7 @@ import {
   type MissionEventPublisher,
   type MissionUsagePublisher,
 } from './mission-events';
+import type { ProviderRegistry } from './providers';
 
 /** Serviços de missões: o orquestrador e as consultas que o IPC usa (visão, alterações e exclusão). */
 export type MissionServices = {
@@ -95,6 +98,8 @@ export type AppServices = AddProjectDeps & {
   agentActivityDeps: { terminals(): AppTerminal[]; missions(): MissionTokens[] };
   /** Perfil local: o nome da saudação, guardado nas configurações do banco. */
   profileDeps: ProfileDeps;
+  /** Contas extras dos programas (Configurações). */
+  accounts: AccountRepository;
   /** Arquivos do projeto (painel direito): a pasta de cada projeto pelo id e a checagem de que ela existe. */
   fileDeps: ProjectFilesDeps;
   /** Painel de código-fonte (ADR 0010): o repositório de projetos, a porta de Git e a checagem de caminhos. */
@@ -184,9 +189,13 @@ export function resolveWorktreesRoot(env: NodeJS.ProcessEnv, homeDir: string): s
  * variável, o banco fica na pasta `userData` do Electron.
  */
 export function resolveDatabaseFile(env: NodeJS.ProcessEnv, userDataDir: string): string {
+  return join(resolveDataDir(env, userDataDir), 'database', 'project-hub.sqlite');
+}
+
+/** Pasta de dados do app: a de `PROJECT_HUB_DATA_DIR` quando a variável existe, ou a `userData` do Electron. */
+export function resolveDataDir(env: NodeJS.ProcessEnv, userDataDir: string): string {
   const dataDir = env['PROJECT_HUB_DATA_DIR'];
-  const base = dataDir !== undefined && dataDir !== '' ? dataDir : userDataDir;
-  return join(base, 'database', 'project-hub.sqlite');
+  return dataDir !== undefined && dataDir !== '' ? dataDir : userDataDir;
 }
 
 /** Seletor de pasta: devolve o caminho escolhido, ou null quando a pessoa cancela. */
@@ -290,6 +299,42 @@ export function resolveAgentCommand(
 export function resolvePanelClaudeScript(env: NodeJS.ProcessEnv): string | undefined {
   const script = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_PANEL_CLAUDE_SCRIPT'] : undefined;
   return script === undefined || script === '' ? undefined : script;
+}
+
+/**
+ * Script que faz o papel do `claude` e do `codex` nos comandos de conta (entrar, estado, sair) nos testes de ponta
+ * a ponta. Só com `PROJECT_HUB_ENV=test` o gancho `APP_ACCOUNT_CLI_SCRIPT` vale; empacotado, as variáveis já foram
+ * retiradas por `applicationEnvironment`.
+ */
+export function resolveAccountCliScript(env: NodeJS.ProcessEnv): string | undefined {
+  const script = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_ACCOUNT_CLI_SCRIPT'] : undefined;
+  return script === undefined || script === '' ? undefined : script;
+}
+
+/**
+ * O registro de programas que os comandos de conta usam. Sem o gancho de teste, é o de verdade. Com ele, o `claude`
+ * e o `codex` viram `node <script> <programa>`, só nesses comandos: os painéis seguem com o registro de verdade.
+ */
+export function accountCliProviders(
+  providers: ProviderRegistry,
+  script: string | undefined,
+  platform: NodeJS.Platform,
+): ProviderRegistry {
+  if (script === undefined) return providers;
+  return {
+    list: () => providers.list(),
+    resolve: (id) =>
+      id === 'claude' || id === 'codex'
+        ? {
+            ok: true,
+            launch: {
+              command: platform === 'win32' ? 'node.exe' : 'node',
+              prefix: [script, id],
+              args: [],
+            },
+          }
+        : providers.resolve(id),
+  };
 }
 
 /** Como a leitura dos limites da assinatura é executada: o executável, o que vai antes dos argumentos e o ambiente extra. */
@@ -433,6 +478,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       missions: () => listExecutionTokens(db),
     },
     profileDeps: { settings: createAppSettingsRepository(db), now },
+    accounts: createAccountRepository(db),
     fileDeps: {
       // Projeto removido conta como desconhecido; o arquivado segue com os arquivos acessíveis.
       rootOf: (projectId) => {

@@ -193,4 +193,28 @@ export const CHANNELS = {
   previewChanged: 'preview:changed:v1',
   /** O processo principal mudou um workspace por conta própria (o painel do preview). Não tem resposta. */
   workspacesChanged: 'workspaces:changed:v1',
+  /** Contas dos programas (Configurações). Só entram o programa, o id da conta e o nome. */
+  accountsList: 'accounts:list:v1',
+  accountsAdd: 'accounts:add:v1',
+  accountsRename: 'accounts:rename:v1',
+  accountsSetDefault: 'accounts:set-default:v1',
+  accountsDisconnect: 'accounts:disconnect:v1',
+  accountsRemove: 'accounts:remove:v1',
+  /** Login de uma conta, pelo comando oficial do programa. Um por vez. */
+  accountsLoginStart: 'accounts:login-start:v1',
+  accountsLoginGet: 'accounts:login-get:v1',
+  accountsLoginCancel: 'accounts:login-cancel:v1',
+  accountsLoginConfirm: 'accounts:login-confirm:v1',
+  accountsLoginReject: 'accounts:login-reject:v1',
+  /** Abrem ou copiam o endereço que o processo principal leu da saída do login. A tela não manda endereço. */
+  accountsLoginOpenUrl: 'accounts:login-open-url:v1',
+  accountsLoginCopyUrl: 'accounts:login-copy-url:v1',
+  accountsLoginWrite: 'accounts:login-write:v1',
+  accountsLoginResize: 'accounts:login-resize:v1',
+  /** Estado e saída do login, do processo principal para o renderer. Não tem resposta. */
+  accountsLoginEvent: 'accounts:login-event:v1',
+  /** Versão e pasta de dados do app (seção Geral). */
+  appInfo: 'app:info:v1',
+  /** Abre a pasta de dados do app no gerenciador de arquivos. Não recebe caminho. */
+  appOpenDataFolder: 'app:open-data-folder:v1',
 } as const;

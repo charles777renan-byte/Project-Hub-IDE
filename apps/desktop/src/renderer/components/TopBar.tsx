@@ -11,7 +11,7 @@ import type { ProjectSummary, WorkspaceDto } from '@project-hub/contracts';
 import markUrl from '../assets/simbolo.png';
 import { attentionEntries, attentionProjectIds } from '../attention';
 import { ADD_PROJECT_REQUEST_EVENT } from '../projects-events';
-import { ROUTE_PATHS, workspacePath } from '../routes';
+import { ROUTE_PATHS, SETTINGS_ROOT, workspacePath } from '../routes';
 import { MARKS } from '../state-mark';
 import { useTerminals } from '../terminals-data';
 import { useSidebarData } from '../use-sidebar-data';
@@ -26,6 +26,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Settings,
   X,
 } from './Icon';
 import { TabsOverflow, useTabsOverflow } from './TabsOverflow';
@@ -71,6 +72,13 @@ export function TopBar({
   onToggleRight?: () => void;
 } = {}) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const settingsOpen = useMatch(ROUTE_PATHS.settings) !== null;
+  // A última página fora das Configurações: é para ela que o botão de fechar da aba volta.
+  const beforeSettings = useRef<string>(ROUTE_PATHS.home);
+  useEffect(() => {
+    if (!settingsOpen) beforeSettings.current = `${location.pathname}${location.search}`;
+  }, [settingsOpen, location.pathname, location.search]);
   const workspaceMatch = useMatch(ROUTE_PATHS.workspace);
   const { projects, missionsByProject } = useSidebarData();
   const { terminals } = useTerminals();
@@ -450,6 +458,25 @@ export function TopBar({
           });
         }}
       />
+      {/* A aba das Configurações só existe enquanto a área está aberta. Fechar volta para onde a pessoa estava. */}
+      {settingsOpen ? (
+        <div className="topbar__tab topbar__settings">
+          <NavLink to={SETTINGS_ROOT} className="topbar__tab-link">
+            <Settings {...ICON_PROPS} />
+            Configurações
+          </NavLink>
+          <Hint label="Fechar Configurações">
+            <button
+              type="button"
+              className="topbar__close"
+              aria-label="Fechar Configurações"
+              onClick={() => void navigate(beforeSettings.current)}
+            >
+              <X {...ICON_PROPS} />
+            </button>
+          </Hint>
+        </div>
+      ) : null}
       <OpenWorkspaceMenu
         projects={projects.filter((project) => !openIds.has(project.id))}
         onOpen={(projectId) => void openProject(projectId)}
