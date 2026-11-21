@@ -1,10 +1,14 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type {
+  AccountDto,
   AccountGroupDto,
+  AccountLimitsDto,
   AccountProviderId,
+  LimitsDto,
   OtherProgramDto,
 } from '@project-hub/contracts';
 import { useAccounts } from '../../use-accounts';
+import { useLimits } from '../../use-limits';
 import { useLogin, type LoginControls } from '../../use-login';
 import { CircleCheck, CircleSlash, ICON_PROPS, Plus } from '../Icon';
 import { ProviderIcon } from '../ProviderIcon';
@@ -29,15 +33,36 @@ const TEXT = {
 
 const PROGRAMS: Record<AccountProviderId, string> = { claude: 'Claude Code', codex: 'Codex' };
 
+/** A entrada dos limites de uma conta. Sem ela, o app não tem como ler o uso daquele programa. */
+function usageOf(limits: LimitsDto | null, account: AccountDto): AccountLimitsDto | undefined {
+  return limits?.accounts.find(
+    (entry) => entry.provider === account.provider && entry.accountId === account.id,
+  );
+}
+
+/** A conta ainda não tem leitura nenhuma: nem janela, nem problema, nem leitura em curso. */
+function isUnread(entry: AccountLimitsDto): boolean {
+  return (
+    entry.capturedAt === undefined &&
+    entry.windows.length === 0 &&
+    entry.problem === undefined &&
+    !entry.refreshing
+  );
+}
+
 /** As contas de um programa: a Principal (a do programa na máquina) e as extras, com o botão de criar outra. */
 function AccountGroup({
   group,
   controls,
   onChanged,
+  limits,
+  onRefreshUsage,
 }: {
   group: AccountGroupDto;
   controls: LoginControls;
   onChanged: () => void;
+  limits: LimitsDto | null;
+  onRefreshUsage: (account: AccountDto) => void;
 }) {
   const titleId = useId();
   const [adding, setAdding] = useState(false);
@@ -95,6 +120,8 @@ function AccountGroup({
             program={program}
             controls={controls}
             onChanged={onChanged}
+            usage={usageOf(limits, account)}
+            onRefreshUsage={() => onRefreshUsage(account)}
           />
         ))}
       </ul>
@@ -120,15 +147,9 @@ function OtherPrograms({ others }: { others: OtherProgramDto[] }) {
             <ProviderIcon provider={other.provider} size={16} />
             <span className="acct__other-name">{other.label}</span>
             <span
-              className={
-                other.installed ? 'acct__state acct__state--connected' : 'acct__state'
-              }
+              className={other.installed ? 'acct__state acct__state--connected' : 'acct__state'}
             >
-              {other.installed ? (
-                <CircleCheck {...ICON_PROPS} />
-              ) : (
-                <CircleSlash {...ICON_PROPS} />
-              )}
+              {other.installed ? <CircleCheck {...ICON_PROPS} /> : <CircleSlash {...ICON_PROPS} />}
               {other.installed ? TEXT.installed : TEXT.notInstalled}
             </span>
           </li>
@@ -141,12 +162,41 @@ function OtherPrograms({ others }: { others: OtherProgramDto[] }) {
 /**
  * Seção Contas das Configurações: as contas de cada programa que aceita mais de uma (Claude Code e Codex), com o
  * estado lido do próprio programa, e os outros programas, que usam uma conta só. Há um login por vez no app; ele
- * acontece dentro da linha da conta.
+ * acontece dentro da linha da conta. Cada conta conectada mostra o uso dela; ao abrir a seção, as que ainda não
+ * têm leitura são lidas, uma por vez, e o pedido não se repete enquanto a seção fica aberta.
  */
 export function AccountsSection() {
   const titleId = useId();
   const { state, reload } = useAccounts();
   const controls = useLogin(reload);
+  const { limits, refreshAccount } = useLimits();
+  /** As contas cuja leitura já foi pedida nesta abertura da seção. */
+  const asked = useRef(new Set<string>());
+  const reading = useRef(false);
+
+  useEffect(() => {
+    if (state.status !== 'ready' || limits === null || reading.current) return;
+    const pending = state.data.groups
+      .flatMap((group) => (group.installed ? group.accounts : []))
+      .filter((account) => {
+        if (account.state !== 'connected') return false;
+        const entry = usageOf(limits, account);
+        const key = `${account.provider}:${account.id ?? ''}`;
+        return entry !== undefined && isUnread(entry) && !asked.current.has(key);
+      });
+    if (pending.length === 0) return;
+    reading.current = true;
+    void (async () => {
+      try {
+        for (const account of pending) {
+          asked.current.add(`${account.provider}:${account.id ?? ''}`);
+          await refreshAccount(account.provider, account.id);
+        }
+      } finally {
+        reading.current = false;
+      }
+    })();
+  }, [state, limits, refreshAccount]);
 
   return (
     <section aria-labelledby={titleId} className="settings__panel">
@@ -175,6 +225,8 @@ export function AccountsSection() {
               group={group}
               controls={controls}
               onChanged={reload}
+              limits={limits}
+              onRefreshUsage={(account) => void refreshAccount(account.provider, account.id)}
             />
           ))}
           <OtherPrograms others={state.data.others} />

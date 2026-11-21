@@ -550,4 +550,29 @@ describe('modelo dito pelo SessionStart', () => {
     await h.service.usageOf('t1');
     expect(h.service.modelOf('t1')).toBeUndefined();
   });
+
+  it('terminal de uma conta extra usa o leitor na pasta dela', () => {
+    const created: { provider: string; root: string }[] = [];
+    const service = createTerminalUsageService({
+      hooks: hookLog().hooks,
+      roots: { claude: '/raiz-claude', codex: '/raiz-codex' },
+      now: () => 10_000,
+      createTracker: (provider, root) => {
+        created.push({ provider, root });
+        return {
+          addSession: () => undefined,
+          poll: () => Promise.resolve(undefined),
+          latestContext: () => undefined,
+        };
+      },
+    });
+
+    service.track('t1', 'claude', '/contas/claude/trabalho');
+    service.track('t2', 'claude');
+
+    expect(created).toEqual([
+      { provider: 'claude', root: '/contas/claude/trabalho' },
+      { provider: 'claude', root: '/raiz-claude' },
+    ]);
+  });
 });

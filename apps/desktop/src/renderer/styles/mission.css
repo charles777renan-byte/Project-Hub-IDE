@@ -525,3 +525,30 @@
   margin: 0;
   padding: var(--space-3) var(--space-4);
 }
+
+/* A conta do Claude Code da missão, em "Sua decisão": a lista de escolha até a missão começar, depois só o nome. */
+.decision-block__account {
+  display: grid;
+  gap: var(--space-1);
+  align-self: stretch;
+  max-width: 40rem;
+  grid-column: 1;
+}
+
+.decision-block__account-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-label);
+}
+
+.decision-block__account-fixed,
+.decision-block__account-removed {
+  margin: 0;
+  grid-column: 1;
+  font-size: var(--text-sm);
+}
+
+.decision-block__account-fixed {
+  color: var(--muted);
+}

@@ -71,7 +71,9 @@ export function registerWorkspaceHandlers(
   reg(CHANNELS.workspacesAddPane, (payload) => {
     const input = addPaneInputSchema.safeParse(payload);
     return input.success
-      ? service.addPane(input.data.workspaceId, input.data.provider)
+      ? input.data.accountId === undefined
+        ? service.addPane(input.data.workspaceId, input.data.provider)
+        : service.addPane(input.data.workspaceId, input.data.provider, input.data.accountId)
       : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o workspace e o programa.'));
   });
 
@@ -83,6 +85,7 @@ export function registerWorkspaceHandlers(
           input.data.leafId,
           input.data.side,
           input.data.provider,
+          ...(input.data.accountId === undefined ? [] : [input.data.accountId]),
         )
       : Promise.resolve(failure('VALIDATION_FAILED', 'Informe o painel, o lado e o programa.'));
   });

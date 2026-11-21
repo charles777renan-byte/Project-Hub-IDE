@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
 
 /*
  * DTOs de missão que atravessam o IPC (seção 13.4). Os valores das enumerações espelham as listas do
@@ -70,6 +71,13 @@ export type CreateMissionInput = z.infer<typeof createMissionInputSchema>;
 
 /** Entrada de `missions:list:v1`. */
 export const listMissionsInputSchema = z.object({ projectId: z.string().min(1) });
+
+/** Entrada de `missions:set-account:v1`: a missão e a conta (`null` é a Principal). Só ids. */
+export const setMissionAccountInputSchema = z.strictObject({
+  missionId: z.string().min(1),
+  accountId: accountRefSchema,
+});
+export type SetMissionAccountInput = z.infer<typeof setMissionAccountInputSchema>;
 
 /** Entrada dos canais que agem numa missão só (plan, approve-plan, start, cancel, get). */
 export const missionIdInputSchema = z.object({ missionId: z.string().min(1) });
@@ -143,6 +151,13 @@ export const missionDtoSchema = z.object({
   finishedAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** A conta do Claude Code em que o planejador e o agente rodam (`null`: a Principal), e o nome dela. */
+  accountId: accountRefSchema,
+  accountName: z.string().max(ACCOUNT_NAME_MAX),
+  /** A conta foi removida: a missão não planeja nem inicia até a pessoa escolher outra. */
+  accountRemoved: z.boolean(),
+  /** A missão já começou (ou está sendo planejada): a conta não troca mais. */
+  accountLocked: z.boolean(),
 });
 export type MissionDto = z.infer<typeof missionDtoSchema>;
 

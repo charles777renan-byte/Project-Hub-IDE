@@ -58,6 +58,13 @@ export function fakeMissionRepository(): FakeMissionRepository {
       if (current === undefined) throw new Error(`missão ausente: ${id}`);
       state.missions.set(id, { ...current, ...changes });
     },
+    setMissionAccount(id, accountId, at) {
+      const current = state.missions.get(id);
+      if (current === undefined) throw new Error(`missão ausente: ${id}`);
+      const next = { ...current, updatedAt: at };
+      delete next.accountId;
+      state.missions.set(id, accountId === null ? next : { ...next, accountId });
+    },
     insertSteps(steps) {
       state.steps.push(...copy(steps));
     },

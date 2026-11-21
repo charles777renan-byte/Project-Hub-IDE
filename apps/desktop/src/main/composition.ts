@@ -22,6 +22,8 @@ import {
   type ProjectLifecycleDeps,
   type RemoveWorktreeDeps,
   type RepositoryInitializer,
+  type AccountDirectory,
+  type SetMissionAccountDeps,
 } from '@project-hub/application';
 import {
   createAccountRepository,
@@ -63,12 +65,21 @@ import {
 import type { ProviderRegistry } from './providers';
 
 /** Serviços de missões: o orquestrador e as consultas que o IPC usa (visão, alterações e exclusão). */
+/** Sem contas configuradas: só a Principal existe, e qualquer outra conta conta como removida. */
+const PRINCIPAL_ONLY: AccountDirectory = {
+  defaultOf: () => null,
+  labelOf: (_provider, accountId) =>
+    accountId === null ? { name: 'Principal', removed: false } : { name: '', removed: true },
+};
+
 export type MissionServices = {
   orchestrator: Orchestrator;
   createDeps: CreateMissionDeps;
   queryDeps: MissionQueryDeps;
   diffDeps: MissionDiffDeps;
   deleteDeps: DeleteMissionDeps;
+  /** A conta de cada missão e a troca dela. */
+  accountDeps: SetMissionAccountDeps;
   /** Aba Worktrees: a lista derivada das missões e a remoção protegida. */
   worktreeDeps: { list: ListWorktreesDeps; remove: RemoveWorktreeDeps };
 };
@@ -123,6 +134,8 @@ export type AppServicesOptions = {
   agent?: OrchestratorDeps['agent'] | undefined;
   /** Planejador das tarefas do plano. Sem ele, o plano sai com um passo por critério de aceite. */
   planner?: Planner | undefined;
+  /** As contas do Claude Code, para as missões: a padrão e o nome de cada uma. Sem elas, só existe a Principal. */
+  accounts?: AccountDirectory | undefined;
   /**
    * Libera o `gh` falso dos testes (`PROJECT_HUB_GH_BIN`) no painel Checks. Sem valor, vale `false`. O
    * `index.ts` passa `!app.isPackaged`.
@@ -427,9 +440,11 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const fs = { isDirectory: createIsDirectory(), isInsideProject: createIsInsideProject() };
   const gitPanelPort = createGitPanelPort();
   const gitPanelDeps: GitPanelDeps = { repo: projects, git: gitPanelPort, fs };
+  const accountDirectory: AccountDirectory = options.accounts ?? PRINCIPAL_ONLY;
   const orchestrator = createOrchestrator({
     repo,
     projects,
+    accounts: accountDirectory,
     worktrees: { create: createWorktree, remove: removeWorktree },
     worktreeNames: ({ missionId, title, projectName }) =>
       buildWorktreeNames({ missionId, title, projectSlug: projectName }),
@@ -470,6 +485,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
             provider: session.provider,
             folder: project.path,
             createdAt: session.createdAt,
+            accountId: session.accountId ?? null,
           };
           // Com exactOptionalPropertyTypes, terminal aberto fica sem a chave.
           if (session.closedAt !== undefined) terminal.closedAt = session.closedAt;
@@ -489,7 +505,14 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     },
     missions: {
       orchestrator,
-      createDeps: { repo, projects, now, newId },
+      createDeps: { repo, projects, accounts: accountDirectory, now, newId },
+      accountDeps: {
+        repo,
+        accounts: accountDirectory,
+        isPlanning: (missionId) => orchestrator.isPlanning(missionId),
+        isRunning: (missionId) => orchestrator.isRunning(missionId),
+        now,
+      },
       queryDeps: { repo, projects },
       diffDeps: { repo, diff },
       deleteDeps: { repo, projects, worktrees: { remove: removeWorktree }, fs },

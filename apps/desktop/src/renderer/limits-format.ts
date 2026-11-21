@@ -306,3 +306,22 @@ export function formatDaysLeft(resetsAt: string, now: Date): string {
   const days = Math.floor(left / DAY_MS);
   return days > 0 ? `${days}d` : '<1d';
 }
+
+/**
+ * O uso de uma conta numa linha, para a lista de contas: "5h 40% · sem 12%". Janela esgotada diz "esgotada"; a que
+ * já renovou fica de fora (o número dela não vale mais). Sem janela para mostrar, "sem leitura".
+ */
+export function accountUsageText(
+  entry: Pick<ProviderLimitsDto, 'provider' | 'windows'> | undefined,
+  now: Date,
+): string {
+  const parts = (entry?.windows ?? [])
+    .filter((window) => !isWindowExpired(window, now))
+    .map((window) => {
+      const label =
+        shortWindowLabel(window.id, entry?.provider) ??
+        windowLabel(window.id, entry?.provider ?? 'claude', window.durationMinutes);
+      return isWindowExhausted(window) ? `${label} esgotada` : `${label} ${usedPercent(window)}%`;
+    });
+  return parts.length === 0 ? 'sem leitura' : parts.join(' · ');
+}

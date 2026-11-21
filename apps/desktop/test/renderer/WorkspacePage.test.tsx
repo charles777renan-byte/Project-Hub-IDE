@@ -413,6 +413,52 @@ describe('WorkspacePage', () => {
       );
     });
 
+    it('programa com duas contas: o menu pergunta a conta e o painel abre nela', async () => {
+      const conta = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const list = vi.fn().mockResolvedValue({
+        ok: true,
+        data: {
+          groups: [
+            {
+              provider: 'claude',
+              installed: true,
+              accounts: [
+                {
+                  id: null,
+                  provider: 'claude',
+                  name: 'Principal',
+                  isPrincipal: true,
+                  isDefault: true,
+                  state: 'connected',
+                },
+                {
+                  id: conta,
+                  provider: 'claude',
+                  name: 'Trabalho',
+                  isPrincipal: false,
+                  isDefault: false,
+                  state: 'connected',
+                },
+              ],
+            },
+          ],
+          others: [],
+        },
+      });
+      const hub = window.projectHub as unknown as { accounts?: unknown };
+      hub.accounts = { list };
+      try {
+        api.workspaces.addPane.mockResolvedValue({ ok: true, data: dto(leaf('n', 'claude')) });
+        renderAt();
+        await waitFor(() => expect(list).toHaveBeenCalled());
+        await abrirPrograma(/Claude Code/);
+        await userEvent.click(await screen.findByRole('option', { name: /Trabalho/ }));
+        expect(api.workspaces.addPane).toHaveBeenCalledWith('w1', 'claude', conta);
+      } finally {
+        delete hub.accounts;
+      }
+    });
+
     it('clicar em Claude Code chama addPane e mostra o painel novo', async () => {
       api.workspaces.addPane.mockResolvedValue({ ok: true, data: dto(leaf('n', 'claude')) });
       renderAt();
@@ -2490,6 +2536,31 @@ describe('atalhos do layout', () => {
         'a',
         'right',
         'claude',
+      ),
+    );
+  });
+
+  it('dividir pelo atalho abre na mesma conta do painel ativo, sem perguntar', async () => {
+    const conta = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const base = padrao() as Extract<LayoutNode, { type: 'split' }>;
+    api.workspaces.open.mockResolvedValue({
+      ok: true,
+      data: dto({
+        ...base,
+        children: [{ ...leaf('a', 'claude'), accountId: conta }, base.children[1]],
+      } as LayoutNode),
+    });
+    api.workspaces.splitPane.mockReturnValue(new Promise(() => {}));
+    renderAt();
+    await screen.findByRole('button', { name: 'Iniciar Claude Code' });
+    tecla(painel('Claude Code'), 'Minus', { alt: true, shift: true });
+    await waitFor(() =>
+      expect(api.workspaces.splitPane).toHaveBeenCalledWith(
+        expect.any(String),
+        'a',
+        'bottom',
+        'claude',
+        conta,
       ),
     );
   });

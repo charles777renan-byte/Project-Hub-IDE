@@ -83,9 +83,17 @@ export type UseWorkspace = {
    * Abre um painel novo do provedor, ao lado do painel em que ele fica maior sem tirar nenhum do tamanho mínimo.
    * `null` = ok; texto = erro. O layout devolvido pelo servidor vale inteiro.
    */
-  addPane(provider: ProviderId): Promise<string | null>;
-  /** Abre um painel novo do provedor no lado `side` do painel `leafId`. `null` = ok; texto = erro. */
-  splitPane(leafId: string, side: Side, provider: ProviderId): Promise<string | null>;
+  addPane(provider: ProviderId, accountId?: string | null): Promise<string | null>;
+  /**
+   * Abre um painel novo do provedor no lado `side` do painel `leafId`. `null` = ok; texto = erro. `accountId`: a
+   * conta do painel (`null` é a Principal); sem ele, o processo principal usa a conta padrão do programa.
+   */
+  splitPane(
+    leafId: string,
+    side: Side,
+    provider: ProviderId,
+    accountId?: string | null,
+  ): Promise<string | null>;
   /** Retoma uma sessão do histórico como painel novo deste workspace. `null` = ok; texto = erro. */
   resumeSession(sessionId: string): Promise<string | null>;
   /** Fecha o painel. `null` = ok; texto = erro. Se a folha ativa saiu, ativa a primeira restante. */
@@ -494,21 +502,30 @@ export function useWorkspace(projectId: string): UseWorkspace {
   );
 
   const splitPane = useCallback(
-    (leafId: string, side: Side, provider: ProviderId) =>
+    (leafId: string, side: Side, provider: ProviderId, accountId?: string | null) =>
       changePanes(
-        (id) => window.projectHub.workspaces.splitPane(id, leafId, side, provider),
+        (id) =>
+          accountId === undefined
+            ? window.projectHub.workspaces.splitPane(id, leafId, side, provider)
+            : window.projectHub.workspaces.splitPane(id, leafId, side, provider, accountId),
         focusCreatedLeaf,
       ),
     [changePanes, focusCreatedLeaf],
   );
 
   const addPane = useCallback(
-    (provider: ProviderId) => {
+    (provider: ProviderId, accountId?: string | null) => {
       // O lugar é escolhido aqui, que conhece o tamanho da área em px; com o workspace vazio, o servidor só cria o painel.
       const where = bestPlacement(current.current?.layout ?? null, area.current);
       return where === null
-        ? changePanes((id) => window.projectHub.workspaces.addPane(id, provider), focusCreatedLeaf)
-        : splitPane(where.leafId, where.side, provider);
+        ? changePanes(
+            (id) =>
+              accountId === undefined
+                ? window.projectHub.workspaces.addPane(id, provider)
+                : window.projectHub.workspaces.addPane(id, provider, accountId),
+            focusCreatedLeaf,
+          )
+        : splitPane(where.leafId, where.side, provider, accountId);
     },
     [changePanes, focusCreatedLeaf, splitPane],
   );

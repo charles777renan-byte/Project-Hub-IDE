@@ -613,12 +613,15 @@ function sessionDetails(sessions: readonly TerminalSummary[], project: ProjectSu
 }
 
 /**
- * O detalhe de uma sessão sem contar repetição: onde ela está e, quando há alteração, quantos arquivos mudaram.
+ * O detalhe de uma sessão sem contar repetição: onde ela está, a conta (quando o programa tem mais de uma) e,
+ * quando há alteração, quantos arquivos mudaram.
  */
 function baseDetail(session: TerminalSummary, project: ProjectSummary): string {
   const where = placeDetail(session, project);
+  // A conta só vem quando o programa tem mais de uma (ver `accountOf` no processo principal).
+  const account = session.accountRemoved === true ? 'A conta foi removida' : session.accountName;
   const changes = changesDetail(session.changedFiles);
-  return changes === undefined ? where : `${where} · ${changes}`;
+  return [where, account, changes].filter((part) => part !== undefined).join(' · ');
 }
 
 /**

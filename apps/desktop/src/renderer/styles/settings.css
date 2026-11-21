@@ -575,3 +575,24 @@
   border-radius: var(--radius-sm);
   background: var(--bg);
 }
+
+/* O uso de uma conta, dentro da linha dela: as barras do painel de limites, a idade da leitura e "Atualizar uso". */
+.acct__usage {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 26rem;
+}
+
+.acct__usage-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.acct__usage-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}

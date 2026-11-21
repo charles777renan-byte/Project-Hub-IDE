@@ -3,8 +3,6 @@ import { basename, dirname, join } from 'node:path';
 import {
   MAX_SESSION_FILE_BYTES,
   antigravityHistoryFile,
-  claudeConfigDirOf,
-  codexHomeOf,
   listCodexSessions,
   readAntigravityHistory,
   readClaudeTranscriptActivity,
@@ -13,8 +11,6 @@ import {
   transcriptCwd,
 } from '@project-hub/agent-adapters';
 import type { SessionFileInfo, SessionReader } from './session-history';
-
-type Env = Readonly<Record<string, string | undefined>>;
 
 /** Desde o começo dos tempos: a varredura lista todos os arquivos, sem corte por data. */
 const SINCE_ALL = '1970-01-01T00:00:00.000Z';
@@ -59,15 +55,18 @@ async function countSubagents(transcript: string): Promise<number> {
  * ou sem horário, não tem sessão para mostrar e fica de fora sem contar como ilegível. O id da sessão é o nome do
  * arquivo (sem `.jsonl`) quando ele é um UUID, e não o `sessionId` de dentro: um transcript copiado ou retomado
  * leva o id do original lá dentro, e é o nome que o `claude --resume` procura. Nome que não é UUID mantém o
- * `sessionId` de dentro. Arquivo acima de `maxFileBytes` lança, e vira ilegível.
+ * `sessionId` de dentro. Arquivo acima de `maxFileBytes` lança, e vira ilegível. `root` é a pasta de dados da
+ * conta (`accountId`; `null` é a Principal): o leitor recebe só a pasta, e nunca o ambiente do lançamento.
  */
 export function createClaudeSessionReader(
-  env: Env,
+  root: string,
+  accountId: string | null,
   maxFileBytes: number = MAX_SESSION_FILE_BYTES,
 ): SessionReader {
-  const projects = join(claudeConfigDirOf(env), 'projects');
+  const projects = join(root, 'projects');
   return {
     provider: 'claude',
+    accountId,
     async files(): Promise<SessionFileInfo[]> {
       const out: SessionFileInfo[] = [];
       for (const folder of await namesIn(projects, 'folder')) {
@@ -99,16 +98,18 @@ export function createClaudeSessionReader(
 }
 
 /**
- * Leitor do Codex: os `rollout-*.jsonl` e os `.jsonl.zst` de `<CODEX_HOME>/sessions`, de todos os dias. Erro de
+ * Leitor do Codex: os `rollout-*.jsonl` e os `.jsonl.zst` de `<home>/sessions`, de todos os dias, na pasta de dados
+ * da conta. Erro de
  * leitura ou de descompressão lança e vira ilegível, e o arquivo que passa de `maxFileBytes` também; rollout sem `session_meta` não tem sessão e fica de fora.
  */
 export function createCodexSessionReader(
-  env: Env,
+  home: string,
+  accountId: string | null,
   maxFileBytes: number = MAX_SESSION_FILE_BYTES,
 ): SessionReader {
-  const home = codexHomeOf(env);
   return {
     provider: 'codex',
+    accountId,
     async files(): Promise<SessionFileInfo[]> {
       const out: SessionFileInfo[] = [];
       for (const path of listCodexSessions(home, SINCE_ALL)) {
@@ -130,6 +131,7 @@ export function createAntigravitySessionReader(
 ): SessionReader {
   return {
     provider: 'antigravity',
+    accountId: null,
     async files(): Promise<SessionFileInfo[]> {
       const info = await infoOf(historyFile);
       return info === undefined ? [] : [info];

@@ -88,6 +88,7 @@ describe('migrateDatabase', () => {
         '0013_preview_do_projeto',
         '0014_silencio_do_projeto',
         '0015_contas',
+        '0016_conta_em_uso',
       ],
       alreadyUpToDate: false,
     });
@@ -132,6 +133,7 @@ describe('migrateDatabase', () => {
       '0013_preview_do_projeto',
       '0014_silencio_do_projeto',
       '0015_contas',
+      '0016_conta_em_uso',
     ]);
     expect(existsSync(backupPath)).toBe(true);
     // O backup tem o estado de antes da migração: a tabela antiga e nenhuma projects.

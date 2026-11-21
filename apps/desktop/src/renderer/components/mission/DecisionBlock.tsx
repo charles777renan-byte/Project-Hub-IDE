@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { MissionViewDto } from '@project-hub/contracts';
 import {
   DECISION_TEXT,
+  MISSION_ACCOUNT_TEXT,
   MISSION_TEXT,
   PLAN_TEXT,
   decisionAnnouncement,
@@ -12,11 +13,22 @@ import {
   verifiedCriteria,
   type PrimaryAction,
 } from '../../mission-text';
+import { AccountChoice, type AccountChoiceItem } from '../AccountChoice';
 import { ApprovalCard } from '../ApprovalCard';
 import { revealDecision, useDecisionOutOfView } from './decision-visibility';
 
 /** Limite da instrução do novo plano, o mesmo do contrato (`planMissionInputSchema`). */
 const INSTRUCTION_MAX = 1000;
+
+/** O que o bloco precisa para mostrar e trocar a conta do Claude Code da missão. */
+export type DecisionAccount = {
+  /** As contas do Claude Code. Com uma só, nada de conta aparece. */
+  accounts: readonly AccountChoiceItem[];
+  /** O uso de uma conta numa linha ("5h 40%"), ou "sem leitura". */
+  usageOf(accountId: string | null): string;
+  /** A pessoa escolheu outra conta: só o id (`null` é a Principal). */
+  onChange(accountId: string | null): void;
+};
 
 /** Rótulo da ação principal de cada situação. */
 const PRIMARY_LABEL: Record<PrimaryAction, string> = {
@@ -103,7 +115,9 @@ function ConclusionSummary({
  * execução só diz que o Orquestrador acompanha. A falha de uma ação aparece aqui, junto dos botões.
  *
  * Só mostra e chama o que a página passa: o comportamento das ações, os bloqueios (`busy`, `planning`) e
- * as mensagens ficam na página. Quem guarda aqui é o que a pessoa digita (resposta, ajustes e instrução).
+ * as mensagens ficam na página. A conta da missão (`account`) aparece só quando o Claude Code tem mais de uma: uma
+ * lista de escolha até a missão começar, e depois só o nome. Conta removida desabilita a ação principal, com o
+ * motivo ligado a ela. Quem guarda aqui é o que a pessoa digita (resposta, ajustes e instrução).
  * A região `status` fica montada o tempo todo, vazia até uma decisão chegar: só assim o leitor de tela
  * anuncia a decisão nova mesmo com outra aba do painel inferior aberta. O bloco também é o alvo do foco
  * (`decisionRef`; `answerRef` quando o agente espera uma resposta).
@@ -133,6 +147,7 @@ export function DecisionBlock({
   decisionRef,
   answerRef,
   barSlot = null,
+  account,
 }: {
   view: MissionViewDto;
   /** Chamadas longas (planejar, aprovar, iniciar, decidir, responder e tentar de novo): desabilitam as ações. */
@@ -165,6 +180,8 @@ export function DecisionBlock({
   answerRef?: Ref<HTMLTextAreaElement>;
   /** Onde a barra aparece quando o bloco sai de vista. Sem encaixe, ou sem decisão à vista, não há barra. */
   barSlot?: HTMLElement | null;
+  /** As contas do Claude Code e a troca. Sem ele (a página ainda não leu as contas), só a conta removida aparece. */
+  account?: DecisionAccount | undefined;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
   /** O bloco é do `decisionRef` da página e também daqui, para medir se ele saiu de vista. */
@@ -182,6 +199,7 @@ export function DecisionBlock({
   const instructionHintId = useId();
   const answerId = useId();
   const feedbackId = useId();
+  const accountRemovedId = useId();
   const [instruction, setInstruction] = useState('');
   const [answer, setAnswer] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -201,13 +219,26 @@ export function DecisionBlock({
     verified.has(criterion.text.trim()),
   ).length;
 
+  // A conta só aparece quando há o que distinguir (mais de uma) ou o que avisar (a da missão foi removida).
+  const accountRemoved = mission.accountRemoved;
+  const accountShown = accountRemoved || (account?.accounts.length ?? 0) > 1;
+  const accountChoice = accountShown && !mission.accountLocked && account !== undefined;
+
+  // Missão de conta removida não planeja, não inicia e não retoma: o processo principal recusa, e a tela já diz.
   const primaryAction: Record<PrimaryAction, { run: () => void; disabled: boolean }> = {
-    generate_plan: { run: onGeneratePlan, disabled: busy },
-    approve_plan: { run: onApprovePlan, disabled: busy },
-    start: { run: onStart, disabled: busy },
-    resume: { run: onResume, disabled: controlBusy },
-    retry: { run: onRetry, disabled: busy },
+    generate_plan: { run: onGeneratePlan, disabled: busy || accountRemoved },
+    approve_plan: { run: onApprovePlan, disabled: busy || accountRemoved },
+    start: { run: onStart, disabled: busy || accountRemoved },
+    resume: { run: onResume, disabled: controlBusy || accountRemoved },
+    retry: { run: onRetry, disabled: busy || accountRemoved },
   };
+  const primaryDescribedBy =
+    [
+      primary === 'generate_plan' ? quotaId : undefined,
+      accountRemoved ? accountRemovedId : undefined,
+    ]
+      .filter((id) => id !== undefined)
+      .join(' ') || undefined;
 
   /** Só entra na barra o que se faz com um clique: caixas de texto ficam no bloco. */
   const singleApproval = pendingApprovals.length === 1 ? pendingApprovals[0] : undefined;
@@ -393,6 +424,34 @@ export function DecisionBlock({
           </>
         ) : null}
 
+        {accountChoice ? (
+          <div className="decision-block__account">
+            <p className="decision-block__account-label">{MISSION_ACCOUNT_TEXT.label}</p>
+            <AccountChoice
+              label={MISSION_ACCOUNT_TEXT.label}
+              accounts={account.accounts}
+              value={mission.accountId}
+              disabled={locked}
+              detailOf={(item) => account.usageOf(item.id)}
+              onChange={(accountId) => {
+                if (accountId !== mission.accountId || accountRemoved) account.onChange(accountId);
+              }}
+            />
+          </div>
+        ) : null}
+        {accountShown && !accountChoice && !accountRemoved ? (
+          <p className="decision-block__account-fixed">
+            {MISSION_ACCOUNT_TEXT.fixed(mission.accountName)}
+          </p>
+        ) : null}
+        {accountRemoved ? (
+          <p id={accountRemovedId} className="decision-block__account-removed">
+            {accountChoice
+              ? MISSION_ACCOUNT_TEXT.removedChoose
+              : MISSION_ACCOUNT_TEXT.removedLocked}
+          </p>
+        ) : null}
+
         {planned ? (
           <div className="field decision-block__instruction">
             <label htmlFor={instructionId}>{PLAN_TEXT.instructionLabel}</label>
@@ -415,7 +474,7 @@ export function DecisionBlock({
             <button
               type="button"
               className={primary === 'approve_plan' ? 'btn-decision' : 'btn-primary'}
-              aria-describedby={primary === 'generate_plan' ? quotaId : undefined}
+              aria-describedby={primaryDescribedBy}
               disabled={primaryAction[primary].disabled}
               onClick={primaryAction[primary].run}
             >

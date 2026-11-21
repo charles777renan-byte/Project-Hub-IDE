@@ -34,6 +34,8 @@ function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
     ],
     resumable: true,
     resumeBlockedReason: null,
+    accountId: null,
+    accountName: null,
     ...overrides,
   };
 }
@@ -85,6 +87,8 @@ describe('SessionDetail', () => {
           session={session({
             resumable: false,
             resumeBlockedReason: 'A pasta da sessão não existe mais.',
+            accountId: null,
+            accountName: null,
           })}
           projectId="p1"
           onBack={() => undefined}
@@ -140,6 +144,8 @@ describe('SessionDetail', () => {
           lastTurns: null,
           resumable: false,
           resumeBlockedReason: 'O Antigravity CLI não tem comando para retomar uma sessão.',
+          accountId: null,
+          accountName: null,
         })}
         projectId="p1"
         onBack={() => undefined}
@@ -155,5 +161,28 @@ describe('SessionDetail', () => {
     render(<SessionDetail session={session()} projectId="p1" onBack={onBack} />);
     fireEvent.click(screen.getByRole('button', { name: SESSIONS_TEXT.back }));
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SessionDetail: a conta da sessão', () => {
+  it('mostra a conta quando o programa tem mais de uma', () => {
+    render(
+      <SessionDetail
+        session={session({
+          accountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          accountName: 'Trabalho',
+        })}
+        projectId="p1"
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(document.querySelector('.sessions-tab__account')).toHaveTextContent('Conta: Trabalho');
+  });
+
+  it('sem nome de conta (programa só com a Principal), nada de conta aparece', () => {
+    render(<SessionDetail session={session()} projectId="p1" onBack={() => undefined} />);
+
+    expect(document.querySelector('.sessions-tab__account')).toBeNull();
   });
 });

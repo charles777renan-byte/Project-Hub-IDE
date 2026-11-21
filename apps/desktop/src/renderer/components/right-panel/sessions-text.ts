@@ -1,5 +1,6 @@
 /** Textos da aba Sessões. Ficam juntos para a revisão de tom e para os testes acharem a mesma frase. */
 export const SESSIONS_TEXT = {
+  account: (name: string) => `Conta: ${name}`,
   scope: { workspace: 'Espaço de trabalho', project: 'Projeto', all: 'Todos' },
   scopeGroup: 'Escopo das sessões',
   search: 'Buscar sessões',

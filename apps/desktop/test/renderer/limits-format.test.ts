@@ -22,6 +22,7 @@ import {
   problemText,
   pendingPrograms,
   presentProviders,
+  accountUsageText,
 } from '../../src/renderer/limits-format';
 
 /** Instantes no fuso local, como a tela os mostra. */
@@ -281,5 +282,52 @@ describe('limits-format: programas presentes e pendentes', () => {
     const all = [entry('claude'), entry('codex'), entry('antigravity')];
     expect(pendingPrograms(all)).toEqual([]);
     expect(presentProviders(all)).toEqual(['claude', 'codex', 'antigravity']);
+  });
+});
+
+describe('accountUsageText: o uso de uma conta numa linha', () => {
+  const now = new Date('2026-11-21T12:00:00.000Z');
+  const window = (id: string, usedPercent: number, resetsAt = '2026-11-21T15:00:00.000Z') => ({
+    id,
+    usedPercent,
+    resetsAt,
+  });
+
+  it('sem leitura (sem entrada ou sem janela) diz "sem leitura"', () => {
+    expect(accountUsageText(undefined, now)).toBe('sem leitura');
+    expect(accountUsageText({ provider: 'claude', windows: [] }, now)).toBe('sem leitura');
+  });
+
+  it('junta as janelas pelo rótulo curto e o percentual usado', () => {
+    expect(
+      accountUsageText(
+        {
+          provider: 'claude',
+          windows: [window('five_hour', 40.4), window('seven_day', 12, '2026-11-25T12:00:00.000Z')],
+        },
+        now,
+      ),
+    ).toBe('5h 40% · sem 12%');
+  });
+
+  it('janela esgotada diz isso, e janela já renovada fica de fora', () => {
+    expect(
+      accountUsageText(
+        {
+          provider: 'claude',
+          windows: [window('five_hour', 100), window('seven_day', 50, '2026-11-20T12:00:00.000Z')],
+        },
+        now,
+      ),
+    ).toBe('5h esgotada');
+  });
+
+  it('só janelas renovadas: volta a "sem leitura"', () => {
+    expect(
+      accountUsageText(
+        { provider: 'claude', windows: [window('five_hour', 50, '2026-11-20T12:00:00.000Z')] },
+        now,
+      ),
+    ).toBe('sem leitura');
   });
 });

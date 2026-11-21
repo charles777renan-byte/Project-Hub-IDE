@@ -102,6 +102,8 @@ export type Mission = {
   worktreeId?: string;
   /** Caminho do worktree em uso. Fica na missão para que uma nova tentativa reaproveite o mesmo worktree. */
   worktreePath?: string;
+  /** A conta extra do Claude Code em que a missão roda. Ausente: a Principal. */
+  accountId?: string;
   createdAt: string;
   updatedAt: string;
   startedAt?: string;

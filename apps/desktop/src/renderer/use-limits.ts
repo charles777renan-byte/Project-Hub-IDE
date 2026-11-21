@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { LimitsDto } from '@project-hub/contracts';
+import type { LimitProviderId, LimitsDto } from '@project-hub/contracts';
 
 export type LimitsState = {
   /** Último estado conhecido; `null` antes da primeira resposta. */
   limits: LimitsDto | null;
   /** Pede uma leitura nova. Nunca rejeita. */
   refresh: () => void;
+  /** Pede a leitura de uma conta (`null` é a Principal) e espera a resposta. Nunca rejeita. */
+  refreshAccount: (provider: LimitProviderId, accountId: string | null) => Promise<void>;
 };
 
 /**
@@ -55,5 +57,19 @@ export function useLimits(): LimitsState {
     })();
   }, []);
 
-  return { limits, refresh };
+  const refreshAccount = useCallback(
+    async (provider: LimitProviderId, accountId: string | null) => {
+      const api = window.projectHub?.limits;
+      if (!api) return;
+      try {
+        const result = await api.refreshAccount({ provider, accountId });
+        if (result.ok) setLimits(result.data);
+      } catch {
+        // O estado anterior fica; o processo principal avisa pelo subscribe.
+      }
+    },
+    [],
+  );
+
+  return { limits, refresh, refreshAccount };
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TerminalSummary } from '@project-hub/contracts';
 import { liveSessionsOfAccount } from '../../src/main/accounts/live-sessions';
 
-// Quais painéis prendem uma conta. Enquanto os painéis não abrem com conta escolhida, todos rodam na Principal.
+// Quais painéis prendem uma conta. Painel sem conta informada roda na Principal.
 
 function terminal(overrides: Partial<TerminalSummary>): TerminalSummary {
   return {
@@ -33,8 +33,23 @@ describe('liveSessionsOfAccount', () => {
     expect(liveSessionsOfAccount(terminals, 'codex', null)).toEqual(['Codex 1']);
   });
 
-  it('uma conta extra ainda não é usada por nenhum painel', () => {
+  it('uma conta extra sem painel não é presa por ninguém', () => {
     expect(liveSessionsOfAccount(terminals, 'claude', A)).toEqual([]);
+  });
+
+  it('o painel aberto numa conta extra prende essa conta, e não a Principal', () => {
+    const mixed = [
+      ...terminals,
+      terminal({ id: 't5', title: 'Na conta', accountId: A }),
+      terminal({ id: 't6', title: 'Na Principal', accountId: null }),
+      terminal({ id: 't7', title: 'Conta encerrada', accountId: A, state: 'exited' }),
+    ];
+    expect(liveSessionsOfAccount(mixed, 'claude', A)).toEqual(['Na conta']);
+    expect(liveSessionsOfAccount(mixed, 'claude', null)).toEqual([
+      'Painel 1',
+      'Painel 2',
+      'Na Principal',
+    ]);
   });
 
   it('sem painel vivo, nada prende a Principal', () => {

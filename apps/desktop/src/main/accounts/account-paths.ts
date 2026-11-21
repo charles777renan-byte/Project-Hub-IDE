@@ -60,7 +60,10 @@ export function createAccountPaths(deps: {
       if (!account || account.removedAt !== undefined || account.provider !== provider) {
         return failure('VALIDATION_FAILED', GONE);
       }
-      return { ok: true, data: { [ACCOUNT_ENV_VARIABLE[provider]]: folderOf(provider, accountId) } };
+      return {
+        ok: true,
+        data: { [ACCOUNT_ENV_VARIABLE[provider]]: folderOf(provider, accountId) },
+      };
     },
 
     async removeFolder(provider, id) {

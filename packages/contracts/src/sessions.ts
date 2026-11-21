@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
 
 /** Programas cujo histórico o painel lê (fase 4). O shell não tem sessão. */
 export const SESSION_PROVIDERS = ['claude', 'codex', 'antigravity'] as const;
@@ -43,6 +44,10 @@ export const sessionSummarySchema = z.object({
   lastTurns: z.array(sessionTurnSchema).max(SESSION_LAST_TURNS_MAX).nullable(),
   resumable: z.boolean(),
   resumeBlockedReason: z.string().max(300).nullable(),
+  /** A conta em cuja pasta a sessão foi achada (`null`: a Principal). É nela que a retomada abre. */
+  accountId: accountRefSchema,
+  /** O nome da conta, para mostrar. `null` quando o programa só tem a Principal: não há o que distinguir. */
+  accountName: z.string().max(ACCOUNT_NAME_MAX).nullable(),
 });
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 

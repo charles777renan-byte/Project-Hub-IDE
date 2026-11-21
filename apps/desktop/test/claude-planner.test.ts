@@ -437,3 +437,94 @@ describe('createClaudePlanner: cota esgotada', () => {
     });
   });
 });
+
+describe('planejador na conta da missão', () => {
+  const ACCOUNT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const quotaEnvelope = JSON.stringify({ is_error: true, result: 'limite' });
+
+  it('as variáveis da conta entram no ambiente do processo, por cima do ambiente base', async () => {
+    const envs: NodeJS.ProcessEnv[] = [];
+    const asked: (string | null)[] = [];
+    const run: PlannerRunner = (input) => {
+      envs.push(input.env);
+      return Promise.resolve({ stdout: envelope({ tasks: [task()] }), exitCode: 0 });
+    };
+    const planner = createClaudePlanner({
+      command: 'claude',
+      env: { PATH: 'C:/bin', CLAUDE_CONFIG_DIR: 'C:/herdada' },
+      run,
+      accountEnv: (accountId) => {
+        asked.push(accountId);
+        return {
+          ok: true,
+          data: accountId === null ? {} : { CLAUDE_CONFIG_DIR: `C:/contas/${accountId}` },
+        };
+      },
+    });
+
+    await planner.plan(baseInput({ accountId: ACCOUNT }));
+    await planner.plan(baseInput());
+
+    expect(asked).toEqual([ACCOUNT, null]);
+    expect(envs[0]).toMatchObject({ PATH: 'C:/bin', CLAUDE_CONFIG_DIR: `C:/contas/${ACCOUNT}` });
+    expect(envs[1]).toMatchObject({ PATH: 'C:/bin', CLAUDE_CONFIG_DIR: 'C:/herdada' });
+  });
+
+  it('a variável herdada em outra caixa sai do ambiente do processo', async () => {
+    const envs: NodeJS.ProcessEnv[] = [];
+    const run: PlannerRunner = (input) => {
+      envs.push(input.env);
+      return Promise.resolve({ stdout: envelope({ tasks: [task()] }), exitCode: 0 });
+    };
+
+    await createClaudePlanner({
+      command: 'claude',
+      env: { Claude_Config_Dir: 'C:/herdada' },
+      run,
+      accountEnv: () => ({ ok: true, data: { CLAUDE_CONFIG_DIR: 'C:/contas/x' } }),
+    }).plan(baseInput({ accountId: ACCOUNT }));
+
+    expect(envs[0]).not.toHaveProperty('Claude_Config_Dir');
+    expect(envs[0]?.['CLAUDE_CONFIG_DIR']).toBe('C:/contas/x');
+  });
+
+  it('conta que não vale: falha sem rodar o processo', async () => {
+    let ran = false;
+    const result = await createClaudePlanner({
+      command: 'claude',
+      env: {},
+      run: () => {
+        ran = true;
+        return Promise.resolve({ stdout: '', exitCode: 0 });
+      },
+      accountEnv: () => ({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
+      }),
+    }).plan(baseInput({ accountId: ACCOUNT }));
+
+    expect(ran).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'AGENT_UNAVAILABLE', message: 'A conta foi removida.', retryable: false },
+    });
+  });
+
+  it('a mensagem de cota é perguntada para a conta da missão', async () => {
+    const asked: (string | null)[] = [];
+    const planner = createClaudePlanner({
+      command: 'claude',
+      env: {},
+      run: okRunner(quotaEnvelope),
+      quotaMessage: (accountId) => {
+        asked.push(accountId);
+        return undefined;
+      },
+    });
+
+    await planner.plan(baseInput({ accountId: ACCOUNT }));
+    await planner.plan(baseInput());
+
+    expect(asked).toEqual([ACCOUNT, null]);
+  });
+});

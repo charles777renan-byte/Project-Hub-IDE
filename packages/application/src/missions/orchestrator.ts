@@ -17,6 +17,7 @@ import {
   type ProjectRecord,
 } from '@project-hub/domain';
 import type {
+  AccountDirectory,
   DiffPort,
   FileSystemPort,
   MissionRepository,
@@ -25,6 +26,7 @@ import type {
   WorktreeNames,
   WorktreePort,
 } from '../ports';
+import { ACCOUNT_UNAVAILABLE } from './mission-account';
 import { isAvailable } from '../projects/list-projects';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
@@ -66,6 +68,11 @@ export type OrchestratorDeps = {
    */
   fs?: Pick<FileSystemPort, 'isDirectory'>;
   /**
+   * As contas do Claude Code. Com elas, missão de conta removida não planeja nem inicia. Sem elas, o orquestrador
+   * não confere a conta, e o agente ou o planejador é que recusam.
+   */
+  accounts?: Pick<AccountDirectory, 'labelOf'>;
+  /**
    * Quantas missões podem ter agente vivo ao mesmo tempo (seção 15.6). Padrão: 2. A tentativa além disso
    * entra na fila e começa quando uma vaga abre.
    */
@@ -103,6 +110,10 @@ export interface Orchestrator {
    * anterior, se havia, fica como estava. A missão não muda de estado. Sem planejamento em curso, é recusada.
    */
   cancelPlanning(missionId: string): Promise<AppResult<void>>;
+  /** O plano da missão está sendo gerado agora. Enquanto isso, a conta da missão não troca. */
+  isPlanning(missionId: string): boolean;
+  /** A missão tem uma execução em andamento, desde o pedido de início até o agente terminar. */
+  isRunning(missionId: string): boolean;
   /** `queued` -> `running`. Devolve a execução no estado em que o agente parou. */
   startMission(missionId: string): Promise<AppResult<Execution>>;
   /** Cancela a missão e, se o plano dela está sendo gerado, também encerra o planejador dessa missão. */
@@ -325,6 +336,19 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * Reanexa a uma execução que continua viva no agente, a partir da posição gravada. Devolve false quando
    * não há como: adaptador sem reanexação, sem posição, sessão encerrada ou missão já encerrada.
    */
+  /** A conta da missão como o agente e o planejador a recebem: só quando não é a Principal. */
+  function accountOf(mission: Mission): { accountId?: string } {
+    return mission.accountId === undefined ? {} : { accountId: mission.accountId };
+  }
+
+  /** Missão de conta removida não roda: a falha sai antes de qualquer mudança de estado. */
+  function accountBlock(mission: Mission): AppResult<never> | undefined {
+    if (mission.accountId === undefined || deps.accounts === undefined) return undefined;
+    return deps.accounts.labelOf('claude', mission.accountId).removed
+      ? failure('VALIDATION_FAILED', ACCOUNT_UNAVAILABLE)
+      : undefined;
+  }
+
   async function reattach(execution: Execution): Promise<boolean> {
     const sessionId = execution.agentSessionId;
     const cursor = execution.agentCursor;
@@ -334,7 +358,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     if (active.has(mission.id)) return false;
     let session: AgentSession | undefined;
     try {
-      session = await agent.attach(sessionId, cursor);
+      session =
+        mission.accountId === undefined
+          ? await agent.attach(sessionId, cursor)
+          : await agent.attach(sessionId, cursor, { accountId: mission.accountId });
     } catch (error) {
       console.error('Não foi possível reanexar ao agente:', error);
       return false;
@@ -873,7 +900,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     let session: AgentSession;
     try {
       session = await agent.start(
-        { cwd, prompt: taskPrompt(mission, task, steps) },
+        { cwd, prompt: taskPrompt(mission, task, steps), ...accountOf(mission) },
         run.controller.signal,
       );
     } catch (error) {
@@ -1028,6 +1055,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         {
           cwd: workspace.cwd,
           prompt: task === undefined ? promptFor(mission) : taskPrompt(mission, task, steps),
+          ...accountOf(mission),
         },
         run.controller.signal,
       );
@@ -1066,6 +1094,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         'A missão precisa estar aprovada e na fila para iniciar.',
       );
     }
+    const blockedStart = accountBlock(mission);
+    if (blockedStart !== undefined) return blockedStart;
     const project = projects.get(mission.projectId);
     if (project === undefined) {
       return failure('PROJECT_NOT_FOUND', 'O projeto da missão não foi encontrado.');
@@ -1420,6 +1450,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         'Só uma missão que falhou ou foi cancelada pode ter nova tentativa.',
       );
     }
+    const blockedRetry = accountBlock(mission);
+    if (blockedRetry !== undefined) return blockedRetry;
     repo.transaction(() => {
       moveMission(repo, missionId, 'queued', { actor: 'user', at: now() });
     });
@@ -1442,6 +1474,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         'Só uma missão em rascunho ou com plano pode ser planejada.',
       );
     }
+    const blockedPlan = accountBlock(mission);
+    if (blockedPlan !== undefined) return blockedPlan;
     if (mission.acceptanceCriteria.length === 0) {
       return failure('VALIDATION_FAILED', 'A missão precisa de pelo menos um critério de aceite.');
     }
@@ -1530,6 +1564,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         ...(instruction === undefined ? {} : { instruction }),
         cwd: project.path,
         signal: abort.signal,
+        ...accountOf(mission),
       });
 
       // Cancelamento da missão ou `dispose` (o app fechando): o banco pode já estar fechado, então nada
@@ -1725,6 +1760,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     editPlanStep: gated(editPlanStep),
     approvePlan: gated(approvePlan),
     cancelPlanning: gated(cancelPlanning),
+    isPlanning: (missionId) => planning.has(missionId),
+    isRunning: (missionId) => active.has(missionId),
     startMission: gated(startMission),
     cancelMission: gated(cancelMission),
     pauseMission: gated(pauseMission),

@@ -33,6 +33,10 @@ function viewOf(status: Status, rest: Partial<MissionViewDto> = {}): MissionView
       projectId: 'p1',
       title: 'Ajustar login',
       objective: 'Corrigir o login',
+      accountId: null,
+      accountName: 'Principal',
+      accountRemoved: false,
+      accountLocked: false,
       status,
       altersCode: false,
       acceptanceCriteria: [],
@@ -955,4 +959,133 @@ describe('DecisionBlock: duas colunas em janela larga', () => {
       expect(block().className).toBe('decision-block mission-focus');
     },
   );
+});
+
+describe('DecisionBlock: a conta da missão', () => {
+  const X = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const accounts = [
+    { id: null, name: 'Principal', isDefault: true, state: 'connected' as const },
+    { id: X, name: 'Trabalho', isDefault: false, state: 'connected' as const },
+  ];
+
+  function setupAccount(
+    mission: Partial<MissionViewDto['mission']> = {},
+    list = accounts,
+    status: Status = 'draft',
+  ) {
+    const handlers = handlersOf();
+    const onChange = vi.fn();
+    const view = viewOf(status);
+    render(
+      <DecisionBlock
+        view={{ ...view, mission: { ...view.mission, ...mission } }}
+        busy={false}
+        planning={false}
+        controlBusy={false}
+        account={{
+          accounts: list,
+          usageOf: (accountId) => (accountId === X ? '5h 40%' : 'sem leitura'),
+          onChange,
+        }}
+        {...handlers}
+      />,
+    );
+    return { handlers, onChange };
+  }
+
+  it('antes de começar, com mais de uma conta: a escolha aparece com a conta da missão marcada e o uso de cada uma', () => {
+    setupAccount({ accountId: X, accountName: 'Trabalho' });
+
+    const list = within(block()).getByRole('listbox', { name: 'Conta do Claude Code' });
+    expect(within(list).getByRole('option', { name: /Trabalho/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(within(list).getByRole('option', { name: /Trabalho/ })).toHaveTextContent('5h 40%');
+    expect(within(list).getByRole('option', { name: /Principal/ })).toHaveTextContent(
+      'sem leitura',
+    );
+    // O aviso de cota do Orquestrar continua no lugar.
+    expect(within(block()).getByRole('button', { name: 'Orquestrar' })).toHaveAccessibleDescription(
+      /cota/i,
+    );
+  });
+
+  it('trocar a conta avisa a página, só com o id', async () => {
+    const { onChange } = setupAccount();
+
+    await userEvent.click(within(block()).getByRole('option', { name: /Trabalho/ }));
+
+    expect(onChange.mock.calls).toEqual([[X]]);
+  });
+
+  it('depois de a missão começar: só o texto "Conta: Trabalho", sem escolha', () => {
+    setupAccount(
+      { accountId: X, accountName: 'Trabalho', accountLocked: true },
+      accounts,
+      'running',
+    );
+
+    expect(within(block()).getByText('Conta: Trabalho')).toBeInTheDocument();
+    expect(within(block()).queryByRole('listbox')).toBeNull();
+  });
+
+  it('missão que falhou: a escolha volta, e trocar a conta removida libera a nova tentativa', async () => {
+    const { onChange } = setupAccount(
+      { accountId: X, accountName: '', accountRemoved: true, accountLocked: false },
+      accounts,
+      'failed',
+    );
+
+    expect(
+      within(block()).getByText('A conta foi removida. Escolha outra conta para continuar.'),
+    ).toBeInTheDocument();
+    await userEvent.click(within(block()).getByRole('option', { name: /Principal/ }));
+
+    expect(onChange.mock.calls).toEqual([[null]]);
+  });
+
+  it('com uma conta só, nada de conta aparece', () => {
+    setupAccount({}, [accounts[0]!]);
+
+    expect(within(block()).queryByRole('listbox')).toBeNull();
+    expect(within(block()).queryByText(/^Conta/)).toBeNull();
+  });
+
+  it('sem as contas (a página ainda não as leu), nada de conta aparece', () => {
+    setup('draft');
+
+    expect(within(block()).queryByRole('listbox')).toBeNull();
+    expect(within(block()).queryByText(/^Conta/)).toBeNull();
+  });
+
+  it('conta removida antes de começar: a ação principal fica desabilitada, com o motivo ligado, e dá para escolher outra', async () => {
+    const { handlers, onChange } = setupAccount({
+      accountId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      accountName: '',
+      accountRemoved: true,
+    });
+
+    const primary = within(block()).getByRole('button', { name: 'Orquestrar' });
+    expect(primary).toBeDisabled();
+    expect(primary).toHaveAccessibleDescription(/A conta foi removida/);
+    await userEvent.click(primary);
+    expect(handlers.onGeneratePlan).not.toHaveBeenCalled();
+    await userEvent.click(within(block()).getByRole('option', { name: /Principal/ }));
+    expect(onChange.mock.calls).toEqual([[null]]);
+  });
+
+  it('conta removida com a missão já começada: diz o motivo e desabilita a ação principal', () => {
+    setupAccount(
+      { accountId: X, accountName: '', accountRemoved: true, accountLocked: true },
+      accounts,
+      'paused',
+    );
+
+    expect(within(block()).getByText(/A conta foi removida/)).toBeInTheDocument();
+    expect(within(block()).queryByRole('listbox')).toBeNull();
+    const primary = within(block()).getByRole('button', { name: /Retomar/ });
+    expect(primary).toBeDisabled();
+    expect(primary).toHaveAccessibleDescription(/A conta foi removida/);
+  });
 });

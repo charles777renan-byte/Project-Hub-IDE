@@ -61,6 +61,7 @@ import {
   type LimitsDto,
   type MissionDiffDto,
   type MissionDto,
+  type SetMissionAccountInput,
   type MissionEventDto,
   type MissionPlanDto,
   type MissionUsageEventDto,
@@ -174,6 +175,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       approvePlan: (missionId: string) => call<void>(CHANNELS.missionsApprovePlan, { missionId }),
       cancelPlanning: (missionId: string) =>
         call<void>(CHANNELS.missionsCancelPlanning, { missionId }),
+      setAccount: (input: SetMissionAccountInput) =>
+        call<MissionDto>(CHANNELS.missionsSetAccount, input),
       start: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsStart, { missionId }),
       cancel: (missionId: string) => call<void>(CHANNELS.missionsCancel, { missionId }),
       pause: (missionId: string) => call<void>(CHANNELS.missionsPause, { missionId }),
@@ -245,15 +248,27 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       // Contrato do processo principal; a tela não usa (fechar o painel já encerra a sessão).
       endSession: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesEndSession, { workspaceId, leafId }),
-      addPane: (workspaceId: string, provider: ProviderId) =>
-        call<WorkspaceDto>(CHANNELS.workspacesAddPane, { workspaceId, provider }),
+      // Sem conta no pedido, o campo nem vai: o processo principal usa a padrão do programa.
+      addPane: (workspaceId: string, provider: ProviderId, accountId?: string | null) =>
+        call<WorkspaceDto>(CHANNELS.workspacesAddPane, {
+          workspaceId,
+          provider,
+          ...(accountId === undefined ? {} : { accountId }),
+        }),
       splitPane: (
         workspaceId: string,
         leafId: string,
         side: 'left' | 'right' | 'top' | 'bottom',
         provider: ProviderId,
+        accountId?: string | null,
       ) =>
-        call<WorkspaceDto>(CHANNELS.workspacesSplitPane, { workspaceId, leafId, side, provider }),
+        call<WorkspaceDto>(CHANNELS.workspacesSplitPane, {
+          workspaceId,
+          leafId,
+          side,
+          provider,
+          ...(accountId === undefined ? {} : { accountId }),
+        }),
       removePane: (workspaceId: string, leafId: string) =>
         call<WorkspaceDto>(CHANNELS.workspacesRemovePane, { workspaceId, leafId }),
       reorder: (workspaceIds: string[]) => call<void>(CHANNELS.workspacesReorder, { workspaceIds }),
@@ -374,6 +389,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     limits: {
       get: () => call<LimitsDto>(CHANNELS.limitsGet),
       refresh: () => call<LimitsDto>(CHANNELS.limitsRefresh),
+      refreshAccount: (input: AccountTargetInput) =>
+        call<LimitsDto>(CHANNELS.limitsRefreshAccount, input),
       subscribe: (listener: (limits: LimitsDto) => void) =>
         subscribe(CHANNELS.limitsEvent, (payload) => {
           const parsed = limitsDtoSchema.safeParse(payload);

@@ -101,7 +101,18 @@ export interface Planner {
     instruction?: string;
     cwd: string;
     signal: AbortSignal;
+    /** A conta do Claude Code em que o planejador roda. Ausente ou `null`: a Principal. */
+    accountId?: string | null;
   }): Promise<AppResult<PlannedTask[]>>;
+}
+
+/**
+ * O que as missões precisam saber das contas do Claude Code: a padrão e o nome de cada uma. `null` é a Principal.
+ * Conta removida mantém o nome; a desconhecida vem sem nome e como removida. Só ids e nomes: nunca pasta nem ambiente.
+ */
+export interface AccountDirectory {
+  defaultOf(provider: 'claude'): string | null;
+  labelOf(provider: 'claude', accountId: string | null): { name: string; removed: boolean };
 }
 
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
@@ -189,6 +200,8 @@ export interface MissionRepository {
   /** As missões do projeto, da atualizada mais recentemente para a mais antiga. */
   listMissions(projectId: string): Mission[];
   updateMission(id: string, changes: MissionChanges): void;
+  /** Troca a conta da missão (`null` é a Principal) e a data de atualização. */
+  setMissionAccount(id: string, accountId: string | null, at: string): void;
   insertSteps(steps: MissionStep[]): void;
   /** As etapas do plano da missão, na ordem. */
   listSteps(missionId: string): MissionStep[];

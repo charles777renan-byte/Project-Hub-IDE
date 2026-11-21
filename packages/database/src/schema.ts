@@ -73,6 +73,8 @@ export const missions = sqliteTable(
       .default(sql`0`),
     worktreeId: text('worktree_id'),
     worktreePath: text('worktree_path'),
+    /** A conta do Claude Code em que o planejador e o agente rodam. Nulo é a Principal. */
+    accountId: text('account_id').references(() => accounts.id),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     startedAt: text('started_at'),
@@ -244,6 +246,8 @@ export const terminalSessions = sqliteTable('terminal_sessions', {
   title: text('title').notNull(),
   createdAt: text('created_at').notNull(),
   closedAt: text('closed_at'),
+  /** A conta do programa em que a sessão abriu. Nulo é a Principal. */
+  accountId: text('account_id').references(() => accounts.id),
 });
 
 /** Configurações do app, em pares chave e texto (seção 9.4). Hoje guarda só o nome da saudação do perfil local. */

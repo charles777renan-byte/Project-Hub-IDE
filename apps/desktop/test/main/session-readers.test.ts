@@ -41,7 +41,7 @@ describe('createClaudeSessionReader', () => {
   });
 
   function reader(maxFileBytes?: number) {
-    return createClaudeSessionReader({ CLAUDE_CONFIG_DIR: root }, maxFileBytes);
+    return createClaudeSessionReader(root, null, maxFileBytes);
   }
 
   it('o id é o nome do arquivo quando ele é um UUID, e não o sessionId de dentro', async () => {
@@ -102,10 +102,20 @@ describe('createCodexSessionReader', () => {
     const small = rollout('pequena');
     writeFileSync(join(day, 'rollout-bomba.jsonl.zst'), zstdCompressSync(Buffer.from(bomb)));
     writeFileSync(join(day, 'rollout-pequena.jsonl.zst'), zstdCompressSync(Buffer.from(small)));
-    const reader = createCodexSessionReader({ CODEX_HOME: root }, 50_000);
+    const reader = createCodexSessionReader(root, null, 50_000);
 
     await expect(reader.read(join(day, 'rollout-bomba.jsonl.zst'))).rejects.toThrow();
     const sessions = await reader.read(join(day, 'rollout-pequena.jsonl.zst'));
     expect(sessions.map((session) => session.id)).toEqual(['pequena']);
+  });
+});
+
+describe('a conta do leitor', () => {
+  it('cada leitor leva a conta com que foi criado, e null é a Principal', () => {
+    const account = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    expect(createClaudeSessionReader('/raiz', null).accountId).toBeNull();
+    expect(createClaudeSessionReader('/contas/x', account).accountId).toBe(account);
+    expect(createCodexSessionReader('/contas/x', account).accountId).toBe(account);
   });
 });

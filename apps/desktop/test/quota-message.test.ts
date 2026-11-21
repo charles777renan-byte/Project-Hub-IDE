@@ -6,7 +6,7 @@ const NOW = new Date('2026-11-01T12:00:00.000Z');
 const inHours = (hours: number) => new Date(NOW.getTime() + hours * 3_600_000).toISOString();
 
 function limits(windows: { id: string; usedPercent: number; resetsAt: string }[]): LimitsDto {
-  return { providers: [{ provider: 'claude', windows, refreshing: false }] };
+  return { accounts: [], providers: [{ provider: 'claude', windows, refreshing: false }] };
 }
 
 describe('quotaExhaustedMessage', () => {
@@ -60,6 +60,6 @@ describe('quotaExhaustedMessage', () => {
   });
 
   it('sem nenhuma leitura do Claude, não há mensagem de cota', () => {
-    expect(quotaExhaustedMessage({ providers: [] }, NOW)).toBeUndefined();
+    expect(quotaExhaustedMessage({ providers: [], accounts: [] }, NOW)).toBeUndefined();
   });
 });

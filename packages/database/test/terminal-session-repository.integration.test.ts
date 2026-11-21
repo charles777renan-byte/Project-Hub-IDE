@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDatabase, type AppDatabase } from '../src/client';
 import { migrateDatabase } from '../src/migrate';
+import { createAccountRepository } from '../src/repositories/account-repository';
 import { createProjectRepository } from '../src/repositories/project-repository';
 import {
   createTerminalSessionRepository,
@@ -166,5 +167,36 @@ describe('TerminalSessionRepository.listAll', () => {
 
   it('banco sem sessões devolve lista vazia', () => {
     expect(repo.listAll()).toEqual([]);
+  });
+
+  it('guarda a conta da sessão; sem conta, o campo não existe (é a Principal)', () => {
+    createAccountRepository(db).insert({
+      id: 'c0ffee00-0000-4000-8000-000000000001',
+      provider: 'claude',
+      name: 'Trabalho',
+      createdAt: '2026-11-21T10:00:00Z',
+    });
+    repo.insert({
+      id: 'com-conta',
+      projectId: 'p1',
+      provider: 'claude',
+      title: 'Claude Code',
+      createdAt: '2026-11-21T10:01:00Z',
+      accountId: 'c0ffee00-0000-4000-8000-000000000001',
+    });
+    repo.insert({
+      id: 'sem-conta',
+      projectId: 'p1',
+      provider: 'claude',
+      title: 'Claude Code',
+      createdAt: '2026-11-21T10:02:00Z',
+    });
+
+    expect(repo.get('com-conta')?.accountId).toBe('c0ffee00-0000-4000-8000-000000000001');
+    expect(repo.get('sem-conta')).not.toHaveProperty('accountId');
+    expect(repo.listOpen().map((s) => s.accountId)).toEqual([
+      'c0ffee00-0000-4000-8000-000000000001',
+      undefined,
+    ]);
   });
 });

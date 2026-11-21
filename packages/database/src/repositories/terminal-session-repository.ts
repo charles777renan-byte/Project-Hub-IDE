@@ -9,6 +9,8 @@ export type TerminalSessionRecord = {
   title: string;
   createdAt: string;
   closedAt?: string;
+  /** A conta extra em que a sessão abriu. Ausente: a Principal. */
+  accountId?: string;
 };
 
 export interface TerminalSessionRepository {
@@ -33,6 +35,7 @@ function toRecord(row: TerminalSessionRow): TerminalSessionRecord {
   };
   // Com exactOptionalPropertyTypes, um campo opcional ausente fica ausente, e não undefined.
   if (row.closedAt !== null) record.closedAt = row.closedAt;
+  if (row.accountId !== null) record.accountId = row.accountId;
   return record;
 }
 
@@ -47,6 +50,7 @@ export function createTerminalSessionRepository(db: AppDatabase): TerminalSessio
           title: record.title,
           createdAt: record.createdAt,
           closedAt: record.closedAt ?? null,
+          accountId: record.accountId ?? null,
         })
         .run();
     },

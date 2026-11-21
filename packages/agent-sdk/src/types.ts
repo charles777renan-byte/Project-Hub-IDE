@@ -21,8 +21,14 @@ export type AgentCapabilities = {
   models: string[];
 };
 
-/** Entrada para iniciar uma sessão: o diretório de trabalho e o texto que descreve a tarefa. */
-export type AgentStartInput = { cwd: string; prompt: string };
+/**
+ * Entrada para iniciar uma sessão: o diretório de trabalho e o texto que descreve a tarefa. `accountId` é a conta do
+ * programa em que a sessão roda; ausente ou `null`, a Principal. Só o id: a pasta e o ambiente saem do adaptador.
+ */
+export type AgentStartInput = { cwd: string; prompt: string; accountId?: string | null };
+
+/** O que a reanexação precisa saber da missão: a conta em que a sessão nasceu. */
+export type AgentAttachContext = { accountId: string | null };
 
 export type AgentUserInput = { text: string };
 
@@ -119,5 +125,9 @@ export interface AgentAdapter {
    * Reanexa a uma sessão que continua viva depois de um reinício do app, a partir da posição gravada. Devolve
    * undefined se a sessão não existe mais. Adaptador sem reanexação não define o método.
    */
-  attach?(sessionId: string, cursor: string): Promise<AgentSession | undefined>;
+  attach?(
+    sessionId: string,
+    cursor: string,
+    context?: AgentAttachContext,
+  ): Promise<AgentSession | undefined>;
 }

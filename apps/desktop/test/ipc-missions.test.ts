@@ -8,6 +8,7 @@ import type {
   MissionDiffDeps,
   MissionQueryDeps,
   Orchestrator,
+  SetMissionAccountDeps,
 } from '@project-hub/application';
 import { resolveWorktreesRoot } from '../src/main/composition';
 import { handleDecideApproval, registerApprovalHandlers } from '../src/main/ipc/approvals';
@@ -287,6 +288,7 @@ describe('plano com instrução e edição (missions:plan:v1, missions:edit-plan
       queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
       diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
       deleteDeps: { repo: {}, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps,
+      accountDeps: {} as SetMissionAccountDeps,
     });
     const payload = { missionId: 'm1', stepId: 's1', edit: { op: 'remove' } };
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -391,6 +393,7 @@ describe('pausa, retomada e nova tentativa (R180, R181)', () => {
       queryDeps: { repo: {}, projects: {} } as unknown as MissionQueryDeps,
       diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
       deleteDeps: { repo: {}, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps,
+      accountDeps: {} as SetMissionAccountDeps,
     });
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
@@ -517,6 +520,7 @@ describe('canais de missão e aprovação recusam remetente de outra origem (R65
       queryDeps,
       diffDeps: { repo: {}, diff: {} } as unknown as MissionDiffDeps,
       deleteDeps: { repo: {}, projects: {}, worktrees: {}, fs: {} } as unknown as DeleteMissionDeps,
+      accountDeps: {} as SetMissionAccountDeps,
     });
     registerApprovalHandlers(fake.registry, isTrusted, orchestrator);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);

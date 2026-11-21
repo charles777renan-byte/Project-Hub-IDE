@@ -1,4 +1,4 @@
-import type { ProjectRepository } from '@project-hub/application';
+import { failure, type ProjectRepository } from '@project-hub/application';
 import {
   PREVIEW_MESSAGES,
   workspaceLayoutSchema,
@@ -11,12 +11,12 @@ import type { WorkspaceRecord, WorkspaceRepository } from '@project-hub/database
 import { describe, expect, it, vi } from 'vitest';
 import type { OpenSessionOptions, TerminalService } from '../src/main/terminals';
 import { arrangeLeaves } from '@project-hub/contracts/layout-ops';
-import { createWorkspaceService } from '../src/main/workspaces';
+import { createWorkspaceService, type WorkspaceServiceDeps } from '../src/main/workspaces';
 
 type ProjectRecord = NonNullable<ReturnType<ProjectRepository['get']>>;
 type TerminalsPort = Pick<
   TerminalService,
-  'openSession' | 'closeSession' | 'knownIds' | 'stateOf' | 'isMissionSession'
+  'openSession' | 'closeSession' | 'knownIds' | 'stateOf' | 'isMissionSession' | 'accountOfSession'
 >;
 
 const projectA = { id: 'p1', name: 'app', path: 'C:/dev/app' } as ProjectRecord;
@@ -123,6 +123,9 @@ function setup(
     missions?: string[];
     /** Gera o id da sessão que cada `openSession` devolve (padrão: `novo`). */
     openIds?: () => string;
+    accounts?: NonNullable<WorkspaceServiceDeps['accounts']>;
+    /** A conta gravada na sessão de cada terminal (`null` é a Principal). */
+    sessionAccounts?: Record<string, string | null>;
   } = {},
 ) {
   const memory = memoryRepo(options.records);
@@ -155,6 +158,7 @@ function setup(
     isMissionSession: vi.fn(
       (terminalId: string) => options.missions?.includes(terminalId) ?? false,
     ),
+    accountOfSession: vi.fn((terminalId: string) => options.sessionAccounts?.[terminalId]),
   };
   const projects = {
     get: (id: string) => [projectA, projectB].find((project) => project.id === id),
@@ -169,6 +173,7 @@ function setup(
     now: () => AT,
     newId: counter('id-'),
     publish: (workspace) => void published.push(workspace),
+    ...(options.accounts === undefined ? {} : { accounts: options.accounts }),
   });
   return { service, terminals, calls, published, ...memory };
 }
@@ -1114,5 +1119,140 @@ describe('addPreviewPane', () => {
     const { service, published } = setup({ records: [record({ layout: 'null' })] });
     await service.addPane('w1', 'shell');
     expect(published).toEqual([]);
+  });
+});
+
+describe('conta do painel', () => {
+  const WORK = '11111111-1111-4111-8111-111111111111';
+  const OTHER = '22222222-2222-4222-8222-222222222222';
+  const empty = (): WorkspaceRecord => record({ layout: 'null' });
+  const withLeaf = (extra: Record<string, unknown>): WorkspaceRecord =>
+    record({
+      layout: JSON.stringify({
+        type: 'leaf',
+        id: 'l1',
+        provider: 'claude',
+        terminalId: null,
+        ...extra,
+      }),
+    });
+  const accounts = (byDefault: string | null) => ({
+    isAccountProvider: (provider: string): provider is 'claude' | 'codex' =>
+      provider === 'claude' || provider === 'codex',
+    defaultOf: vi.fn(() => byDefault),
+  });
+
+  it('sem conta no pedido, abre na conta padrão do programa e guarda a conta na folha', async () => {
+    const h = setup({ records: [empty()], accounts: accounts(WORK) });
+
+    const result = await h.service.addPane('w1', 'claude');
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude', { accountId: WORK });
+    expect(result.ok && result.data.layout).toMatchObject({ type: 'leaf', accountId: WORK });
+  });
+
+  it('com null no pedido, abre na Principal mesmo com outra padrão, e a folha fica sem conta', async () => {
+    const h = setup({ records: [empty()], accounts: accounts(WORK) });
+
+    const result = await h.service.addPane('w1', 'claude', null);
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude');
+    expect(result.ok && result.data.layout).not.toHaveProperty('accountId');
+  });
+
+  it('com a conta no pedido, abre nela', async () => {
+    const h = setup({ records: [empty()], accounts: accounts(null) });
+
+    const result = await h.service.addPane('w1', 'claude', OTHER);
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude', { accountId: OTHER });
+    expect(result.ok && result.data.layout).toMatchObject({ accountId: OTHER });
+  });
+
+  it('o shell nunca consulta a padrão nem leva conta', async () => {
+    const use = accounts(WORK);
+    const h = setup({ records: [empty()], accounts: use });
+
+    await h.service.addPane('w1', 'shell');
+
+    expect(use.defaultOf).not.toHaveBeenCalled();
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'shell');
+  });
+
+  it('dividir um painel leva a conta pedida para a folha nova', async () => {
+    const h = setup({ records: [withLeaf({ terminalId: 't1' })], accounts: accounts(null) });
+
+    const result = await h.service.splitPane('w1', 'l1', 'right', 'claude', WORK);
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude', { accountId: WORK });
+    expect(JSON.stringify(result.ok && result.data.layout)).toContain(WORK);
+  });
+
+  it('reabrir a sessão de uma folha usa a conta da folha, e não a padrão', async () => {
+    const h = setup({ records: [withLeaf({ accountId: WORK })], accounts: accounts(OTHER) });
+
+    await h.service.startSession('w1', 'l1');
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude', { accountId: WORK });
+  });
+
+  it('reiniciar usa a conta da sessão encerrada do painel, e não a da folha para onde ela foi movida', async () => {
+    const h = setup({
+      records: [withLeaf({ terminalId: 't1' })],
+      states: { t1: 'exited' },
+      sessionAccounts: { t1: WORK },
+      accounts: accounts(null),
+    });
+
+    await h.service.startSession('w1', 'l1');
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude', { accountId: WORK });
+  });
+
+  it('reiniciar a sessão da Principal numa folha de outra conta segue na Principal', async () => {
+    const h = setup({
+      records: [withLeaf({ terminalId: 't1', accountId: WORK })],
+      states: { t1: 'exited' },
+      sessionAccounts: { t1: null },
+      accounts: accounts(OTHER),
+    });
+
+    await h.service.startSession('w1', 'l1');
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude', { accountId: null });
+  });
+
+  it('folha sem conta (layout antigo) reabre na Principal, mesmo com outra padrão', async () => {
+    const h = setup({ records: [withLeaf({})], accounts: accounts(OTHER) });
+
+    await h.service.startSession('w1', 'l1');
+
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'claude');
+  });
+
+  it('folha de conta removida não reabre, e continua no layout com a conta dela', async () => {
+    const h = setup({
+      records: [withLeaf({ accountId: WORK })],
+      accounts: accounts(null),
+      openResult: failure('VALIDATION_FAILED', 'A conta foi removida.'),
+    });
+
+    const result = await h.service.startSession('w1', 'l1');
+
+    expect(result).toEqual(failure('VALIDATION_FAILED', 'A conta foi removida.'));
+    expect(h.updateLayout).not.toHaveBeenCalled();
+  });
+
+  it('o painel do preview não leva conta', async () => {
+    const use = accounts(WORK);
+    const h = setup({ records: [empty()], accounts: use });
+
+    await h.service.addPreviewPane('p1', { startCommand: 'pnpm run dev', title: 'Preview' });
+
+    expect(use.defaultOf).not.toHaveBeenCalled();
+    expect(h.terminals.openSession).toHaveBeenCalledWith('p1', 'shell', {
+      startCommand: 'pnpm run dev',
+      title: 'Preview',
+    });
   });
 });

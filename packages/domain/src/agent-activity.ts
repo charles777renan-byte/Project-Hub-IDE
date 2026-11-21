@@ -7,6 +7,8 @@ export type AppTerminal = {
   createdAt: string;
   /** Sem ele, o terminal ainda está aberto e vale até o instante de agora. */
   closedAt?: string;
+  /** A conta do programa em que o terminal roda. Ausente ou `null`: a Principal. */
+  accountId?: string | null;
 };
 
 /** Um dia de uma sessão de CLI. `tokens` é `null` quando o agente não informa tokens. */
@@ -21,6 +23,8 @@ export type SessionForLink = {
   cwd: string;
   startedAt: string;
   days: SessionDay[];
+  /** A conta em cuja pasta a sessão foi lida. Ausente ou `null`: a Principal. */
+  accountId?: string | null;
 };
 
 /** Tokens de uma execução de missão. Entram no agente `claude`, no dia local do término. */
@@ -64,7 +68,7 @@ function sumTokens(a: number | null, b: number | null): number | null {
 }
 
 /**
- * Devolve só as sessões que se ligam a um terminal do app: mesmo agente, pasta igual à do terminal ou
+ * Devolve só as sessões que se ligam a um terminal do app: mesmo agente, mesma conta, pasta igual à do terminal ou
  * subpasta dela, e horário entre 60 s antes da criação do terminal e o fechamento (ou `nowIso`, se ainda
  * estiver aberto). As pastas se comparam normalizadas; no Windows a comparação ignora maiúsculas, por
  * isso `caseInsensitive` vem verdadeiro por padrão.
@@ -77,6 +81,7 @@ export function linkToApp(
 ): SessionForLink[] {
   const spans = terminals.map((terminal) => ({
     provider: terminal.provider,
+    accountId: terminal.accountId ?? null,
     folder: normalizeFolder(terminal.folder, caseInsensitive),
     from: Date.parse(terminal.createdAt) - LINK_SLACK_MS,
     to: Date.parse(terminal.closedAt ?? nowIso),
@@ -87,6 +92,7 @@ export function linkToApp(
     return spans.some(
       (span) =>
         span.provider === session.agent &&
+        span.accountId === (session.accountId ?? null) &&
         isInside(cwd, span.folder) &&
         startedAt >= span.from &&
         startedAt <= span.to,

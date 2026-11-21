@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { AccountDto, AppResult } from '@project-hub/contracts';
+import type { AccountDto, AccountLimitsDto, AppResult } from '@project-hub/contracts';
 import { loginInProgress, type LoginControls } from '../../use-login';
 import { ConfirmInline } from '../ConfirmButton';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../Icon';
 import { MenuAcoes, type AcaoMenu } from '../MenuAcoes';
 import { AccountNameForm } from './AddAccountForm';
+import { AccountUsage } from './AccountUsage';
 import { LoginGuide } from './LoginGuide';
 
 const TEXT = {
@@ -61,6 +62,8 @@ export function AccountRow({
   program,
   controls,
   onChanged,
+  usage,
+  onRefreshUsage,
 }: {
   account: AccountDto;
   /** Nome do programa ("Claude Code"). */
@@ -68,6 +71,10 @@ export function AccountRow({
   controls: LoginControls;
   /** Algo mudou nas contas: a lista é relida. */
   onChanged: () => void;
+  /** O uso da conta, quando o app tem como lê-lo. Conta sem login não mostra uso. */
+  usage?: AccountLimitsDto | undefined;
+  /** A pessoa pediu uma leitura nova do uso desta conta. */
+  onRefreshUsage?: (() => void) | undefined;
 }) {
   const [mode, setMode] = useState<Mode>('idle');
   const [busy, setBusy] = useState(false);
@@ -133,7 +140,8 @@ export function AccountRow({
   }
 
   const actions: AcaoMenu[] = [];
-  if (!account.isPrincipal) actions.push({ rotulo: TEXT.rename, onSelecionar: () => open('rename') });
+  if (!account.isPrincipal)
+    actions.push({ rotulo: TEXT.rename, onSelecionar: () => open('rename') });
   if (!account.isDefault) {
     const connected = account.state === 'connected';
     actions.push({
@@ -211,6 +219,9 @@ export function AccountRow({
           </div>
         )}
       </div>
+      {usage !== undefined && onRefreshUsage !== undefined && account.state !== 'signed-out' ? (
+        <AccountUsage name={account.name} usage={usage} onRefresh={onRefreshUsage} />
+      ) : null}
       {mode === 'rename' && account.id !== null ? (
         <AccountNameForm
           initial={account.name}

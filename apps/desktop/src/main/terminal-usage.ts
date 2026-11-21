@@ -36,8 +36,11 @@ export type TerminalUsageDeps = {
  * terminais pede, e no máximo a cada `intervalMs` por terminal.
  */
 export type TerminalUsageService = {
-  /** Passa a acompanhar o terminal, com o leitor do programa dele. Repetir não faz nada. */
-  track(terminalId: string, provider: UsageProvider): void;
+  /**
+   * Passa a acompanhar o terminal, com o leitor do programa dele. `root` é a pasta de dados da conta do terminal;
+   * sem ela, vale a da Principal (`roots`). Repetir não faz nada.
+   */
+  track(terminalId: string, provider: UsageProvider, root?: string): void;
   /** Para de acompanhar e solta o leitor. */
   forget(terminalId: string): void;
   isTracked(terminalId: string): boolean;
@@ -169,10 +172,10 @@ export function createTerminalUsageService(deps: TerminalUsageDeps): TerminalUsa
   }
 
   return {
-    track(terminalId, provider) {
+    track(terminalId, provider, root) {
       if (entries.has(terminalId)) return;
       entries.set(terminalId, {
-        tracker: newTracker(provider, deps.roots[provider]),
+        tracker: newTracker(provider, root ?? deps.roots[provider]),
         seq: 0,
         learned: false,
         last: undefined,

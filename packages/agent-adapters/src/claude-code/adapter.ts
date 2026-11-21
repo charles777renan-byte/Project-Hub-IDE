@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type {
   AgentAdapter,
+  AgentAttachContext,
   AgentCapabilities,
   AgentConfig,
   AgentEvent,
@@ -66,6 +67,15 @@ export type ClaudeCodeAdapterOptions = {
    * mesmo que o terminal recebe), ou `~/.claude`. Precisa ser a mesma do terminal, senão o gasto zera.
    */
   claudeConfigDir?: string;
+  /**
+   * As contas do Claude Code: a sessão roda na conta que a entrada pede (`null` é a Principal). `env` são as variáveis
+   * da conta, postas por cima das do terminal; lança quando a conta já não vale, e o início rejeita. `configDir` é a
+   * pasta de dados da conta, para o leitor de gasto. Sem a opção, tudo roda na Principal, como sempre.
+   */
+  account?: {
+    env(accountId: string | null): Record<string, string>;
+    configDir(accountId: string | null): string;
+  };
   /** Intervalo de leitura do gasto nos transcripts, em ms. Padrão: 1500. */
   usageIntervalMs?: number;
   /** Espera entre as leituras finais do gasto, no fim da sessão, em ms. Padrão: 400. */
@@ -114,6 +124,12 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
     drainDelayMs: options.usageDrainDelayMs ?? DEFAULT_USAGE_DRAIN_DELAY_MS,
   };
 
+  /** O leitor de gasto na pasta da conta da sessão. Sem a opção de contas, a pasta de sempre. */
+  const usageOf = (accountId: string | null): UsageOptions =>
+    options.account === undefined
+      ? usage
+      : { ...usage, configDir: options.account.configDir(accountId) };
+
   return {
     type: 'claude-code',
 
@@ -134,13 +150,17 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
 
     async start(input: AgentStartInput, signal: AbortSignal): Promise<AgentSession> {
       if (signal.aborted) throw new Error('o início da sessão foi cancelado');
+      const accountId = input.accountId ?? null;
+      // A conta vem antes de tudo o que precisa ser desfeito: conta que não vale rejeita sem registrar hooks.
+      const accountEnv = options.account?.env(accountId) ?? {};
+      const sessionUsage = usageOf(accountId);
       const executionId = randomUUID();
       const registration = await options.hooks.registerExecution(executionId);
       const scriptPath = writeHookScript(options.settingsDir);
       const settingsFile = writeSettingsFile(options.settingsDir, executionId, scriptPath);
       // O token vai pelo ambiente do terminal, nunca pela linha de comando, que outros processos leem.
       const env = {
-        ...options.env,
+        ...withOverrides(options.env, accountEnv),
         PROJECT_HUB_HOOK_URL: registration.url,
         PROJECT_HUB_HOOK_TOKEN: registration.token,
       };
@@ -156,14 +176,25 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
         await quietly(() => options.hooks.unregisterExecution(executionId));
         throw error;
       }
-      return createSession(executionId, options.terminal, options.hooks, pollMs, usage, signal);
+      return createSession(
+        executionId,
+        options.terminal,
+        options.hooks,
+        pollMs,
+        sessionUsage,
+        signal,
+      );
     },
 
     /**
      * Reanexa a uma execução que continua viva no terminal. Começa depois da posição gravada, então
      * os eventos que já foram aplicados não voltam. Terminal encerrado ou posição inválida: undefined.
      */
-    async attach(sessionId: string, cursor: string): Promise<AgentSession | undefined> {
+    async attach(
+      sessionId: string,
+      cursor: string,
+      context?: AgentAttachContext,
+    ): Promise<AgentSession | undefined> {
       const fromSeq = Number(cursor);
       if (!Number.isInteger(fromSeq) || fromSeq < 0) return undefined;
       const snapshot = await options.terminal.snapshot(sessionId);
@@ -173,12 +204,28 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
         options.terminal,
         options.hooks,
         pollMs,
-        usage,
+        usageOf(context?.accountId ?? null),
         new AbortController().signal,
         fromSeq,
       );
     },
   };
+}
+
+/**
+ * O ambiente com as variáveis de `extra` por cima. No Windows o nome não diferencia maiúsculas, e num bloco com duas
+ * vale a primeira: a herdada sai quando há uma extra de mesmo nome em outra caixa.
+ */
+export function withOverrides(
+  base: Readonly<Record<string, string>>,
+  extra: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const replaced = new Set(Object.keys(extra).map((key) => key.toUpperCase()));
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (!replaced.has(key.toUpperCase())) env[key] = value;
+  }
+  return { ...env, ...extra };
 }
 
 /** Onde e de quanto em quanto tempo o gasto é lido. */

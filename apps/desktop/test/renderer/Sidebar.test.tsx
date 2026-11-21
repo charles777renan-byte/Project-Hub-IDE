@@ -46,6 +46,10 @@ function missionOf(overrides: Partial<MissionDto>): MissionDto {
     projectId: 'p1',
     title: 'Ajustar login',
     objective: 'Corrigir o login',
+    accountId: null,
+    accountName: 'Principal',
+    accountRemoved: false,
+    accountLocked: false,
     status: 'draft',
     altersCode: false,
     acceptanceCriteria: [{ id: 'c1', position: 1, text: 'Login funciona' }],
@@ -1005,6 +1009,44 @@ describe('Sidebar: atividade dos cartões', () => {
 
     const card = await screen.findByRole('button', { name: /^npm test/ });
     expect(card.querySelector('.activity')).toBeNull();
+  });
+
+  it('sessão de programa com mais de uma conta mostra a conta no detalhe do cartão', async () => {
+    installApi({
+      terminals: [
+        terminalOf({ id: 't1', title: 'Claude Code', provider: 'claude', accountName: 'Trabalho' }),
+      ],
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(expandOf('Project Hub'));
+
+    expect(await screen.findByRole('button', { name: /^Claude Code/ })).toHaveTextContent(
+      'Project Hub · main · Trabalho',
+    );
+  });
+
+  it('sessão de conta removida diz isso no detalhe do cartão', async () => {
+    installApi({
+      terminals: [
+        terminalOf({
+          id: 't1',
+          title: 'Claude Code',
+          provider: 'claude',
+          accountName: 'Trabalho',
+          accountRemoved: true,
+        }),
+      ],
+    });
+    renderSidebar('/');
+    await spaces();
+
+    await userEvent.click(expandOf('Project Hub'));
+
+    expect(await screen.findByRole('button', { name: /^Claude Code/ })).toHaveTextContent(
+      'Project Hub · main · A conta foi removida',
+    );
   });
 
   it('sessão com arquivos alterados mostra a contagem no detalhe do cartão', async () => {

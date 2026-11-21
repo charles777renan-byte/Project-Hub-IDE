@@ -1,10 +1,11 @@
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import {
   CHANNELS,
   type BrowserShortcutEvent,
   type BrowserStateDto,
+  type AppResult,
   type LimitsDto,
   type LoginEvent,
   type MissionEventDto,
@@ -50,8 +51,12 @@ import { createClaudeAgent, createTerminalBackend, resolveExecutable } from './c
 import { createClaudeLimitsProbe } from './claude-limits';
 import { createClaudePlanner, runPlannerProcess } from './claude-planner';
 import { createAccountCli } from './accounts/account-cli';
-import { accountsRoot, createAccountPaths } from './accounts/account-paths';
+import { ACCOUNT_ENV_VARIABLE, accountsRoot, createAccountPaths } from './accounts/account-paths';
 import { createAccountsService } from './accounts/accounts-service';
+import { claudeConfigDirOf } from '@project-hub/agent-adapters';
+import { failure } from '@project-hub/application';
+import { createAccountLimits } from './account-limits';
+import { ACCOUNT_REMOVED, createAccountUse, type AccountUse } from './accounts/account-use';
 import { liveSessionsOfAccount } from './accounts/live-sessions';
 import { createLoginService } from './accounts/login-service';
 import { registerAccountsHandlers, registerAppHandlers } from './ipc/accounts';
@@ -90,7 +95,6 @@ import {
 } from './agent-activity';
 import { registerProfileHandlers } from './ipc/profile';
 import { createLimitsService } from './limits';
-import { createLimitsHub } from './limits-hub';
 import { createLimitsStore } from './limits-store';
 import { registerSystemHandlers } from './ipc/system';
 import { createSystemUsageSampler } from './system-usage';
@@ -403,7 +407,6 @@ function testAlertsRecord(): { title: string; body: string }[] {
   return record;
 }
 
-
 function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1200,
@@ -529,6 +532,18 @@ app
     // Planejador do Claude Code: o PATH e o ambiente filtrado são os do agente (process.env, como em
     // `terminalOptions`), e não o `env` da aplicação, que empacotado vem sem o PATH. Em teste, um CLI falso
     // (`APP_PLANNER_COMMAND` ou `APP_PLANNER_SCRIPT`) liga o planejador mesmo sem `APP_AGENT_ADAPTER`.
+    // As contas nascem depois do banco, e o planejador e o agente, antes: eles chegam a elas por esta referência,
+    // preenchida logo abaixo. Só o id da conta viaja; a pasta e o ambiente saem daqui.
+    const accountRef: { use?: AccountUse } = {};
+    // Os painéis vivos: preenchido quando o serviço de terminais existe.
+    let listLiveTerminals: () => Promise<TerminalSummary[]> = () => Promise.resolve([]);
+    const claudeAccountEnv = (accountId: string | null): AppResult<Record<string, string>> => {
+      if (accountRef.use !== undefined) return accountRef.use.launchEnv('claude', accountId);
+      return accountId === null
+        ? { ok: true, data: {} }
+        : failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+    };
+    const principalClaudeDir = claudeConfigDirOf(buildTerminalEnv(process.env));
     const plannerCommand = resolvePlannerCommand(env, resolveExecutable('claude', process.env));
     const planner =
       process.env['APP_AGENT_ADAPTER'] === 'claude-code' || plannerCommand.overridden
@@ -538,7 +553,10 @@ app
             env: buildTerminalEnv(process.env),
             extraEnv: plannerCommand.extraEnv,
             // Cota esgotada: a falha do planejador diz a hora da renovação, lida do último estado dos limites.
-            quotaMessage: () => quotaExhaustedMessage(claudeLimits.get(), new Date()),
+            // A cota perguntada é a da conta em que a missão roda.
+            quotaMessage: (accountId) =>
+              quotaExhaustedMessage(limits.stateOf('claude', accountId), new Date()),
+            accountEnv: claudeAccountEnv,
           })
         : undefined;
     // Agente das missões: o Claude Code real com `APP_AGENT_ADAPTER=claude-code`. Em teste, um CLI falso
@@ -560,12 +578,32 @@ app
                 command: agentCommand.command,
                 commandPrefix: agentCommand.commandPrefix,
                 extraEnv: agentCommand.extraEnv,
+                account: {
+                  env: (accountId) => {
+                    const result = claudeAccountEnv(accountId);
+                    if (!result.ok) throw new Error(result.error.message);
+                    return result.data;
+                  },
+                  // A Principal lê o gasto onde sempre leu; a conta extra, na pasta dela.
+                  configDir: (accountId) =>
+                    accountId === null
+                      ? principalClaudeDir
+                      : (accountRef.use?.dataRootOf('claude', accountId) ?? principalClaudeDir),
+                },
               },
               terminalBackend,
             ),
           }
         : {}),
       planner,
+      accounts: {
+        defaultOf: (provider) => accountRef.use?.defaultOf(provider) ?? null,
+        labelOf: (provider, accountId) =>
+          accountRef.use?.labelOf(provider, accountId) ?? {
+            name: accountId === null ? 'Principal' : '',
+            removed: accountId !== null,
+          },
+      },
       // O `gh` falso dos testes só vale fora do aplicativo empacotado.
       allowGhTestOverrides: !app.isPackaged,
     });
@@ -580,42 +618,64 @@ app
       mainWindow !== undefined && !mainWindow.isDestroyed() && !mainWindow.isMinimized();
     const limitsDir = testDataDir ?? app.getPath('userData');
     const limitsCommand = resolveLimitsCommand(env, resolveExecutable('claude', process.env));
-    // Cada subserviço publica pelo agregador, que emite o estado inteiro (o renderer troca tudo a cada evento).
-    const claudeLimits = createLimitsService({
-      probe: limitsCommand.enabled
-        ? createClaudeLimitsProbe({
-            command: limitsCommand.command,
-            commandPrefix: limitsCommand.commandPrefix,
-            env: buildTerminalEnv(process.env),
-            extraEnv: limitsCommand.extraEnv,
-            cwd: join(limitsDir, 'limits-probe'),
-          })
-        : undefined,
-      store: createLimitsStore(join(limitsDir, 'limits.json')),
-      publish: () => limits.emit(),
-      isActive: limitsWindowActive,
-    });
     // Codex: lê só os arquivos de sessão dele (sem rede, sem cota, sem credencial) e não guarda nada em
     // `limits.json`. Em teste, sem `PROJECT_HUB_CODEX_HOME`, não há pasta e o serviço nem entra no estado.
     const codexHome = resolveCodexLimitsHome(env, process.env);
-    const codexLimits =
-      codexHome === undefined
-        ? undefined
-        : createLimitsService({
+    const limitsFileOf = (accountId: string | null): string =>
+      join(limitsDir, accountId === null ? 'limits.json' : `limits-${accountId}.json`);
+    // Limites por conta: cada conta tem o seu serviço, e o agregador decide quem é lido (a padrão e as contas em
+    // uso; a conta parada, só a pedido). A sonda recebe só a pasta da conta, nunca o ambiente de lançamento.
+    const limits = createAccountLimits({
+      accounts: {
+        defaultOf: (provider) => accountRef.use?.defaultOf(provider) ?? null,
+        listRoots: (provider) => accountRef.use?.listRoots(provider) ?? [],
+        labelOf: (provider, accountId) =>
+          accountRef.use?.labelOf(provider, accountId) ?? {
+            name: accountId === null ? 'Principal' : '',
+            removed: accountId !== null,
+          },
+      },
+      isLive: async (provider, accountId) =>
+        liveSessionsOfAccount(await listLiveTerminals(), provider, accountId).length > 0,
+      serviceFor: (provider, accountId, root) => {
+        if (provider === 'codex') {
+          if (codexHome === undefined) return undefined;
+          return createLimitsService({
             provider: 'codex',
-            probe: createCodexLimitsReader({ codexHome }),
+            probe: createCodexLimitsReader({ codexHome: accountId === null ? codexHome : root }),
             publish: () => limits.emit(),
             isActive: limitsWindowActive,
-            firstReadDelayMs: 1_000,
-            intervalMs: 2 * 60_000,
             cooldownMs: 5_000,
           });
-    const limits = createLimitsHub({
-      services: {
-        claude: claudeLimits,
-        ...(codexLimits === undefined ? {} : { codex: codexLimits }),
+        }
+        return createLimitsService({
+          probe: limitsCommand.enabled
+            ? createClaudeLimitsProbe({
+                command: limitsCommand.command,
+                commandPrefix: limitsCommand.commandPrefix,
+                // A Principal lê com o ambiente de sempre; a conta extra, com a pasta dela no lugar.
+                env:
+                  accountId === null
+                    ? buildTerminalEnv(process.env)
+                    : buildTerminalEnv(process.env, { [ACCOUNT_ENV_VARIABLE.claude]: root }),
+                extraEnv: limitsCommand.extraEnv,
+                cwd: join(limitsDir, 'limits-probe'),
+              })
+            : undefined,
+          store: createLimitsStore(limitsFileOf(accountId)),
+          publish: () => limits.emit(),
+          isActive: limitsWindowActive,
+        });
+      },
+      removeStored: (_provider, accountId) => {
+        if (accountId !== null) rmSync(limitsFileOf(accountId), { force: true });
       },
       publish: publishLimitsEvent,
+      isActive: limitsWindowActive,
+      cycles: {
+        claude: { firstReadDelayMs: 5_000, intervalMs: 15 * 60_000 },
+        codex: { firstReadDelayMs: 1_000, intervalMs: 2 * 60_000 },
+      },
     });
     // Para os timers e mata a leitura em andamento, para o `claude` filho não sobreviver ao app.
     app.once('will-quit', () => {
@@ -822,6 +882,17 @@ app
       root: accountsRoot(dataDir),
       accounts: services.accounts,
     });
+    // Os leitores recebem o mesmo ambiente filtrado do Início: nos testes, as pastas de teste; fora deles, as reais.
+    const sources = sessionSourcesOf(process.env);
+    // A conta em uso: a padrão, o nome, a pasta de dados (para os leitores) e o ambiente do lançamento (só para
+    // o painel, o agente da missão e o planejador).
+    const accountUse = createAccountUse({
+      accounts: services.accounts,
+      settings: services.profileDeps.settings,
+      paths: accountPaths,
+      env: sources.env,
+    });
+    accountRef.use = accountUse;
     const accountCli = createAccountCli({
       // Do ambiente filtrado (`env`): empacotado, o gancho de teste não existe.
       providers: accountCliProviders(providers, resolveAccountCliScript(env), process.platform),
@@ -830,7 +901,6 @@ app
       run: runPlannerProcess,
       cwd: dataDir,
     });
-    let listLiveTerminals: () => Promise<TerminalSummary[]> = () => Promise.resolve([]);
     const accountsService = createAccountsService({
       accounts: services.accounts,
       settings: services.profileDeps.settings,
@@ -839,7 +909,6 @@ app
       providers,
       newId: randomUUID,
       now: () => new Date().toISOString(),
-      // Os painéis ainda não abrem com conta escolhida: todos rodam na Principal, e só ela é presa por eles.
       liveSessionsOf: async (provider, accountId) =>
         liveSessionsOfAccount(await listLiveTerminals(), provider, accountId),
     });
@@ -878,15 +947,22 @@ app
       providers,
       projectName: (projectId) => services.workspaceDeps.projects.get(projectId)?.name,
     });
-    // Os leitores recebem o mesmo ambiente filtrado do Início: nos testes, as pastas de teste; fora deles, as reais.
-    const sources = sessionSourcesOf(process.env);
     const sessionHistory = createSessionHistory({
       indexFile: join(testDataDir ?? app.getPath('userData'), 'session-index.json'),
-      readers: [
-        createClaudeSessionReader(sources.env),
-        createCodexSessionReader(sources.env),
+      // Um leitor por conta de cada programa, montado a cada varredura: conta criada ou removida vale na seguinte.
+      readers: () => [
+        ...accountUse
+          .listRoots('claude')
+          .map(({ accountId, root }) => createClaudeSessionReader(root, accountId)),
+        ...accountUse
+          .listRoots('codex')
+          .map(({ accountId, root }) => createCodexSessionReader(root, accountId)),
         createAntigravitySessionReader(sources.antigravityHistory),
       ],
+      accountLabel: (provider, accountId) =>
+        accountUse.isAccountProvider(provider)
+          ? accountUse.labelOf(provider, accountId)
+          : { name: '', removed: false },
       projects: () =>
         services.workspaceDeps.projects
           .list()
@@ -904,7 +980,10 @@ app
         missions: services.agentActivityDeps.missions,
         readSessions: createSessionReader({
           terminals: services.agentActivityDeps.terminals,
-          ...sessionSourcesOf(process.env),
+          rootOf: (provider, accountId) => accountUse.dataRootOf(provider, accountId),
+          ...(sources.antigravityHistory === undefined
+            ? {}
+            : { antigravityHistory: sources.antigravityHistory }),
         }),
         agents: agentActivityAgents(providers.list()),
         now: () => new Date().toISOString(),
@@ -930,6 +1009,7 @@ app
       hooks: terminalBackend.hooks,
       settingsDir: terminalSettingsDir,
       browserAccess: agentAccess,
+      accounts: accountUse,
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
     // O serviço de contas nasce antes do de terminais: a lista entra aqui quando ele existe.
@@ -971,6 +1051,7 @@ app
       now: () => new Date().toISOString(),
       newId: randomUUID,
       publish: publishWorkspace,
+      accounts: accountUse,
     });
     // Fechar a aba do projeto fecha também as páginas do navegador dele; a lista de abas fica no banco.
     const workspaceService: typeof baseWorkspaceService = {

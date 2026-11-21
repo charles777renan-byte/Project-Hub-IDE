@@ -1,6 +1,6 @@
 import type { AppResult } from '@project-hub/contracts';
 import type { Mission } from '@project-hub/domain';
-import type { MissionRepository, ProjectRepository } from '../ports';
+import type { AccountDirectory, MissionRepository, ProjectRepository } from '../ports';
 import { failure } from '../result';
 
 /** Perfil de agente e de execução das missões até existirem perfis configuráveis. */
@@ -10,6 +10,8 @@ const DEFAULT_EXECUTION_PROFILE_ID = 'padrao';
 export type CreateMissionDeps = {
   repo: Pick<MissionRepository, 'insertMission' | 'appendAudit' | 'transaction'>;
   projects: Pick<ProjectRepository, 'get'>;
+  /** As contas do Claude Code: a missão nasce na padrão. Sem elas, na Principal. */
+  accounts?: Pick<AccountDirectory, 'defaultOf'>;
   now: () => string;
   newId: () => string;
 };
@@ -66,6 +68,9 @@ export function createMission(
     createdAt: at,
     updatedAt: at,
   };
+  // A conta fica gravada na criação: trocar a padrão depois não muda as missões que já existem.
+  const accountId = deps.accounts?.defaultOf('claude') ?? null;
+  if (accountId !== null) mission.accountId = accountId;
   deps.repo.transaction(() => {
     deps.repo.insertMission(mission);
     deps.repo.appendAudit({

@@ -74,7 +74,12 @@ export type ClaudePlannerOptions = {
    * Mensagem para quando a cota do Claude acabou, ou `undefined` se ela não acabou. Só é perguntada quando a falha
    * seria "não respondeu": a composição responde com o último estado dos limites, que já sabe quando a cota renova.
    */
-  quotaMessage?: () => string | undefined;
+  quotaMessage?: (accountId: string | null) => string | undefined;
+  /**
+   * As variáveis da conta da missão (`null` é a Principal), postas por cima do ambiente. Conta que não vale é falha,
+   * e o processo não roda. Sem a opção, o planejador roda na Principal.
+   */
+  accountEnv?: (accountId: string | null) => AppResult<Record<string, string>>;
 };
 
 /** Schema do plano (JSON Schema) que o CLI aplica à resposta. Espelha `PlannedTask`, dentro de `tasks`. */
@@ -279,6 +284,22 @@ export const runPlannerProcess: PlannerRunner = (input) =>
  * Planejador do Claude Code: roda `claude -p` sem terminal, só leitura, na pasta do projeto, e valida o
  * plano devolvido. Nunca rejeita: toda falha do processo vira resultado de falha com mensagem fixa.
  */
+/**
+ * O ambiente do processo com as variáveis da conta por cima. No Windows o nome não diferencia maiúsculas, e num
+ * bloco com duas vale a primeira: a herdada sai quando a conta traz uma de mesmo nome em outra caixa.
+ */
+function withAccountEnv(
+  env: NodeJS.ProcessEnv,
+  account: Record<string, string>,
+): NodeJS.ProcessEnv {
+  const replaced = new Set(Object.keys(account).map((key) => key.toUpperCase()));
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!replaced.has(key.toUpperCase())) out[key] = value;
+  }
+  return { ...out, ...account };
+}
+
 export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
   const run = options.run ?? runPlannerProcess;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -286,13 +307,17 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
   const env = { ...options.env, ...options.extraEnv };
   const processPlanner: Planner = {
     async plan(input) {
+      const account = options.accountEnv?.(input.accountId ?? null);
+      if (account !== undefined && !account.ok) {
+        return failure('AGENT_UNAVAILABLE', account.error.message);
+      }
       let output: { stdout: string; exitCode: number };
       try {
         output = await run({
           command: options.command,
           args,
           cwd: input.cwd,
-          env,
+          env: account === undefined ? env : withAccountEnv(env, account.data),
           stdin: buildPlannerPrompt(input),
           timeoutMs,
           signal: input.signal,
@@ -322,7 +347,7 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
       const result = await processPlanner.plan(input);
       // A cota esgotada aparece como "não respondeu": se o último estado de limites diz que ela acabou, a mensagem é a da cota.
       if (!result.ok && result.error.message === NO_RESPONSE_MESSAGE) {
-        const quota = options.quotaMessage?.();
+        const quota = options.quotaMessage?.(input.accountId ?? null);
         if (quota !== undefined) return failure('AGENT_UNAVAILABLE', quota);
       }
       return result;

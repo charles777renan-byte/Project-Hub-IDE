@@ -1,5 +1,6 @@
 import { CHANNELS, type LayoutNode, type ProviderInfo } from '@project-hub/contracts';
 import type { IpcMainInvokeEvent } from 'electron';
+import { failure } from '@project-hub/application';
 import { describe, expect, it, vi } from 'vitest';
 import { registerWorkspaceHandlers } from '../src/main/ipc/workspaces';
 import type { IpcRegistry } from '../src/main/ipc/trusted-handler';
@@ -135,7 +136,6 @@ describe('canais de workspaces e provedores', () => {
     await fake.call(CHANNELS.workspacesAddPane, TRUSTED, {
       workspaceId: 'w1',
       provider: 'codex',
-      extra: 'ignorado',
     });
     await fake.call(CHANNELS.workspacesRemovePane, TRUSTED, { workspaceId: 'w1', leafId: 'l3' });
     await fake.call(CHANNELS.workspacesSaveLayout, TRUSTED, { workspaceId: 'w1', layout: null });
@@ -148,6 +148,53 @@ describe('canais de workspaces e provedores', () => {
     expect(service.addPane).toHaveBeenCalledWith('w1', 'codex');
     expect(service.removePane).toHaveBeenCalledWith('w1', 'l3');
     expect(service.saveLayout).toHaveBeenCalledWith('w1', null);
+  });
+
+  it('leva a conta do painel novo só quando o pedido a traz, e null é a Principal', async () => {
+    const { fake, service } = setup();
+    const account = '11111111-1111-4111-8111-111111111111';
+
+    await fake.call(CHANNELS.workspacesAddPane, TRUSTED, {
+      workspaceId: 'w1',
+      provider: 'claude',
+      accountId: account,
+    });
+    await fake.call(CHANNELS.workspacesAddPane, TRUSTED, {
+      workspaceId: 'w1',
+      provider: 'claude',
+      accountId: null,
+    });
+    await fake.call(CHANNELS.workspacesSplitPane, TRUSTED, {
+      workspaceId: 'w1',
+      leafId: 'l1',
+      side: 'right',
+      provider: 'codex',
+      accountId: account,
+    });
+    await fake.call(CHANNELS.workspacesSplitPane, TRUSTED, {
+      workspaceId: 'w1',
+      leafId: 'l1',
+      side: 'right',
+      provider: 'codex',
+    });
+
+    expect(service.addPane).toHaveBeenNthCalledWith(1, 'w1', 'claude', account);
+    expect(service.addPane).toHaveBeenNthCalledWith(2, 'w1', 'claude', null);
+    expect(service.splitPane).toHaveBeenNthCalledWith(1, 'w1', 'l1', 'right', 'codex', account);
+    expect(service.splitPane).toHaveBeenNthCalledWith(2, 'w1', 'l1', 'right', 'codex');
+  });
+
+  it.each([
+    { workspaceId: 'w1', provider: 'claude', accountId: 'C:/contas/outra' },
+    { workspaceId: 'w1', provider: 'claude', env: { CLAUDE_CONFIG_DIR: 'C:/x' } },
+    { workspaceId: 'w1', provider: 'claude', cwd: 'C:/x' },
+  ])('recusa painel novo com conta que não é id ou com campo a mais: %j', async (payload) => {
+    const { fake, service } = setup();
+
+    const result = await fake.call(CHANNELS.workspacesAddPane, TRUSTED, payload);
+
+    expect(result).toEqual(failure('VALIDATION_FAILED', 'Informe o workspace e o programa.'));
+    expect(service.addPane).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -76,6 +76,7 @@ describe('estado e get()', () => {
 
     expect(service.get()).toEqual({
       providers: [{ provider: 'claude', windows: [], refreshing: false }],
+      accounts: [],
     });
     expect(probe.reads()).toBe(0);
   });
@@ -486,7 +487,10 @@ describe('serviço inerte (sem sonda)', () => {
     const publish = vi.fn();
     const { store } = memoryStore({ windows: WINDOWS, capturedAt: '2026-10-28T11:00:00.000Z' });
     const service = createLimitsService({ store, publish, isActive: () => true });
-    const empty = { providers: [{ provider: 'claude', windows: [], refreshing: false }] };
+    const empty = {
+      providers: [{ provider: 'claude', windows: [], refreshing: false }],
+      accounts: [],
+    };
 
     expect(service.get()).toEqual(empty);
     expect(await service.refresh()).toEqual(empty);
@@ -509,7 +513,7 @@ describe('serviço de outro provedor (Codex)', () => {
     });
 
     expect(service.snapshot()).toEqual({ provider: 'codex', windows: [], refreshing: false });
-    expect(service.get()).toEqual({ providers: [service.snapshot()] });
+    expect(service.get()).toEqual({ providers: [service.snapshot()], accounts: [] });
   });
 
   it('o padrão continua sendo o Claude', () => {

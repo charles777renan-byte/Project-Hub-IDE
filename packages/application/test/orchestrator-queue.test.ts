@@ -82,6 +82,7 @@ function makeSession(
 type ControlledAgent = AgentAdapter & {
   starts: AgentStartInput[];
   attaches: [string, string][];
+  attachContexts: unknown[];
   lives: Map<string, Live>;
 };
 
@@ -89,6 +90,7 @@ type ControlledAgent = AgentAdapter & {
 function controlledAgent(alive: Set<string>): ControlledAgent {
   const starts: AgentStartInput[] = [];
   const attaches: [string, string][] = [];
+  const attachContexts: unknown[] = [];
   const lives = new Map<string, Live>();
   const stops: string[] = [];
   let count = 0;
@@ -96,6 +98,7 @@ function controlledAgent(alive: Set<string>): ControlledAgent {
     type: 'controlado',
     starts,
     attaches,
+    attachContexts,
     lives,
     probe: () => Promise.resolve({ available: true }),
     getCapabilities: () =>
@@ -120,8 +123,9 @@ function controlledAgent(alive: Set<string>): ControlledAgent {
       alive.add(id);
       return Promise.resolve(session);
     },
-    attach: (sessionId, cursor) => {
+    attach: (sessionId, cursor, context) => {
       attaches.push([sessionId, cursor]);
+      attachContexts.push(context);
       if (!alive.has(sessionId)) return Promise.resolve(undefined);
       const { session, live } = makeSession(sessionId, Number(cursor), stops);
       lives.set(sessionId, live);
@@ -256,6 +260,42 @@ describe('fila de execuções', () => {
 });
 
 describe('reanexação ao abrir o app', () => {
+  it('reanexa na conta da missão, e na Principal não manda contexto', async () => {
+    const account = '11111111-1111-4111-8111-111111111111';
+    const h = setup();
+    h.alive.add('sessao-a');
+    h.alive.add('sessao-b');
+    h.repo.insertMission(missionFixture({ id: 'm1', status: 'running', accountId: account }));
+    h.repo.insertMission(missionFixture({ id: 'm2', status: 'running' }));
+    h.repo.insertExecution({
+      id: 'exec-1',
+      missionId: 'm1',
+      attempt: 1,
+      status: 'running',
+      agentSessionId: 'sessao-a',
+      agentCursor: '2',
+      startedAt: T0,
+    });
+    h.repo.insertExecution({
+      id: 'exec-2',
+      missionId: 'm2',
+      attempt: 1,
+      status: 'running',
+      agentSessionId: 'sessao-b',
+      agentCursor: '0',
+      startedAt: T0,
+    });
+
+    const orchestrator = h.build();
+    await orchestrator.cancelMission('nao-existe');
+    await waitFor(() => h.agent.attaches.length === 2);
+
+    const contextOf = (session: string) =>
+      h.agent.attachContexts[h.agent.attaches.findIndex(([id]) => id === session)];
+    expect(contextOf('sessao-a')).toEqual({ accountId: account });
+    expect(contextOf('sessao-b')).toBeUndefined();
+  });
+
   it('reanexa uma execução viva a partir da posição gravada, e segue até o fim', async () => {
     const h = setup();
     h.alive.add('sessao-viva');

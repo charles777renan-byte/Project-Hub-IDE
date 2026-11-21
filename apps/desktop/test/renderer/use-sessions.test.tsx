@@ -34,6 +34,8 @@ function summary(id: string): SessionSummary {
     lastTurns: null,
     resumable: true,
     resumeBlockedReason: null,
+    accountId: null,
+    accountName: null,
   };
 }
 

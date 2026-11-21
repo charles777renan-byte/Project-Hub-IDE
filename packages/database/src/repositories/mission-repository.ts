@@ -49,6 +49,8 @@ export interface MissionRepository {
   getMission(id: string): Mission | undefined;
   listMissions(projectId: string): Mission[];
   updateMission(id: string, changes: MissionChanges): void;
+  /** Troca a conta da missão (`null` é a Principal) e a data de atualização. */
+  setMissionAccount(id: string, accountId: string | null, at: string): void;
   insertSteps(steps: MissionStep[]): void;
   listSteps(missionId: string): MissionStep[];
   replaceSteps(missionId: string, steps: MissionStep[]): void;
@@ -130,6 +132,7 @@ function toMission(row: MissionRow, criteria: CriterionRow[]): Mission {
   if (row.context !== null) mission.context = row.context;
   if (row.worktreeId !== null) mission.worktreeId = row.worktreeId;
   if (row.worktreePath !== null) mission.worktreePath = row.worktreePath;
+  if (row.accountId !== null) mission.accountId = row.accountId;
   if (row.startedAt !== null) mission.startedAt = row.startedAt;
   if (row.finishedAt !== null) mission.finishedAt = row.finishedAt;
   return mission;
@@ -219,6 +222,7 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
             altersCode: mission.altersCode,
             worktreeId: mission.worktreeId ?? null,
             worktreePath: mission.worktreePath ?? null,
+            accountId: mission.accountId ?? null,
             createdAt: mission.createdAt,
             updatedAt: mission.updatedAt,
             startedAt: mission.startedAt ?? null,
@@ -253,6 +257,10 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
         .orderBy(desc(missions.updatedAt), asc(missions.id))
         .all()
         .map((row) => toMission(row, criteriaOf(row.id)));
+    },
+
+    setMissionAccount(id, accountId, at) {
+      db.update(missions).set({ accountId, updatedAt: at }).where(eq(missions.id, id)).run();
     },
 
     updateMission(id, changes) {

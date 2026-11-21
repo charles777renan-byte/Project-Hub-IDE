@@ -18,9 +18,12 @@ import { AcceptancePanel } from '../components/workspace/AcceptancePanel';
 import { DiffPanel, type DiffSummary } from '../components/workspace/DiffPanel';
 import { MissionSummary } from '../components/workspace/MissionSummary';
 import { TestsPanel } from '../components/workspace/TestsPanel';
+import { accountUsageText } from '../limits-format';
 import { needsDecision, primaryActionOf, verifiedCriteria } from '../mission-text';
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
+import { useAccounts } from '../use-accounts';
+import { useLimits } from '../use-limits';
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
 
@@ -284,6 +287,13 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
 
   /** Chamada longa: início, decisão, resposta, nova tentativa e planejamento. */
   const run = (action: () => Promise<AppResult<unknown>>) => execute(action, setBusy);
+  // As contas do Claude Code e o uso de cada uma, para a escolha da conta em "Sua decisão".
+  const { state: accountsState } = useAccounts();
+  const { limits } = useLimits();
+  const claudeAccounts =
+    accountsState.status === 'ready'
+      ? accountsState.data.groups.find((group) => group.provider === 'claude')?.accounts
+      : undefined;
   /**
    * Planeja a missão (Orquestrar). Gasta a cota do Claude, então só roda num clique. Sem instrução, a
    * chamada leva só o id da missão. A falha aparece no bloco "Sua decisão", junto do botão.
@@ -458,6 +468,22 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
           planning={planning}
           controlBusy={controlBusy}
           error={actionError ?? undefined}
+          account={
+            claudeAccounts === undefined
+              ? undefined
+              : {
+                  accounts: claudeAccounts,
+                  usageOf: (accountId) =>
+                    accountUsageText(
+                      limits?.accounts.find(
+                        (entry) => entry.provider === 'claude' && entry.accountId === accountId,
+                      ),
+                      new Date(),
+                    ),
+                  onChange: (accountId) =>
+                    void run(() => window.projectHub.missions.setAccount({ missionId, accountId })),
+                }
+          }
           onGeneratePlan={() => void runPlan()}
           onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}
           onRequestNewPlan={(instruction) => void runPlan(instruction)}

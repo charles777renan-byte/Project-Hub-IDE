@@ -9,6 +9,7 @@ const iso = (day: number, hour: number, minute: number) =>
 
 function claude(overrides: Partial<ProviderLimitsDto> = {}): LimitsDto {
   return {
+    accounts: [],
     providers: [
       {
         provider: 'claude',
@@ -223,6 +224,7 @@ describe('ClaudeLimits: janela esgotada', () => {
 
 function codex(overrides: Partial<ProviderLimitsDto> = {}): LimitsDto {
   return {
+    accounts: [],
     providers: [
       {
         provider: 'codex',
@@ -268,6 +270,7 @@ describe('ClaudeLimits com provider="codex"', () => {
 
   it('ignora o cartão do Claude quando o DTO traz os dois provedores', async () => {
     const both: LimitsDto = {
+      accounts: [],
       providers: [...claude().providers, ...codex().providers],
     };
     install(both);
@@ -364,6 +367,7 @@ describe('ClaudeLimits: o botão Atualizar vale para todos os programas', () => 
 
   it('fica desabilitado quando qualquer programa está lendo, não só o do cartão', async () => {
     const both: LimitsDto = {
+      accounts: [],
       providers: [
         ...claude({ refreshing: true }).providers,
         ...codex({ refreshing: false }).providers,
