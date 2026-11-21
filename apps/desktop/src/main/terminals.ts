@@ -24,6 +24,7 @@ import {
   type ClaudeHooks,
   type HookEventName,
 } from '@project-hub/agent-adapters';
+import { accountLaunchArgs } from './accounts/account-paths';
 import { ACCOUNT_REMOVED, type AccountUse } from './accounts/account-use';
 import { buildTerminalEnv } from '../terminal-host/env';
 import { BROWSER_PERMISSION, type AgentBrowserAccess } from './browser/agent/agent-launch';
@@ -457,9 +458,10 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     const base = {
       // O que vai depois dos argumentos do programa (`cmd.exe /d /c x.cmd`, numa instalação `.cmd`): antes deles,
       // quem leria as opções seria o `cmd.exe`. Os do navegador são opções gerais e vêm antes dos extras (a
-      // retomada); o token dele nunca está neles, só no ambiente.
+      // retomada); o token dele nunca está neles, só no ambiente. As opções da conta também vêm antes da retomada.
       args: [
         ...(browser?.args ?? []),
+        ...accountLaunchArgs(provider, accountId),
         ...(options.args ?? []),
         ...(startCommand === undefined
           ? []

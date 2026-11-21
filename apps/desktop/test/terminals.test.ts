@@ -1534,6 +1534,9 @@ describe('painel aberto numa conta do programa', () => {
         if (provider === 'claude' && accountId === WORK) {
           return { ok: true, data: { CLAUDE_CONFIG_DIR: workDir } };
         }
+        if (provider === 'codex' && accountId === WORK) {
+          return { ok: true, data: { CODEX_HOME: workDir } };
+        }
         return {
           ok: false,
           error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
@@ -1603,6 +1606,30 @@ describe('painel aberto numa conta do programa', () => {
     expect(h.opened).toEqual([]);
     expect(h.sessions.repo.listOpen()).toEqual([]);
     expect(h.hooks.registered).toEqual([]);
+  });
+
+  it('o Codex de uma conta extra abre sem o servidor de fundo, antes da retomada; a Principal e o Claude, como sempre', async () => {
+    // O Codex abre um socket dentro da pasta da conta, e o caminho do socket tem limite (108 caracteres no
+    // Windows). A pasta de uma conta extra, dentro da pasta de dados do app, passa dele.
+    const codexInstalled: ProviderRegistry = {
+      ...providers,
+      resolve: (id) =>
+        id === 'codex'
+          ? { ok: true, launch: { command: 'C:/bin/codex.exe', args: [] } }
+          : providers.resolve(id),
+    };
+    const h = setup({ accounts: accounts(), providers: codexInstalled });
+
+    await h.service.openSession('p1', 'codex', { accountId: WORK, args: ['resume', 'abc'] });
+    await h.service.openSession('p1', 'codex', { args: ['resume', 'abc'] });
+    await h.service.openSession('p1', 'claude', { accountId: WORK });
+
+    const [extra, principal, claude] = h.opened;
+    expect(extra?.env['CODEX_HOME']).toBe(workDir);
+    expect(extra?.args.slice(-3)).toEqual(['--no-daemon', 'resume', 'abc']);
+    expect(principal?.args).not.toContain('--no-daemon');
+    expect(principal?.args.slice(-2)).toEqual(['resume', 'abc']);
+    expect(claude?.args).not.toContain('--no-daemon');
   });
 
   it('programa sem contas não aceita conta', async () => {
