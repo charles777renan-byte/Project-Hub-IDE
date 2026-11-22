@@ -9,10 +9,7 @@ import type {
 import type { AccountCli, AccountStatus } from '../../src/main/accounts/account-cli';
 import type { AccountPaths } from '../../src/main/accounts/account-paths';
 import { VAULT_UNAVAILABLE } from '../../src/main/accounts/account-vault';
-import {
-  AUTO_SWITCH_API_KEY,
-  AUTO_SWITCH_KEY,
-} from '../../src/main/accounts/account-switch';
+import { AUTO_SWITCH_API_KEY, AUTO_SWITCH_KEY } from '../../src/main/accounts/account-switch';
 import {
   createAccountsService,
   DEFAULT_ACCOUNT_KEY,
@@ -661,9 +658,9 @@ describe('troca automática de conta', () => {
 
   it('recusa ligar com uma conta só', async () => {
     const { service, settings } = setup();
-    expect(await service.setAutoSwitch({ provider: 'codex', option: 'enabled', value: true })).toEqual(
-      failure('VALIDATION_FAILED', 'Adicione outra conta para usar a troca automática.'),
-    );
+    expect(
+      await service.setAutoSwitch({ provider: 'codex', option: 'enabled', value: true }),
+    ).toEqual(failure('VALIDATION_FAILED', 'Adicione outra conta para usar a troca automática.'));
     expect(settings.values.has(AUTO_SWITCH_KEY('codex'))).toBe(false);
   });
 
@@ -692,5 +689,18 @@ describe('troca automática de conta', () => {
       await service.setAutoSwitch({ provider: 'codex', option: 'enabled', value: false }),
     ).toEqual({ ok: true, data: undefined });
     expect(settings.values.get(AUTO_SWITCH_KEY('codex'))).toBe('false');
+  });
+
+  it('incluir API vale só no Claude Code, mesmo com conta API do Codex', async () => {
+    const codexApi: AccountRecord = { ...API_ROW, provider: 'codex' };
+    const { service, settings } = setup({ extraRows: [codexApi], keyStates: { [API]: 'stored' } });
+    await service.setAutoSwitch({ provider: 'codex', option: 'enabled', value: true });
+
+    expect(
+      await service.setAutoSwitch({ provider: 'codex', option: 'includeApi', value: true }),
+    ).toEqual(
+      failure('VALIDATION_FAILED', 'Incluir contas de chave de API vale só no Claude Code.'),
+    );
+    expect(settings.values.has(AUTO_SWITCH_API_KEY)).toBe(false);
   });
 });
