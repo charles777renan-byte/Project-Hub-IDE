@@ -42,6 +42,8 @@ export type Overview = {
   items: OverviewItem[];
   /** As missões em `failed`, na ordem dos projetos. */
   failed: OverviewItem[];
+  /** As missões que esperam o cofre das chaves de API (na fila ou pausadas): avisam como os outros pedidos. */
+  vaultWaiting?: OverviewItem[];
   /** Aprovações pendentes das missões em `waiting_approval` cuja leitura deu certo. */
   approvals: PendingApproval[];
   /** Missões em `waiting_approval` cuja leitura (`missions.get`) falhou: as aprovações delas faltam. */
@@ -185,6 +187,9 @@ async function load(): Promise<LoadResult> {
         overview.items.push({ projectId, mission });
       }
       if (mission.status === 'failed') overview.failed.push({ projectId, mission });
+      if (mission.vaultLocked === true) {
+        (overview.vaultWaiting ??= []).push({ projectId, mission });
+      }
       if (mission.status === 'waiting_approval')
         approvalReads.push(approvalsOf(projectId, mission));
     }

@@ -2,6 +2,7 @@ import { failure } from '@project-hub/application';
 import {
   accountTargetInputSchema,
   addAccountInputSchema,
+  apiKeyTargetInputSchema,
   CHANNELS,
   loginResizeInputSchema,
   loginWriteInputSchema,
@@ -11,6 +12,7 @@ import {
   type AppResult,
 } from '@project-hub/contracts';
 import type { AccountsService } from '../accounts/accounts-service';
+import type { ApiKeyService } from '../accounts/api-key-service';
 import type { LoginService } from '../accounts/login-service';
 import {
   registerTrustedHandler,
@@ -28,9 +30,9 @@ const DONE: AppResult<undefined> = { ok: true, data: undefined };
 export function registerAccountsHandlers(
   registry: IpcRegistry,
   isTrusted: SenderCheck,
-  deps: { accounts: AccountsService; login: LoginService },
+  deps: { accounts: AccountsService; login: LoginService; apiKeys: ApiKeyService },
 ): void {
-  const { accounts, login } = deps;
+  const { accounts, login, apiKeys } = deps;
   const on = (
     channel: string,
     run: (event: unknown, payload: unknown) => Promise<AppResult<unknown>>,
@@ -60,6 +62,16 @@ export function registerAccountsHandlers(
   on(
     CHANNELS.accountsRemove,
     validated(removeAccountInputSchema, (input) => accounts.remove(input)),
+  );
+
+  // A chave nunca vem da tela: colar a lê da área de transferência aqui, e a resposta leva só os 4 últimos.
+  on(
+    CHANNELS.accountsPasteKey,
+    validated(apiKeyTargetInputSchema, (input) => apiKeys.paste(input)),
+  );
+  on(
+    CHANNELS.accountsRemoveKey,
+    validated(apiKeyTargetInputSchema, (input) => apiKeys.remove(input)),
   );
 
   on(

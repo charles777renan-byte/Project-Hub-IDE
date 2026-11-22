@@ -486,6 +486,7 @@ describe('buildProjectHubApi', () => {
       'sessions',
       'system',
       'terminals',
+      'vault',
       'workspaces',
       'worktrees',
     ]);
@@ -567,9 +568,20 @@ describe('buildProjectHubApi', () => {
       'disconnect',
       'list',
       'login',
+      'pasteKey',
       'remove',
+      'removeKey',
       'rename',
       'setDefault',
+    ]);
+    // O cofre não tem método que leve senha: destrancar e trocar só abrem a janela do cofre.
+    expect(Object.keys(api.vault).sort()).toEqual([
+      'changePassword',
+      'get',
+      'lock',
+      'reset',
+      'subscribe',
+      'unlock',
     ]);
     expect(Object.keys(api.accounts.login).sort()).toEqual([
       'cancel',

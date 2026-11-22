@@ -76,10 +76,11 @@ export type ClaudePlannerOptions = {
    */
   quotaMessage?: (accountId: string | null) => string | undefined;
   /**
-   * As variáveis da conta da missão (`null` é a Principal), postas por cima do ambiente. Conta que não vale é falha,
-   * e o processo não roda. Sem a opção, o planejador roda na Principal.
+   * As variáveis da conta da missão (`null` é a Principal), postas por cima do ambiente e pedidas a cada plano (a
+   * conta por chave de API traz a chave). Conta que não abre agora é falha, e o processo não roda: o cofre trancado
+   * mantém o código `VAULT_LOCKED`, o resto vira "agente indisponível" com a frase. Sem a opção, roda na Principal.
    */
-  accountEnv?: (accountId: string | null) => AppResult<Record<string, string>>;
+  accountEnv?: (accountId: string | null) => Promise<AppResult<Record<string, string>>>;
 };
 
 /** Schema do plano (JSON Schema) que o CLI aplica à resposta. Espelha `PlannedTask`, dentro de `tasks`. */
@@ -307,9 +308,20 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
   const env = { ...options.env, ...options.extraEnv };
   const processPlanner: Planner = {
     async plan(input) {
-      const account = options.accountEnv?.(input.accountId ?? null);
+      // Sem contas, nada a esperar: o processo nasce na mesma volta, e um cancelamento logo depois chega a ele.
+      const account =
+        options.accountEnv === undefined
+          ? undefined
+          : await options.accountEnv(input.accountId ?? null);
       if (account !== undefined && !account.ok) {
-        return failure('AGENT_UNAVAILABLE', account.error.message);
+        return failure(
+          account.error.code === 'VAULT_LOCKED' ? 'VAULT_LOCKED' : 'AGENT_UNAVAILABLE',
+          account.error.message,
+        );
+      }
+      // Cancelado enquanto o ambiente da conta era lido: nenhum processo nasce com a chave.
+      if (account !== undefined && input.signal.aborted) {
+        return failure('AGENT_UNAVAILABLE', CANCELLED_MESSAGE);
       }
       let output: { stdout: string; exitCode: number };
       try {

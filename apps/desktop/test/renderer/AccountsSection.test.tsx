@@ -9,6 +9,7 @@ import type {
   LoginDto,
   LoginEvent,
   ProjectHubApi,
+  VaultDto,
 } from '@project-hub/contracts';
 import { AccountsSection } from '../../src/renderer/components/settings/AccountsSection';
 
@@ -54,6 +55,7 @@ function account(overrides: Partial<AccountDto>): AccountDto {
     name: 'Principal',
     isPrincipal: true,
     isDefault: false,
+    kind: 'subscription',
     state: 'connected',
     ...overrides,
   };
@@ -156,15 +158,16 @@ afterEach(() => {
 });
 
 describe('AccountsSection: lista', () => {
-  it('diz como o login é guardado', async () => {
+  it('diz como o login e a chave de API são guardados, sem prometer que o app não guarda nada', async () => {
     installApi();
     render(<AccountsSection />);
     expect(screen.getByRole('heading', { level: 2, name: 'Contas' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        'O login é feito no próprio programa de cada conta e fica guardado por ele. O Project Hub não vê nem guarda senha ou token.',
+        'Cada programa pode ter várias contas. Na de assinatura, o login fica no próprio programa e o Project Hub não vê a senha nem o token. Na de chave de API, a chave fica cifrada no cofre do app, neste computador.',
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/não vê nem guarda senha ou token/)).toBeNull();
     await group('Claude Code');
   });
 
@@ -253,13 +256,18 @@ describe('AccountsSection: adicionar e renomear', () => {
     const claude = await group('Claude Code');
     await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar conta' }));
 
+    expect(within(claude).getByRole('form', { name: 'Nova conta do Claude Code' })).toBeVisible();
+    expect(within(claude).getByRole('radio', { name: 'Assinatura' })).toHaveFocus();
     const field = within(claude).getByRole('textbox', { name: 'Nome da conta' });
-    expect(field).toHaveFocus();
     expect(field).toHaveAttribute('maxlength', '40');
     await userEvent.type(field, 'Estudos{Enter}');
 
     await waitFor(() =>
-      expect(api.add).toHaveBeenCalledWith({ provider: 'claude', name: 'Estudos' }),
+      expect(api.add).toHaveBeenCalledWith({
+        provider: 'claude',
+        name: 'Estudos',
+        kind: 'subscription',
+      }),
     );
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
     expect(within(claude).queryByRole('textbox', { name: 'Nome da conta' })).toBeNull();
@@ -277,7 +285,7 @@ describe('AccountsSection: adicionar e renomear', () => {
       within(claude).getByRole('textbox', { name: 'Nome da conta' }),
       'Trabalho',
     );
-    await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar' }));
+    await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar conta' }));
 
     expect(await within(claude).findByRole('alert')).toHaveTextContent(
       'Já existe uma conta com este nome neste programa.',
@@ -293,6 +301,21 @@ describe('AccountsSection: adicionar e renomear', () => {
     await userEvent.click(within(claude).getByRole('button', { name: 'Cancelar' }));
     expect(within(claude).queryByRole('textbox')).toBeNull();
     expect(api.add).not.toHaveBeenCalled();
+  });
+
+  it('o botão do cabeçalho some com o painel aberto e recebe o foco quando ele fecha', async () => {
+    installApi();
+    render(<AccountsSection />);
+    const claude = await group('Claude Code');
+    await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar conta' }));
+    // Com o painel aberto, o único "Adicionar conta" é o de enviar o nome.
+    const buttons = within(claude).getAllByRole('button', { name: 'Adicionar conta' });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAttribute('type', 'submit');
+
+    await userEvent.keyboard('{Escape}');
+    expect(within(claude).queryByRole('form')).toBeNull();
+    expect(within(claude).getByRole('button', { name: 'Adicionar conta' })).toHaveFocus();
   });
 
   it('renomear manda o id e o nome novo', async () => {
@@ -733,5 +756,150 @@ describe('AccountsSection: uso por conta', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(limits.refreshAccount).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('AccountsSection: conta por chave de API', () => {
+  const K = '33333333-3333-4333-8333-333333333333';
+  const WITH_API: AccountsDto = {
+    groups: [
+      {
+        provider: 'claude',
+        installed: true,
+        accounts: [
+          account({ isDefault: true, identity: 'voce@exemplo.com' }),
+          account({
+            id: K,
+            name: 'Chave',
+            isPrincipal: false,
+            kind: 'api',
+            keyState: 'locked',
+            keyLast4: 'ab12',
+          }),
+        ],
+      },
+      {
+        provider: 'codex',
+        installed: true,
+        accounts: [account({ provider: 'codex', isDefault: true })],
+      },
+    ],
+    others: [],
+  };
+
+  function installVault(initial: VaultDto) {
+    let listener: ((state: VaultDto) => void) | undefined;
+    const vault = {
+      get: vi.fn(() => ok(initial)),
+      unlock: vi.fn(() => ok({ outcome: 'unlocked' as const })),
+      lock: vi.fn(() => ok(undefined)),
+      changePassword: vi.fn(() => ok({ outcome: 'changed' as const })),
+      reset: vi.fn((_input: unknown) => ok(undefined)),
+      subscribe: vi.fn((next: (state: VaultDto) => void) => {
+        listener = next;
+        return () => {
+          listener = undefined;
+        };
+      }),
+    };
+    (window.projectHub as unknown as { vault: unknown }).vault = vault;
+    const emit = (state: VaultDto) => act(() => listener?.(state));
+    return { vault, emit };
+  }
+
+  it('a barra do cofre só aparece quando existe conta API', async () => {
+    installApi();
+    installVault({ state: 'locked', available: true });
+    const first = render(<AccountsSection />);
+    await group('Claude Code');
+    expect(screen.queryByRole('group', { name: 'Cofre das chaves de API' })).toBeNull();
+    first.unmount();
+
+    installApi({ data: WITH_API });
+    installVault({ state: 'locked', available: true });
+    render(<AccountsSection />);
+    const bar = await screen.findByRole('group', { name: 'Cofre das chaves de API' });
+    expect(within(bar).getByText('Cofre trancado')).toBeInTheDocument();
+  });
+
+  it('a mudança do cofre relê as contas', async () => {
+    const { api } = installApi({ data: WITH_API });
+    const { emit } = installVault({ state: 'locked', available: true });
+    render(<AccountsSection />);
+    await screen.findByRole('group', { name: 'Cofre das chaves de API' });
+    expect(api.list).toHaveBeenCalledTimes(1);
+
+    await emit({ state: 'unlocked', available: true });
+
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    expect(
+      within(screen.getByRole('group', { name: 'Cofre das chaves de API' })).getByText(
+        'Cofre destrancado',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('adicionar conta no Claude Code pergunta o tipo e manda kind api; o Codex não pergunta', async () => {
+    const { api } = installApi({ data: WITH_API });
+    installVault({ state: 'locked', available: true });
+    render(<AccountsSection />);
+    const claude = await group('Claude Code');
+    await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar conta' }));
+    await userEvent.click(within(claude).getByRole('radio', { name: 'Chave de API' }));
+    await userEvent.type(
+      within(claude).getByRole('textbox', { name: 'Nome da conta' }),
+      'Por uso{Enter}',
+    );
+    await waitFor(() =>
+      expect(api.add).toHaveBeenCalledWith({ provider: 'claude', name: 'Por uso', kind: 'api' }),
+    );
+
+    const codex = await group('Codex');
+    await userEvent.click(within(codex).getByRole('button', { name: 'Adicionar conta' }));
+    expect(within(codex).getByRole('form', { name: 'Nova conta do Codex' })).toBeVisible();
+    expect(within(codex).queryByRole('radiogroup', { name: 'Tipo da conta' })).toBeNull();
+  });
+
+  it('a linha da conta API não pede leitura de uso', async () => {
+    installApi({ data: WITH_API });
+    installVault({ state: 'unlocked', available: true });
+    const limits = {
+      get: vi.fn(() =>
+        ok<LimitsDto>({
+          providers: [],
+          accounts: [
+            {
+              provider: 'claude',
+              accountId: K,
+              accountName: 'Chave',
+              windows: [],
+              refreshing: false,
+            },
+          ],
+        }),
+      ),
+      refresh: vi.fn(() => ok(undefined)),
+      refreshAccount: vi.fn((_input: unknown) => ok(undefined)),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    (window.projectHub as unknown as { limits: unknown }).limits = limits;
+    render(<AccountsSection />);
+    await group('Claude Code');
+    await waitFor(() => expect(limits.get).toHaveBeenCalled());
+    await act(() => Promise.resolve());
+    expect(limits.refreshAccount).not.toHaveBeenCalledWith({ provider: 'claude', accountId: K });
+  });
+
+  it('nenhum campo de texto para a chave existe na tela', async () => {
+    installApi({ data: WITH_API });
+    installVault({ state: 'unlocked', available: true });
+    render(<AccountsSection />);
+    const claude = await group('Claude Code');
+    await userEvent.click(within(claude).getByRole('button', { name: 'Adicionar conta' }));
+    await userEvent.click(within(claude).getByRole('radio', { name: 'Chave de API' }));
+    const boxes = screen.queryAllByRole('textbox');
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0]).toHaveAccessibleName('Nome da conta');
+    expect(document.querySelectorAll('input[type="password"]')).toHaveLength(0);
   });
 });

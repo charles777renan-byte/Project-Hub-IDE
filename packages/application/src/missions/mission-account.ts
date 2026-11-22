@@ -4,10 +4,15 @@ import type { AccountDirectory } from '../ports';
 /** A frase de toda ação de missão que pede uma conta que já não vale. Nunca vira "rodar na Principal". */
 export const ACCOUNT_UNAVAILABLE = 'A conta foi removida.';
 
+/** A frase de toda missão que espera o cofre das chaves: é a mesma do cofre no processo principal. */
+export const VAULT_LOCKED_REASON = 'Destranque o cofre para continuar.';
+
 /** A conta de uma missão como a tela a mostra. `accountId` nulo é a Principal. */
 export type MissionAccountView = {
   accountId: string | null;
   accountName: string;
+  /** A conta é por chave de API (cobra por uso). Só aparece quando é verdade. */
+  accountKind?: 'api';
   /** A conta foi removida: a missão não planeja nem inicia até a pessoa escolher outra. */
   accountRemoved: boolean;
   /**
@@ -15,10 +20,15 @@ export type MissionAccountView = {
    * que falhou ou foi cancelada destrava, para a nova tentativa poder rodar em outra conta.
    */
   accountLocked: boolean;
+  /**
+   * A missão espera o cofre das chaves: na fila, ou pausada sem agente, numa conta por chave de API com o cofre
+   * trancado. Só aparece quando é verdade.
+   */
+  vaultLocked?: true;
 };
 
 export type MissionAccountDeps = {
-  accounts: Pick<AccountDirectory, 'labelOf'>;
+  accounts: Pick<AccountDirectory, 'labelOf' | 'vaultLocked' | 'kindOf'>;
   /** O plano da missão está sendo gerado agora (o orquestrador sabe). */
   isPlanning(missionId: string): boolean;
   /**
@@ -36,14 +46,21 @@ export function missionAccountOf(
   const label = deps.accounts.labelOf('claude', accountId);
   // Parada sem volta na mesma tentativa: a próxima abre outra execução, e pode ser em outra conta.
   const stopped = mission.status === 'failed' || mission.status === 'cancelled';
+  const waiting =
+    mission.status === 'queued' || (mission.status === 'paused' && !deps.isRunning(mission.id));
+  const vaultLocked =
+    waiting && accountId !== null && deps.accounts.vaultLocked?.(accountId) === true;
+  const api = accountId !== null && deps.accounts.kindOf?.(accountId) === 'api';
   return {
     accountId,
     accountName: label.name,
+    ...(api ? { accountKind: 'api' as const } : {}),
     accountRemoved: label.removed,
     accountLocked:
       (mission.startedAt !== undefined && !stopped) ||
       deps.isPlanning(mission.id) ||
       deps.isRunning(mission.id),
+    ...(vaultLocked ? { vaultLocked: true as const } : {}),
   };
 }
 

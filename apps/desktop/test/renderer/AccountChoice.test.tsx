@@ -105,3 +105,77 @@ describe('AccountChoice', () => {
     expect(screen.getByRole('option', { name: /Cliente/ })).toHaveTextContent('sem leitura');
   });
 });
+
+describe('AccountChoice: conta por chave de API', () => {
+  const K = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const L = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const M = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const withApi: AccountChoiceItem[] = [
+    { id: null, name: 'Principal', isDefault: true, state: 'connected' },
+    { id: K, name: 'Chave', isDefault: false, state: 'connected', kind: 'api', keyState: 'stored' },
+    {
+      id: L,
+      name: 'Vazia',
+      isDefault: false,
+      state: 'connected',
+      kind: 'api',
+      keyState: 'missing',
+    },
+    {
+      id: M,
+      name: 'Trancada',
+      isDefault: false,
+      state: 'connected',
+      kind: 'api',
+      keyState: 'locked',
+    },
+  ];
+
+  it('a conta API mostra o selo no seletor', () => {
+    setup({ accounts: withApi });
+    expect(screen.getByRole('option', { name: /Chave/ })).toHaveTextContent('API');
+    expect(screen.getByRole('option', { name: /Principal/ })).not.toHaveTextContent('API');
+  });
+
+  it('conta API sem chave aparece desativada, com o estado, e não é escolhida por teclado', async () => {
+    const { onChange } = setup({ accounts: withApi });
+    const empty = screen.getByRole('option', { name: /Vazia/ });
+    expect(empty).toHaveAttribute('aria-disabled', 'true');
+    expect(empty).toHaveTextContent('Sem chave');
+
+    await userEvent.click(empty);
+    empty.focus();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard(' ');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('chave ilegível também fica desativada, com o estado', () => {
+    setup({
+      accounts: [
+        ...withApi.slice(0, 1),
+        {
+          id: L,
+          name: 'Ruim',
+          isDefault: false,
+          state: 'connected',
+          kind: 'api',
+          keyState: 'unreadable',
+        },
+      ],
+    });
+    const bad = screen.getByRole('option', { name: /Ruim/ });
+    expect(bad).toHaveAttribute('aria-disabled', 'true');
+    expect(bad).toHaveTextContent('Chave ilegível');
+  });
+
+  it('conta API com o cofre trancado pode ser escolhida', async () => {
+    const { onChange } = setup({ accounts: withApi });
+    const locked = screen.getByRole('option', { name: /Trancada/ });
+    expect(locked).not.toHaveAttribute('aria-disabled');
+    expect(locked).toHaveTextContent('Cofre trancado');
+
+    await userEvent.click(locked);
+    expect(onChange).toHaveBeenCalledWith(M);
+  });
+});

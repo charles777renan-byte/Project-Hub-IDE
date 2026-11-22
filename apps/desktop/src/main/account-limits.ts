@@ -14,7 +14,7 @@ import type { LimitsService } from './limits';
 export type LimitsCycle = { firstReadDelayMs: number; intervalMs: number };
 
 export type AccountLimitsDeps = {
-  accounts: Pick<AccountUse, 'defaultOf' | 'listRoots' | 'labelOf'>;
+  accounts: Pick<AccountUse, 'defaultOf' | 'listRoots' | 'labelOf' | 'kindOf'>;
   /** A conta tem painel ou agente de missão vivo agora. */
   isLive(provider: LimitProviderId, accountId: string | null): Promise<boolean>;
   /**
@@ -77,6 +77,8 @@ export function createAccountLimits(deps: AccountLimitsDeps): AccountLimits {
     const present = new Set<string>();
     for (const provider of LIMIT_PROVIDER_VALUES) {
       for (const { accountId, root } of deps.accounts.listRoots(provider)) {
+        // Conta API paga por uso: não tem limite de assinatura, e a leitura gastaria a chave dela.
+        if (deps.accounts.kindOf(provider, accountId) === 'api') continue;
         const key = keyOf(provider, accountId);
         present.add(key);
         if (entries.has(key)) continue;
@@ -106,9 +108,12 @@ export function createAccountLimits(deps: AccountLimitsDeps): AccountLimits {
     const accounts: AccountLimitsDto[] = [];
     for (const provider of LIMIT_PROVIDER_VALUES) {
       const own = entriesOf(provider);
+      const defaultId = deps.accounts.defaultOf(provider);
+      // Padrão por chave de API: o programa fica sem limites, e não mostra os da Principal no lugar.
       const chosen =
-        entries.get(keyOf(provider, deps.accounts.defaultOf(provider))) ??
-        entries.get(keyOf(provider, null));
+        deps.accounts.kindOf(provider, defaultId) === 'api'
+          ? undefined
+          : (entries.get(keyOf(provider, defaultId)) ?? entries.get(keyOf(provider, null)));
       if (chosen !== undefined) providers.push(chosen.service.snapshot());
       for (const entry of own) {
         accounts.push({

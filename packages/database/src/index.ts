@@ -2,10 +2,20 @@ export { openDatabase, type AppDatabase } from './client';
 export { migrateDatabase, type MigrationReport } from './migrate';
 export {
   createAccountRepository,
+  type AccountKind,
   type AccountProvider,
   type AccountRecord,
   type AccountRepository,
 } from './repositories/account-repository';
+export {
+  createAccountSecretRepository,
+  type AccountSecretRecord,
+  type AccountSecretRepository,
+} from './repositories/account-secret-repository';
+export {
+  createVaultMetaRepository,
+  type VaultMetaRepository,
+} from './repositories/vault-meta-repository';
 export {
   createAppSettingsRepository,
   type AppSettingsRepository,

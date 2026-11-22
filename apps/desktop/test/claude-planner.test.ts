@@ -455,10 +455,10 @@ describe('planejador na conta da missão', () => {
       run,
       accountEnv: (accountId) => {
         asked.push(accountId);
-        return {
+        return Promise.resolve({
           ok: true,
           data: accountId === null ? {} : { CLAUDE_CONFIG_DIR: `C:/contas/${accountId}` },
-        };
+        });
       },
     });
 
@@ -481,7 +481,7 @@ describe('planejador na conta da missão', () => {
       command: 'claude',
       env: { Claude_Config_Dir: 'C:/herdada' },
       run,
-      accountEnv: () => ({ ok: true, data: { CLAUDE_CONFIG_DIR: 'C:/contas/x' } }),
+      accountEnv: () => Promise.resolve({ ok: true, data: { CLAUDE_CONFIG_DIR: 'C:/contas/x' } }),
     }).plan(baseInput({ accountId: ACCOUNT }));
 
     expect(envs[0]).not.toHaveProperty('Claude_Config_Dir');
@@ -497,16 +497,74 @@ describe('planejador na conta da missão', () => {
         ran = true;
         return Promise.resolve({ stdout: '', exitCode: 0 });
       },
-      accountEnv: () => ({
-        ok: false,
-        error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
-      }),
+      accountEnv: () =>
+        Promise.resolve({
+          ok: false,
+          error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
+        }),
     }).plan(baseInput({ accountId: ACCOUNT }));
 
     expect(ran).toBe(false);
     expect(result).toEqual({
       ok: false,
       error: { code: 'AGENT_UNAVAILABLE', message: 'A conta foi removida.', retryable: false },
+    });
+  });
+
+  it('o planejador roda com a variável da chave da conta da missão', async () => {
+    const FAKE_KEY = 'sk-ant-api03-chave-falsa-do-planejador-0123456789';
+    const calls: { env: NodeJS.ProcessEnv; args: readonly string[]; stdin: string }[] = [];
+    const run: PlannerRunner = (input) => {
+      calls.push({ env: input.env, args: input.args, stdin: input.stdin });
+      return Promise.resolve({ stdout: envelope({ tasks: [task()] }), exitCode: 0 });
+    };
+
+    const result = await createClaudePlanner({
+      command: 'claude',
+      env: { PATH: 'C:/bin' },
+      run,
+      accountEnv: () =>
+        Promise.resolve({
+          ok: true,
+          data: { CLAUDE_CONFIG_DIR: 'C:/contas/chave', ANTHROPIC_API_KEY: FAKE_KEY },
+        }),
+    }).plan(baseInput({ accountId: ACCOUNT }));
+
+    expect(result.ok).toBe(true);
+    expect(calls[0]?.env['ANTHROPIC_API_KEY']).toBe(FAKE_KEY);
+    expect(calls[0]?.args.join(' ')).not.toContain(FAKE_KEY);
+    expect(calls[0]?.stdin).not.toContain(FAKE_KEY);
+    expect(JSON.stringify(result)).not.toContain(FAKE_KEY);
+  });
+
+  it('falha do ambiente da conta: nada é lançado e a mensagem do cofre sobe', async () => {
+    let ran = false;
+    const result = await createClaudePlanner({
+      command: 'claude',
+      env: {},
+      run: () => {
+        ran = true;
+        return Promise.resolve({ stdout: '', exitCode: 0 });
+      },
+      accountEnv: () =>
+        Promise.resolve({
+          ok: false,
+          error: {
+            code: 'VAULT_LOCKED',
+            message: 'Destranque o cofre para continuar.',
+            retryable: false,
+          },
+        }),
+    }).plan(baseInput({ accountId: ACCOUNT }));
+
+    expect(ran).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'VAULT_LOCKED',
+        message: 'Destranque o cofre para continuar.',
+        retryable: false,
+      },
     });
   });
 

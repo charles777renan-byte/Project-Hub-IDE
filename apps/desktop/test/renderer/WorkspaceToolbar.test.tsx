@@ -511,6 +511,33 @@ describe('WorkspaceToolbar: escolha da conta', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('a conta API mostra o selo no seletor do painel; sem chave, não abre', async () => {
+    const K = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const { onOpen } = setup({
+      accounts: {
+        claude: [
+          ...duas.claude,
+          {
+            id: K,
+            name: 'Chave',
+            isDefault: false,
+            state: 'connected' as const,
+            kind: 'api' as const,
+            keyState: 'missing' as const,
+          },
+        ],
+      },
+    });
+
+    await abrirClaude();
+
+    const option = screen.getByRole('option', { name: /Chave/ });
+    expect(option).toHaveTextContent('API');
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(option);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it('escolher a conta abre o painel nela e fecha o menu; a "Sem login" também abre', async () => {
     const { onOpen } = setup({ accounts: duas });
 

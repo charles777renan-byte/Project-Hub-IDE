@@ -59,6 +59,9 @@ export const ERROR_CODES = [
   'GH_NETWORK_FAILED',
   'GH_PR_NOT_FOUND',
   'GH_PR_NOT_MERGEABLE',
+  // Acrescentado pelo plano das contas por chave de API: o cofre trancado não é falha da conta. Quem lança um
+  // painel ou uma missão espera a pessoa destrancar, em vez de trocar de conta ou marcar a missão como falha.
+  'VAULT_LOCKED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

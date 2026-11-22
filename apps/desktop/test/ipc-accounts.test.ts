@@ -2,6 +2,7 @@ import { CHANNELS, type LoginDto } from '@project-hub/contracts';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it } from 'vitest';
 import type { AccountsService } from '../src/main/accounts/accounts-service';
+import type { ApiKeyService } from '../src/main/accounts/api-key-service';
 import type { LoginService } from '../src/main/accounts/login-service';
 import { registerAccountsHandlers, registerAppHandlers } from '../src/main/ipc/accounts';
 import type { IpcRegistry } from '../src/main/ipc/trusted-handler';
@@ -54,6 +55,7 @@ function setup() {
         provider: 'claude' as const,
         name: 'Trabalho',
         isPrincipal: false,
+        kind: 'subscription',
         isDefault: false,
         state: 'signed-out' as const,
       },
@@ -79,8 +81,12 @@ function setup() {
     recover: () => Promise.resolve(),
     dispose: () => Promise.resolve(),
   };
+  const apiKeys: ApiKeyService = {
+    paste: note('apiKeys.paste', { ok: true as const, data: { last4: 'WXYZ' } }),
+    remove: note('apiKeys.remove', DONE),
+  };
   const fake = fakeRegistry();
-  registerAccountsHandlers(fake.registry, isTrusted, { accounts, login });
+  registerAccountsHandlers(fake.registry, isTrusted, { accounts, login, apiKeys });
   return { fake, calls };
 }
 
@@ -104,15 +110,23 @@ describe('canais das contas', () => {
         CHANNELS.accountsLoginCopyUrl,
         CHANNELS.accountsLoginWrite,
         CHANNELS.accountsLoginResize,
+        CHANNELS.accountsPasteKey,
+        CHANNELS.accountsRemoveKey,
       ].sort(),
     );
   });
 
   it('add repassa programa e nome ao serviço', async () => {
     const { fake, calls } = setup();
-    const result = await fake.call(CHANNELS.accountsAdd, { provider: 'claude', name: ' Trabalho ' });
+    const result = await fake.call(CHANNELS.accountsAdd, {
+      provider: 'claude',
+      name: ' Trabalho ',
+      kind: 'subscription',
+    });
     expect(result).toMatchObject({ ok: true });
-    expect(calls).toEqual([['add', { provider: 'claude', name: 'Trabalho' }]]);
+    expect(calls).toEqual([
+      ['add', { provider: 'claude', name: 'Trabalho', kind: 'subscription' }],
+    ]);
   });
 
   it('add recusa entrada com campo a mais sem chamar o serviço', async () => {
@@ -171,10 +185,66 @@ describe('canais das contas', () => {
   });
 });
 
+describe('canais da chave de API', () => {
+  it('pasteKey e removeKey repassam só o programa e a conta, e devolvem os 4 últimos', async () => {
+    const { fake, calls } = setup();
+
+    expect(
+      await fake.call(CHANNELS.accountsPasteKey, { provider: 'claude', accountId: A }),
+    ).toEqual({ ok: true, data: { last4: 'WXYZ' } });
+    expect(
+      await fake.call(CHANNELS.accountsRemoveKey, { provider: 'claude', accountId: A }),
+    ).toEqual(DONE);
+    expect(calls).toEqual([
+      ['apiKeys.paste', { provider: 'claude', accountId: A }],
+      ['apiKeys.remove', { provider: 'claude', accountId: A }],
+    ]);
+  });
+
+  it('pasteKey com accountId nulo (Principal) é recusado', async () => {
+    const { fake, calls } = setup();
+
+    for (const channel of [CHANNELS.accountsPasteKey, CHANNELS.accountsRemoveKey]) {
+      expect(await fake.call(channel, { provider: 'claude', accountId: null })).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED' },
+      });
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('pasteKey recusa a chave vinda da tela: a chave só sai da área de transferência', async () => {
+    const { fake, calls } = setup();
+
+    const result = await fake.call(CHANNELS.accountsPasteKey, {
+      provider: 'claude',
+      accountId: A,
+      key: 'sk-ant-api03-chave-falsa-0123456789',
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('pasteKey e removeKey só aceitam origem confiável', async () => {
+    const { fake, calls } = setup();
+
+    for (const channel of [CHANNELS.accountsPasteKey, CHANNELS.accountsRemoveKey]) {
+      expect(
+        await fake.call(channel, { provider: 'claude', accountId: A }, 'https://site.invalido/'),
+      ).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
+    }
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('canais do login', () => {
   it('login-start repassa programa e conta ao serviço', async () => {
     const { fake, calls } = setup();
-    const result = await fake.call(CHANNELS.accountsLoginStart, { provider: 'claude', accountId: A });
+    const result = await fake.call(CHANNELS.accountsLoginStart, {
+      provider: 'claude',
+      accountId: A,
+    });
     expect(result).toEqual({ ok: true, data: LOGIN });
     expect(calls).toEqual([['login.start', { provider: 'claude', accountId: A }]]);
   });

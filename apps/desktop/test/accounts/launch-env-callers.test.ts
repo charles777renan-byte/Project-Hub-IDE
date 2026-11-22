@@ -27,4 +27,12 @@ describe('ambiente de lançamento da conta', () => {
       .map(({ name }) => name);
     expect(offenders).toEqual([]);
   });
+
+  it('vault.reveal só é chamado em accounts/account-use.ts', () => {
+    const callers = sources(MAIN)
+      .map((path) => ({ path, name: relative(MAIN, path).split(sep).join('/') }))
+      .filter(({ path }) => /\.reveal\(/.test(readFileSync(path, 'utf8')))
+      .map(({ name }) => name);
+    expect(callers).toEqual(['accounts/account-use.ts']);
+  });
 });

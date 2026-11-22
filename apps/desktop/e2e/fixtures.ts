@@ -133,6 +133,16 @@ export type LaunchOptions = {
    * do ambiente do app, e a conta Principal do teste fica numa pasta dentro da pasta de dados.
    */
   accountCliScript?: string;
+  /**
+   * Arquivo no lugar da área de transferência do Windows (`APP_TEST_CLIPBOARD_FILE`): colar uma chave lê dele, e o
+   * app o esvazia depois de guardar. Sem esta opção, nenhum teste lê a área de transferência de quem roda.
+   */
+  clipboardFile?: string;
+  /**
+   * A senha do cofre das chaves (`APP_TEST_VAULT_PASSWORD`): o app cria e destranca o cofre com ela, sem abrir a
+   * janela da senha (o Playwright não alcança essa janela).
+   */
+  vaultPassword?: string;
   /** Espera a interface ficar pronta. O padrão confere a navegação principal. */
   waitForReady?: (page: Page) => Promise<void>;
   /** Chamado assim que o processo abre, antes de qualquer espera. */
@@ -402,6 +412,13 @@ export const test = base.extend<Fixtures>({
           if (programFolders.includes(name.toUpperCase())) delete env[name];
         }
       }
+      // Os ganchos da conta por chave de API nunca vêm da máquina de quem roda: só as opções do teste os ligam.
+      delete env['APP_TEST_CLIPBOARD_FILE'];
+      delete env['APP_TEST_VAULT_PASSWORD'];
+      if (options.clipboardFile !== undefined)
+        env['APP_TEST_CLIPBOARD_FILE'] = options.clipboardFile;
+      if (options.vaultPassword !== undefined)
+        env['APP_TEST_VAULT_PASSWORD'] = options.vaultPassword;
       if (options.rendererUrl !== undefined) env['ELECTRON_RENDERER_URL'] = options.rendererUrl;
       // O bloco "Visão geral" do Início lê as sessões dos CLIs. As três pastas vêm sempre da pasta de dados do
       // teste (o app só as aceita com `PROJECT_HUB_ENV=test`), e nenhuma delas é a da pessoa.

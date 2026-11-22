@@ -69,11 +69,13 @@ export type ClaudeCodeAdapterOptions = {
   claudeConfigDir?: string;
   /**
    * As contas do Claude Code: a sessão roda na conta que a entrada pede (`null` é a Principal). `env` são as variáveis
-   * da conta, postas por cima das do terminal; lança quando a conta já não vale, e o início rejeita. `configDir` é a
-   * pasta de dados da conta, para o leitor de gasto. Sem a opção, tudo roda na Principal, como sempre.
+   * da conta, postas por cima das do terminal, pedidas a cada início (a conta por chave de API traz a chave, que não
+   * fica guardada aqui); rejeita quando a conta não abre agora (removida, cofre trancado, chave que falta), com o
+   * `code` do contrato no erro, e o início rejeita com ele. `configDir` é a pasta de dados da conta, para o leitor de
+   * gasto. Sem a opção, tudo roda na Principal, como sempre.
    */
   account?: {
-    env(accountId: string | null): Record<string, string>;
+    env(accountId: string | null): Promise<Record<string, string>>;
     configDir(accountId: string | null): string;
   };
   /** Intervalo de leitura do gasto nos transcripts, em ms. Padrão: 1500. */
@@ -152,7 +154,7 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
       if (signal.aborted) throw new Error('o início da sessão foi cancelado');
       const accountId = input.accountId ?? null;
       // A conta vem antes de tudo o que precisa ser desfeito: conta que não vale rejeita sem registrar hooks.
-      const accountEnv = options.account?.env(accountId) ?? {};
+      const accountEnv = (await options.account?.env(accountId)) ?? {};
       const sessionUsage = usageOf(accountId);
       const executionId = randomUUID();
       const registration = await options.hooks.registerExecution(executionId);

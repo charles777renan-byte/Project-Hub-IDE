@@ -168,6 +168,7 @@ function setup(
     providers?: ProviderRegistry;
     browserAccess?: AgentBrowserAccess;
     accounts?: NonNullable<TerminalServiceDeps['accounts']>;
+    unlockVault?: TerminalServiceDeps['unlockVault'];
   } = {},
 ) {
   const hooks = options.hooks ?? fakeHooks();
@@ -255,6 +256,7 @@ function setup(
     platform: 'win32',
     ...(options.browserAccess === undefined ? {} : { browserAccess: options.browserAccess }),
     ...(options.accounts === undefined ? {} : { accounts: options.accounts }),
+    ...(options.unlockVault === undefined ? {} : { unlockVault: options.unlockVault }),
   });
   return {
     service,
@@ -1512,6 +1514,10 @@ describe('navegador ao alcance do agente do terminal', () => {
 describe('painel aberto numa conta do programa', () => {
   const WORK = '11111111-1111-4111-8111-111111111111';
   const GONE = '22222222-2222-4222-8222-222222222222';
+  const KEYED = '33333333-3333-4333-8333-333333333333';
+  const FAKE_KEY = 'sk-ant-api03-chave-falsa-0123456789-abcdefghijKLMNOPWXYZ';
+  const LOCKED_TEXT = 'Destranque o cofre para continuar.';
+  const MISSING_TEXT = 'A conta não tem uma chave de API guardada.';
   let workDir = '';
   beforeEach(() => {
     workDir = mkdtempSync(join(tmpdir(), 'ph-terminals-conta-'));
@@ -1520,22 +1526,43 @@ describe('painel aberto numa conta do programa', () => {
     rmSync(workDir, { recursive: true, force: true });
   });
 
-  /** Uma conta extra do Claude ("Trabalho") e uma removida ("Antiga"). */
-  function accounts(): NonNullable<TerminalServiceDeps['accounts']> {
+  /**
+   * Uma conta extra do Claude ("Trabalho"), uma removida ("Antiga") e uma por chave de API ("Chave"). `vault.locked`
+   * tranca o cofre; `keyMissing` tira a chave da conta API.
+   */
+  function accounts(
+    vault: { locked: boolean; keyMissing?: boolean } = { locked: false },
+  ): NonNullable<TerminalServiceDeps['accounts']> {
     return {
       isAccountProvider: (provider): provider is 'claude' | 'codex' =>
         provider === 'claude' || provider === 'codex',
       hasExtras: (provider) => provider === 'claude',
-      launchEnv: (
+      launchEnv: async (
         provider,
         accountId,
       ): ReturnType<NonNullable<TerminalServiceDeps['accounts']>['launchEnv']> => {
+        await Promise.resolve();
         if (accountId === null) return { ok: true, data: {} };
         if (provider === 'claude' && accountId === WORK) {
           return { ok: true, data: { CLAUDE_CONFIG_DIR: workDir } };
         }
         if (provider === 'codex' && accountId === WORK) {
           return { ok: true, data: { CODEX_HOME: workDir } };
+        }
+        if (provider === 'claude' && accountId === KEYED) {
+          if (vault.locked) {
+            return {
+              ok: false,
+              error: { code: 'VAULT_LOCKED', message: LOCKED_TEXT, retryable: false },
+            };
+          }
+          if (vault.keyMissing === true) {
+            return {
+              ok: false,
+              error: { code: 'VALIDATION_FAILED', message: MISSING_TEXT, retryable: false },
+            };
+          }
+          return { ok: true, data: { CLAUDE_CONFIG_DIR: workDir, ANTHROPIC_API_KEY: FAKE_KEY } };
         }
         return {
           ok: false,
@@ -1547,10 +1574,24 @@ describe('painel aberto numa conta do programa', () => {
       labelOf: (_provider, accountId) => {
         if (accountId === null) return { name: 'Principal', removed: false };
         if (accountId === WORK) return { name: 'Trabalho', removed: false };
+        if (accountId === KEYED) return { name: 'Chave', removed: false };
         return { name: 'Antiga', removed: true };
       },
+      kindOf: (provider, accountId) =>
+        provider === 'claude' && accountId === KEYED ? 'api' : 'subscription',
     };
   }
+
+  it('a conta por chave de API vem marcada na lista; a de assinatura, não', async () => {
+    const h = setup({ accounts: accounts() });
+    await h.service.openSession('p1', 'claude', { accountId: KEYED });
+    await h.service.openSession('p1', 'claude', { accountId: WORK });
+
+    const listed = await h.service.list();
+    const byAccount = new Map((listed.ok ? listed.data : []).map((item) => [item.accountId, item]));
+    expect(byAccount.get(KEYED)).toMatchObject({ accountName: 'Chave', accountKind: 'api' });
+    expect(byAccount.get(WORK)).not.toHaveProperty('accountKind');
+  });
 
   it('abre o Claude com a pasta da conta, grava a conta na sessão e a mostra na lista', async () => {
     const h = setup({ accounts: accounts() });
@@ -1690,6 +1731,86 @@ describe('painel aberto numa conta do programa', () => {
       accountId: WORK,
       accountName: 'Trabalho',
     });
+  });
+
+  it('painel em conta API: o programa recebe a variável da chave, e a chave da máquina não é herdada', async () => {
+    const h = setup({ accounts: accounts() });
+    const principal = setup({ accounts: accounts() });
+
+    expect((await h.service.openSession('p1', 'claude', { accountId: KEYED })).ok).toBe(true);
+    await principal.service.openSession('p1', 'claude');
+
+    expect(h.opened[0]?.env['ANTHROPIC_API_KEY']).toBe(FAKE_KEY);
+    expect(h.opened[0]?.env['CLAUDE_CONFIG_DIR']).toBe(workDir);
+    // O ambiente do app tem ANTHROPIC_API_KEY=segredo: nenhum painel o herda.
+    expect(principal.opened[0]?.env).not.toHaveProperty('ANTHROPIC_API_KEY');
+    expect(JSON.stringify(h.opened)).not.toContain('segredo');
+  });
+
+  it('cofre trancado: pede a senha uma vez e abre depois de destrancar', async () => {
+    const vault = { locked: true };
+    const unlockVault = vi.fn(() => {
+      vault.locked = false;
+      return Promise.resolve('unlocked' as const);
+    });
+    const h = setup({ accounts: accounts(vault), unlockVault });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: KEYED });
+
+    expect(opened.ok).toBe(true);
+    expect(unlockVault).toHaveBeenCalledTimes(1);
+    expect(h.opened[0]?.env['ANTHROPIC_API_KEY']).toBe(FAKE_KEY);
+  });
+
+  it('senha cancelada: nenhum processo, nenhuma linha de sessão, e a frase do cofre', async () => {
+    const unlockVault = vi.fn(() => Promise.resolve('cancelled' as const));
+    const h = setup({ accounts: accounts({ locked: true }), unlockVault });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: KEYED });
+
+    expect(opened).toEqual({
+      ok: false,
+      error: { code: 'VAULT_LOCKED', message: LOCKED_TEXT, retryable: false },
+    });
+    expect(unlockVault).toHaveBeenCalledTimes(1);
+    expect(h.opened).toEqual([]);
+    expect(h.sessions.repo.listOpen()).toEqual([]);
+    expect(h.hooks.registered).toEqual([]);
+  });
+
+  it('cofre trancado sem a janela da senha ligada: nada abre, com a frase do cofre', async () => {
+    const h = setup({ accounts: accounts({ locked: true }) });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: KEYED });
+
+    expect(opened.ok).toBe(false);
+    if (!opened.ok) expect(opened.error.message).toBe(LOCKED_TEXT);
+    expect(h.opened).toEqual([]);
+  });
+
+  it('conta API sem chave: nada abre, com KEY_MISSING', async () => {
+    const unlockVault = vi.fn(() => Promise.resolve('unlocked' as const));
+    const h = setup({ accounts: accounts({ locked: false, keyMissing: true }), unlockVault });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: KEYED });
+
+    expect(opened.ok).toBe(false);
+    if (!opened.ok) expect(opened.error.message).toBe(MISSING_TEXT);
+    expect(unlockVault).not.toHaveBeenCalled();
+    expect(h.opened).toEqual([]);
+    expect(h.sessions.repo.listOpen()).toEqual([]);
+  });
+
+  it('a chave não aparece no resumo do terminal nem na lista', async () => {
+    const h = setup({ accounts: accounts() });
+
+    const opened = await h.service.openSession('p1', 'claude', { accountId: KEYED });
+    const listed = await h.service.list();
+
+    expect(JSON.stringify(opened)).not.toContain(FAKE_KEY);
+    expect(JSON.stringify(listed)).not.toContain(FAKE_KEY);
+    expect(JSON.stringify(h.sessions.repo.listOpen())).not.toContain(FAKE_KEY);
+    expect(JSON.stringify(h.events)).not.toContain(FAKE_KEY);
   });
 
   it('shell não tem conta na lista', async () => {

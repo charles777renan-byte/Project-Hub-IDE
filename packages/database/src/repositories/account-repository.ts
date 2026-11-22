@@ -1,8 +1,9 @@
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { AppDatabase } from '../client';
-import { accounts, type ACCOUNT_PROVIDERS } from '../schema';
+import { accounts, type ACCOUNT_KINDS, type ACCOUNT_PROVIDERS } from '../schema';
 
 export type AccountProvider = (typeof ACCOUNT_PROVIDERS)[number];
+export type AccountKind = (typeof ACCOUNT_KINDS)[number];
 
 /** Uma conta extra. `removedAt` só vem na conta removida. */
 export type AccountRecord = {
@@ -11,11 +12,13 @@ export type AccountRecord = {
   name: string;
   createdAt: string;
   removedAt?: string;
+  kind: AccountKind;
 };
 
 /** Contas extras dos programas. A Principal não tem linha. */
 export interface AccountRepository {
-  insert(record: AccountRecord): void;
+  /** Sem tipo, a conta é de assinatura. */
+  insert(record: Omit<AccountRecord, 'kind'> & { kind?: AccountKind }): void;
   /** Devolve também a conta removida: quem chama decide o que fazer com ela. */
   get(id: string): AccountRecord | undefined;
   /** As contas do programa que não foram removidas, da mais antiga para a mais nova. */
@@ -33,6 +36,7 @@ function toRecord(row: Row): AccountRecord {
     name: row.name,
     createdAt: row.createdAt,
     ...(row.removedAt === null ? {} : { removedAt: row.removedAt }),
+    kind: row.kind,
   };
 }
 
@@ -46,6 +50,7 @@ export function createAccountRepository(db: AppDatabase): AccountRepository {
           name: record.name,
           createdAt: record.createdAt,
           removedAt: record.removedAt ?? null,
+          kind: record.kind ?? 'subscription',
         })
         .run();
     },

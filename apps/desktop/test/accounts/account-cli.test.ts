@@ -12,6 +12,23 @@ import type { ProviderRegistry } from '../../src/main/providers';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const GONE = '44444444-4444-4444-8444-444444444444';
+const API = '66666666-6666-4666-8666-666666666666';
+const T = '2026-11-21T10:00:00.000Z';
+
+const accounts = {
+  get: (id: string) =>
+    id === API
+      ? { id: API, provider: 'claude' as const, name: 'Chave', createdAt: T, kind: 'api' as const }
+      : id === A
+        ? {
+            id: A,
+            provider: 'claude' as const,
+            name: 'A',
+            createdAt: T,
+            kind: 'subscription' as const,
+          }
+        : undefined,
+};
 
 type Call = Parameters<PlannerRunner>[0];
 
@@ -28,7 +45,9 @@ const providers: ProviderRegistry = {
 const paths: Pick<AccountPaths, 'envOf'> = {
   envOf: (provider, accountId) => {
     if (accountId === null) return { ok: true, data: {} };
-    if (accountId !== A) return failure('VALIDATION_FAILED', 'A conta não existe mais.');
+    if (accountId !== A && accountId !== API) {
+      return failure('VALIDATION_FAILED', 'A conta não existe mais.');
+    }
     return {
       ok: true,
       data: { [provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME']: 'D:\\contas\\a' },
@@ -48,6 +67,7 @@ function setup(
   const cli = createAccountCli({
     providers: registry,
     paths,
+    accounts,
     env: { PATH: 'C:\\bin', SEGREDO: 'x', CLAUDE_CONFIG_DIR: 'C:\\da-maquina' },
     run,
     cwd: 'C:\\dados',
@@ -237,5 +257,21 @@ describe('loginLaunch', () => {
     const result = cli.loginLaunch('codex', null);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('AGENT_UNAVAILABLE');
+  });
+});
+
+describe('conta por chave de API', () => {
+  it('estado, saída e login recusam conta API', async () => {
+    const { cli, calls } = setup({ stdout: JSON.stringify({ loggedIn: true }), exitCode: 0 });
+
+    expect(await cli.status('claude', API)).toEqual({ state: 'unknown' });
+    const logout = await cli.logout('claude', API);
+    const login = cli.loginLaunch('claude', API);
+
+    expect(logout.ok).toBe(false);
+    if (!logout.ok) expect(logout.error.code).toBe('VALIDATION_FAILED');
+    expect(login.ok).toBe(false);
+    if (!login.ok) expect(login.error.code).toBe('VALIDATION_FAILED');
+    expect(calls).toEqual([]);
   });
 });

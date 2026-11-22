@@ -6,6 +6,7 @@ import {
   MISSION_ACCOUNT_TEXT,
   MISSION_TEXT,
   PLAN_TEXT,
+  VAULT_TEXT,
   decisionAnnouncement,
   decisionTextOf,
   lastInputPrompt,
@@ -14,6 +15,7 @@ import {
   type PrimaryAction,
 } from '../../mission-text';
 import { AccountChoice, type AccountChoiceItem } from '../AccountChoice';
+import { ApiBadge } from '../ApiBadge';
 import { ApprovalCard } from '../ApprovalCard';
 import { revealDecision, useDecisionOutOfView } from './decision-visibility';
 
@@ -139,6 +141,7 @@ export function DecisionBlock({
   onCancelPlanning,
   onStart,
   onResume,
+  onUnlock,
   onRetry,
   onDecide,
   onAnswer,
@@ -166,6 +169,11 @@ export function DecisionBlock({
   onCancelPlanning: () => void;
   onStart: () => void;
   onResume: () => void;
+  /**
+   * Destrancar o cofre das chaves: a missão na fila, numa conta por chave de API, espera por ele. Sem ele, a missão na
+   * fila mostra o Iniciar de sempre (que também pede a senha).
+   */
+  onUnlock?: (() => void) | undefined;
   onRetry: () => void;
   onDecide: (approvalId: string, decision: 'approved' | 'rejected') => void;
   /** Devolve `true` quando a resposta foi enviada, para a caixa limpar. */
@@ -200,6 +208,7 @@ export function DecisionBlock({
   const answerId = useId();
   const feedbackId = useId();
   const accountRemovedId = useId();
+  const vaultId = useId();
   const [instruction, setInstruction] = useState('');
   const [answer, setAnswer] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -223,6 +232,18 @@ export function DecisionBlock({
   const accountRemoved = mission.accountRemoved;
   const accountShown = accountRemoved || (account?.accounts.length ?? 0) > 1;
   const accountChoice = accountShown && !mission.accountLocked && account !== undefined;
+  // A missão espera o cofre (na fila, ou pausada sem agente): a frase diz isso e descreve a ação principal. Na fila,
+  // a ação vira Destrancar; pausada, Retomar pede a senha.
+  const vaultWaiting = mission.vaultLocked === true;
+  const unlockInstead = vaultWaiting && primary === 'start' && onUnlock !== undefined;
+  const primaryLabel = (action: PrimaryAction): string =>
+    unlockInstead
+      ? VAULT_TEXT.unlock
+      : action === 'generate_plan' && planning
+        ? PLAN_TEXT.planning
+        : PRIMARY_LABEL[action];
+  const primaryRun = (action: PrimaryAction): (() => void) =>
+    unlockInstead && onUnlock !== undefined ? onUnlock : primaryAction[action].run;
 
   // Missão de conta removida não planeja, não inicia e não retoma: o processo principal recusa, e a tela já diz.
   const primaryAction: Record<PrimaryAction, { run: () => void; disabled: boolean }> = {
@@ -236,6 +257,7 @@ export function DecisionBlock({
     [
       primary === 'generate_plan' ? quotaId : undefined,
       accountRemoved ? accountRemovedId : undefined,
+      vaultWaiting ? vaultId : undefined,
     ]
       .filter((id) => id !== undefined)
       .join(' ') || undefined;
@@ -315,11 +337,9 @@ export function DecisionBlock({
                   type="button"
                   className={primary === 'approve_plan' ? 'btn-decision' : 'btn-primary'}
                   disabled={primaryAction[primary].disabled}
-                  onClick={primaryAction[primary].run}
+                  onClick={primaryRun(primary)}
                 >
-                  {primary === 'generate_plan' && planning
-                    ? PLAN_TEXT.planning
-                    : PRIMARY_LABEL[primary]}
+                  {primaryLabel(primary)}
                 </button>
               )}
               <button type="button" className="btn-outline" onClick={showDecision}>
@@ -348,6 +368,11 @@ export function DecisionBlock({
           {decisionAnnouncement(view)}
         </p>
         <p>{decisionTextOf(status)}</p>
+        {vaultWaiting ? (
+          <p id={vaultId} className="decision-block__vault">
+            {VAULT_TEXT.locked}
+          </p>
+        ) : null}
         {planned ? <p className="muted">{DECISION_TEXT.plannedReassurance}</p> : null}
 
         {(reviewing || status === 'succeeded') && conclusion !== undefined ? (
@@ -432,7 +457,9 @@ export function DecisionBlock({
               accounts={account.accounts}
               value={mission.accountId}
               disabled={locked}
-              detailOf={(item) => account.usageOf(item.id)}
+              detailOf={(item) =>
+                item.kind === 'api' ? VAULT_TEXT.billing : account.usageOf(item.id)
+              }
               onChange={(accountId) => {
                 if (accountId !== mission.accountId || accountRemoved) account.onChange(accountId);
               }}
@@ -476,12 +503,11 @@ export function DecisionBlock({
               className={primary === 'approve_plan' ? 'btn-decision' : 'btn-primary'}
               aria-describedby={primaryDescribedBy}
               disabled={primaryAction[primary].disabled}
-              onClick={primaryAction[primary].run}
+              onClick={primaryRun(primary)}
             >
-              {primary === 'generate_plan' && planning
-                ? PLAN_TEXT.planning
-                : PRIMARY_LABEL[primary]}
+              {primaryLabel(primary)}
             </button>
+            {mission.accountKind === 'api' ? <ApiBadge /> : null}
             {planned ? (
               <button
                 type="button"

@@ -8,6 +8,7 @@ import {
   type AppResult,
   type LimitsDto,
   type LoginEvent,
+  type VaultDto,
   type MissionEventDto,
   type MissionUsageEventDto,
   type PreviewStateDto,
@@ -26,6 +27,7 @@ import {
   Notification,
   session,
   clipboard,
+  safeStorage,
   shell,
   type IpcMainInvokeEvent,
 } from 'electron';
@@ -54,9 +56,16 @@ import { createAccountCli } from './accounts/account-cli';
 import { ACCOUNT_ENV_VARIABLE, accountsRoot, createAccountPaths } from './accounts/account-paths';
 import { createAccountsService } from './accounts/accounts-service';
 import { claudeConfigDirOf } from '@project-hub/agent-adapters';
-import { failure } from '@project-hub/application';
+import { failure, missionAccountOf } from '@project-hub/application';
 import { createAccountLimits } from './account-limits';
 import { ACCOUNT_REMOVED, createAccountUse, type AccountUse } from './accounts/account-use';
+import { createAccountVault, type AccountVault } from './accounts/account-vault';
+import { createApiKeyService } from './accounts/api-key-service';
+import { createClaudeKeyApproval } from './accounts/claude-key-approval';
+import { registerVaultHandlers, vaultDtoOf } from './ipc/vault';
+import { createVaultWindow, type VaultWindow } from './vault-window';
+import { openVaultPromptWindow } from './vault-prompt-window';
+import { fileClipboard, passwordVaultWindow, testHooksOf } from './test-hooks';
 import { liveSessionsOfAccount } from './accounts/live-sessions';
 import { createLoginService } from './accounts/login-service';
 import { registerAccountsHandlers, registerAppHandlers } from './ipc/accounts';
@@ -297,6 +306,13 @@ function publishLimitsEvent(limits: LimitsDto): void {
 }
 
 /** Entrega o estado e a saída do login de uma conta ao quadro principal. Nada daqui é registrado. */
+/** Entrega o novo estado do cofre ao quadro principal. Só o estado: nunca senha nem chave. */
+function publishVaultChanged(state: VaultDto): void {
+  const target = mainWindow;
+  if (target === undefined || target.isDestroyed()) return;
+  target.webContents.send(CHANNELS.vaultChanged, state);
+}
+
 function publishLoginEvent(event: LoginEvent): void {
   const target = mainWindow;
   if (target === undefined || target.isDestroyed()) return;
@@ -515,6 +531,9 @@ app
     // Empacotado, o ambiente do processo não troca a pasta de dados nem o seletor (R193).
     const env = applicationEnvironment(process.env, app.isPackaged);
     const testDataDir = env['PROJECT_HUB_ENV'] === 'test' ? env['PROJECT_HUB_DATA_DIR'] : undefined;
+    // Os ganchos dos testes de ponta a ponta (área de transferência num arquivo, senha do cofre sem janela). Fora do
+    // modo de teste, vazio.
+    const testHooks = testHooksOf(env);
     const terminalOptions = {
       dataDir: testDataDir ?? app.getPath('userData'),
       // Em teste, cada pasta de dados tem o seu pipe e o processo de terminais encerra logo ao ficar ocioso.
@@ -535,13 +554,20 @@ app
     // As contas nascem depois do banco, e o planejador e o agente, antes: eles chegam a elas por esta referência,
     // preenchida logo abaixo. Só o id da conta viaja; a pasta e o ambiente saem daqui.
     const accountRef: { use?: AccountUse } = {};
+    // O cofre das chaves de API e a janela da senha também nascem depois: o agente, o planejador e o orquestrador os
+    // alcançam por esta referência.
+    const vaultRef: { vault?: AccountVault; window?: VaultWindow } = {};
+    const unlockVault = (): Promise<'unlocked' | 'cancelled'> =>
+      vaultRef.window?.ensureUnlocked() ?? Promise.resolve('cancelled');
     // Os painéis vivos: preenchido quando o serviço de terminais existe.
     let listLiveTerminals: () => Promise<TerminalSummary[]> = () => Promise.resolve([]);
-    const claudeAccountEnv = (accountId: string | null): AppResult<Record<string, string>> => {
+    const claudeAccountEnv = (
+      accountId: string | null,
+    ): Promise<AppResult<Record<string, string>>> => {
       if (accountRef.use !== undefined) return accountRef.use.launchEnv('claude', accountId);
-      return accountId === null
-        ? { ok: true, data: {} }
-        : failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+      return Promise.resolve(
+        accountId === null ? { ok: true, data: {} } : failure('VALIDATION_FAILED', ACCOUNT_REMOVED),
+      );
     };
     const principalClaudeDir = claudeConfigDirOf(buildTerminalEnv(process.env));
     const plannerCommand = resolvePlannerCommand(env, resolveExecutable('claude', process.env));
@@ -579,9 +605,15 @@ app
                 commandPrefix: agentCommand.commandPrefix,
                 extraEnv: agentCommand.extraEnv,
                 account: {
-                  env: (accountId) => {
-                    const result = claudeAccountEnv(accountId);
-                    if (!result.ok) throw new Error(result.error.message);
+                  // A falha leva o código do contrato: o orquestrador separa o cofre trancado (pausa ou espera na
+                  // fila) da chave que falta (a tarefa falha com a frase). A mensagem nunca traz a chave.
+                  env: async (accountId) => {
+                    const result = await claudeAccountEnv(accountId);
+                    if (!result.ok) {
+                      throw Object.assign(new Error(result.error.message), {
+                        code: result.error.code,
+                      });
+                    }
                     return result.data;
                   },
                   // A Principal lê o gasto onde sempre leu; a conta extra, na pasta dela.
@@ -603,7 +635,10 @@ app
             name: accountId === null ? 'Principal' : '',
             removed: accountId !== null,
           },
+        vaultLocked: (accountId) => accountRef.use?.waitsForVault('claude', accountId) === true,
+        kindOf: (accountId) => accountRef.use?.kindOf('claude', accountId) ?? 'subscription',
       },
+      unlockVault,
       // O `gh` falso dos testes só vale fora do aplicativo empacotado.
       allowGhTestOverrides: !app.isPackaged,
     });
@@ -634,6 +669,8 @@ app
             name: accountId === null ? 'Principal' : '',
             removed: accountId !== null,
           },
+        kindOf: (provider, accountId) =>
+          accountRef.use?.kindOf(provider, accountId) ?? 'subscription',
       },
       isLive: async (provider, accountId) =>
         liveSessionsOfAccount(await listLiveTerminals(), provider, accountId).length > 0,
@@ -886,10 +923,50 @@ app
     const sources = sessionSourcesOf(process.env);
     // A conta em uso: a padrão, o nome, a pasta de dados (para os leitores) e o ambiente do lançamento (só para
     // o painel, o agente da missão e o planejador).
+    // O cofre das chaves de API: a chave fica cifrada com a senha da pessoa e, por fora, com a proteção do Windows
+    // (`safeStorage`). Destrancar faz a fila voltar a considerar as missões que esperavam por ele.
+    const vault = createAccountVault({
+      secrets: services.accountSecrets,
+      meta: services.vaultMeta,
+      wrap: {
+        isAvailable: () => safeStorage.isEncryptionAvailable(),
+        // `safeStorage` cifra texto: os bytes passam em base64, e nunca são a chave em claro (só a camada de fora).
+        encrypt: (data) => safeStorage.encryptString(data.toString('base64')),
+        decrypt: (data) => Buffer.from(safeStorage.decryptString(data), 'base64'),
+      },
+      now: () => new Date(),
+      onChange: () => {
+        const state = vault.status();
+        publishVaultChanged(vaultDtoOf(state));
+        if (state.state === 'unlocked') services.missions.orchestrator.vaultUnlocked();
+      },
+    });
+    vaultRef.vault = vault;
+    // O cofre nasce trancado a cada abertura, e tranca de novo ao sair: a chave decifrada não fica na memória.
+    app.once('before-quit', () => {
+      vault.lock();
+    });
+    const vaultPromptPreload = join(import.meta.dirname, '../preload/vault-prompt.cjs');
+    vaultRef.window =
+      testHooks.vaultPassword === undefined
+        ? createVaultWindow({
+            vault,
+            ipc: ipcMain,
+            open: (mode) =>
+              openVaultPromptWindow(mode, {
+                parent: mainWindow,
+                preloadPath: vaultPromptPreload,
+                rendererDirectory,
+                devServerUrl,
+                devTools: !app.isPackaged,
+              }),
+          })
+        : passwordVaultWindow(vault, testHooks.vaultPassword);
     const accountUse = createAccountUse({
       accounts: services.accounts,
       settings: services.profileDeps.settings,
       paths: accountPaths,
+      vault,
       env: sources.env,
     });
     accountRef.use = accountUse;
@@ -897,6 +974,7 @@ app
       // Do ambiente filtrado (`env`): empacotado, o gancho de teste não existe.
       providers: accountCliProviders(providers, resolveAccountCliScript(env), process.platform),
       paths: accountPaths,
+      accounts: services.accounts,
       env: process.env,
       run: runPlannerProcess,
       cwd: dataDir,
@@ -911,6 +989,7 @@ app
       now: () => new Date().toISOString(),
       liveSessionsOf: async (provider, accountId) =>
         liveSessionsOfAccount(await listLiveTerminals(), provider, accountId),
+      vault,
     });
     const loginService = createLoginService({
       port: terminalBackend.port,
@@ -931,10 +1010,26 @@ app
     app.once('will-quit', () => {
       void loginService.dispose();
     });
+    const apiKeyService = createApiKeyService({
+      accounts: services.accounts,
+      settings: services.profileDeps.settings,
+      vault,
+      // A área de transferência só é lida aqui, no processo principal, e limpa depois de guardar a chave.
+      clipboard:
+        testHooks.clipboardFile === undefined
+          ? { readText: () => clipboard.readText(), clear: () => clipboard.clear() }
+          : fileClipboard(testHooks.clipboardFile),
+      ensureUnlocked: unlockVault,
+      approval: createClaudeKeyApproval({
+        folderOf: (accountId) => accountPaths.folderOf('claude', accountId),
+      }),
+    });
     registerAccountsHandlers(ipcMain, isTrustedSender, {
       accounts: accountsService,
       login: loginService,
+      apiKeys: apiKeyService,
     });
+    registerVaultHandlers(ipcMain, isTrustedSender, { vault, window: vaultRef.window });
     registerAppHandlers(ipcMain, isTrustedSender, {
       version: app.getVersion(),
       dataDir,
@@ -961,7 +1056,10 @@ app
       ],
       accountLabel: (provider, accountId) =>
         accountUse.isAccountProvider(provider)
-          ? accountUse.labelOf(provider, accountId)
+          ? {
+              ...accountUse.labelOf(provider, accountId),
+              kind: accountUse.kindOf(provider, accountId),
+            }
           : { name: '', removed: false },
       projects: () =>
         services.workspaceDeps.projects
@@ -1010,6 +1108,7 @@ app
       settingsDir: terminalSettingsDir,
       browserAccess: agentAccess,
       accounts: accountUse,
+      unlockVault,
     });
     registerTerminalHandlers(ipcMain, isTrustedSender, terminalService);
     // O serviço de contas nasce antes do de terminais: a lista entra aqui quando ele existe.
@@ -1029,6 +1128,8 @@ app
         ? recordNotifications(testAlertsRecord())
         : (options) => new Notification(options),
       publishOpen: (event) => liveMainWindow()?.webContents.send(CHANNELS.alertsOpen, event),
+      vaultWaiting: (mission) =>
+        missionAccountOf(services.missions.accountDeps, mission).vaultLocked === true,
     });
     registerAlertHandlers(ipcMain, isTrustedSender, alerts);
     const terminalsWatch = createTerminalsWatch({

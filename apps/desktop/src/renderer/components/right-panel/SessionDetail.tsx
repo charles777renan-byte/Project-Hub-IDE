@@ -5,6 +5,7 @@ import { ArrowLeft, CircleAlert, Copy, ICON_PROPS } from '../Icon';
 import { ProviderIcon } from '../ProviderIcon';
 import { relativeTime, SESSION_PROVIDER_LABEL, sessionTitle } from './sessions-state';
 import { SESSIONS_TEXT } from './sessions-text';
+import { ApiBadge } from '../ApiBadge';
 
 /** Um dado que o programa não grava: o texto "sem dado" no lugar, para a seção não sumir. */
 function orNoData(value: string | null) {
@@ -63,6 +64,7 @@ export function SessionDetail({
           {session.accountName === null ? null : (
             <span className="sessions-tab__account">
               {SESSIONS_TEXT.account(session.accountName)}
+              {session.accountKind === 'api' ? <ApiBadge /> : null}
             </span>
           )}
           <span>{relativeTime(session.lastActivityAt, Date.now())}</span>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
+import { ACCOUNT_NAME_MAX, accountKindSchema, accountRefSchema } from './accounts';
 
 /** Programas cujo histórico o painel lê (fase 4). O shell não tem sessão. */
 export const SESSION_PROVIDERS = ['claude', 'codex', 'antigravity'] as const;
@@ -48,6 +48,8 @@ export const sessionSummarySchema = z.object({
   accountId: accountRefSchema,
   /** O nome da conta, para mostrar. `null` quando o programa só tem a Principal: não há o que distinguir. */
   accountName: z.string().max(ACCOUNT_NAME_MAX).nullable(),
+  /** A conta é por chave de API (cobra por uso). Ausente: assinatura, ou programa só com a Principal. */
+  accountKind: accountKindSchema.optional(),
 });
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 

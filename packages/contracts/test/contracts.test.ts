@@ -317,6 +317,7 @@ describe('responseSchemas', () => {
       CHANNELS.terminalsChanged,
       CHANNELS.previewChanged,
       CHANNELS.workspacesChanged,
+      CHANNELS.vaultChanged,
     ];
     const requestChannels = Object.values(CHANNELS).filter((c) => !eventChannels.includes(c));
     expect(Object.keys(responseSchemas).sort()).toEqual(requestChannels.sort());

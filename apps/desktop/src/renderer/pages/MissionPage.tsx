@@ -376,6 +376,11 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   /** Retomar, no bloco da decisão: não espera a chamada longa terminar. A falha vai ao bloco. */
   const runResume = () =>
     execute(() => window.projectHub.missions.resume(missionId), setControlBusy);
+  /**
+   * Destrancar o cofre das chaves, para a missão na fila numa conta por chave de API. A senha é digitada na janela do
+   * cofre, aberta pelo processo principal; com o cofre aberto, a fila anda sozinha.
+   */
+  const runUnlock = () => execute(() => window.projectHub.vault.unlock(), setControlBusy);
   /** Pausar e cancelar, no menu do cabeçalho: não esperam a chamada longa. A falha vai ao cabeçalho. */
   const runHeaderControl = (action: () => Promise<AppResult<unknown>>) =>
     execute(action, setControlBusy, (error) => error.message, setHeaderError);
@@ -490,6 +495,7 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
           onCancelPlanning={() => void cancelPlanning()}
           onStart={() => void runStart()}
           onResume={() => void runResume()}
+          onUnlock={() => void runUnlock()}
           onRetry={() => void run(() => window.projectHub.missions.retry(missionId))}
           onDecide={(approvalId, decision) =>
             void run(() => window.projectHub.approvals.decide({ approvalId, decision }))

@@ -36,6 +36,16 @@ type HarnessOptions = {
   isDirectory?: (path: string) => Promise<boolean>;
   /** Contas removidas, pelo id. Sem a opção, o orquestrador não conhece contas. */
   removedAccounts?: readonly string[];
+  /**
+   * O cofre das chaves: `locked` vale para as contas de `apiAccounts`. Com ele, o agente recusa iniciar nessas
+   * contas enquanto o cofre está trancado, como o ambiente da conta faz de verdade.
+   */
+  vault?: { locked: boolean; apiAccounts: readonly string[] };
+  /** A janela da senha do cofre (ação da pessoa). */
+  unlock?: () => Promise<'unlocked' | 'cancelled'>;
+  /** Falha forçada no início do agente, pela chamada (a primeira é 1). */
+  startError?: (call: number) => Error | undefined;
+  maxRunning?: number;
 };
 
 type Harness = {
@@ -65,6 +75,17 @@ function harness(options: HarnessOptions = {}): Harness {
     failPause: options.failPause === true,
     failResume: options.failResume === true,
     pauseResume: options.pauseResume !== false,
+    startError: (input, call) => {
+      const vault = options.vault;
+      if (
+        vault?.locked === true &&
+        typeof input.accountId === 'string' &&
+        vault.apiAccounts.includes(input.accountId)
+      ) {
+        return codedError('VAULT_LOCKED', VAULT_LOCKED_TEXT);
+      }
+      return options.startError?.(call);
+    },
   });
   let tick = 0;
   let ids = 0;
@@ -83,7 +104,7 @@ function harness(options: HarnessOptions = {}): Harness {
     ...(options.diff === undefined ? {} : { diff: { diff: options.diff } }),
     ...(options.planner === undefined ? {} : { planner: options.planner }),
     ...(options.isDirectory === undefined ? {} : { fs: { isDirectory: options.isDirectory } }),
-    ...(options.removedAccounts === undefined
+    ...(options.removedAccounts === undefined && options.vault === undefined
       ? {}
       : {
           accounts: {
@@ -91,8 +112,12 @@ function harness(options: HarnessOptions = {}): Harness {
               name: 'Conta',
               removed: accountId !== null && (options.removedAccounts ?? []).includes(accountId),
             }),
+            vaultLocked: (accountId: string) =>
+              options.vault?.locked === true && options.vault.apiAccounts.includes(accountId),
           },
         }),
+    ...(options.unlock === undefined ? {} : { unlock: options.unlock }),
+    ...(options.maxRunning === undefined ? {} : { maxRunning: options.maxRunning }),
     now: () => new Date(Date.UTC(2026, 9, 20, 10, 0, tick++)).toISOString(),
     newId: () => `id-${++ids}`,
   });
@@ -133,6 +158,12 @@ function codeOf(result: AppResult<unknown>): string {
 }
 
 const MISSION = 'missao-1-abcdef';
+const VAULT_LOCKED_TEXT = 'Destranque o cofre para continuar.';
+
+/** Erro com o código do contrato, como o ambiente da conta lança quando o cofre recusa. */
+function codedError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
+}
 const WORKTREE_PATH = 'C:\\hub\\worktrees/app/missao-1-ajustar-login';
 
 /** Eventos `execution.failed` da execução na auditoria. */
@@ -2270,5 +2301,224 @@ describe('conta da missão no orquestrador', () => {
       error: { message: 'A conta foi removida.' },
     });
     expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+  });
+});
+
+describe('conta por chave de API com o cofre trancado', () => {
+  const KEYED = '33333333-3333-4333-8333-333333333333';
+  const OTHER = 'missao-2-abcdef';
+  const THIRD = 'missao-3-abcdef';
+  const MISSING_TEXT = 'A conta não tem uma chave de API guardada.';
+
+  function chainTask(id: string, position: number, dependsOn: string[] = []) {
+    return {
+      id,
+      missionId: MISSION,
+      position,
+      title: `Tarefa ${id}`,
+      description: '',
+      kind: 'custom' as const,
+      status: 'pending' as const,
+      dependsOn,
+      agent: 'claude-code' as const,
+      role: 'general' as const,
+    };
+  }
+
+  function vaultEvents(h: Harness, missionId: string): AuditEvent[] {
+    return h.repo
+      .audit()
+      .filter((e) => e.aggregateId === missionId && e.eventType === 'mission.vault_locked');
+  }
+
+  it('iniciar pela tela com o cofre trancado: destranca e segue', async () => {
+    const vault = { locked: true, apiAccounts: [KEYED] };
+    const unlock = vi.fn(() => {
+      vault.locked = false;
+      return Promise.resolve('unlocked' as const);
+    });
+    const h = harness({ vault, unlock });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(unlock).toHaveBeenCalledTimes(1);
+    expect(h.agent.starts.map((start) => start.accountId)).toEqual([KEYED]);
+    expect(h.repo.getMission(MISSION)?.status).toBe('review');
+  });
+
+  it('iniciar pela tela e cancelar a senha: a missão fica como estava', async () => {
+    const unlock = vi.fn(() => Promise.resolve('cancelled' as const));
+    const h = harness({ vault: { locked: true, apiAccounts: [KEYED] }, unlock });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+
+    const started = await h.orchestrator.startMission(MISSION);
+
+    expect(started).toEqual({
+      ok: false,
+      error: { code: 'VAULT_LOCKED', message: VAULT_LOCKED_TEXT, retryable: false },
+    });
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+    expect(h.repo.listExecutions(MISSION)).toEqual([]);
+    expect(h.worktrees.created).toHaveLength(0);
+    expect(h.agent.starts).toHaveLength(0);
+
+    // Nova tentativa de uma missão que falhou: a senha vem antes de mudar o estado.
+    h.repo.updateMission(MISSION, { status: 'failed' });
+    expect(codeOf(await h.orchestrator.retryMission(MISSION))).toBe('VAULT_LOCKED');
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+    expect(unlock).toHaveBeenCalledTimes(2);
+  });
+
+  it('cofre trancado sem a janela da senha: iniciar falha com a frase do cofre, sem mudar nada', async () => {
+    const h = harness({ vault: { locked: true, apiAccounts: [KEYED] } });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+
+    expect(await h.orchestrator.startMission(MISSION)).toMatchObject({
+      ok: false,
+      error: { code: 'VAULT_LOCKED', message: VAULT_LOCKED_TEXT },
+    });
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+    expect(h.agent.starts).toHaveLength(0);
+  });
+
+  it('planejar pela tela com o cofre trancado: pede a senha antes do planejador', async () => {
+    const planner = fakePlanner(() => OK_PLAN);
+    const unlock = vi.fn(() => Promise.resolve('cancelled' as const));
+    const h = harness({ planner, vault: { locked: true, apiAccounts: [KEYED] }, unlock });
+    h.repo.insertMission(missionFixture({ status: 'draft', accountId: KEYED }));
+
+    expect(codeOf(await h.orchestrator.planMission(MISSION))).toBe('VAULT_LOCKED');
+    expect(unlock).toHaveBeenCalledTimes(1);
+    expect(planner.calls).toHaveLength(0);
+    expect(h.repo.getMission(MISSION)?.status).toBe('draft');
+  });
+
+  it('próxima tarefa da cadeia com o cofre trancado: a missão pausa com o motivo, sem falhar', async () => {
+    const vault = { locked: false, apiAccounts: [KEYED] };
+    const h = harness({ vault, scripts: [[{ kind: 'hold' }], []] });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+    h.repo.insertSteps([chainTask('a', 1), chainTask('b', 2, ['a'])]);
+
+    const pending = h.orchestrator.startMission(MISSION);
+    await vi.waitFor(() => expect(h.agent.sessions).toHaveLength(1));
+    vault.locked = true;
+    h.agent.sessions[0]?.releaseHold();
+    data(await pending);
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('paused');
+    expect(h.repo.steps().map((step) => step.status)).toEqual(['succeeded', 'pending']);
+    expect(h.repo.listExecutions(MISSION).map((e) => e.status)).toEqual(['succeeded']);
+    expect(vaultEvents(h, MISSION).map((e) => e.payload)).toEqual([{ reason: VAULT_LOCKED_TEXT }]);
+    // A vaga volta: a missão pausada pelo cofre não ocupa agente.
+    expect(h.orchestrator.isRunning(MISSION)).toBe(false);
+  });
+
+  it('retomar depois de destrancar continua na mesma conta', async () => {
+    const vault = { locked: false, apiAccounts: [KEYED] };
+    const unlock = vi.fn(() => {
+      vault.locked = false;
+      return Promise.resolve('unlocked' as const);
+    });
+    const h = harness({ vault, unlock, scripts: [[{ kind: 'hold' }], []] });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+    h.repo.insertSteps([chainTask('a', 1), chainTask('b', 2, ['a'])]);
+    const pending = h.orchestrator.startMission(MISSION);
+    await vi.waitFor(() => expect(h.agent.sessions).toHaveLength(1));
+    vault.locked = true;
+    h.agent.sessions[0]?.releaseHold();
+    await pending;
+
+    data(await h.orchestrator.resumeMission(MISSION));
+
+    expect(unlock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(h.repo.getMission(MISSION)?.status).toBe('review'));
+    expect(h.agent.starts.map((start) => start.accountId)).toEqual([KEYED, KEYED]);
+    expect(h.repo.steps().map((step) => step.status)).toEqual(['succeeded', 'succeeded']);
+  });
+
+  it('retomar a pausa do cofre e cancelar a senha: a missão segue pausada', async () => {
+    const vault = { locked: false, apiAccounts: [KEYED] };
+    const unlock = vi.fn(() => Promise.resolve('cancelled' as const));
+    const h = harness({ vault, unlock, scripts: [[{ kind: 'hold' }], []] });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+    h.repo.insertSteps([chainTask('a', 1), chainTask('b', 2, ['a'])]);
+    const pending = h.orchestrator.startMission(MISSION);
+    await vi.waitFor(() => expect(h.agent.sessions).toHaveLength(1));
+    vault.locked = true;
+    h.agent.sessions[0]?.releaseHold();
+    await pending;
+
+    expect(codeOf(await h.orchestrator.resumeMission(MISSION))).toBe('VAULT_LOCKED');
+    expect(h.repo.getMission(MISSION)?.status).toBe('paused');
+    expect(h.agent.starts).toHaveLength(1);
+  });
+
+  it('missão da fila com o cofre trancado: segue na fila sem falhar, e a vaga fica livre para a próxima', async () => {
+    const vault = { locked: false, apiAccounts: [KEYED] };
+    const h = harness({ vault, maxRunning: 1, scripts: [[{ kind: 'hold' }], [], []] });
+    h.repo.insertMission(missionFixture({ id: THIRD }));
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+    h.repo.insertMission(missionFixture({ id: OTHER }));
+    const holding = h.orchestrator.startMission(THIRD);
+    await vi.waitFor(() => expect(h.agent.sessions).toHaveLength(1));
+    const keyed = data(await h.orchestrator.startMission(MISSION));
+    data(await h.orchestrator.startMission(OTHER));
+    expect(keyed.status).toBe('queued');
+
+    vault.locked = true;
+    h.agent.sessions[0]?.releaseHold();
+    await holding;
+    await vi.waitFor(() => expect(h.repo.getMission(OTHER)?.status).toBe('review'));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('queued');
+    expect(h.repo.getExecution(keyed.id)?.status).toBe('queued');
+    expect(vaultEvents(h, MISSION).map((e) => e.payload)).toEqual([{ reason: VAULT_LOCKED_TEXT }]);
+    expect(h.agent.starts.filter((start) => start.accountId === KEYED)).toEqual([]);
+  });
+
+  it('vaultUnlocked reprocessa a fila e a missão inicia na mesma conta', async () => {
+    const vault = { locked: false, apiAccounts: [KEYED] };
+    const h = harness({ vault, maxRunning: 1, scripts: [[{ kind: 'hold' }], []] });
+    h.repo.insertMission(missionFixture({ id: THIRD }));
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+    const holding = h.orchestrator.startMission(THIRD);
+    await vi.waitFor(() => expect(h.agent.sessions).toHaveLength(1));
+    const keyed = data(await h.orchestrator.startMission(MISSION));
+    vault.locked = true;
+    h.agent.sessions[0]?.releaseHold();
+    await holding;
+    await vi.waitFor(() => expect(vaultEvents(h, MISSION)).toHaveLength(1));
+
+    vault.locked = false;
+    h.orchestrator.vaultUnlocked();
+
+    await vi.waitFor(() => expect(h.repo.getMission(MISSION)?.status).toBe('review'));
+    expect(h.agent.starts.at(-1)?.accountId).toBe(KEYED);
+    // A mesma tentativa da fila é a que roda: nenhuma falha no caminho.
+    expect(h.repo.listExecutions(MISSION).map((e) => [e.id, e.status])).toEqual([
+      [keyed.id, 'succeeded'],
+    ]);
+    expect(vaultEvents(h, MISSION)).toHaveLength(1);
+  });
+
+  it('chave removida no meio da cadeia: a tarefa seguinte falha com a frase, sem trocar de conta', async () => {
+    const h = harness({
+      vault: { locked: false, apiAccounts: [KEYED] },
+      scripts: [[], []],
+      startError: (call) =>
+        call === 2 ? codedError('VALIDATION_FAILED', MISSING_TEXT) : undefined,
+    });
+    h.repo.insertMission(missionFixture({ accountId: KEYED }));
+    h.repo.insertSteps([chainTask('a', 1), chainTask('b', 2, ['a'])]);
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.repo.getMission(MISSION)?.status).toBe('failed');
+    expect(h.agent.starts.map((start) => start.accountId)).toEqual([KEYED, KEYED]);
+    const failed = h.repo
+      .audit()
+      .filter((e) => e.aggregateId === MISSION && e.eventType === 'mission.task_start_failed');
+    expect(failed.map((e) => e.payload)).toEqual([{ message: MISSING_TEXT }]);
   });
 });

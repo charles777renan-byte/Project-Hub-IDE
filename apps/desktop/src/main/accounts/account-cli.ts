@@ -1,5 +1,6 @@
 import { failure } from '@project-hub/application';
 import type { AccountProviderId, AccountState, AppResult } from '@project-hub/contracts';
+import type { AccountRepository } from '@project-hub/database';
 import { buildTerminalEnv } from '../../terminal-host/env';
 import type { PlannerRunner } from '../claude-planner';
 import type { ProviderRegistry } from '../providers';
@@ -24,6 +25,7 @@ export type AccountStatus = { state: AccountState; identity?: string; organizati
 const IDENTITY_MAX = 254;
 const ORGANIZATION_MAX = 200;
 const LOGOUT_FAILED = 'O programa não confirmou a saída da conta.';
+const API_ACCOUNT = 'Conta por chave de API não entra nem sai pelo programa.';
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 function text(value: unknown, max: number): string | undefined {
@@ -76,6 +78,8 @@ export type AccountCli = {
 export function createAccountCli(deps: {
   providers: ProviderRegistry;
   paths: Pick<AccountPaths, 'envOf'>;
+  /** Para recusar a conta API: ela não tem login no programa. */
+  accounts: Pick<AccountRepository, 'get'>;
   env: NodeJS.ProcessEnv;
   run: PlannerRunner;
   cwd: string;
@@ -83,12 +87,17 @@ export function createAccountCli(deps: {
 }): AccountCli {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  function isApiAccount(accountId: string | null): boolean {
+    return accountId !== null && deps.accounts.get(accountId)?.kind === 'api';
+  }
+
   /** O único lugar que transforma (programa, conta) em comando e ambiente. */
   function launchOf(
     provider: AccountProviderId,
     accountId: string | null,
     command: readonly string[],
   ): AppResult<AccountLaunch> {
+    if (isApiAccount(accountId)) return failure('VALIDATION_FAILED', API_ACCOUNT);
     const extra = deps.paths.envOf(provider, accountId);
     if (!extra.ok) return extra;
     const resolution = deps.providers.resolve(provider);

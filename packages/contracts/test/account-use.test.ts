@@ -102,6 +102,27 @@ describe('conta da missão', () => {
     ).toBe(true);
   });
 
+  it('a missão pode dizer que espera o cofre das chaves, e só com verdadeiro ou falso', () => {
+    const mission = {
+      id: 'm',
+      projectId: 'p',
+      title: 't',
+      objective: 'o',
+      status: 'queued',
+      altersCode: false,
+      acceptanceCriteria: [],
+      createdAt: 'a',
+      updatedAt: 'a',
+      accountId: null,
+      accountName: 'Principal',
+      accountRemoved: false,
+      accountLocked: false,
+    };
+    expect(missionDtoSchema.safeParse({ ...mission, vaultLocked: true }).success).toBe(true);
+    expect(missionDtoSchema.safeParse(mission).success).toBe(true);
+    expect(missionDtoSchema.safeParse({ ...mission, vaultLocked: 'sim' }).success).toBe(false);
+  });
+
   it('o canal de trocar a conta tem resposta registrada', () => {
     expect(CHANNELS.missionsSetAccount).toBe('missions:set-account:v1');
     expect(responseSchemas[CHANNELS.missionsSetAccount]).toBeDefined();

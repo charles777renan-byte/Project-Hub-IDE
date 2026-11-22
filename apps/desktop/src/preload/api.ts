@@ -1,10 +1,17 @@
 import {
   alertOpenEventSchema,
   loginEventSchema,
+  vaultDtoSchema,
   type AccountDto,
   type AccountsDto,
   type AccountTargetInput,
   type AddAccountInput,
+  type ApiKeyTargetInput,
+  type ChangePasswordResult,
+  type PasteKeyResult,
+  type UnlockResult,
+  type VaultDto,
+  type VaultResetInput,
   type AppInfoDto,
   type LoginDto,
   type LoginEvent,
@@ -484,6 +491,9 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       setDefault: (input: AccountTargetInput) => call<void>(CHANNELS.accountsSetDefault, input),
       disconnect: (input: AccountTargetInput) => call<void>(CHANNELS.accountsDisconnect, input),
       remove: (input: RemoveAccountInput) => call<void>(CHANNELS.accountsRemove, input),
+      pasteKey: (input: ApiKeyTargetInput) =>
+        call<PasteKeyResult>(CHANNELS.accountsPasteKey, input),
+      removeKey: (input: ApiKeyTargetInput) => call<void>(CHANNELS.accountsRemoveKey, input),
       login: {
         start: (input: AccountTargetInput) => call<LoginDto>(CHANNELS.accountsLoginStart, input),
         get: () => call<LoginDto | null>(CHANNELS.accountsLoginGet),
@@ -506,6 +516,22 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
             listener(parsed.data);
           }),
       },
+    },
+    vault: {
+      get: () => call<VaultDto>(CHANNELS.vaultGet),
+      unlock: () => call<UnlockResult>(CHANNELS.vaultUnlock),
+      lock: () => call<void>(CHANNELS.vaultLock),
+      changePassword: () => call<ChangePasswordResult>(CHANNELS.vaultChangePassword),
+      reset: (input: VaultResetInput) => call<void>(CHANNELS.vaultReset, input),
+      subscribe: (listener: (state: VaultDto) => void) =>
+        subscribe(CHANNELS.vaultChanged, (payload) => {
+          const parsed = vaultDtoSchema.safeParse(payload);
+          if (!parsed.success) {
+            console.warn(`Evento fora do contrato no canal ${CHANNELS.vaultChanged}.`);
+            return;
+          }
+          listener(parsed.data);
+        }),
     },
     app: {
       info: () => call<AppInfoDto>(CHANNELS.appInfo),

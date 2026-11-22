@@ -401,6 +401,230 @@
   font-size: var(--text-sm);
 }
 
+/* Conta por chave de API ------------------------------------------------------------------------------------- */
+
+/* O estado da chave: ícone e palavra, como o da conta de assinatura. A cor só reforça. */
+.acct__state--key-stored {
+  color: var(--accent);
+}
+
+.acct__state--key-unreadable {
+  color: var(--warn);
+}
+
+/* O painel de criar conta: um bloco só, dentro do programa, com título, tipo, avisos, nome e ações. */
+.acct-add {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.app-main .acct-add__title {
+  margin: 0;
+  font-weight: var(--weight-heading);
+}
+
+/* O tipo da conta: dois cartões de rádio lado a lado (um embaixo do outro, se a largura não der). */
+.acct-kind {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-2);
+}
+
+.acct-kind__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.acct-kind__option:hover:not(:disabled) {
+  border-color: var(--field-line);
+}
+
+.acct-kind__option[aria-checked='true'] {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface));
+}
+
+.acct-kind__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* A marca do rádio: o círculo vazio, ou com o anel grosso quando escolhido (a forma diz o estado, a cor reforça). */
+.acct-kind__mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border: 1px solid var(--field-line);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.acct-kind__option[aria-checked='true'] .acct-kind__mark {
+  border: 4px solid var(--accent);
+}
+
+.acct-kind__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.acct-kind__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: var(--weight-label);
+}
+
+.acct-kind__note {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* Os avisos da conta por chave: fatos a saber antes de criar, num quadro inteiro de tom âmbar, sem cor de erro. */
+.app-main .acct-add__notes {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 6%, var(--surface));
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+.acct-add__notes li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 72ch;
+}
+
+.acct-add__notes svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warn);
+}
+
+/* O nome e as ações na mesma linha; as ações descem para baixo do campo quando não cabem. */
+.acct-add__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.acct-add__field {
+  display: grid;
+  flex: 1 1 16rem;
+  gap: var(--space-1);
+  max-width: 24rem;
+}
+
+.acct-add__label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-label);
+}
+
+.acct-add__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.app-main .acct-add__error {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.acct-key {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.acct-key__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.acct-key__saved {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.app-main .acct-key__saved p {
+  margin: 0;
+}
+
+.app-main .acct-key__saved p + p {
+  color: var(--muted);
+}
+
+.acct-key__end {
+  font-family: var(--font-mono);
+}
+
+/* A barra do cofre, no alto da seção quando existe conta API. */
+.vault-bar {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.vault-bar__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.vault-bar__state--unlocked {
+  color: var(--accent);
+}
+
+.app-main .vault-bar__note {
+  flex: 1 1 18rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.app-main .vault-bar__warn {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--text-sm);
+}
+
 /* Login guiado, dentro da linha da conta ---------------------------------------------------------------------- */
 
 .login {

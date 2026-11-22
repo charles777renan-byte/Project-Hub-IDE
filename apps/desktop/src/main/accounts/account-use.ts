@@ -3,11 +3,14 @@ import { failure } from '@project-hub/application';
 import {
   ACCOUNT_PROVIDERS,
   accountIdSchema,
+  type AccountKind,
   type AccountProviderId,
   type AppResult,
 } from '@project-hub/contracts';
 import type { AccountRepository, AppSettingsRepository } from '@project-hub/database';
 import type { AccountPaths } from './account-paths';
+import type { AccountVault } from './account-vault';
+import { API_KEY_VARIABLE, isApiKeyProvider } from './api-key-shape';
 import { DEFAULT_ACCOUNT_KEY, PRINCIPAL_NAME } from './accounts-service';
 
 /** A frase de toda abertura que pede uma conta que já não vale. Nunca vira "abrir na Principal". */
@@ -22,11 +25,23 @@ export type AccountUse = {
   isAccountProvider(provider: string): provider is AccountProviderId;
   /** A conta padrão do programa. Sem a chave, ou com uma conta que já não vale: a Principal. */
   defaultOf(provider: AccountProviderId): string | null;
-  /** As variáveis extras do lançamento. Conta que não vale é falha, e nunca ambiente vazio. */
+  /**
+   * As variáveis extras do lançamento. Conta que não vale é falha, e nunca ambiente vazio. Conta API: a pasta e a
+   * variável da chave, lida do cofre a cada chamada; cofre trancado falha com o código `VAULT_LOCKED`.
+   */
   launchEnv(
     provider: AccountProviderId,
     accountId: string | null,
-  ): AppResult<Record<string, string>>;
+  ): Promise<AppResult<Record<string, string>>>;
+  /** O tipo da conta. A Principal e a desconhecida são de assinatura. */
+  kindOf(provider: AccountProviderId, accountId: string | null): AccountKind;
+  /**
+   * A conta espera a senha do cofre: é API, tem a chave guardada e o cofre está trancado. Sem chave, ou com uma que
+   * não abre, não espera: pedir a senha não resolveria.
+   */
+  waitsForVault(provider: AccountProviderId, accountId: string | null): boolean;
+  /** Dá para abrir agora: assinatura que existe, ou conta API com a chave guardada e o cofre aberto. */
+  usableOf(provider: AccountProviderId, accountId: string | null): boolean;
   /** A pasta de dados do programa nessa conta. Conta que não vale: `undefined`. */
   dataRootOf(provider: AccountProviderId, accountId: string | null): string | undefined;
   /** O nome para mostrar. Conta removida mantém o nome gravado; a desconhecida fica sem nome. */
@@ -44,6 +59,7 @@ export type AccountUseDeps = {
   accounts: Pick<AccountRepository, 'get' | 'list'>;
   settings: Pick<AppSettingsRepository, 'get'>;
   paths: Pick<AccountPaths, 'envOf' | 'folderOf'>;
+  vault: Pick<AccountVault, 'check' | 'reveal'>;
   /** O ambiente filtrado que os terminais recebem: é dele que sai a pasta da Principal. */
   env: Readonly<Record<string, string | undefined>>;
 };
@@ -70,12 +86,45 @@ export function createAccountUse(deps: AccountUseDeps): AccountUse {
 
     defaultOf(provider) {
       const stored = settings.get(DEFAULT_ACCOUNT_KEY(provider));
-      return stored !== undefined && live(provider, stored) !== undefined ? stored : null;
+      if (stored === undefined) return null;
+      const record = live(provider, stored);
+      if (record === undefined) return null;
+      // Conta API sem chave não abre nada: a padrão volta à Principal. Trancada continua a padrão (pede a senha).
+      if (record.kind === 'api' && deps.vault.check(record.id) === 'missing') return null;
+      return stored;
     },
 
-    launchEnv(provider, accountId) {
+    // Assíncrono de propósito: quem lança espera, e a chave só existe dentro desta chamada.
+    async launchEnv(provider, accountId) {
       const env = paths.envOf(provider, accountId);
-      return env.ok ? env : failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+      if (!env.ok) return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+      if (accountId === null) return env;
+      const record = live(provider, accountId);
+      if (record === undefined) return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+      if (record.kind !== 'api') return env;
+      if (!isApiKeyProvider(provider)) return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
+      // O único lugar do processo principal que pede a chave em claro ao cofre.
+      const key = deps.vault.reveal(record.id);
+      if (!key.ok) return key;
+      return { ok: true, data: { ...env.data, [API_KEY_VARIABLE[provider]]: key.data } };
+    },
+
+    kindOf(provider, accountId) {
+      if (accountId === null) return 'subscription';
+      return live(provider, accountId)?.kind ?? 'subscription';
+    },
+
+    waitsForVault(provider, accountId) {
+      if (accountId === null) return false;
+      const record = live(provider, accountId);
+      return record?.kind === 'api' && deps.vault.check(record.id) === 'locked';
+    },
+
+    usableOf(provider, accountId) {
+      if (accountId === null) return true;
+      const record = live(provider, accountId);
+      if (record === undefined) return false;
+      return record.kind !== 'api' || deps.vault.check(record.id) === 'stored';
     },
 
     dataRootOf(provider, accountId) {

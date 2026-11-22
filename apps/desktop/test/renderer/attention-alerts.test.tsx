@@ -136,6 +136,15 @@ describe('currentWaits e newWaits', () => {
     expect([...current.values()]).toEqual([{ kind: 'mission', id: 'm3' }]);
   });
 
+  it('a missão que passa a esperar o cofre avisa como missão', () => {
+    const queued = { ...mission('m1', 'queued'), vaultLocked: true as const };
+    const before = currentWaits([], [], [], []);
+    const after = currentWaits([], [], [], [item(queued)]);
+
+    expect(newWaits(new Set(before.keys()), after)).toEqual([{ kind: 'mission', id: 'm1' }]);
+    expect([...after.keys()]).toEqual(['mission:m1:vault']);
+  });
+
   it('a espera que sai e volta avisa de novo', () => {
     const entry = mission('m1', 'waiting_input');
     const waiting = currentWaits([missionEntry(entry)], [item(entry)], []);

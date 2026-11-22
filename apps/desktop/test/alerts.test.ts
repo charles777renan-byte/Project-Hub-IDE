@@ -78,6 +78,7 @@ function harness(
     terminals?: TerminalSummary[];
     focused?: boolean;
     minimized?: boolean;
+    vaultWaiting?: (mission: Mission) => boolean;
   } = {},
 ) {
   const notifications: FakeNotification[] = [];
@@ -123,6 +124,7 @@ function harness(
       return created;
     },
     publishOpen: (event) => opened.push(event),
+    ...(options.vaultWaiting === undefined ? {} : { vaultWaiting: options.vaultWaiting }),
   };
   return { service: createAlertService(deps), notifications, opened, win };
 }
@@ -153,6 +155,19 @@ describe('createAlertService', () => {
     });
     await failed.service.notify({ kind: 'mission', id: 'm1' });
     expect(failed.notifications[0]?.options.body).toBe('loja · Falhou');
+  });
+
+  it('a missão que espera o cofre avisa com a frase do cofre', async () => {
+    const waiting = harness({
+      mission: mission({ status: 'queued' }),
+      vaultWaiting: () => true,
+    });
+    await waiting.service.notify({ kind: 'mission', id: 'm1' });
+    expect(waiting.notifications[0]?.options.body).toBe('Loja · Destranque o cofre para continuar');
+
+    const queued = harness({ mission: mission({ status: 'queued' }), vaultWaiting: () => false });
+    await queued.service.notify({ kind: 'mission', id: 'm1' });
+    expect(queued.notifications).toHaveLength(0);
   });
 
   it('não leva nada da missão além do título', async () => {
