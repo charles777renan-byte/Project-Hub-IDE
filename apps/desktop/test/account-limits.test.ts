@@ -6,7 +6,12 @@ import type { LimitsService } from '../src/main/limits';
 const X = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const Y = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
-type FakeService = LimitsService & { reads: number; disposed: boolean; percent: number };
+type FakeService = LimitsService & {
+  reads: number;
+  disposed: boolean;
+  percent: number;
+  capturedAt?: string;
+};
 
 /** Serviço falso de uma conta: conta as leituras e devolve uma janela com o percentual de agora. */
 function fakeService(provider: LimitProviderId, cooldown = false): FakeService {
@@ -29,6 +34,7 @@ function fakeService(provider: LimitProviderId, cooldown = false): FakeService {
                 },
               ],
         refreshing: false,
+        ...(service.capturedAt === undefined ? {} : { capturedAt: service.capturedAt }),
       };
     },
     get: () => ({ providers: [service.snapshot()], accounts: [] }),
@@ -310,5 +316,72 @@ describe('createAccountLimits', () => {
 
     expect([...h.services.values()].every((service) => service.disposed)).toBe(true);
     expect(h.reads('claude', null)).toBe(0);
+  });
+
+  describe('esgotada até', () => {
+    const UNTIL = '2026-11-21T20:10:00.000Z';
+
+    it('a conta marcada fica esgotada até a hora marcada', () => {
+      const h = setup();
+      h.limits.markExhausted('claude', X, UNTIL);
+      expect(h.limits.exhaustedUntil('claude', X)).toBe(UNTIL);
+      expect(h.limits.exhaustedUntil('claude', null)).toBeUndefined();
+    });
+
+    it('a marcação vencida não conta', () => {
+      const h = setup();
+      h.limits.markExhausted('claude', X, UNTIL);
+      vi.setSystemTime(new Date('2026-11-21T20:11:00.000Z'));
+      expect(h.limits.exhaustedUntil('claude', X)).toBeUndefined();
+    });
+
+    it('uma leitura depois da marcação, sem janela em 100%, desfaz a marcação', async () => {
+      const h = setup();
+      h.limits.markExhausted('claude', X, UNTIL);
+      vi.setSystemTime(new Date('2026-11-21T12:05:00.000Z'));
+      await h.limits.refreshAccount('claude', X);
+      const service = h.services.get(h.key('claude', X));
+      if (service === undefined) throw new Error('a conta deveria ter serviço');
+      service.capturedAt = '2026-11-21T12:05:00.000Z';
+      expect(h.limits.exhaustedUntil('claude', X)).toBeUndefined();
+    });
+
+    it('uma leitura anterior à marcação não a desfaz', async () => {
+      const h = setup();
+      await h.limits.refreshAccount('claude', X);
+      const service = h.services.get(h.key('claude', X));
+      if (service === undefined) throw new Error('a conta deveria ter serviço');
+      service.capturedAt = '2026-11-21T11:59:00.000Z';
+      h.limits.markExhausted('claude', X, UNTIL);
+      expect(h.limits.exhaustedUntil('claude', X)).toBe(UNTIL);
+    });
+
+    it('a janela em 100% que não renovou conta sem marcação', async () => {
+      const h = setup();
+      h.limits.sync();
+      const service = h.services.get(h.key('claude', X));
+      if (service !== undefined) service.percent = 100;
+      await h.limits.refreshAccount('claude', X);
+      expect(h.limits.exhaustedUntil('claude', X)).toBe('2026-11-21T20:00:00.000Z');
+    });
+
+    it('vale a mais tardia entre a janela e a marcação', async () => {
+      const h = setup();
+      h.limits.sync();
+      const service = h.services.get(h.key('claude', X));
+      if (service !== undefined) service.percent = 100;
+      await h.limits.refreshAccount('claude', X);
+      h.limits.markExhausted('claude', X, '2026-11-21T19:00:00.000Z');
+      expect(h.limits.exhaustedUntil('claude', X)).toBe('2026-11-21T20:00:00.000Z');
+      h.limits.markExhausted('claude', X, '2026-11-21T22:00:00.000Z');
+      expect(h.limits.exhaustedUntil('claude', X)).toBe('2026-11-21T22:00:00.000Z');
+    });
+
+    it('marca conta API, que não tem serviço de limites', () => {
+      const h = setup({ extras: [X, Y], api: [Y] });
+      h.limits.markExhausted('claude', Y, UNTIL);
+      expect(h.services.has(h.key('claude', Y))).toBe(false);
+      expect(h.limits.exhaustedUntil('claude', Y)).toBe(UNTIL);
+    });
   });
 });

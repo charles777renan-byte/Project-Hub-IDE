@@ -50,6 +50,8 @@ export const accountDtoSchema = z
     /** Só na conta API: o estado da chave e os 4 últimos caracteres dela, nunca mais que isso. */
     keyState: z.enum(KEY_STATES).optional(),
     keyLast4: z.string().length(4).optional(),
+    /** Até quando o limite de uso da conta está esgotado (ISO). Só na conta esgotada. */
+    exhaustedUntil: z.string().max(40).optional(),
   })
   .refine(
     (account) =>
@@ -62,6 +64,10 @@ export const accountGroupDtoSchema = z.strictObject({
   provider: accountProviderSchema,
   installed: z.boolean(),
   accounts: z.array(accountDtoSchema),
+  /** A troca automática de conta quando o limite acaba. `includeApi`: as contas por chave entram (só Claude Code). */
+  autoSwitch: z.strictObject({ enabled: z.boolean(), includeApi: z.boolean() }),
+  /** A conta que painel e missão novos marcam: a padrão, ou a próxima que serve quando a padrão está esgotada. */
+  preferredId: accountRefSchema,
 });
 export type AccountGroupDto = z.infer<typeof accountGroupDtoSchema>;
 
@@ -78,6 +84,20 @@ export const accountsDtoSchema = z.strictObject({
   others: z.array(otherProgramDtoSchema),
 });
 export type AccountsDto = z.infer<typeof accountsDtoSchema>;
+
+/** As opções da troca automática: ligar a troca, e incluir as contas por chave de API. */
+export const AUTO_SWITCH_OPTIONS = ['enabled', 'includeApi'] as const;
+export type AutoSwitchOption = (typeof AUTO_SWITCH_OPTIONS)[number];
+export const setAutoSwitchInputSchema = z
+  .strictObject({
+    provider: accountProviderSchema,
+    option: z.enum(AUTO_SWITCH_OPTIONS),
+    value: z.boolean(),
+  })
+  .refine((input) => input.option !== 'includeApi' || input.provider === 'claude', {
+    message: 'Só o Claude Code tem contas por chave de API.',
+  });
+export type SetAutoSwitchInput = z.infer<typeof setAutoSwitchInputSchema>;
 
 /** Entrada de `accounts:add:v1`. A pasta e o id nascem no processo principal. */
 export const addAccountInputSchema = z.strictObject({

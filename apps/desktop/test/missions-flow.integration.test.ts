@@ -5,7 +5,12 @@ import { join } from 'node:path';
 import { failure, type PlannedTask, type Planner } from '@project-hub/application';
 import type { AppResult, MissionEventDto } from '@project-hub/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAppServices, platformOf, type AppServices } from '../src/main/composition';
+import {
+  createAppServices,
+  platformOf,
+  type AppServices,
+  type AppServicesOptions,
+} from '../src/main/composition';
 import { handleAddProject } from '../src/main/ipc/projects';
 import {
   handleCreateMission,
@@ -413,5 +418,122 @@ describe('planejador ligado na composição, com banco real', () => {
       error: { code: 'AGENT_UNAVAILABLE' },
     });
     // O afterEach fecha de novo: fechar duas vezes não pode falhar.
+  });
+});
+
+describe('troca automática de conta ligada na composição', () => {
+  type Agent = NonNullable<AppServicesOptions['agent']>;
+  type Session = Awaited<ReturnType<Agent['start']>>;
+  type Notice = Parameters<NonNullable<AppServicesOptions['onAccountSwitched']>>[0];
+  const RESET = '2026-11-22T20:10:00.000Z';
+
+  /** A primeira sessão bate no limite e espera ser parada; a segunda conclui. */
+  function limitAgent(): Agent & { starts: Parameters<Agent['start']>[0][]; stops: string[] } {
+    const starts: Parameters<Agent['start']>[0][] = [];
+    const stops: string[] = [];
+    return {
+      type: 'falso',
+      starts,
+      stops,
+      probe: () => Promise.resolve({ available: true }),
+      getCapabilities: () =>
+        Promise.resolve({
+          streaming: true,
+          tools: false,
+          interactiveInput: false,
+          approvals: false,
+          pauseResume: false,
+          attachments: false,
+          usageReporting: false,
+          persistentContext: false,
+          localExecution: true,
+          models: [],
+        }),
+      start(input) {
+        starts.push(input);
+        const first = starts.length === 1;
+        let stop: () => void = () => undefined;
+        const stopped = new Promise<void>((resolve) => {
+          stop = resolve;
+        });
+        const at = () => new Date().toISOString();
+        const session: Session = {
+          id: `sessao-${starts.length}`,
+          async *events() {
+            if (first) {
+              yield { type: 'limit.reached', window: 'session', resetsAt: RESET, at: at() };
+              await stopped;
+              return;
+            }
+            yield { type: 'session.completed', result: { summary: 'feito' }, at: at() };
+          },
+          send: () => Promise.resolve(),
+          approve: () => Promise.resolve(),
+          pause: () => Promise.resolve(),
+          resume: () => Promise.resolve(),
+          stop: (reason) => {
+            stops.push(reason);
+            stop();
+            return Promise.resolve();
+          },
+        };
+        return Promise.resolve(session);
+      },
+    };
+  }
+
+  it('createAppServices repassa a porta de contas e o aviso da troca ao orquestrador', async () => {
+    const agent = limitAgent();
+    const notices: Notice[] = [];
+    const marks: [string | null, string][] = [];
+    const names: Record<string, string> = { trabalho: 'Trabalho', pessoal: 'Pessoal' };
+    services.close();
+    services = createAppServices({
+      dbFile: join(dir, 'database', 'project-hub.sqlite'),
+      platform: platformOf(process.platform),
+      worktreesRoot: join(dir, 'worktrees'),
+      publishMissionEvent: (event) => events.push(event),
+      agent,
+      accounts: {
+        defaultOf: () => 'trabalho',
+        labelOf: (_provider, accountId) => ({
+          name: accountId === null ? 'Principal' : (names[accountId] ?? ''),
+          removed: false,
+        }),
+        autoSwitchEnabled: () => true,
+        markExhausted: (accountId, until) => {
+          marks.push([accountId, until]);
+        },
+        pickAccount: ({ exclude }) =>
+          Promise.resolve(
+            exclude === 'pessoal' ? { kind: 'none' } : { kind: 'account', accountId: 'pessoal' },
+          ),
+      },
+      onAccountSwitched: (notice) => notices.push(notice),
+    });
+    for (const id of ['trabalho', 'pessoal']) {
+      services.accounts.insert({
+        id,
+        provider: 'claude',
+        name: names[id] ?? id,
+        createdAt: '2026-11-22T10:00:00.000Z',
+      });
+    }
+    const created = await handleCreateMission(services.missions.createDeps, newMissionInput());
+    if (!created.ok) throw new Error('a criação deveria dar certo');
+    const missionId = created.data.id;
+    await handleMissionAction(services.missions.orchestrator, 'plan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'approvePlan', { missionId });
+    await handleMissionAction(services.missions.orchestrator, 'start', { missionId });
+
+    const repo = services.missions.queryDeps.repo;
+    await vi.waitFor(() => expect(repo.getMission(missionId)?.status).toBe('review'));
+    expect(repo.getMission(missionId)?.accountId).toBe('pessoal');
+    expect(agent.starts.map((start) => start.accountId)).toEqual(['trabalho', 'pessoal']);
+    expect(agent.stops).toEqual(['Limite da conta.']);
+    expect(marks).toEqual([['trabalho', RESET]]);
+    expect(notices).toEqual([
+      { missionId, cause: 'limit', fromName: 'Trabalho', toName: 'Pessoal', resetsAt: RESET },
+    ]);
   });
 });

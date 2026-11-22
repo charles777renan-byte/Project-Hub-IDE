@@ -287,6 +287,8 @@ describe('fim do processo', () => {
           {
             provider: 'claude',
             installed: true,
+            autoSwitch: { enabled: false, includeApi: false },
+            preferredId: null,
             accounts: [
               {
                 id: null,

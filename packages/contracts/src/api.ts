@@ -10,6 +10,7 @@ import type {
   PasteKeyResult,
   RemoveAccountInput,
   RenameAccountInput,
+  SetAutoSwitchInput,
 } from './accounts';
 import type { ChangePasswordResult, UnlockResult, VaultDto, VaultResetInput } from './vault';
 import type { AlertNotifyInput, AlertOpenEvent } from './alerts';
@@ -409,6 +410,8 @@ export type ProjectHubApi = {
      */
     pasteKey(input: ApiKeyTargetInput): Promise<AppResult<PasteKeyResult>>;
     removeKey(input: ApiKeyTargetInput): Promise<AppResult<void>>;
+    /** Liga ou desliga a troca automática de conta, ou a inclusão das contas por chave de API nela. */
+    setAutoSwitch(input: SetAutoSwitchInput): Promise<AppResult<void>>;
     login: {
       start(input: AccountTargetInput): Promise<AppResult<LoginDto>>;
       get(): Promise<AppResult<LoginDto | null>>;

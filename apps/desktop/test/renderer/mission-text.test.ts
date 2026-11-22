@@ -8,6 +8,7 @@ import {
   decisionTextOf,
   dependencyText,
   formatTime,
+  limitNotice,
   missionTabCounts,
   needsDecision,
   primaryActionOf,
@@ -496,5 +497,114 @@ describe('describeEvent: conta por chave de API', () => {
       'A próxima tarefa não iniciou: A conta não tem uma chave de API guardada.',
     );
     expect(conversationEvents([waiting, failed])).toHaveLength(2);
+  });
+});
+
+describe('describeEvent: troca automática de conta', () => {
+  const NOW = new Date('2026-11-22T12:00:00.000Z');
+  const RESET = '2026-11-22T14:10:00.000Z';
+  const clock = (iso: string) =>
+    new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  let sequence = 0;
+  const mission = (eventType: string, payload: Record<string, unknown> = {}): MissionEventDto =>
+    event({ eventType, payload, aggregateType: 'mission', sequence: ++sequence });
+
+  it('descreve a troca pelo limite com a hora', () => {
+    expect(
+      describeEvent(
+        mission('mission.account_switched', {
+          cause: 'limit',
+          fromName: 'Trabalho',
+          toName: 'Pessoal',
+          resetsAt: RESET,
+        }),
+        NOW,
+      ),
+    ).toBe(
+      `Limite da conta Trabalho acabou (renova às ${clock(RESET)}). A missão continuou na conta Pessoal.`,
+    );
+  });
+
+  it('descreve a troca na abertura, com e sem a hora', () => {
+    expect(
+      describeEvent(
+        mission('mission.account_switched', {
+          cause: 'opening',
+          fromName: 'Trabalho',
+          toName: 'Pessoal',
+          resetsAt: RESET,
+        }),
+        NOW,
+      ),
+    ).toBe(
+      `A conta Trabalho está sem limite (renova às ${clock(RESET)}). A missão vai rodar na conta Pessoal.`,
+    );
+    expect(
+      describeEvent(
+        mission('mission.account_switched', { cause: 'opening', fromName: 'A', toName: 'B' }),
+        NOW,
+      ),
+    ).toBe('A conta A está sem limite. A missão vai rodar na conta B.');
+  });
+
+  it('descreve o limite sem troca, numa conta e em todas', () => {
+    expect(
+      describeEvent(
+        mission('mission.account_limit', { accountName: 'Trabalho', resetsAt: RESET }),
+        NOW,
+      ),
+    ).toBe(`O limite da conta Trabalho acabou. Renova às ${clock(RESET)}.`);
+    expect(describeEvent(mission('mission.account_limit', { accountName: 'Trabalho' }), NOW)).toBe(
+      'O limite da conta Trabalho acabou.',
+    );
+    expect(
+      describeEvent(
+        mission('mission.account_limit', {
+          accountName: 'Estudo',
+          allExhausted: true,
+          firstResetAt: RESET,
+        }),
+        NOW,
+      ),
+    ).toBe(`O limite acabou em todas as contas. A primeira renova às ${clock(RESET)}.`);
+    expect(
+      describeEvent(mission('mission.account_limit', { accountName: 'E', allExhausted: true }), NOW),
+    ).toBe('O limite acabou em todas as contas.');
+  });
+
+  it('diz quando a conversa não foi levada', () => {
+    expect(describeEvent(mission('mission.resume_failed'))).toBe(
+      'A conversa não pôde ser levada para a conta nova: a tarefa recomeçou com o pedido para continuar.',
+    );
+  });
+
+  it('os quatro entram na conversa', () => {
+    const events = [
+      mission('mission.account_switched', { cause: 'limit', fromName: 'A', toName: 'B' }),
+      mission('mission.account_limit', { accountName: 'A' }),
+      mission('mission.resume_failed'),
+    ];
+    expect(conversationEvents(events)).toHaveLength(3);
+  });
+
+  it('o aviso diz a hora e o que fazer', () => {
+    expect(
+      limitNotice([mission('mission.account_limit', { accountName: 'Trabalho', resetsAt: RESET })], NOW),
+    ).toBe(
+      `O limite da conta Trabalho acabou. Renova às ${clock(RESET)}. Quando renovar, peça para continuar. Ou pare a missão e tente de novo em outra conta.`,
+    );
+  });
+
+  it('o aviso some depois da resposta, de uma nova tentativa ou de uma troca', () => {
+    const limit = () => mission('mission.account_limit', { accountName: 'A' });
+    expect(limitNotice([limit(), event({ eventType: 'input.received' })], NOW)).toBeUndefined();
+    expect(limitNotice([limit(), event({ eventType: 'execution.started' })], NOW)).toBeUndefined();
+    expect(
+      limitNotice(
+        [limit(), mission('mission.account_switched', { cause: 'opening', fromName: 'A', toName: 'B' })],
+        NOW,
+      ),
+    ).toBeUndefined();
+    expect(limitNotice([event({ eventType: 'input.requested' })], NOW)).toBeUndefined();
   });
 });

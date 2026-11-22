@@ -311,6 +311,16 @@ function WorkspaceBody({
         : {},
     [accountsState],
   );
+  // A conta que a lista marca: a padrão, ou a próxima que serve quando a padrão está sem limite (a troca ligada).
+  const preferredByProvider = useMemo(
+    () =>
+      accountsState.status === 'ready'
+        ? Object.fromEntries(
+            accountsState.data.groups.map((group) => [group.provider, group.preferredId]),
+          )
+        : {},
+    [accountsState],
+  );
   /** A conta de um painel: a da sessão viva, ou a gravada na folha. Indefinido: o painel não tem conta gravada. */
   const accountOfLeaf = (leaf: LayoutLeaf): string | null | undefined => {
     const live =
@@ -774,6 +784,7 @@ function WorkspaceBody({
       onLayout={chooseLayout}
       onOpen={(provider, accountId) => void openPane(provider, accountId)}
       accounts={accountsByProvider}
+      preferred={preferredByProvider}
       onMenuOpen={reloadAccounts}
     />
   );

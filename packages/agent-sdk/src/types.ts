@@ -25,7 +25,24 @@ export type AgentCapabilities = {
  * Entrada para iniciar uma sessão: o diretório de trabalho e o texto que descreve a tarefa. `accountId` é a conta do
  * programa em que a sessão roda; ausente ou `null`, a Principal. Só o id: a pasta e o ambiente saem do adaptador.
  */
-export type AgentStartInput = { cwd: string; prompt: string; accountId?: string | null };
+/**
+ * Levar a conversa de outra conta: o adaptador copia o transcript `transcriptPath` da conta `fromAccountId` para a
+ * conta da sessão nova e abre o agente retomando `sessionId`, com `prompt` como a primeira mensagem.
+ */
+export type AgentResumeInput = {
+  sessionId: string;
+  transcriptPath: string;
+  fromAccountId: string | null;
+  prompt: string;
+};
+
+export type AgentStartInput = {
+  cwd: string;
+  prompt: string;
+  accountId?: string | null;
+  /** A conversa a retomar, vinda de outra conta. Ausente: a sessão começa do zero com `prompt`. */
+  resume?: AgentResumeInput;
+};
 
 /** O que a reanexação precisa saber da missão: a conta em que a sessão nasceu. */
 export type AgentAttachContext = { accountId: string | null };
@@ -83,6 +100,18 @@ export type AgentEvent =
   | { type: 'input.received'; at: string }
   /** `context` vem quando o agente informa a resposta principal mais recente; sem ela, falta (não é zero). */
   | { type: 'usage.updated'; usage: UsageSummary; context?: ContextUsage; at: string }
+  /**
+   * O limite de uso da conta acabou. `resetsAt` (ISO) vem quando o agente informa a hora de renovação;
+   * `sessionId` e `transcriptPath` dizem qual conversa parou, para retomá-la em outra conta.
+   */
+  | {
+      type: 'limit.reached';
+      window: 'session' | 'weekly' | 'other';
+      resetsAt?: string;
+      sessionId?: string;
+      transcriptPath?: string;
+      at: string;
+    }
   | ({ type: 'verification.completed'; at: string } & VerificationResult)
   | { type: 'session.completed'; result: AgentResult; at: string }
   | { type: 'session.failed'; error: AgentError; at: string };
@@ -108,6 +137,8 @@ export interface AgentSession {
   cursor?(): string | undefined;
   /** Verdadeiro quando o usuário responde fora do app (no terminal). A leitura segue e o adaptador avisa com `input.received`. */
   readonly externalInput?: boolean;
+  /** Verdadeiro quando a sessão abriu retomando a conversa de `AgentStartInput.resume`. */
+  readonly resumed?: boolean;
   send(input: AgentUserInput): Promise<void>;
   approve(input: AgentApprovalDecision): Promise<void>;
   pause(): Promise<void>;

@@ -18,6 +18,8 @@ export type FakeStep =
   | { kind: 'approval' }
   | { kind: 'input' }
   | { kind: 'hold' }
+  /** Para o roteiro até a sessão ser parada; `releaseHold` não o solta. */
+  | { kind: 'block' }
   | { kind: 'fail'; message: string }
   | { kind: 'throw' }
   | { kind: 'end' };
@@ -82,6 +84,8 @@ export type FakeAgentOptions = {
   pauseResume?: boolean;
   /** Erro com que a chamada a `start` rejeita (a primeira chamada é 1). `undefined`: a sessão abre. */
   startError?: (input: AgentStartInput, call: number) => Error | undefined;
+  /** A sessão aberta com `resume` diz que levou a conversa. Padrão: não diz. */
+  resumed?: boolean;
 };
 
 /**
@@ -126,7 +130,12 @@ export function fakeAgent(scripts: FakeStep[][], options: FakeAgentOptions = {})
         releaseHold: () => undefined,
       };
       sessions.push(record);
-      return Promise.resolve(createFakeSession(script, record, options, hooks));
+      const session = createFakeSession(script, record, options, hooks);
+      return Promise.resolve(
+        options.resumed === true && input.resume !== undefined
+          ? { ...session, resumed: true }
+          : session,
+      );
     },
   };
 }
@@ -202,6 +211,9 @@ function createFakeSession(
           await answerOrHalt(hold.promise);
           if (halted) return;
           break;
+        case 'block':
+          await halt.promise;
+          return;
         case 'fail':
           if (!(await ready())) return;
           yield stamp({

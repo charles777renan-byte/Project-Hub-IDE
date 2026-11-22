@@ -64,6 +64,7 @@ function setup() {
     setDefault: note('setDefault', DONE),
     disconnect: note('disconnect', DONE),
     remove: note('remove', DONE),
+    setAutoSwitch: note('setAutoSwitch', DONE),
   };
   const login: LoginService = {
     start: note('login.start', { ok: true as const, data: LOGIN }),
@@ -112,6 +113,7 @@ describe('canais das contas', () => {
         CHANNELS.accountsLoginResize,
         CHANNELS.accountsPasteKey,
         CHANNELS.accountsRemoveKey,
+        CHANNELS.accountsSetAutoSwitch,
       ].sort(),
     );
   });
@@ -337,5 +339,42 @@ describe('canais do app', () => {
       await fake.call(CHANNELS.appOpenDataFolder, undefined, 'https://site.invalido/'),
     ).toMatchObject({ ok: false, error: { code: 'PERMISSION_DENIED' } });
     expect(opened).toEqual([]);
+  });
+});
+
+describe('canal da troca automática', () => {
+  it('setAutoSwitch valida a entrada e recusa includeApi no Codex', async () => {
+    const { fake, calls } = setup();
+    expect(
+      await fake.call(CHANNELS.accountsSetAutoSwitch, {
+        provider: 'claude',
+        option: 'includeApi',
+        value: true,
+      }),
+    ).toEqual(DONE);
+    expect(
+      await fake.call(CHANNELS.accountsSetAutoSwitch, {
+        provider: 'codex',
+        option: 'includeApi',
+        value: true,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(
+      await fake.call(CHANNELS.accountsSetAutoSwitch, {
+        provider: 'claude',
+        option: 'outra',
+        value: true,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(
+      await fake.call(CHANNELS.accountsSetAutoSwitch, {
+        provider: 'claude',
+        option: 'enabled',
+        value: 'sim',
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(calls).toEqual([
+      ['setAutoSwitch', { provider: 'claude', option: 'includeApi', value: true }],
+    ]);
   });
 });

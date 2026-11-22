@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from './components/Icon';
 import type { ProjectView } from './project-views';
+import { renewalPhrase } from './limit-time';
 
 /**
  * Tom visual de um selo em pílula: `lime` para o que roda ou está certo, `warn` para o que aguarda a
@@ -1209,6 +1210,9 @@ const CONVERSATION_EVENTS: ReadonlySet<string> = new Set([
   'review.changes_requested',
   'mission.vault_locked',
   'mission.task_start_failed',
+  'mission.account_switched',
+  'mission.account_limit',
+  'mission.resume_failed',
 ]);
 
 /** Os eventos da Conversa: só a história para a pessoa, na ordem em que chegaram. */
@@ -1230,7 +1234,7 @@ export function formatDuration(durationMs: number): string {
  * evento leva campos diferentes. Evento sem frase (uso, fim de mensagem) devolve `null` e não aparece
  * na conversa.
  */
-export function describeEvent(event: MissionEventDto): string | null {
+export function describeEvent(event: MissionEventDto, now: Date = new Date()): string | null {
   const payload = event.payload;
   switch (event.eventType) {
     case 'mission.created':
@@ -1334,9 +1338,66 @@ export function describeEvent(event: MissionEventDto): string | null {
         ? 'A próxima tarefa não iniciou.'
         : `A próxima tarefa não iniciou: ${message}`;
     }
+    case 'mission.account_switched':
+      return accountSwitchedText(payload, now);
+    case 'mission.account_limit':
+      return accountLimitText(payload, now);
+    case 'mission.resume_failed':
+      return 'A conversa não pôde ser levada para a conta nova: a tarefa recomeçou com o pedido para continuar.';
     default:
       return null;
   }
+}
+
+/** A troca automática de conta: pelo limite no meio da tarefa, ou na abertura. */
+function accountSwitchedText(payload: Record<string, unknown>, now: Date): string {
+  const from = textOf(payload['fromName']) ?? '';
+  const to = textOf(payload['toName']) ?? '';
+  const reset = textOf(payload['resetsAt']);
+  const renews = reset === undefined ? '' : ` (renova ${renewalPhrase(reset, now)})`;
+  if (payload['cause'] === 'opening') {
+    return `A conta ${from} está sem limite${renews}. A missão vai rodar na conta ${to}.`;
+  }
+  return `Limite da conta ${from} acabou${renews}. A missão continuou na conta ${to}.`;
+}
+
+/** O limite acabou e a missão espera: numa conta só, ou em todas. */
+function accountLimitText(payload: Record<string, unknown>, now: Date): string {
+  if (payload['allExhausted'] === true) {
+    const first = textOf(payload['firstResetAt']);
+    return first === undefined
+      ? 'O limite acabou em todas as contas.'
+      : `O limite acabou em todas as contas. A primeira renova ${renewalPhrase(first, now)}.`;
+  }
+  const name = textOf(payload['accountName']) ?? '';
+  const reset = textOf(payload['resetsAt']);
+  return reset === undefined
+    ? `O limite da conta ${name} acabou.`
+    : `O limite da conta ${name} acabou. Renova ${renewalPhrase(reset, now)}.`;
+}
+
+/** Os eventos depois dos quais o aviso do limite não vale mais: a resposta, uma nova tentativa ou uma troca. */
+const LIMIT_CLEARED: ReadonlySet<string> = new Set([
+  'input.received',
+  'input.provided',
+  'execution.started',
+  'mission.account_switched',
+]);
+
+/**
+ * O motivo da espera quando o limite da conta acabou sem troca, para o bloco "Sua decisão": a frase do último
+ * `mission.account_limit` e o que fazer. Some depois de uma resposta, de uma nova tentativa ou de uma troca.
+ */
+export function limitNotice(events: readonly MissionEventDto[], now: Date): string | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event === undefined) continue;
+    if (LIMIT_CLEARED.has(event.eventType)) return undefined;
+    if (event.eventType === 'mission.account_limit') {
+      return `${accountLimitText(event.payload, now)} Quando renovar, peça para continuar. Ou pare a missão e tente de novo em outra conta.`;
+    }
+  }
+  return undefined;
 }
 
 /** Pergunta do último pedido de entrada do agente, para a caixa de resposta. */

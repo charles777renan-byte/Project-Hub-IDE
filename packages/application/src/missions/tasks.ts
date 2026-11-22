@@ -13,6 +13,18 @@ export function withVerification(
   return `${prompt}\n\n${verificationRequest(mission.acceptanceCriteria)}`;
 }
 
+/** A primeira mensagem da conversa levada para outra conta, quando o limite da anterior acabou. */
+export const RESUME_PROMPT =
+  'O limite da conta anterior acabou, e esta conversa continua em outra conta. Continue de onde parou.';
+
+/**
+ * O prompt da tentativa que continua, em outra conta, uma tarefa que já tinha começado: serve também quando a
+ * conversa não pôde ser levada, porque os arquivos que a tentativa anterior mudou continuam no worktree.
+ */
+export function continuationPrompt(base: string): string {
+  return `${base}\n\nEsta tarefa já tinha começado em outra conta, que ficou sem limite. Os arquivos que a tentativa anterior mudou estão nesta pasta: confira o que já foi feito e continue de onde parou, sem refazer o que está pronto.`;
+}
+
 /** Nome do papel como aparece no prompt do agente. */
 const ROLE_LABELS: Record<MissionRole, string> = {
   frontend: 'Frontend',

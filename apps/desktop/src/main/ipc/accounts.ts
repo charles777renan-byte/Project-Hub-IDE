@@ -8,6 +8,7 @@ import {
   loginWriteInputSchema,
   removeAccountInputSchema,
   renameAccountInputSchema,
+  setAutoSwitchInputSchema,
   type AppInfoDto,
   type AppResult,
 } from '@project-hub/contracts';
@@ -72,6 +73,10 @@ export function registerAccountsHandlers(
   on(
     CHANNELS.accountsRemoveKey,
     validated(apiKeyTargetInputSchema, (input) => apiKeys.remove(input)),
+  );
+  on(
+    CHANNELS.accountsSetAutoSwitch,
+    validated(setAutoSwitchInputSchema, (input) => accounts.setAutoSwitch(input)),
   );
 
   on(

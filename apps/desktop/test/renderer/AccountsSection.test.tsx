@@ -66,6 +66,8 @@ const DATA: AccountsDto = {
     {
       provider: 'claude',
       installed: true,
+      autoSwitch: { enabled: false, includeApi: false },
+      preferredId: null,
       accounts: [
         account({ isDefault: true, identity: 'voce@exemplo.com', organization: 'Org' }),
         account({ id: A, name: 'Trabalho', isPrincipal: false, state: 'signed-out' }),
@@ -75,6 +77,8 @@ const DATA: AccountsDto = {
     {
       provider: 'codex',
       installed: false,
+      autoSwitch: { enabled: false, includeApi: false },
+      preferredId: null,
       accounts: [account({ provider: 'codex', isDefault: true, state: 'unknown' })],
     },
   ],
@@ -107,6 +111,7 @@ function installApi(options: { data?: AccountsDto; current?: LoginDto | null } =
     remove: vi.fn((_input: { accountId: string; force: boolean }): Promise<AppResult<undefined>> =>
       ok(undefined),
     ),
+    setAutoSwitch: vi.fn((_input: unknown) => ok(undefined)),
     login: {
       start: vi.fn((input: { provider: 'claude' | 'codex'; accountId: string | null }) =>
         ok(login({ ...input, phase: 'starting' })),
@@ -208,6 +213,24 @@ describe('AccountsSection: lista', () => {
     render(<AccountsSection />);
     const row = rowOf(await group('Codex'), 'Principal');
     expect(within(row).getByText('Não foi possível ler')).toBeInTheDocument();
+  });
+
+  it('o grupo do programa mostra o interruptor da troca automática, e ligar recarrega a lista', async () => {
+    const { api } = installApi();
+    const user = userEvent.setup();
+    render(<AccountsSection />);
+    const claude = await group('Claude Code');
+    const toggle = within(claude).getByRole('switch', {
+      name: /Trocar de conta quando o limite acabar/,
+    });
+    const before = api.list.mock.calls.length;
+    await user.click(toggle);
+    expect(api.setAutoSwitch).toHaveBeenCalledWith({
+      provider: 'claude',
+      option: 'enabled',
+      value: true,
+    });
+    await waitFor(() => expect(api.list.mock.calls.length).toBeGreaterThan(before));
   });
 
   it('programa não instalado não oferece adicionar conta', async () => {
@@ -766,6 +789,8 @@ describe('AccountsSection: conta por chave de API', () => {
       {
         provider: 'claude',
         installed: true,
+        autoSwitch: { enabled: false, includeApi: false },
+        preferredId: null,
         accounts: [
           account({ isDefault: true, identity: 'voce@exemplo.com' }),
           account({
@@ -781,6 +806,8 @@ describe('AccountsSection: conta por chave de API', () => {
       {
         provider: 'codex',
         installed: true,
+        autoSwitch: { enabled: false, includeApi: false },
+        preferredId: null,
         accounts: [account({ provider: 'codex', isDefault: true })],
       },
     ],

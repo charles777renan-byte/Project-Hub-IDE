@@ -292,7 +292,11 @@ async function* watchEvents(
 ): AsyncGenerator<AgentEvent> {
   let exited = false;
   let waiting = false;
-  const usage = createTranscriptUsageTracker({ configDir: usageOptions.configDir });
+  // Só vale o limite que chegar daqui em diante: o de antes da reanexação já foi tratado.
+  const usage = createTranscriptUsageTracker({
+    configDir: usageOptions.configDir,
+    limitsSince: Date.now(),
+  });
   let tracking = false;
   let nextUsageRead = 0;
   const learn = (record: HookRecord): void => {
@@ -352,8 +356,11 @@ async function* watchEvents(
       }
       if (tracking && Date.now() >= nextUsageRead) {
         nextUsageRead = Date.now() + usageOptions.intervalMs;
-        const event = await readUsage(usage);
-        if (event !== undefined) yield event;
+        for (const event of await readUsage(usage)) {
+          yield event;
+          // O limite deixa o Claude Code parado, esperando: a próxima atividade é a resposta da pessoa.
+          if (event.type === 'limit.reached') waiting = true;
+        }
       }
       const snapshot = await terminal.snapshot(executionId);
       exited = snapshot === undefined || !snapshot.alive;
@@ -367,22 +374,36 @@ async function* watchEvents(
 /**
  * Lê o gasto sem nunca derrubar a sessão: um erro de arquivo só deixa o número como estava. O evento leva
  * também o modelo e o contexto da resposta principal mais recente. Não há leitura à parte para o contexto:
- * ele só muda quando chega uma resposta nova, e toda resposta com tokens muda o total.
+ * ele só muda quando chega uma resposta nova, e toda resposta com tokens muda o total. Depois do gasto vem
+ * um `limit.reached` por linha de limite de uso lida nos transcripts principais.
  */
-async function readUsage(usage: TranscriptUsageTracker): Promise<AgentEvent | undefined> {
+async function readUsage(usage: TranscriptUsageTracker): Promise<AgentEvent[]> {
+  const events: AgentEvent[] = [];
   try {
     const summary = await usage.poll();
-    if (summary === undefined) return undefined;
-    const context = usage.latestContext();
-    return {
-      type: 'usage.updated',
-      usage: summary,
-      ...(context === undefined ? {} : { context }),
-      at: new Date().toISOString(),
-    };
+    if (summary !== undefined) {
+      const context = usage.latestContext();
+      events.push({
+        type: 'usage.updated',
+        usage: summary,
+        ...(context === undefined ? {} : { context }),
+        at: new Date().toISOString(),
+      });
+    }
   } catch {
-    return undefined;
+    // Erro de arquivo: o número fica como estava, e os limites já lidos ainda saem.
   }
+  for (const hit of usage.takeLimitHits()) {
+    events.push({
+      type: 'limit.reached',
+      window: hit.window,
+      ...(hit.resetsAt === undefined ? {} : { resetsAt: hit.resetsAt }),
+      sessionId: hit.sessionId,
+      transcriptPath: hit.transcriptPath,
+      at: new Date(hit.at).toISOString(),
+    });
+  }
+  return events;
 }
 
 /** Últimas leituras do gasto antes do fim, com uma espera entre elas. */
@@ -393,8 +414,7 @@ async function* drainUsage(
 ): AsyncGenerator<AgentEvent> {
   for (let read = 0; read < USAGE_DRAIN_READS && !signal.aborted; read += 1) {
     if (read > 0) await sleep(delayMs, signal);
-    const event = await readUsage(usage);
-    if (event !== undefined) yield event;
+    yield* await readUsage(usage);
   }
 }
 

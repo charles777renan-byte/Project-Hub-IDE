@@ -132,6 +132,7 @@ beforeEach(async () => {
     now,
     liveSessionsOf: () => Promise.resolve([]),
     vault,
+    exhaustedUntil: () => undefined,
   });
   const apiKeys = createApiKeyService({
     accounts: services.accounts,

@@ -191,5 +191,7 @@ export function createCodexUsageTracker(options: {
     },
 
     latestContext: () => undefined,
+    // O limite de uso do Codex não é lido daqui: a troca automática de conta vale só para o Claude Code.
+    takeLimitHits: () => [],
   };
 }

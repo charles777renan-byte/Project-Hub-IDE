@@ -148,6 +148,8 @@ export type AppServicesOptions = {
    * trancado é só a falha com a frase dele.
    */
   unlockVault?: (() => Promise<'unlocked' | 'cancelled'>) | undefined;
+  /** Avisa a troca automática de conta de uma missão (a notificação do sistema). Sem ele, a troca não avisa. */
+  onAccountSwitched?: OrchestratorDeps['onAccountSwitched'] | undefined;
   /**
    * Libera o `gh` falso dos testes (`PROJECT_HUB_GH_BIN`) no painel Checks. Sem valor, vale `false`. O
    * `index.ts` passa `!app.isPackaged`.
@@ -467,6 +469,9 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     fs,
     ...(options.planner === undefined ? {} : { planner: options.planner }),
     ...(options.unlockVault === undefined ? {} : { unlock: options.unlockVault }),
+    ...(options.onAccountSwitched === undefined
+      ? {}
+      : { onAccountSwitched: options.onAccountSwitched }),
     now,
     newId,
   });

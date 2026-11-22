@@ -41,6 +41,7 @@ export const EXIT_REASONS = [
   'approval_rejected',
   'cancelled_by_user',
   'interrupted_by_restart',
+  'account_limit',
 ] as const;
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'expired'] as const;
 export const AUDIT_AGGREGATE_TYPES = [

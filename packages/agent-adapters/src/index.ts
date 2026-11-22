@@ -22,6 +22,12 @@ export {
   type TranscriptUsageTracker,
 } from './claude-code/transcript-usage';
 export {
+  readLimitLine,
+  type LimitHit,
+  type LimitLine,
+  type LimitWindowKind,
+} from './claude-code/transcript-limit';
+export {
   localDayOf,
   type DayUsage,
   type SessionActivity,

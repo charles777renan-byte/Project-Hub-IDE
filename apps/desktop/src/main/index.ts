@@ -55,6 +55,7 @@ import { createClaudePlanner, runPlannerProcess } from './claude-planner';
 import { createAccountCli } from './accounts/account-cli';
 import { ACCOUNT_ENV_VARIABLE, accountsRoot, createAccountPaths } from './accounts/account-paths';
 import { createAccountsService } from './accounts/accounts-service';
+import { createAccountSwitch, type AccountSwitch } from './accounts/account-switch';
 import { claudeConfigDirOf } from '@project-hub/agent-adapters';
 import { failure, missionAccountOf } from '@project-hub/application';
 import { createAccountLimits } from './account-limits';
@@ -120,7 +121,7 @@ import {
   createCodexSessionReader,
 } from './session-readers';
 import { createTerminalService } from './terminals';
-import { createAlertService, recordNotifications } from './alerts';
+import { createAlertService, recordNotifications, type AlertService } from './alerts';
 import { createTerminalsWatch } from './terminals-watch';
 import { registerAlertHandlers } from './ipc/alerts';
 import { createWorkspaceService } from './workspaces';
@@ -553,7 +554,9 @@ app
     // (`APP_PLANNER_COMMAND` ou `APP_PLANNER_SCRIPT`) liga o planejador mesmo sem `APP_AGENT_ADAPTER`.
     // As contas nascem depois do banco, e o planejador e o agente, antes: eles chegam a elas por esta referência,
     // preenchida logo abaixo. Só o id da conta viaja; a pasta e o ambiente saem daqui.
-    const accountRef: { use?: AccountUse } = {};
+    const accountRef: { use?: AccountUse; switch?: AccountSwitch } = {};
+    // O aviso da troca automática de conta: o serviço de avisos nasce depois da janela.
+    const alertRef: { service?: AlertService } = {};
     // O cofre das chaves de API e a janela da senha também nascem depois: o agente, o planejador e o orquestrador os
     // alcançam por esta referência.
     const vaultRef: { vault?: AccountVault; window?: VaultWindow } = {};
@@ -637,8 +640,24 @@ app
           },
         vaultLocked: (accountId) => accountRef.use?.waitsForVault('claude', accountId) === true,
         kindOf: (accountId) => accountRef.use?.kindOf('claude', accountId) ?? 'subscription',
+        // A troca automática (o limite da conta no meio da missão): a opção, as marcas e a próxima conta.
+        autoSwitchEnabled: () => accountRef.switch?.settingsOf('claude').enabled === true,
+        exhaustedUntil: (accountId) => limits.exhaustedUntil('claude', accountId),
+        markExhausted: (accountId, until) => {
+          limits.markExhausted('claude', accountId, until);
+          limits.emit();
+        },
+        pickAccount: ({ exclude }) =>
+          accountRef.switch?.pick('claude', { exclude }) ?? Promise.resolve({ kind: 'none' }),
+        limitMessage: (accountId) =>
+          quotaExhaustedMessage(
+            limits.stateOf('claude', accountId),
+            new Date(),
+            limits.exhaustedUntil('claude', accountId),
+          ),
       },
       unlockVault,
+      onAccountSwitched: (notice) => alertRef.service?.notifyAccountSwitch(notice),
       // O `gh` falso dos testes só vale fora do aplicativo empacotado.
       allowGhTestOverrides: !app.isPackaged,
     });
@@ -990,6 +1009,16 @@ app
       liveSessionsOf: async (provider, accountId) =>
         liveSessionsOfAccount(await listLiveTerminals(), provider, accountId),
       vault,
+      // O Codex só tem a regra das janelas em 100%: não há leitor da linha de limite para ele.
+      exhaustedUntil: (provider, accountId) => limits.exhaustedUntil(provider, accountId),
+    });
+    accountRef.switch = createAccountSwitch({
+      accounts: services.accounts,
+      settings: services.profileDeps.settings,
+      use: accountUse,
+      vault,
+      status: (provider, accountId) => accountCli.status(provider, accountId),
+      exhaustedUntil: (provider, accountId) => limits.exhaustedUntil(provider, accountId),
     });
     const loginService = createLoginService({
       port: terminalBackend.port,
@@ -1131,6 +1160,7 @@ app
       vaultWaiting: (mission) =>
         missionAccountOf(services.missions.accountDeps, mission).vaultLocked === true,
     });
+    alertRef.service = alerts;
     registerAlertHandlers(ipcMain, isTrustedSender, alerts);
     const terminalsWatch = createTerminalsWatch({
       list: () => terminalService.list(),

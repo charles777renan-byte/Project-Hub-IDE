@@ -17,6 +17,7 @@ import { CircleCheck, CircleSlash, ICON_PROPS, Plus } from '../Icon';
 import { ProviderIcon } from '../ProviderIcon';
 import { AccountRow } from './AccountRow';
 import { AddAccountForm } from './AddAccountForm';
+import { AutoSwitchToggles } from './AutoSwitchToggles';
 import { VaultBar } from './VaultBar';
 
 const TEXT = {
@@ -151,6 +152,7 @@ function AccountGroup({
           />
         ))}
       </ul>
+      {group.installed ? <AutoSwitchToggles group={group} onChanged={onChanged} /> : null}
     </section>
   );
 }

@@ -140,6 +140,7 @@ export const responseSchemas = {
   [CHANNELS.accountsLoginResize]: appResultSchema(z.undefined()),
   [CHANNELS.accountsPasteKey]: appResultSchema(pasteKeyResultSchema),
   [CHANNELS.accountsRemoveKey]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsSetAutoSwitch]: appResultSchema(z.undefined()),
   [CHANNELS.vaultGet]: appResultSchema(vaultDtoSchema),
   [CHANNELS.vaultUnlock]: appResultSchema(unlockResultSchema),
   [CHANNELS.vaultLock]: appResultSchema(z.undefined()),

@@ -86,6 +86,8 @@ export { recoverInterruptedExecutions } from './missions/startup-recovery';
 export { DISPLAY_NAME_KEY, getProfile, setDisplayName, type ProfileDeps } from './profile/profile';
 export type {
   AccountDirectory,
+  AccountPick,
+  AccountSwitchNotice,
   ApprovalChanges,
   DiffPort,
   ExecutionChanges,
