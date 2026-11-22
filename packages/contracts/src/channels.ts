@@ -215,6 +215,20 @@ export const CHANNELS = {
   accountsLoginResize: 'accounts:login-resize:v1',
   /** Estado e saída do login, do processo principal para o renderer. Não tem resposta. */
   accountsLoginEvent: 'accounts:login-event:v1',
+  /**
+   * Chave de uma conta API. Colar lê a área de transferência no processo principal: a tela manda só o programa e
+   * o id, e recebe só os 4 últimos caracteres.
+   */
+  accountsPasteKey: 'accounts:paste-key:v1',
+  accountsRemoveKey: 'accounts:remove-key:v1',
+  /** O cofre das chaves. Nenhum destes leva senha: ela é digitada na janela própria do cofre. */
+  vaultGet: 'vault:get:v1',
+  vaultUnlock: 'vault:unlock:v1',
+  vaultLock: 'vault:lock:v1',
+  vaultChangePassword: 'vault:change-password:v1',
+  vaultReset: 'vault:reset:v1',
+  /** O estado do cofre mudou. Do processo principal para o renderer; não tem resposta. */
+  vaultChanged: 'vault:changed:v1',
   /** Versão e pasta de dados do app (seção Geral). */
   appInfo: 'app:info:v1',
   /** Abre a pasta de dados do app no gerenciador de arquivos. Não recebe caminho. */

@@ -26,7 +26,7 @@ import type {
   WorktreeNames,
   WorktreePort,
 } from '../ports';
-import { ACCOUNT_UNAVAILABLE } from './mission-account';
+import { ACCOUNT_UNAVAILABLE, VAULT_LOCKED_REASON } from './mission-account';
 import { isAvailable } from '../projects/list-projects';
 import { errorCode, failure } from '../result';
 import { planFromCriteria } from './plan';
@@ -71,7 +71,13 @@ export type OrchestratorDeps = {
    * As contas do Claude Code. Com elas, missão de conta removida não planeja nem inicia. Sem elas, o orquestrador
    * não confere a conta, e o agente ou o planejador é que recusam.
    */
-  accounts?: Pick<AccountDirectory, 'labelOf'>;
+  accounts?: Pick<AccountDirectory, 'labelOf' | 'vaultLocked'>;
+  /**
+   * Abre a janela da senha do cofre. Só as ações da pessoa (planejar, iniciar, tentar de novo, pedir ajustes,
+   * retomar a pausa do cofre) a usam, antes de mudar o estado da missão. O que começa sem a pessoa (a fila, a
+   * próxima tarefa da cadeia) nunca abre janela. Ausente: o cofre trancado é só a falha com a frase dele.
+   */
+  unlock?: () => Promise<'unlocked' | 'cancelled'>;
   /**
    * Quantas missões podem ter agente vivo ao mesmo tempo (seção 15.6). Padrão: 2. A tentativa além disso
    * entra na fila e começa quando uma vaga abre.
@@ -138,6 +144,11 @@ export interface Orchestrator {
    * prompt. O texto é obrigatório.
    */
   requestChanges(input: { missionId: string; feedback: string }): Promise<AppResult<Execution>>;
+  /**
+   * O cofre das chaves destrancou: a fila volta a considerar as missões que esperavam por ele. A composição chama no
+   * evento do cofre. Retomar uma missão pausada pelo cofre continua sendo ação da pessoa.
+   */
+  vaultUnlocked(): void;
   /**
    * Fechamento do app: aborta o planejamento em andamento de todas as missões e mais nada. O planejador
    * devolve uma falha, e a missão fica no estado em que estava. Pode ser chamado mais de uma vez.
@@ -212,6 +223,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const maxRunning = deps.maxRunning ?? DEFAULT_MAX_RUNNING;
   /** Tentativas da fila que já tiveram o início tentado: uma falha não é repetida enquanto o resultado é gravado. */
   const attemptedQueued = new Set<string>();
+  /** Missões da fila que já registraram a espera do cofre: o registro sai uma vez até o cofre destrancar. */
+  const vaultNoticed = new Set<string>();
+  /** Missões da fila cujo início o cofre recusou: a fila as pula até o cofre destrancar. */
+  const vaultHeld = new Set<string>();
 
   function startRun(missionId: string): ActiveRun {
     const controller = new AbortController();
@@ -254,6 +269,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       const mission = repo.getMission(execution.missionId);
       if (attemptedQueued.has(execution.id)) continue;
       if (mission === undefined || mission.status !== 'queued' || active.has(mission.id)) continue;
+      // Conta por chave com o cofre trancado: a missão segue na fila, sem falhar, e a vaga fica para a próxima.
+      if (vaultHeld.has(mission.id) || vaultLockedFor(mission)) {
+        noteVaultWait(mission.id);
+        continue;
+      }
       const since = queuedSince(execution.id);
       if (best === undefined || since < best.since) best = { execution, since };
     }
@@ -279,7 +299,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     const run = startRun(mission.id);
     launch(run, mission, project, execution).then(
       (result) => {
-        if (!result.ok) failQueued(execution);
+        if (result.ok) return;
+        if (result.error.code === 'VAULT_LOCKED') {
+          // O cofre trancou entre a escolha e o início: a tentativa volta a esperar, sem contar como falha.
+          attemptedQueued.delete(execution.id);
+          vaultHeld.add(mission.id);
+          noteVaultWait(mission.id);
+          return;
+        }
+        failQueued(execution);
       },
       (error: unknown) => {
         console.error('Não foi possível iniciar a missão da fila:', error);
@@ -347,6 +375,61 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return deps.accounts.labelOf('claude', mission.accountId).removed
       ? failure('VALIDATION_FAILED', ACCOUNT_UNAVAILABLE)
       : undefined;
+  }
+
+  /** A missão roda numa conta por chave de API e o cofre está trancado agora. */
+  function vaultLockedFor(mission: Mission): boolean {
+    return (
+      mission.accountId !== undefined && deps.accounts?.vaultLocked?.(mission.accountId) === true
+    );
+  }
+
+  /**
+   * Ação da pessoa numa missão que precisa do cofre: abre a janela da senha uma vez. Devolve a falha quando o cofre
+   * continua trancado (senha cancelada, ou sem a janela); nada muda na missão.
+   */
+  async function ensureVault(mission: Mission): Promise<AppResult<never> | undefined> {
+    if (!vaultLockedFor(mission)) return undefined;
+    if (deps.unlock === undefined) return failure('VAULT_LOCKED', VAULT_LOCKED_REASON);
+    const outcome = await deps.unlock();
+    if (outcome !== 'unlocked' || vaultLockedFor(mission)) {
+      return failure('VAULT_LOCKED', VAULT_LOCKED_REASON);
+    }
+    return undefined;
+  }
+
+  /** Registra, uma vez até o cofre destrancar, que a missão da fila espera por ele. */
+  function noteVaultWait(missionId: string): void {
+    if (vaultNoticed.has(missionId)) return;
+    vaultNoticed.add(missionId);
+    repo.transaction(() => {
+      repo.appendAudit(vaultLockedAudit(missionId, now()));
+    });
+  }
+
+  function vaultLockedAudit(missionId: string, at: string) {
+    return {
+      aggregateType: 'mission' as const,
+      aggregateId: missionId,
+      eventType: 'mission.vault_locked',
+      severity: 'warning' as const,
+      actor: 'system' as const,
+      payload: { reason: VAULT_LOCKED_REASON },
+      createdAt: at,
+    };
+  }
+
+  /**
+   * A próxima tarefa da cadeia esbarrou no cofre trancado: a missão pausa (sem falhar) com o motivo, e a vaga volta.
+   * Retomar é ação da pessoa, e pede a senha.
+   */
+  function pauseForVault(run: ActiveRun): void {
+    repo.transaction(() => {
+      const at = now();
+      moveMission(repo, run.missionId, 'paused', { actor: 'system', at });
+      repo.appendAudit(vaultLockedAudit(run.missionId, at));
+    });
+    forget(run);
   }
 
   async function reattach(execution: Execution): Promise<boolean> {
@@ -897,6 +980,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       failChain(run);
       return false;
     }
+    if (vaultLockedFor(mission)) {
+      pauseForVault(run);
+      return false;
+    }
     let session: AgentSession;
     try {
       session = await agent.start(
@@ -904,8 +991,14 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         run.controller.signal,
       );
     } catch (error) {
+      const code = errorCode(error);
+      if (code === 'VAULT_LOCKED' && !run.controller.signal.aborted) {
+        pauseForVault(run);
+        return false;
+      }
       console.error('Não foi possível iniciar o agente da próxima tarefa:', error);
-      failChain(run);
+      // Só a frase de um erro com código do contrato (o do cofre, por exemplo) vai para a auditoria.
+      failChain(run, code === undefined ? undefined : errorMessage(error));
       return false;
     }
     if (run.controller.signal.aborted) {
@@ -951,12 +1044,27 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return true;
   }
 
-  /** A próxima tarefa não pôde começar: a missão falha, e a vaga volta. */
-  function failChain(run: ActiveRun): void {
+  /**
+   * A próxima tarefa não pôde começar: a missão falha, e a vaga volta. `message` é a frase do motivo, quando ela pode
+   * ser mostrada (a do cofre, por exemplo); fica na auditoria da missão.
+   */
+  function failChain(run: ActiveRun, message?: string): void {
     repo.transaction(() => {
+      const at = now();
+      if (message !== undefined) {
+        repo.appendAudit({
+          aggregateType: 'mission',
+          aggregateId: run.missionId,
+          eventType: 'mission.task_start_failed',
+          severity: 'error',
+          actor: 'system',
+          payload: { message },
+          createdAt: at,
+        });
+      }
       moveMission(repo, run.missionId, 'failed', {
         actor: 'system',
-        at: now(),
+        at,
         changes: { finishedAt: now() },
       });
     });
@@ -1061,6 +1169,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       );
     } catch (error) {
       forget(run);
+      // O ambiente da conta recusa com o código do contrato (o cofre trancado, a chave que falta): a frase sobe.
+      const code = errorCode(error);
+      if (code !== undefined) return failure(code, errorMessage(error));
       console.error('Não foi possível iniciar o agente:', error);
       return failure('AGENT_UNAVAILABLE', 'Não foi possível iniciar o agente.');
     }
@@ -1086,6 +1197,17 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 
   async function startMission(missionId: string): Promise<AppResult<Execution>> {
+    // A senha do cofre vem antes de tudo: enquanto a janela está aberta, nada muda na missão.
+    const asked = repo.getMission(missionId);
+    if (
+      asked?.status === 'queued' &&
+      !active.has(missionId) &&
+      accountBlock(asked) === undefined &&
+      vaultLockedFor(asked)
+    ) {
+      const locked = await ensureVault(asked);
+      if (locked !== undefined) return locked;
+    }
     const mission = repo.getMission(missionId);
     if (mission === undefined) return failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND);
     if (mission.status !== 'queued' || active.has(missionId)) {
@@ -1111,7 +1233,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     // A tentativa que já está na fila da missão é a que começa, e não se cria outra ao lado dela.
     const waiting = repo.listExecutions(mission.id).find((e) => e.status === 'queued');
     const result = await launch(startRun(missionId), mission, project, waiting);
-    if (!result.ok && waiting !== undefined) failQueued(waiting);
+    // O cofre trancado não é falha da tentativa: ela continua na fila, esperando a senha.
+    if (!result.ok && waiting !== undefined && result.error.code !== 'VAULT_LOCKED') {
+      failQueued(waiting);
+    }
     return result;
   }
 
@@ -1270,6 +1395,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         return failure('MISSION_INVALID_STATE', 'Só uma missão pausada pode ser retomada.');
       }
       const run = active.get(missionId);
+      // Pausada pelo cofre: sem agente vivo e sem tentativa aberta. A próxima tarefa começa depois da senha.
+      if (run === undefined && !hasOpenExecution(missionId)) return resumeAfterVault(mission);
       if (run?.session === undefined || run.executionId === undefined) {
         return failure('AGENT_UNAVAILABLE', 'A sessão do agente não está mais ativa.');
       }
@@ -1315,6 +1442,38 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       }
       return { ok: true, data: undefined };
     });
+  }
+
+  function hasOpenExecution(missionId: string): boolean {
+    return repo
+      .listExecutions(missionId)
+      .some((execution) => OPEN_EXECUTION_STATUSES.includes(execution.status));
+  }
+
+  /**
+   * Retoma a missão que o cofre pausou entre duas tarefas: pede a senha, volta a `running` e abre a próxima tarefa na
+   * mesma conta e no mesmo worktree. Ação da pessoa: não espera vaga.
+   */
+  async function resumeAfterVault(mission: Mission): Promise<AppResult<void>> {
+    const locked = await ensureVault(mission);
+    if (locked !== undefined) return locked;
+    const current = repo.getMission(mission.id);
+    if (current?.status !== 'paused' || active.has(mission.id) || hasOpenExecution(mission.id)) {
+      return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto era retomada.');
+    }
+    const run = startRun(mission.id);
+    repo.transaction(() => {
+      moveMission(repo, mission.id, 'running', { actor: 'user', at: now() });
+    });
+    if (!(await startNextTask(run))) {
+      return repo.getMission(mission.id)?.status === 'paused'
+        ? failure('VAULT_LOCKED', VAULT_LOCKED_REASON)
+        : failure('AGENT_UNAVAILABLE', 'Não foi possível iniciar o agente.');
+    }
+    void drive(run).catch((error: unknown) => {
+      console.error('Falha ao acompanhar a missão retomada:', error);
+    });
+    return { ok: true, data: undefined };
   }
 
   async function decideApproval(input: {
@@ -1452,6 +1611,14 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     }
     const blockedRetry = accountBlock(mission);
     if (blockedRetry !== undefined) return blockedRetry;
+    if (vaultLockedFor(mission)) {
+      const lockedRetry = await ensureVault(mission);
+      if (lockedRetry !== undefined) return lockedRetry;
+      const current = repo.getMission(missionId);
+      if (current?.status !== 'failed' && current?.status !== 'cancelled') {
+        return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto o cofre era destrancado.');
+      }
+    }
     repo.transaction(() => {
       moveMission(repo, missionId, 'queued', { actor: 'user', at: now() });
     });
@@ -1483,6 +1650,17 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       .sort((a, b) => a.position - b.position)
       .map((criterion) => criterion.text);
     if (planner !== undefined) {
+      if (vaultLockedFor(mission)) {
+        const lockedPlan = await ensureVault(mission);
+        if (lockedPlan !== undefined) return lockedPlan;
+        const current = repo.getMission(missionId);
+        if (current?.status !== 'draft' && current?.status !== 'planned') {
+          return failure(
+            'MISSION_INVALID_STATE',
+            'A missão mudou enquanto o cofre era destrancado.',
+          );
+        }
+      }
       const instruction = options.instruction?.trim();
       return planWithPlanner(
         planner,
@@ -1717,6 +1895,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     if (feedback === '') {
       return failure('VALIDATION_FAILED', 'Escreva o que precisa ser ajustado.');
     }
+    if (vaultLockedFor(mission)) {
+      const lockedChanges = await ensureVault(mission);
+      if (lockedChanges !== undefined) return lockedChanges;
+      if (repo.getMission(input.missionId)?.status !== 'review') {
+        return failure('MISSION_INVALID_STATE', 'A missão mudou enquanto o cofre era destrancado.');
+      }
+    }
     repo.transaction(() => {
       const at = now();
       repo.appendAudit({
@@ -1771,6 +1956,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     retryMission: gated(retryMission),
     approveReview: gated(approveReview),
     requestChanges: gated(requestChanges),
+    vaultUnlocked: () => {
+      vaultNoticed.clear();
+      vaultHeld.clear();
+      void ready.then(pump);
+    },
     dispose: () => {
       disposed = true;
       for (const controller of plannerAborts.values()) controller.abort();

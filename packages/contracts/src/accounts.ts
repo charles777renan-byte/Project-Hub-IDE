@@ -20,20 +20,42 @@ export const accountRefSchema = accountIdSchema.nullable();
 export const ACCOUNT_STATES = ['connected', 'signed-out', 'unknown'] as const;
 export type AccountState = (typeof ACCOUNT_STATES)[number];
 
+/** Assinatura (login do programa) ou chave de API (no cofre do app). Não muda depois de criada. */
+export const ACCOUNT_KINDS = ['subscription', 'api'] as const;
+export const accountKindSchema = z.enum(ACCOUNT_KINDS);
+export type AccountKind = (typeof ACCOUNT_KINDS)[number];
+
+/**
+ * A chave de uma conta API: guardada, ausente, ilegível (o cofre não a abre mais) ou trancada (o cofre está
+ * trancado e o app não sabe se ela abre).
+ */
+export const KEY_STATES = ['stored', 'missing', 'unreadable', 'locked'] as const;
+export type KeyState = (typeof KEY_STATES)[number];
+
 /**
  * Uma conta na tela. `identity` (o e-mail) e `organization` vêm do comando de estado do programa, a cada leitura:
  * o app não os grava. Estrito: caminho de pasta ou qualquer outro dado não passa.
  */
-export const accountDtoSchema = z.strictObject({
-  id: accountRefSchema,
-  provider: accountProviderSchema,
-  name: z.string().min(1).max(ACCOUNT_NAME_MAX),
-  isPrincipal: z.boolean(),
-  isDefault: z.boolean(),
-  state: z.enum(ACCOUNT_STATES),
-  identity: z.string().max(254).optional(),
-  organization: z.string().max(200).optional(),
-});
+export const accountDtoSchema = z
+  .strictObject({
+    id: accountRefSchema,
+    provider: accountProviderSchema,
+    name: z.string().min(1).max(ACCOUNT_NAME_MAX),
+    isPrincipal: z.boolean(),
+    isDefault: z.boolean(),
+    state: z.enum(ACCOUNT_STATES),
+    identity: z.string().max(254).optional(),
+    organization: z.string().max(200).optional(),
+    kind: accountKindSchema,
+    /** Só na conta API: o estado da chave e os 4 últimos caracteres dela, nunca mais que isso. */
+    keyState: z.enum(KEY_STATES).optional(),
+    keyLast4: z.string().length(4).optional(),
+  })
+  .refine(
+    (account) =>
+      account.kind === 'api' || (account.keyState === undefined && account.keyLast4 === undefined),
+    { message: 'Só a conta API tem chave.' },
+  );
 export type AccountDto = z.infer<typeof accountDtoSchema>;
 
 export const accountGroupDtoSchema = z.strictObject({
@@ -61,6 +83,7 @@ export type AccountsDto = z.infer<typeof accountsDtoSchema>;
 export const addAccountInputSchema = z.strictObject({
   provider: accountProviderSchema,
   name: accountNameSchema,
+  kind: accountKindSchema,
 });
 export type AddAccountInput = z.infer<typeof addAccountInputSchema>;
 
@@ -76,6 +99,20 @@ export const accountTargetInputSchema = z.strictObject({
   accountId: accountRefSchema,
 });
 export type AccountTargetInput = z.infer<typeof accountTargetInputSchema>;
+
+/**
+ * Entrada de colar e de remover a chave: o programa e a conta extra, nunca a Principal. A chave não vem da tela:
+ * colar a lê da área de transferência no processo principal.
+ */
+export const apiKeyTargetInputSchema = z.strictObject({
+  provider: accountProviderSchema,
+  accountId: accountIdSchema,
+});
+export type ApiKeyTargetInput = z.infer<typeof apiKeyTargetInputSchema>;
+
+/** Resposta de colar a chave: só os 4 últimos caracteres, para a pessoa conferir. A chave nunca volta. */
+export const pasteKeyResultSchema = z.strictObject({ last4: z.string().length(4) });
+export type PasteKeyResult = z.infer<typeof pasteKeyResultSchema>;
 
 /** Só conta extra. `force`: apagar a pasta mesmo quando a saída pelo programa falhou. */
 export const removeAccountInputSchema = z.strictObject({

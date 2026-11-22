@@ -1,18 +1,22 @@
 import { useRef, useState } from 'react';
 import type { AccountDto, AccountLimitsDto, AppResult } from '@project-hub/contracts';
 import { loginInProgress, type LoginControls } from '../../use-login';
+import { ApiBadge } from '../ApiBadge';
 import { ConfirmInline } from '../ConfirmButton';
 import {
+  CircleAlert,
   CircleCheck,
   CircleQuestionMark,
   CircleSlash,
   Ellipsis,
   ICON_PROPS,
   LoaderCircle,
+  Lock,
 } from '../Icon';
 import { MenuAcoes, type AcaoMenu } from '../MenuAcoes';
 import { AccountNameForm } from './AddAccountForm';
 import { AccountUsage } from './AccountUsage';
+import { ApiKeyActions } from './ApiKeyActions';
 import { LoginGuide } from './LoginGuide';
 
 const TEXT = {
@@ -34,6 +38,13 @@ const TEXT = {
   forceQuestion: 'Não foi possível sair da conta pelo programa. Remover mesmo assim?',
   forceConfirm: 'Remover mesmo assim',
   principalQuestion: 'Sair da conta Principal também desconecta o programa fora do Project Hub.',
+  billing: 'Cobrança por uso',
+  keyEnd: (last4: string) => `Cobrança por uso · chave terminada em …${last4}`,
+  storeKeyFirst: 'Guarde a chave antes',
+  defaultApiQuestion:
+    'Esta conta cobra por uso, sem o teto de uma assinatura. Missões longas podem custar caro.',
+  removeApiQuestion:
+    'Remover a conta apaga, neste computador, a chave guardada, o histórico e os ajustes dela no programa. A chave continua valendo no serviço até ser revogada no site.',
   failed: 'Não foi possível concluir a ação.',
 } as const;
 
@@ -43,9 +54,23 @@ const STATE = {
   unknown: { label: 'Não foi possível ler', icon: CircleQuestionMark },
 } as const;
 
-type Mode = 'idle' | 'rename' | 'remove' | 'force' | 'disconnect';
+/** O estado da conta API é o da chave: só "Chave guardada" pode ser usada ou virar padrão. */
+const KEY_STATE = {
+  stored: { label: 'Chave guardada', icon: CircleCheck },
+  missing: { label: 'Sem chave', icon: CircleSlash },
+  unreadable: { label: 'Chave ilegível', icon: CircleAlert },
+  locked: { label: 'Cofre trancado', icon: Lock },
+} as const;
+
+type Mode = 'idle' | 'rename' | 'remove' | 'force' | 'disconnect' | 'default';
 
 function identityLine(account: AccountDto): { text: string; data: boolean } {
+  if (account.kind === 'api') {
+    return {
+      text: account.keyLast4 === undefined ? TEXT.billing : TEXT.keyEnd(account.keyLast4),
+      data: false,
+    };
+  }
   if (account.identity !== undefined) return { text: account.identity, data: true };
   if (account.state === 'signed-out') return { text: TEXT.noLogin, data: false };
   return { text: account.state === 'connected' ? TEXT.noIdentity : TEXT.unreadable, data: false };
@@ -87,8 +112,11 @@ export function AccountRow({
   const mine =
     login !== null && login.provider === account.provider && login.accountId === account.id;
   const connecting = mine && loginInProgress(login);
+  const isApi = account.kind === 'api';
+  const keyState = account.keyState ?? 'missing';
   const identity = identityLine(account);
-  const state = STATE[account.state];
+  const state = isApi ? KEY_STATE[keyState] : STATE[account.state];
+  const stateClass = isApi ? `key-${keyState}` : account.state;
   const StateIcon = state.icon;
 
   async function run(action: () => Promise<AppResult<unknown>>): Promise<AppResult<unknown>> {
@@ -142,7 +170,15 @@ export function AccountRow({
   const actions: AcaoMenu[] = [];
   if (!account.isPrincipal)
     actions.push({ rotulo: TEXT.rename, onSelecionar: () => open('rename') });
-  if (!account.isDefault) {
+  if (!account.isDefault && isApi) {
+    const stored = keyState === 'stored';
+    actions.push({
+      rotulo: TEXT.makeDefault,
+      desabilitada: !stored,
+      ...(stored ? {} : { dica: TEXT.storeKeyFirst }),
+      onSelecionar: () => open('default'),
+    });
+  } else if (!account.isDefault) {
     const connected = account.state === 'connected';
     actions.push({
       rotulo: TEXT.makeDefault,
@@ -151,7 +187,7 @@ export function AccountRow({
       onSelecionar: () => void act(() => window.projectHub.accounts.setDefault(target)),
     });
   }
-  if (account.state !== 'signed-out') {
+  if (!isApi && account.state !== 'signed-out') {
     actions.push({
       rotulo: TEXT.disconnect,
       onSelecionar: account.isPrincipal
@@ -169,6 +205,7 @@ export function AccountRow({
         <div className="acct__id">
           <p className="acct__name">
             <span className="acct__name-text">{account.name}</span>
+            {isApi ? <ApiBadge /> : null}
             {account.isDefault ? <span className="acct__tag">{TEXT.defaultTag}</span> : null}
           </p>
           <p className="acct__identity">
@@ -186,14 +223,14 @@ export function AccountRow({
             Conectando
           </span>
         ) : (
-          <span className={`acct__state acct__state--${account.state}`}>
+          <span className={`acct__state acct__state--${stateClass}`}>
             <StateIcon {...ICON_PROPS} />
             {state.label}
           </span>
         )}
         {mine ? null : (
           <div className="acct__actions">
-            {account.state === 'signed-out' ? (
+            {!isApi && account.state === 'signed-out' ? (
               <button
                 type="button"
                 className="btn-primary"
@@ -219,7 +256,11 @@ export function AccountRow({
           </div>
         )}
       </div>
-      {usage !== undefined && onRefreshUsage !== undefined && account.state !== 'signed-out' ? (
+      {isApi ? <ApiKeyActions account={account} program={program} onChanged={onChanged} /> : null}
+      {!isApi &&
+      usage !== undefined &&
+      onRefreshUsage !== undefined &&
+      account.state !== 'signed-out' ? (
         <AccountUsage name={account.name} usage={usage} onRefresh={onRefreshUsage} />
       ) : null}
       {mode === 'rename' && account.id !== null ? (
@@ -242,7 +283,7 @@ export function AccountRow({
       ) : null}
       {mode === 'remove' ? (
         <ConfirmInline
-          question={TEXT.removeQuestion}
+          question={isApi ? TEXT.removeApiQuestion : TEXT.removeQuestion}
           confirmLabel={TEXT.remove}
           disabled={busy}
           focusBack
@@ -257,6 +298,17 @@ export function AccountRow({
           disabled={busy}
           focusBack
           onConfirm={() => void remove(true)}
+          onCancel={() => setMode('idle')}
+        />
+      ) : null}
+      {mode === 'default' ? (
+        <ConfirmInline
+          question={TEXT.defaultApiQuestion}
+          confirmLabel={TEXT.makeDefault}
+          confirmTone="primary"
+          disabled={busy}
+          focusBack
+          onConfirm={() => void act(() => window.projectHub.accounts.setDefault(target))}
           onCancel={() => setMode('idle')}
         />
       ) : null}

@@ -19,6 +19,8 @@ import type {
 import type { ProviderRegistry } from '../providers';
 import type { AccountCli, AccountStatus } from './account-cli';
 import type { AccountPaths } from './account-paths';
+import { VAULT_LOCKED, VAULT_UNAVAILABLE, type AccountVault } from './account-vault';
+import { API_KEY_ONLY_CLAUDE, isApiKeyProvider } from './api-key-shape';
 
 /** Chave de `app_settings` com o id da conta padrão do programa. Sem a chave, a padrão é a Principal. */
 export const DEFAULT_ACCOUNT_KEY = (provider: AccountProviderId): string =>
@@ -40,6 +42,8 @@ export type AccountsServiceDeps = {
   settings: AppSettingsRepository;
   paths: AccountPaths;
   cli: AccountCli;
+  /** O cofre das chaves de API: só o estado de cada chave e os 4 últimos caracteres. Nunca a chave. */
+  vault: Pick<AccountVault, 'status' | 'check' | 'last4Of' | 'remove'>;
   providers: ProviderRegistry;
   newId: () => string;
   now: () => string;
@@ -49,6 +53,11 @@ export type AccountsServiceDeps = {
 
 const DONE: AppResult<undefined> = { ok: true, data: undefined };
 const GONE = 'A conta não existe mais.';
+const NEEDS_KEY = 'Cole a chave de API antes de tornar esta conta a padrão.';
+const API_NOT_SIGNED_IN =
+  'Conta por chave de API não tem login: para deixar de usá-la, remova a chave.';
+/** O estado de uma conta API: o programa nunca é chamado para ela. */
+const API_STATUS: AccountStatus = { state: 'unknown' };
 
 function isAccountProvider(provider: string): provider is AccountProviderId {
   return (ACCOUNT_PROVIDERS as readonly string[]).includes(provider);
@@ -59,7 +68,7 @@ function sameName(a: string, b: string): boolean {
 }
 
 export function createAccountsService(deps: AccountsServiceDeps): AccountsService {
-  const { accounts, settings, paths, cli, providers } = deps;
+  const { accounts, settings, paths, cli, providers, vault } = deps;
 
   /** A conta extra que existe, não foi removida e é de um programa com várias contas. */
   function existing(
@@ -84,6 +93,13 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
     return taken ? 'Já existe uma conta com este nome neste programa.' : undefined;
   }
 
+  /** O estado da chave e os 4 últimos caracteres. Com o cofre trancado, nada é decifrado. */
+  function keyOf(record: AccountRecord): Pick<AccountDto, 'keyState' | 'keyLast4'> {
+    const keyState = vault.check(record.id);
+    const last4 = keyState === 'missing' ? undefined : vault.last4Of(record.id);
+    return { keyState, ...(last4 === undefined ? {} : { keyLast4: last4 }) };
+  }
+
   function toDto(
     provider: AccountProviderId,
     record: AccountRecord | null,
@@ -99,6 +115,9 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
       state: status.state,
       ...(status.identity === undefined ? {} : { identity: status.identity }),
       ...(status.organization === undefined ? {} : { organization: status.organization }),
+      // A Principal é sempre de assinatura.
+      kind: record?.kind ?? 'subscription',
+      ...(record?.kind === 'api' ? keyOf(record) : {}),
     };
   }
 
@@ -130,7 +149,11 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
           const defaultId = extras.some((account) => account.id === stored) ? stored : undefined;
           const records: (AccountRecord | null)[] = [null, ...extras];
           const statuses = await Promise.all(
-            records.map((record) => cli.status(provider, record?.id ?? null)),
+            records.map((record) =>
+              record?.kind === 'api'
+                ? Promise.resolve(API_STATUS)
+                : cli.status(provider, record?.id ?? null),
+            ),
           );
           return {
             provider,
@@ -157,6 +180,12 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
     },
 
     async add(input) {
+      if (input.kind === 'api') {
+        if (!isApiKeyProvider(input.provider)) {
+          return failure('VALIDATION_FAILED', API_KEY_ONLY_CLAUDE);
+        }
+        if (!vault.status().available) return failure('VALIDATION_FAILED', VAULT_UNAVAILABLE);
+      }
       const problem = nameProblem(input.provider, input.name);
       if (problem !== undefined) return failure('VALIDATION_FAILED', problem);
       const record: AccountRecord = {
@@ -164,6 +193,7 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
         provider: input.provider,
         name: input.name.trim(),
         createdAt: deps.now(),
+        kind: input.kind,
       };
       accounts.insert(record);
       try {
@@ -172,7 +202,8 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
         accounts.markRemoved(record.id, deps.now());
         return failure('UNKNOWN', 'Não foi possível criar a pasta da conta.');
       }
-      return { ok: true, data: toDto(input.provider, record, false, { state: 'signed-out' }) };
+      const initial: AccountStatus = record.kind === 'api' ? API_STATUS : { state: 'signed-out' };
+      return { ok: true, data: toDto(input.provider, record, false, initial) };
     },
 
     rename(input) {
@@ -191,6 +222,13 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
       }
       const record = existing(input.accountId);
       if (!record || record.provider !== input.provider) return failure('VALIDATION_FAILED', GONE);
+      if (record.kind === 'api') {
+        const keyState = vault.check(record.id);
+        if (keyState === 'locked') return failure('VAULT_LOCKED', VAULT_LOCKED);
+        if (keyState !== 'stored') return failure('VALIDATION_FAILED', NEEDS_KEY);
+        settings.set(DEFAULT_ACCOUNT_KEY(input.provider), record.id, deps.now());
+        return DONE;
+      }
       const status = await cli.status(input.provider, record.id);
       if (status.state !== 'connected') {
         return failure('VALIDATION_FAILED', 'Conecte a conta antes de torná-la a padrão.');
@@ -205,6 +243,7 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
         if (!record || record.provider !== input.provider) {
           return failure('VALIDATION_FAILED', GONE);
         }
+        if (record.kind === 'api') return failure('VALIDATION_FAILED', API_NOT_SIGNED_IN);
       }
       const blocked = await busy(input.provider, input.accountId);
       if (blocked) return blocked;
@@ -220,6 +259,15 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
       if (!record) return failure('VALIDATION_FAILED', GONE);
       const blocked = await busy(record.provider, record.id);
       if (blocked) return blocked;
+      if (record.kind === 'api') {
+        // A chave sai primeiro: se a pasta não puder ser apagada, a conta fica na lista, mas sem chave.
+        vault.remove(record.id);
+        resetDefaultIf(record.provider, record.id);
+        const removed = await paths.removeFolder(record.provider, record.id);
+        if (!removed.ok) return removed;
+        accounts.markRemoved(record.id, deps.now());
+        return DONE;
+      }
       const logout = await cli.logout(record.provider, record.id);
       if (!logout.ok && !input.force) {
         return failure('PROCESS_START_FAILED', 'Não foi possível sair da conta pelo programa.');

@@ -248,4 +248,20 @@ describe('SessionsTab: a conta da sessão', () => {
     const other = screen.getByRole('button', { name: /^Outra sessão/ });
     expect(other.querySelector('.sessions-tab__account')).toBeNull();
   });
+
+  it('o cartão da sessão mostra o selo da conta API', async () => {
+    installApi({
+      ...LIST,
+      sessions: [
+        summary('1', { accountId: sid('a'), accountName: 'Chave', accountKind: 'api' }),
+        summary('2', { accountId: sid('b'), accountName: 'Trabalho', title: 'Outra sessão' }),
+      ],
+    });
+    render(<SessionsTab projectId="p1" />);
+
+    const [first] = await screen.findAllByRole('button', { name: /^Sessão 1/ });
+    expect(first?.querySelector('.api-badge')).toHaveTextContent('API');
+    const other = screen.getByRole('button', { name: /^Outra sessão/ });
+    expect(other.querySelector('.api-badge')).toBeNull();
+  });
 });

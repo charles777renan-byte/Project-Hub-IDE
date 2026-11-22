@@ -4,11 +4,14 @@ import type {
   AccountsDto,
   AccountTargetInput,
   AddAccountInput,
+  ApiKeyTargetInput,
   LoginDto,
   LoginEvent,
+  PasteKeyResult,
   RemoveAccountInput,
   RenameAccountInput,
 } from './accounts';
+import type { ChangePasswordResult, UnlockResult, VaultDto, VaultResetInput } from './vault';
 import type { AlertNotifyInput, AlertOpenEvent } from './alerts';
 import type {
   ContentSearchDto,
@@ -400,6 +403,12 @@ export type ProjectHubApi = {
     disconnect(input: AccountTargetInput): Promise<AppResult<void>>;
     /** Apaga a conta extra e a pasta dela. `force` apaga mesmo quando a saída pelo programa falhou. */
     remove(input: RemoveAccountInput): Promise<AppResult<void>>;
+    /**
+     * Guarda no cofre a chave que está na área de transferência, lida no processo principal. Devolve só os 4 últimos
+     * caracteres. Com o cofre vazio ou trancado, a janela da senha abre antes.
+     */
+    pasteKey(input: ApiKeyTargetInput): Promise<AppResult<PasteKeyResult>>;
+    removeKey(input: ApiKeyTargetInput): Promise<AppResult<void>>;
     login: {
       start(input: AccountTargetInput): Promise<AppResult<LoginDto>>;
       get(): Promise<AppResult<LoginDto | null>>;
@@ -417,6 +426,19 @@ export type ProjectHubApi = {
       /** Assina o estado e a saída do login. Cada evento chega validado. Devolve a função que cancela. */
       subscribe(listener: (event: LoginEvent) => void): () => void;
     };
+  };
+  /** O cofre das chaves de API. A senha nunca passa por aqui: ela é digitada na janela própria do cofre. */
+  vault: {
+    get(): Promise<AppResult<VaultDto>>;
+    /** Abre a janela da senha (ou a de criar a senha, com o cofre vazio) e devolve só o desfecho. */
+    unlock(): Promise<AppResult<UnlockResult>>;
+    lock(): Promise<AppResult<void>>;
+    /** Abre a janela de trocar a senha e devolve só o desfecho. */
+    changePassword(): Promise<AppResult<ChangePasswordResult>>;
+    /** Apaga a senha e todas as chaves guardadas. Só com `{ confirm: true }`. */
+    reset(input: VaultResetInput): Promise<AppResult<void>>;
+    /** Assina as mudanças de estado do cofre. Cada evento chega validado. Devolve a função que cancela. */
+    subscribe(listener: (state: VaultDto) => void): () => void;
   };
   app: {
     info(): Promise<AppResult<AppInfoDto>>;

@@ -55,9 +55,11 @@ function setup(
     live?: string[];
     cooldown?: boolean;
     codex?: boolean;
+    api?: string[];
   } = {},
 ) {
   const state = {
+    api: new Set(options.api ?? []),
     extras: options.extras ?? [X],
     defaults: { claude: null, codex: null, ...options.defaults } as Record<
       LimitProviderId,
@@ -80,6 +82,8 @@ function setup(
         accountId === null
           ? { name: 'Principal', removed: false }
           : { name: `Conta ${accountId.slice(0, 1)}`, removed: !state.extras.includes(accountId) },
+      kindOf: (_provider, accountId) =>
+        accountId !== null && state.api.has(accountId) ? 'api' : 'subscription',
     },
     isLive: (provider, accountId) => Promise.resolve(state.live.has(key(provider, accountId))),
     serviceFor: (provider, accountId) => {
@@ -110,6 +114,21 @@ describe('createAccountLimits', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('conta API nunca entra na leitura de limites, nem como padrão nem com painel vivo', async () => {
+    const h = setup({ extras: [X, Y], api: [Y], defaults: { claude: Y }, live: [`claude:${Y}`] });
+    h.limits.start();
+
+    await vi.advanceTimersByTimeAsync(5_000 + 15 * 60_000);
+
+    expect(h.services.has(h.key('claude', Y))).toBe(false);
+    const state = h.limits.get();
+    expect(state.accounts.map((account) => account.accountId)).not.toContain(Y);
+    // A padrão é a conta API: o programa fica sem limites, e não mostra os da Principal no lugar.
+    expect(state.providers.filter((limits) => limits.provider === 'claude')).toEqual([]);
+    expect(h.reads('claude', null)).toBe(0);
+    expect((await h.limits.refreshAccount('claude', Y)).ok).toBe(false);
   });
 
   it('lê sozinha só a conta padrão: a conta parada fica com zero leituras', async () => {
@@ -162,6 +181,7 @@ describe('createAccountLimits', () => {
         defaultOf: () => null,
         listRoots: () => [{ accountId: null, root: '/raiz' }],
         labelOf: () => ({ name: 'Principal', removed: false }),
+        kindOf: () => 'subscription',
       },
       isLive: () => Promise.resolve(false),
       serviceFor: (provider, accountId) => {

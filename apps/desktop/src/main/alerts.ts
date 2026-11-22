@@ -1,5 +1,6 @@
 import type { AlertNotifyInput, AlertOpenEvent } from '@project-hub/contracts';
 import type { MissionRepository, ProjectRepository } from '@project-hub/application';
+import type { Mission } from '@project-hub/domain';
 import type { TerminalService } from './terminals';
 
 /** A parte do `Notification` do Electron que o serviço usa. Os testes trocam por um dublê. */
@@ -27,6 +28,11 @@ export type AlertServiceDeps = {
   window: () => AlertWindow | undefined;
   createNotification: (options: { title: string; body: string }) => AlertNotification;
   publishOpen: (event: AlertOpenEvent) => void;
+  /**
+   * A missão espera o cofre das chaves (na fila, ou pausada sem agente, numa conta por chave com o cofre trancado).
+   * Ausente: nenhuma missão espera o cofre.
+   */
+  vaultWaiting?: (mission: Mission) => boolean;
 };
 
 export type AlertService = {
@@ -44,12 +50,13 @@ export const ALERT_REASONS = {
   waiting_approval: 'Pede a sua aprovação',
   waiting_input: 'Fez uma pergunta',
   failed: 'Falhou',
+  vault: 'Destranque o cofre para continuar',
   terminal: 'Aguarda você',
 } as const;
 
 type MissionReason = Exclude<keyof typeof ALERT_REASONS, 'terminal'>;
 
-function missionReason(status: string): MissionReason | undefined {
+function missionReason(status: string): Exclude<MissionReason, 'vault'> | undefined {
   return status === 'waiting_approval' || status === 'waiting_input' || status === 'failed'
     ? status
     : undefined;
@@ -86,7 +93,11 @@ export function createAlertService(deps: AlertServiceDeps): AlertService {
   async function resolve(input: AlertNotifyInput): Promise<Alert | undefined> {
     if (input.kind === 'mission') {
       const mission = deps.missions.getMission(input.id);
-      const reason = mission === undefined ? undefined : missionReason(mission.status);
+      const reason =
+        mission === undefined
+          ? undefined
+          : (missionReason(mission.status) ??
+            (deps.vaultWaiting?.(mission) === true ? 'vault' : undefined));
       if (mission === undefined || reason === undefined) return undefined;
       return { projectId: mission.projectId, title: mission.title, reason: ALERT_REASONS[reason] };
     }

@@ -24,6 +24,7 @@ import { contextDetailText, modelLabel } from '../terminal-context';
 import { clearTerminalFocus, setTerminalFocus } from '../terminal-focus';
 import { PaneContext } from './PaneContext';
 import { PaneUsage } from './PaneUsage';
+import { ApiBadge } from '../components/ApiBadge';
 
 /** O lado em que o painel novo entra ao dividir. */
 export type SplitSide = 'right' | 'bottom';
@@ -60,7 +61,7 @@ export type PaneViewProps = {
    * A conta do painel sem sessão, quando o programa tem mais de uma: o nome dela, ou `removed` se ela não existe
    * mais. Com sessão, vale a conta que a própria sessão informa.
    */
-  account?: { name?: string; removed?: boolean } | undefined;
+  account?: { name?: string; removed?: boolean; kind?: 'subscription' | 'api' } | undefined;
   /** O painel recebeu o foco do teclado: marca como ativo, sem levar o foco ao terminal. */
   onActivate(): void;
   /** Clique no painel: ativa e leva o foco ao terminal. Sem ele, vale `onActivate`. */
@@ -195,13 +196,17 @@ export function PaneView(props: PaneViewProps) {
         ? { removed: true }
         : terminal.accountName === undefined
           ? undefined
-          : { name: terminal.accountName };
+          : {
+              name: terminal.accountName,
+              ...(terminal.accountKind === 'api' ? { kind: 'api' as const } : {}),
+            };
   const accountChip =
     account === undefined ? null : account.removed === true ? (
       <span className="pane__account pane__account--removed">{ACCOUNT_REMOVED_TEXT}</span>
     ) : account.name === undefined ? null : (
       <span className="pane__account" title={`Conta: ${account.name}`}>
         {account.name}
+        {account.kind === 'api' ? <ApiBadge /> : null}
       </span>
     );
   // A alça não é botão (não faz nada ao clicar nem entra na ordem do Tab): quem usa o teclado move o painel pelos

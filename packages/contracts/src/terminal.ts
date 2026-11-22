@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { tokenCount, usageSummaryDtoSchema } from './mission';
-import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
+import { ACCOUNT_NAME_MAX, accountKindSchema, accountRefSchema } from './accounts';
 import { providerIdSchema } from './workspace';
 
 /**
@@ -64,6 +64,8 @@ export const terminalSummarySchema = z.object({
   accountId: accountRefSchema.optional(),
   accountName: z.string().max(ACCOUNT_NAME_MAX).optional(),
   accountRemoved: z.boolean().optional(),
+  /** A conta é por chave de API (cobra por uso). Ausente: assinatura. */
+  accountKind: accountKindSchema.optional(),
 });
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 

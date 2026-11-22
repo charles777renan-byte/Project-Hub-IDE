@@ -11,7 +11,7 @@ import { useOverview } from './use-overview';
  * A identidade de uma espera: o terminal avulso pelo id; a missão pelo id e pelo motivo (`wait` ou `failed`), para que a
  * falha logo depois de uma espera avise mesmo quando a visão geral junta as duas mudanças numa leitura só.
  */
-export type AlertKey = `terminal:${string}` | `mission:${string}:${'wait' | 'failed'}`;
+export type AlertKey = `terminal:${string}` | `mission:${string}:${'wait' | 'failed' | 'vault'}`;
 
 /** Estados da missão que viram notificação do sistema. `planned` e `review` ficam só na faixa "Precisa de você". */
 const MISSION_ALERT_STATUSES: ReadonlySet<string> = new Set(['waiting_approval', 'waiting_input']);
@@ -26,6 +26,7 @@ export function currentWaits(
   entries: readonly AttentionEntry[],
   missions: readonly OverviewItem[],
   failed: readonly OverviewItem[],
+  vaultWaiting: readonly OverviewItem[] = [],
 ): Map<AlertKey, AlertNotifyInput> {
   const waits = new Map<AlertKey, AlertNotifyInput>();
   for (const entry of entries) {
@@ -38,6 +39,9 @@ export function currentWaits(
   }
   for (const { mission } of failed) {
     waits.set(`mission:${mission.id}:failed`, { kind: 'mission', id: mission.id });
+  }
+  for (const { mission } of vaultWaiting) {
+    waits.set(`mission:${mission.id}:vault`, { kind: 'mission', id: mission.id });
   }
   return waits;
 }
@@ -64,18 +68,18 @@ function alertsApi(): ProjectHubApi['alerts'] | undefined {
  */
 export function useAttentionAlerts(): void {
   const { entries, known } = useAttention();
-  const { items, failed } = useOverview();
+  const { items, failed, vaultWaiting } = useOverview();
   const navigate = useNavigate();
   const seen = useRef<ReadonlySet<AlertKey> | null>(null);
 
   useEffect(() => {
     if (!known) return;
-    const current = currentWaits(entries, items, failed);
+    const current = currentWaits(entries, items, failed, vaultWaiting);
     const fresh = newWaits(seen.current, current);
     seen.current = new Set(current.keys());
     const api = alertsApi();
     for (const input of fresh) void api?.notify(input);
-  }, [entries, items, failed, known]);
+  }, [entries, items, failed, vaultWaiting, known]);
 
   useEffect(() => {
     const api = alertsApi();

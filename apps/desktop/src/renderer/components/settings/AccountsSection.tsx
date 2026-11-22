@@ -2,28 +2,32 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type {
   AccountDto,
   AccountGroupDto,
+  AccountKind,
   AccountLimitsDto,
   AccountProviderId,
   LimitsDto,
   OtherProgramDto,
+  VaultDto,
 } from '@project-hub/contracts';
 import { useAccounts } from '../../use-accounts';
 import { useLimits } from '../../use-limits';
 import { useLogin, type LoginControls } from '../../use-login';
+import { useVault } from '../../use-vault';
 import { CircleCheck, CircleSlash, ICON_PROPS, Plus } from '../Icon';
 import { ProviderIcon } from '../ProviderIcon';
 import { AccountRow } from './AccountRow';
-import { AccountNameForm } from './AddAccountForm';
+import { AddAccountForm } from './AddAccountForm';
+import { VaultBar } from './VaultBar';
 
 const TEXT = {
   title: 'Contas',
-  lead: 'O login é feito no próprio programa de cada conta e fica guardado por ele. O Project Hub não vê nem guarda senha ou token.',
+  lead: 'Cada programa pode ter várias contas. Na de assinatura, o login fica no próprio programa e o Project Hub não vê a senha nem o token. Na de chave de API, a chave fica cifrada no cofre do app, neste computador.',
   loading: 'Lendo as contas…',
   failed: 'Não foi possível ler as contas.',
   retry: 'Tentar de novo',
   count: (total: number) => (total === 1 ? '1 conta' : `${total} contas`),
   add: 'Adicionar conta',
-  addSubmit: 'Adicionar',
+  addSubmit: 'Adicionar conta',
   addFailed: 'Não foi possível criar a conta.',
   installed: 'Instalado',
   notInstalled: 'Não instalado',
@@ -32,6 +36,9 @@ const TEXT = {
 } as const;
 
 const PROGRAMS: Record<AccountProviderId, string> = { claude: 'Claude Code', codex: 'Codex' };
+
+/** Os programas em que a conta pode ser por chave de API. O Codex fica de fora até aceitar a chave pelo ambiente. */
+const API_PROGRAMS: ReadonlySet<AccountProviderId> = new Set(['claude']);
 
 /** A entrada dos limites de uma conta. Sem ela, o app não tem como ler o uso daquele programa. */
 function usageOf(limits: LimitsDto | null, account: AccountDto): AccountLimitsDto | undefined {
@@ -57,25 +64,41 @@ function AccountGroup({
   onChanged,
   limits,
   onRefreshUsage,
+  vault,
 }: {
   group: AccountGroupDto;
   controls: LoginControls;
   onChanged: () => void;
   limits: LimitsDto | null;
   onRefreshUsage: (account: AccountDto) => void;
+  vault: VaultDto | null;
 }) {
   const titleId = useId();
   const [adding, setAdding] = useState(false);
   const program = PROGRAMS[group.provider];
+  const addButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
 
-  async function add(name: string): Promise<string | null> {
+  // Ao fechar o painel de criar, o foco volta ao botão que o abriu (ele some enquanto o painel está aberto).
+  useEffect(() => {
+    if (adding || !returnFocus.current) return;
+    returnFocus.current = false;
+    addButton.current?.focus();
+  }, [adding]);
+
+  function close() {
+    returnFocus.current = true;
+    setAdding(false);
+  }
+
+  async function add(name: string, kind: AccountKind): Promise<string | null> {
     try {
-      const result = await window.projectHub.accounts.add({ provider: group.provider, name });
+      const result = await window.projectHub.accounts.add({ provider: group.provider, name, kind });
       if (!result.ok) return result.error.message;
     } catch {
       return TEXT.addFailed;
     }
-    setAdding(false);
+    close();
     onChanged();
     return null;
   }
@@ -88,28 +111,31 @@ function AccountGroup({
           {program}
         </h3>
         <span className="acct-group__count">{TEXT.count(group.accounts.length)}</span>
-        {group.installed ? (
+        {!group.installed ? (
+          <span className="acct__state acct-group__action">
+            <CircleSlash {...ICON_PROPS} />
+            {TEXT.notInstalled}
+          </span>
+        ) : adding ? null : (
           <button
+            ref={addButton}
             type="button"
             className="btn-secondary acct-group__action"
-            disabled={adding}
             onClick={() => setAdding(true)}
           >
             <Plus {...ICON_PROPS} />
             {TEXT.add}
           </button>
-        ) : (
-          <span className="acct__state acct-group__action">
-            <CircleSlash {...ICON_PROPS} />
-            {TEXT.notInstalled}
-          </span>
         )}
       </header>
       {adding ? (
-        <AccountNameForm
+        <AddAccountForm
+          program={program}
+          allowApi={API_PROGRAMS.has(group.provider)}
+          vault={vault}
           submitLabel={TEXT.addSubmit}
           onSubmit={add}
-          onCancel={() => setAdding(false)}
+          onCancel={close}
         />
       ) : null}
       <ul className="acct-list">
@@ -170,6 +196,7 @@ export function AccountsSection() {
   const { state, reload } = useAccounts();
   const controls = useLogin(reload);
   const { limits, refreshAccount } = useLimits();
+  const vault = useVault(reload);
   /** As contas cuja leitura já foi pedida nesta abertura da seção. */
   const asked = useRef(new Set<string>());
   const reading = useRef(false);
@@ -179,7 +206,7 @@ export function AccountsSection() {
     const pending = state.data.groups
       .flatMap((group) => (group.installed ? group.accounts : []))
       .filter((account) => {
-        if (account.state !== 'connected') return false;
+        if (account.kind === 'api' || account.state !== 'connected') return false;
         const entry = usageOf(limits, account);
         const key = `${account.provider}:${account.id ?? ''}`;
         return entry !== undefined && isUnread(entry) && !asked.current.has(key);
@@ -197,6 +224,13 @@ export function AccountsSection() {
       }
     })();
   }, [state, limits, refreshAccount]);
+
+  const apiAccounts =
+    state.status === 'ready'
+      ? state.data.groups.flatMap((group) =>
+          group.accounts.filter((account) => account.kind === 'api'),
+        )
+      : [];
 
   return (
     <section aria-labelledby={titleId} className="settings__panel">
@@ -219,6 +253,9 @@ export function AccountsSection() {
       ) : null}
       {state.status === 'ready' ? (
         <>
+          {vault !== null && apiAccounts.length > 0 ? (
+            <VaultBar vault={vault} accounts={apiAccounts} onChanged={reload} />
+          ) : null}
           {state.data.groups.map((group) => (
             <AccountGroup
               key={group.provider}
@@ -227,6 +264,7 @@ export function AccountsSection() {
               onChanged={reload}
               limits={limits}
               onRefreshUsage={(account) => void refreshAccount(account.provider, account.id)}
+              vault={vault}
             />
           ))}
           <OtherPrograms others={state.data.others} />

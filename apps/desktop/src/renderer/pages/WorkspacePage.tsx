@@ -318,11 +318,14 @@ function WorkspaceBody({
     return live?.accountId !== undefined ? live.accountId : leaf.accountId;
   };
   /** A conta que o painel sem sessão mostra: só quando o programa tem mais de uma. */
-  const launcherAccount = (leaf: LayoutLeaf): { name?: string; removed?: boolean } | undefined => {
+  const launcherAccount = (
+    leaf: LayoutLeaf,
+  ): { name?: string; removed?: boolean; kind?: 'api' } | undefined => {
     const list: readonly AccountDto[] | undefined = accountsByProvider[leaf.provider];
     if (list === undefined || (list.length < 2 && leaf.accountId === undefined)) return undefined;
     const found = list.find((account) => account.id === (leaf.accountId ?? null));
-    return found === undefined ? { removed: true } : { name: found.name };
+    if (found === undefined) return { removed: true };
+    return found.kind === 'api' ? { name: found.name, kind: 'api' } : { name: found.name };
   };
   // Sessão viva e parada há algumas leituras: a marca dela vira o ponto vazado "Ocioso" (painel, aba e ficha).
   const activity = useActivity(terminals);

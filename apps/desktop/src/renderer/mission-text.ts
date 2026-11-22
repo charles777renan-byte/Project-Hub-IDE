@@ -342,6 +342,13 @@ export const MISSION_ACCOUNT_TEXT = {
   removedLocked: 'A conta foi removida. A missão não pode continuar nela.',
 } as const;
 
+/** A missão que espera o cofre das chaves de API: a frase é a mesma do processo principal. */
+export const VAULT_TEXT = {
+  locked: 'Destranque o cofre para continuar.',
+  unlock: 'Destrancar',
+  billing: 'Cobrança por uso',
+} as const;
+
 export type PrimaryAction = 'generate_plan' | 'approve_plan' | 'start' | 'resume' | 'retry';
 
 const PRIMARY_ACTION: Partial<Record<MissionStatus, PrimaryAction>> = {
@@ -1200,6 +1207,8 @@ const CONVERSATION_EVENTS: ReadonlySet<string> = new Set([
   'session.ended',
   'review.approved',
   'review.changes_requested',
+  'mission.vault_locked',
+  'mission.task_start_failed',
 ]);
 
 /** Os eventos da Conversa: só a história para a pessoa, na ordem em que chegaram. */
@@ -1316,6 +1325,14 @@ export function describeEvent(event: MissionEventDto): string | null {
     case 'review.changes_requested': {
       const feedback = textOf(payload['feedback']);
       return feedback === undefined ? 'Ajustes pedidos.' : `Ajustes pedidos: ${feedback}`;
+    }
+    case 'mission.vault_locked':
+      return `A missão espera você: ${textOf(payload['reason']) ?? VAULT_TEXT.locked}`;
+    case 'mission.task_start_failed': {
+      const message = textOf(payload['message']);
+      return message === undefined
+        ? 'A próxima tarefa não iniciou.'
+        : `A próxima tarefa não iniciou: ${message}`;
     }
     default:
       return null;

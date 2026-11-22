@@ -2724,6 +2724,21 @@ describe('MissionPage: pausa, retomada e nova tentativa (R180, R181)', () => {
     expect(screen.getByRole('menuitem', { name: 'Cancelar missão' })).toBeInTheDocument();
   });
 
+  it('missão na fila esperando o cofre: Destrancar pede ao app para destrancar e relê a missão', async () => {
+    const hub = installApi(viewOf({ status: 'queued', vaultLocked: true }));
+    const unlock = vi.fn(() =>
+      Promise.resolve({ ok: true as const, data: { outcome: 'unlocked' as const } }),
+    );
+    (hub.api as unknown as { vault: unknown }).vault = { unlock };
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Destrancar' }));
+
+    await waitFor(() => expect(unlock).toHaveBeenCalledWith());
+    expect(hub.api.missions.start).not.toHaveBeenCalled();
+    await waitFor(() => expect(hub.api.missions.get.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
   it.each(['failed', 'cancelled'] as const)(
     'missão %s oferece Tentar de novo, que chama retry',
     async (status) => {

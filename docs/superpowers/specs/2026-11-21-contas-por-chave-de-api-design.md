@@ -1,5 +1,7 @@
 # Contas por chave de API: desenho
 
+> **Depois da prova na máquina (2026-11-21):** a pessoa decidiu que esta entrega cobre só o Claude Code. O Codex interativo ignora a chave do ambiente e pede login; a conta API do Codex fica para quando ele aceitar a chave pelo ambiente. O Claude Code interativo pergunta se usa a chave do ambiente: o app grava a aprovação no `.claude.json` da pasta da conta (os 20 últimos caracteres, o que o programa grava ao aprovar), e a tira na troca e na remoção da chave. Resultado da prova em `2026-11-21-contas-por-chave-de-api-prova.md`.
+
 Data: 2026-11-21, revisado no mesmo dia depois da leitura de construtor. Estado: aprovado pela pessoa em 2026-11-21, com a cifra do cofre em duas camadas (Windows mais senha), escolhida por ela.
 
 Complementa `2026-11-18-configuracoes-e-contas-design.md`, que deixou "login por chave de API" fora do escopo.

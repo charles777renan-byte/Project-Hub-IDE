@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { MissionViewDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { DecisionBlock } from '../../src/renderer/components/mission/DecisionBlock';
+import type { AccountChoiceItem } from '../../src/renderer/components/AccountChoice';
 
 type Status = MissionViewDto['mission']['status'];
 
@@ -115,6 +116,7 @@ function handlersOf() {
     onCancelPlanning: vi.fn(),
     onStart: vi.fn(),
     onResume: vi.fn(),
+    onUnlock: vi.fn(),
     onRetry: vi.fn(),
     onDecide: vi.fn(),
     onAnswer: vi.fn(() => Promise.resolve(true)),
@@ -963,6 +965,7 @@ describe('DecisionBlock: duas colunas em janela larga', () => {
 
 describe('DecisionBlock: a conta da missão', () => {
   const X = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const K = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const accounts = [
     { id: null, name: 'Principal', isDefault: true, state: 'connected' as const },
     { id: X, name: 'Trabalho', isDefault: false, state: 'connected' as const },
@@ -970,7 +973,7 @@ describe('DecisionBlock: a conta da missão', () => {
 
   function setupAccount(
     mission: Partial<MissionViewDto['mission']> = {},
-    list = accounts,
+    list: readonly AccountChoiceItem[] = accounts,
     status: Status = 'draft',
   ) {
     const handlers = handlersOf();
@@ -1009,6 +1012,74 @@ describe('DecisionBlock: a conta da missão', () => {
     expect(within(block()).getByRole('button', { name: 'Orquestrar' })).toHaveAccessibleDescription(
       /cota/i,
     );
+  });
+
+  it('a conta API mostra o selo no seletor da missão e, no lugar do uso, "Cobrança por uso"', () => {
+    setupAccount({}, [
+      ...accounts,
+      {
+        id: K,
+        name: 'Chave',
+        isDefault: false,
+        state: 'connected',
+        kind: 'api',
+        keyState: 'stored',
+      },
+    ]);
+
+    const option = within(block()).getByRole('option', { name: /Chave/ });
+    expect(option).toHaveTextContent('API');
+    expect(option).toHaveTextContent('Cobrança por uso');
+    expect(option).not.toHaveTextContent('sem leitura');
+  });
+
+  it('Sua decisão mostra o selo API junto do botão de iniciar', () => {
+    setupAccount({ accountId: K, accountName: 'Chave', accountKind: 'api' }, accounts, 'queued');
+
+    const actions = block().querySelector('.decision-block__actions');
+    expect(
+      within(actions as HTMLElement).getByRole('button', { name: 'Iniciar missão' }),
+    ).toBeInTheDocument();
+    expect(actions?.querySelector('.api-badge')).toHaveTextContent('API');
+  });
+
+  it('conta de assinatura não leva o selo junto do botão', () => {
+    setupAccount({ accountId: X, accountName: 'Trabalho' }, accounts, 'queued');
+    expect(block().querySelector('.decision-block__actions .api-badge')).toBeNull();
+  });
+
+  it('missão pausada por cofre trancado mostra "Destranque o cofre para continuar." e o botão Retomar', async () => {
+    const { handlers } = setupAccount(
+      {
+        accountId: K,
+        accountName: 'Chave',
+        accountKind: 'api',
+        accountLocked: true,
+        vaultLocked: true,
+      },
+      accounts,
+      'paused',
+    );
+
+    expect(within(block()).getByText('Destranque o cofre para continuar.')).toBeInTheDocument();
+    const resume = within(block()).getByRole('button', { name: 'Retomar' });
+    expect(resume).toHaveAccessibleDescription('Destranque o cofre para continuar.');
+    await userEvent.click(resume);
+    expect(handlers.onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('missão na fila com o cofre trancado mostra a mesma frase e o botão Destrancar', async () => {
+    const { handlers } = setupAccount(
+      { accountId: K, accountName: 'Chave', accountKind: 'api', vaultLocked: true },
+      accounts,
+      'queued',
+    );
+
+    expect(within(block()).getByText('Destranque o cofre para continuar.')).toBeInTheDocument();
+    expect(within(block()).queryByRole('button', { name: 'Iniciar missão' })).toBeNull();
+    await userEvent.click(within(block()).getByRole('button', { name: 'Destrancar' }));
+    expect(handlers.onUnlock).toHaveBeenCalledTimes(1);
+    expect(handlers.onStart).not.toHaveBeenCalled();
   });
 
   it('trocar a conta avisa a página, só com o id', async () => {

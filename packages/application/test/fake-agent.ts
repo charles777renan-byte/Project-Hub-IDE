@@ -80,6 +80,8 @@ export type FakeAgentOptions = {
   failResume?: boolean;
   /** Capacidade `pauseResume` declarada. Padrão: `true`. */
   pauseResume?: boolean;
+  /** Erro com que a chamada a `start` rejeita (a primeira chamada é 1). `undefined`: a sessão abre. */
+  startError?: (input: AgentStartInput, call: number) => Error | undefined;
 };
 
 /**
@@ -111,6 +113,8 @@ export function fakeAgent(scripts: FakeStep[][], options: FakeAgentOptions = {})
       if (starts.length <= (options.failStarts ?? 0)) {
         return Promise.reject(new Error('agente indisponível'));
       }
+      const refused = options.startError?.(input, starts.length);
+      if (refused !== undefined) return Promise.reject(refused);
       const script = scripts[count] ?? [];
       count += 1;
       const record: FakeSession = {

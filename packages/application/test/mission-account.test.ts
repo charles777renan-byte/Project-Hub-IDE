@@ -103,6 +103,45 @@ describe('missionAccountOf', () => {
     ).toBe(true);
   });
 
+  it('espera do cofre: só na fila ou pausada sem agente, numa conta com o cofre trancado', () => {
+    const locked = {
+      ...deps,
+      accounts: { ...accounts, vaultLocked: (accountId: string) => accountId === WORK },
+    };
+    const of = (overrides: Partial<Mission>, running = false) =>
+      missionAccountOf(
+        { ...locked, isRunning: () => running },
+        mission({ accountId: WORK, ...overrides }),
+      ).vaultLocked;
+
+    expect(of({ status: 'queued' })).toBe(true);
+    expect(of({ status: 'paused', startedAt: T1 })).toBe(true);
+    // Pausada pela pessoa, com o agente vivo: não espera o cofre.
+    expect(of({ status: 'paused', startedAt: T1 }, true)).toBeUndefined();
+    expect(of({ status: 'running', startedAt: T1 })).toBeUndefined();
+    expect(of({ status: 'draft' })).toBeUndefined();
+    expect(missionAccountOf(locked, mission({ status: 'queued' })).vaultLocked).toBeUndefined();
+    expect(
+      missionAccountOf(deps, mission({ status: 'queued', accountId: WORK })),
+    ).not.toHaveProperty('vaultLocked');
+  });
+
+  it('conta por chave de API sai marcada; a de assinatura e a Principal, não', () => {
+    const apiDeps = {
+      ...deps,
+      accounts: {
+        ...accounts,
+        kindOf: (accountId: string | null) =>
+          accountId === WORK ? ('api' as const) : ('subscription' as const),
+      },
+    };
+    expect(missionAccountOf(apiDeps, mission({ accountId: WORK }))).toMatchObject({
+      accountKind: 'api',
+    });
+    expect(missionAccountOf(apiDeps, mission())).not.toHaveProperty('accountKind');
+    expect(missionAccountOf(deps, mission({ accountId: WORK }))).not.toHaveProperty('accountKind');
+  });
+
   it('withMissionAccount devolve a missão com os campos da conta', () => {
     expect(withMissionAccount(deps, mission({ accountId: WORK }))).toMatchObject({
       id: 'm1',

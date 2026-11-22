@@ -40,11 +40,14 @@ export type SessionHistoryDeps = {
   indexFile: string;
   /** Os leitores de agora. É função porque as contas mudam com o app aberto. */
   readers: () => readonly SessionReader[];
-  /** O nome de uma conta, e se ela foi removida. Só é consultada para programa com contas. */
+  /**
+   * O nome de uma conta, se ela foi removida e o tipo dela (sem tipo: assinatura). Só é consultada para programa com
+   * contas.
+   */
   accountLabel(
     provider: SessionProvider,
     accountId: string | null,
-  ): { name: string; removed: boolean };
+  ): { name: string; removed: boolean; kind?: 'subscription' | 'api' };
   projects(): readonly SessionHistoryProject[];
   /** Worktrees do projeto. Falha vira lista vazia, com o erro no console. */
   worktreesOf(projectPath: string): Promise<readonly WorktreeInfo[]>;
@@ -411,6 +414,7 @@ export function createSessionHistory(deps: SessionHistoryDeps): SessionHistory {
         provider,
         accountId,
         accountName: account === undefined || account.name === '' ? null : account.name,
+        ...(account?.kind === 'api' ? { accountKind: 'api' } : {}),
         title: detail?.title ?? null,
         folder: activity.cwd,
         projectId: owner?.project.id ?? null,

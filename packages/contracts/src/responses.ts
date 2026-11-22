@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { accountDtoSchema, accountsDtoSchema, loginDtoSchema } from './accounts';
+import {
+  accountDtoSchema,
+  accountsDtoSchema,
+  loginDtoSchema,
+  pasteKeyResultSchema,
+} from './accounts';
 import { agentActivityResponseSchema } from './agent-activity';
 import { browserAgentAccessSchema, browserStateSchema } from './browser';
 import { CHANNELS } from './channels';
@@ -37,6 +42,7 @@ import {
 } from './mission';
 import { appResultSchema } from './result';
 import { terminalSummarySchema } from './terminal';
+import { changePasswordResultSchema, unlockResultSchema, vaultDtoSchema } from './vault';
 import { providerInfoSchema, workspaceDtoSchema } from './workspace';
 
 /** Entrada de `worktrees:list:v1`. */
@@ -132,6 +138,13 @@ export const responseSchemas = {
   [CHANNELS.accountsLoginCopyUrl]: appResultSchema(z.undefined()),
   [CHANNELS.accountsLoginWrite]: appResultSchema(z.undefined()),
   [CHANNELS.accountsLoginResize]: appResultSchema(z.undefined()),
+  [CHANNELS.accountsPasteKey]: appResultSchema(pasteKeyResultSchema),
+  [CHANNELS.accountsRemoveKey]: appResultSchema(z.undefined()),
+  [CHANNELS.vaultGet]: appResultSchema(vaultDtoSchema),
+  [CHANNELS.vaultUnlock]: appResultSchema(unlockResultSchema),
+  [CHANNELS.vaultLock]: appResultSchema(z.undefined()),
+  [CHANNELS.vaultChangePassword]: appResultSchema(changePasswordResultSchema),
+  [CHANNELS.vaultReset]: appResultSchema(z.undefined()),
   [CHANNELS.appInfo]: appResultSchema(appInfoDtoSchema),
   [CHANNELS.appOpenDataFolder]: appResultSchema(z.undefined()),
   [CHANNELS.limitsGet]: appResultSchema(limitsDtoSchema),

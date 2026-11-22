@@ -6,10 +6,14 @@ export type AppDatabase = BetterSQLite3Database<typeof schema> & {
   $client: Database.Database;
 };
 
-/** Abre (ou cria) o arquivo SQLite com chaves estrangeiras e WAL ligados. */
+/**
+ * Abre (ou cria) o arquivo SQLite com chaves estrangeiras e WAL ligados. `secure_delete` zera o conteúdo apagado,
+ * para o texto cifrado de uma chave removida não sobrar no arquivo.
+ */
 export function openDatabase(filePath: string): AppDatabase {
   const sqlite = new Database(filePath);
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
+  sqlite.pragma('secure_delete = ON');
   return drizzle({ client: sqlite, schema });
 }

@@ -18,4 +18,5 @@ export * from './project';
 export * from './responses';
 export * from './result';
 export * from './terminal';
+export * from './vault';
 export * from './workspace';

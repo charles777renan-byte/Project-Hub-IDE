@@ -491,6 +491,28 @@ describe('sessões por conta', () => {
     expect(history.find(ID_A)).toMatchObject({ accountId: null });
   });
 
+  it('a sessão de uma conta por chave de API sai marcada; a de assinatura, não', async () => {
+    const history = makeHistory(
+      indexFile,
+      [
+        fakeReader('claude', principalFiles(), []),
+        fakeReader('claude', extraFiles(), [], ACCOUNT_X),
+      ],
+      {
+        accountLabel: (_provider, accountId) =>
+          accountId === null
+            ? { name: 'Principal', removed: false, kind: 'subscription' as const }
+            : { name: 'Chave', removed: false, kind: 'api' as const },
+      },
+    );
+
+    const result = await history.list({ scope: 'all' });
+
+    const byId = new Map(result.sessions.map((session) => [session.id, session]));
+    expect(byId.get(ID_B)).toMatchObject({ accountName: 'Chave', accountKind: 'api' });
+    expect(byId.get(ID_A)).not.toHaveProperty('accountKind');
+  });
+
   it('a faixa do programa soma os arquivos de todas as contas, numa linha só', async () => {
     const history = makeHistory(
       indexFile,

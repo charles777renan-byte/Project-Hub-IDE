@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccountsDto } from '@project-hub/contracts';
 
 export type AccountsState =
-  | { status: 'loading' }
-  | { status: 'failed' }
-  | { status: 'ready'; data: AccountsDto };
+  { status: 'loading' } | { status: 'failed' } | { status: 'ready'; data: AccountsDto };
 
 /**
  * As contas de cada programa, lidas do processo principal. `reload` relê depois de uma ação; a lista que já está

@@ -7,6 +7,7 @@ import {
   loginDtoSchema,
   loginEventSchema,
   loginWriteInputSchema,
+  pasteKeyResultSchema,
   removeAccountInputSchema,
   renameAccountInputSchema,
 } from '../src';
@@ -15,24 +16,42 @@ const ID = '11111111-1111-4111-8111-111111111111';
 
 describe('contas: entradas', () => {
   it('o nome é aparado e aceita 1 a 40 caracteres', () => {
-    expect(addAccountInputSchema.parse({ provider: 'claude', name: '  Trabalho  ' })).toEqual({
+    expect(
+      addAccountInputSchema.parse({
+        provider: 'claude',
+        name: '  Trabalho  ',
+        kind: 'subscription',
+      }),
+    ).toEqual({
       provider: 'claude',
       name: 'Trabalho',
+      kind: 'subscription',
     });
-    expect(addAccountInputSchema.safeParse({ provider: 'claude', name: '   ' }).success).toBe(
-      false,
-    );
     expect(
-      addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(41) }).success,
+      addAccountInputSchema.safeParse({ provider: 'claude', name: '   ', kind: 'subscription' })
+        .success,
     ).toBe(false);
     expect(
-      addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(40) }).success,
+      addAccountInputSchema.safeParse({
+        provider: 'claude',
+        name: 'a'.repeat(41),
+        kind: 'subscription',
+      }).success,
+    ).toBe(false);
+    expect(
+      addAccountInputSchema.safeParse({ provider: 'claude', name: 'a'.repeat(40), kind: 'api' })
+        .success,
     ).toBe(true);
   });
 
   it('as entradas recusam campo a mais', () => {
     expect(
-      addAccountInputSchema.safeParse({ provider: 'claude', name: 'x', path: 'C:/' }).success,
+      addAccountInputSchema.safeParse({
+        provider: 'claude',
+        name: 'x',
+        kind: 'subscription',
+        path: 'C:/',
+      }).success,
     ).toBe(false);
     expect(
       renameAccountInputSchema.safeParse({ accountId: ID, name: 'x', command: 'rm' }).success,
@@ -46,8 +65,28 @@ describe('contas: entradas', () => {
   });
 
   it('o programa só aceita os que têm contas', () => {
-    expect(addAccountInputSchema.safeParse({ provider: 'shell', name: 'x' }).success).toBe(false);
-    expect(addAccountInputSchema.safeParse({ provider: 'codex', name: 'x' }).success).toBe(true);
+    expect(
+      addAccountInputSchema.safeParse({ provider: 'shell', name: 'x', kind: 'subscription' })
+        .success,
+    ).toBe(false);
+    expect(
+      addAccountInputSchema.safeParse({ provider: 'codex', name: 'x', kind: 'subscription' })
+        .success,
+    ).toBe(true);
+  });
+
+  it('o tipo da conta é obrigatório e só assinatura ou API', () => {
+    expect(addAccountInputSchema.safeParse({ provider: 'claude', name: 'x' }).success).toBe(false);
+    expect(
+      addAccountInputSchema.safeParse({ provider: 'claude', name: 'x', kind: 'token' }).success,
+    ).toBe(false);
+  });
+
+  it('a entrada de colar leva só programa e id; campo a mais é recusado', () => {
+    expect(
+      accountTargetInputSchema.safeParse({ provider: 'claude', accountId: ID, key: 'sk-ant-x' })
+        .success,
+    ).toBe(false);
   });
 
   it('o alvo aceita conta nula e recusa id que não é UUID', () => {
@@ -101,9 +140,43 @@ describe('contas: saídas', () => {
       isDefault: true,
       state: 'connected',
       identity: 'voce@exemplo.com',
+      kind: 'subscription',
     };
     expect(accountDtoSchema.safeParse(account).success).toBe(true);
     expect(accountDtoSchema.safeParse({ ...account, folder: 'C:/x' }).success).toBe(false);
+  });
+
+  const api = {
+    id: ID,
+    provider: 'claude',
+    name: 'API',
+    isPrincipal: false,
+    isDefault: false,
+    state: 'connected',
+    kind: 'api',
+  };
+
+  it('conta de assinatura não aceita keyState nem keyLast4', () => {
+    const subscription = { ...api, kind: 'subscription' };
+    expect(accountDtoSchema.safeParse(subscription).success).toBe(true);
+    expect(accountDtoSchema.safeParse({ ...subscription, keyState: 'stored' }).success).toBe(false);
+    expect(accountDtoSchema.safeParse({ ...subscription, keyLast4: 'ab12' }).success).toBe(false);
+  });
+
+  it('conta API aceita keyState e keyLast4 de 4 caracteres', () => {
+    expect(
+      accountDtoSchema.safeParse({ ...api, keyState: 'stored', keyLast4: 'ab12' }).success,
+    ).toBe(true);
+    expect(accountDtoSchema.safeParse({ ...api, keyState: 'missing' }).success).toBe(true);
+    expect(accountDtoSchema.safeParse({ ...api, keyState: 'outro' }).success).toBe(false);
+    expect(accountDtoSchema.safeParse({ ...api, keyLast4: 'ab123' }).success).toBe(false);
+    expect(accountDtoSchema.safeParse({ ...api, kind: undefined }).success).toBe(false);
+  });
+
+  it('o resultado de colar não aceita mais que 4 caracteres', () => {
+    expect(pasteKeyResultSchema.safeParse({ last4: 'ab12' }).success).toBe(true);
+    expect(pasteKeyResultSchema.safeParse({ last4: 'sk-ant-ab12' }).success).toBe(false);
+    expect(pasteKeyResultSchema.safeParse({ last4: 'ab12', key: 'x' }).success).toBe(false);
   });
 
   it('as informações do app têm versão e pasta de dados', () => {

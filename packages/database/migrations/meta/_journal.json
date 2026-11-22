@@ -120,6 +120,13 @@
       "when": 1795280283474,
       "tag": "0016_conta_em_uso",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795296823907,
+      "tag": "0017_contas_por_chave",
+      "breakpoints": true
     }
   ]
 }

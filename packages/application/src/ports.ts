@@ -113,6 +113,13 @@ export interface Planner {
 export interface AccountDirectory {
   defaultOf(provider: 'claude'): string | null;
   labelOf(provider: 'claude', accountId: string | null): { name: string; removed: boolean };
+  /**
+   * A conta usa chave de API e o cofre das chaves está trancado: nada abre nela sem a senha. Ausente: nenhuma conta
+   * depende do cofre.
+   */
+  vaultLocked?(accountId: string): boolean;
+  /** O tipo da conta: assinatura ou chave de API (cobra por uso). Ausente: todas são de assinatura. */
+  kindOf?(accountId: string | null): 'subscription' | 'api';
 }
 
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */

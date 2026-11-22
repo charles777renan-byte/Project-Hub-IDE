@@ -3,6 +3,7 @@ import * as Icons from '../../src/renderer/components/Icon';
 import { MISSION_STATUS_VALUES, type MissionEventDto } from '@project-hub/contracts';
 import {
   conversationEvents,
+  describeEvent,
   decisionAnnouncement,
   decisionTextOf,
   dependencyText,
@@ -469,5 +470,31 @@ describe('bloco Sua decisão: textos', () => {
     expect(decisionAnnouncement(view('review'))).toBe(
       'Aguardando você: a conclusão espera a sua revisão.',
     );
+  });
+});
+
+describe('describeEvent: conta por chave de API', () => {
+  const event = (eventType: string, payload: Record<string, unknown>): MissionEventDto =>
+    ({
+      id: 'e1',
+      missionId: 'm1',
+      eventType,
+      payload,
+      severity: 'warning',
+      actor: 'system',
+      createdAt: '2026-11-21T12:00:00.000Z',
+    }) as unknown as MissionEventDto;
+
+  it('a espera do cofre e a tarefa que não iniciou entram na conversa, com frase própria', () => {
+    const waiting = event('mission.vault_locked', { reason: 'Destranque o cofre para continuar.' });
+    const failed = event('mission.task_start_failed', {
+      message: 'A conta não tem uma chave de API guardada.',
+    });
+
+    expect(describeEvent(waiting)).toBe('A missão espera você: Destranque o cofre para continuar.');
+    expect(describeEvent(failed)).toBe(
+      'A próxima tarefa não iniciou: A conta não tem uma chave de API guardada.',
+    );
+    expect(conversationEvents([waiting, failed])).toHaveLength(2);
   });
 });

@@ -87,8 +87,13 @@ export type TerminalServiceDeps = {
    */
   accounts?: Pick<
     AccountUse,
-    'launchEnv' | 'dataRootOf' | 'labelOf' | 'isAccountProvider' | 'hasExtras'
+    'launchEnv' | 'dataRootOf' | 'labelOf' | 'isAccountProvider' | 'hasExtras' | 'kindOf'
   >;
+  /**
+   * Abre a janela da senha do cofre. Abrir um painel é ação da pessoa: com o cofre trancado, o painel pede a senha uma
+   * vez e tenta de novo. Ausente: o cofre trancado é só a falha com a frase dele.
+   */
+  unlockVault?: () => Promise<'unlocked' | 'cancelled'>;
 };
 
 /**
@@ -189,15 +194,21 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
    * O ambiente de uma conta no lançamento. A Principal não leva nada. Conta que não vale, ou conta pedida para um
    * programa que não tem contas, é falha: o painel nunca abre na Principal no lugar dela.
    */
-  function accountEnvOf(
+  async function accountEnvOf(
     provider: ProviderId,
     accountId: string | null,
-  ): AppResult<Record<string, string>> {
+  ): Promise<AppResult<Record<string, string>>> {
     if (accountId === null) return { ok: true, data: {} };
     const accounts = deps.accounts;
     if (accounts === undefined || !accounts.isAccountProvider(provider)) {
       return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
     }
+    const first = await accounts.launchEnv(provider, accountId);
+    if (first.ok || first.error.code !== 'VAULT_LOCKED' || deps.unlockVault === undefined) {
+      return first;
+    }
+    // Uma vez só: cancelada a senha, a falha é a do cofre trancado.
+    if ((await deps.unlockVault()) !== 'unlocked') return first;
     return accounts.launchEnv(provider, accountId);
   }
 
@@ -210,7 +221,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
   function accountOf(
     provider: ProviderId,
     accountId: string | undefined,
-  ): Pick<TerminalSummary, 'accountId' | 'accountName' | 'accountRemoved'> {
+  ): Pick<TerminalSummary, 'accountId' | 'accountName' | 'accountRemoved' | 'accountKind'> {
     const accounts = deps.accounts;
     if (accounts === undefined || !accounts.isAccountProvider(provider)) return {};
     const id = accountId ?? null;
@@ -220,6 +231,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       // Programa só com a Principal: não há o que distinguir, e a tela fica como sempre foi.
       ...(id === null && !accounts.hasExtras(provider) ? {} : { accountName: label.name }),
       ...(label.removed ? { accountRemoved: true } : {}),
+      ...(accounts.kindOf(provider, id) === 'api' ? { accountKind: 'api' as const } : {}),
     };
   }
 
@@ -450,7 +462,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     if (!resolution.ok) return failure('PROCESS_START_FAILED', resolution.reason);
     // A conta vem antes de tudo o que precisa ser desfeito (navegador, hooks, processo).
     const accountId = options.accountId ?? null;
-    const accountEnv = accountEnvOf(provider, accountId);
+    const accountEnv = await accountEnvOf(provider, accountId);
     if (!accountEnv.ok) return accountEnv;
 
     const terminalId = deps.newId();

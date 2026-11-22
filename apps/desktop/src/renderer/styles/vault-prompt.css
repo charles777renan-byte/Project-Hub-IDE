@@ -1,0 +1,62 @@
+/* Janela da senha do cofre: uma coluna só, campos do app e as ações no pé, à direita. */
+
+.vault-prompt-body {
+  overflow: auto;
+}
+
+.vault-prompt {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.vault-prompt__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-heading);
+}
+
+.vault-prompt__lead {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* O aviso de que a senha não volta: barra lateral amarela e texto claro, lido pela forma e pelas palavras. */
+.vault-prompt__warning {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.vault-prompt__form {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.vault-prompt__form .field input:focus-visible {
+  border-color: var(--focus);
+  outline: none;
+}
+
+.vault-prompt__form .field-hint {
+  margin: calc(var(--space-2) * -1) 0 0;
+}
+
+.vault-prompt__error {
+  min-height: 1.25rem;
+  margin: 0;
+}
+
+.vault-prompt__error:empty {
+  min-height: 0;
+}
+
+.vault-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

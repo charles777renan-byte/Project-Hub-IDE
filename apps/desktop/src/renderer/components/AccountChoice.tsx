@@ -1,18 +1,52 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import type { AccountDto } from '@project-hub/contracts';
-import { CircleSlash, ICON_PROPS } from './Icon';
+import { ApiBadge } from './ApiBadge';
+import { CircleAlert, CircleSlash, ICON_PROPS, Lock, type LucideIcon } from './Icon';
 
-/** O que a lista precisa saber de cada conta: o id (`null` é a Principal), o nome, se é a padrão e o estado. */
-export type AccountChoiceItem = Pick<AccountDto, 'id' | 'name' | 'isDefault' | 'state'>;
+/**
+ * O que a lista precisa saber de cada conta: o id (`null` é a Principal), o nome, se é a padrão e o estado. Na conta
+ * por chave de API, o tipo e o estado da chave dizem se ela pode ser escolhida.
+ */
+export type AccountChoiceItem = Pick<AccountDto, 'id' | 'name' | 'isDefault' | 'state'> &
+  Partial<Pick<AccountDto, 'kind' | 'keyState'>>;
 
-const TEXT = { defaultTag: 'Padrão', noLogin: 'Sem login' } as const;
+const TEXT = {
+  defaultTag: 'Padrão',
+  noLogin: 'Sem login',
+  noKey: 'Sem chave',
+  badKey: 'Chave ilegível',
+  locked: 'Cofre trancado',
+} as const;
+
+/** O estado que aparece ao lado da conta, quando há algo a dizer. */
+function stateOf(account: AccountChoiceItem): { label: string; icon: LucideIcon } | undefined {
+  if (account.kind === 'api') {
+    if (account.keyState === 'missing' || account.keyState === undefined) {
+      return { label: TEXT.noKey, icon: CircleSlash };
+    }
+    if (account.keyState === 'unreadable') return { label: TEXT.badKey, icon: CircleAlert };
+    if (account.keyState === 'locked') return { label: TEXT.locked, icon: Lock };
+    return undefined;
+  }
+  return account.state === 'signed-out' ? { label: TEXT.noLogin, icon: CircleSlash } : undefined;
+}
+
+/**
+ * A conta pode ser escolhida. A conta API sem chave, ou com uma que não abre, não pode: nada abriria nela. Com o
+ * cofre trancado, pode: a senha é pedida na abertura.
+ */
+export function isUsable(account: AccountChoiceItem): boolean {
+  if (account.kind !== 'api') return true;
+  return account.keyState === 'stored' || account.keyState === 'locked';
+}
 
 /**
  * Lista de escolha única das contas de um programa. A conta marcada é a única na ordem do Tab; as setas andam
  * entre as contas (dando a volta), Home e End vão às pontas, Enter ou espaço escolhem, e Esc avisa quem abriu a
  * lista (`onCancel`). A marcada se distingue pela forma (o ponto cheio), e não só pela cor. Conta "Sem login"
- * continua escolhível: o próprio programa pede o login no painel. Só o id sai daqui.
+ * continua escolhível: o próprio programa pede o login no painel. A conta por chave de API leva o selo "API"; sem
+ * chave, ou com uma que não abre, ela aparece desativada, com o estado. Só o id sai daqui.
  */
 export function AccountChoice({
   accounts,
@@ -71,7 +105,7 @@ export function AccountChoice({
     else if ((event.key === 'Enter' || event.key === ' ') && at >= 0) {
       event.preventDefault();
       const account = accounts[at];
-      if (account !== undefined && !disabled) onChange(account.id);
+      if (account !== undefined && !disabled && isUsable(account)) onChange(account.id);
     }
   }
 
@@ -86,28 +120,33 @@ export function AccountChoice({
     >
       {accounts.map((account) => {
         const detail = detailOf?.(account);
+        const usable = isUsable(account);
+        const state = stateOf(account);
+        const StateIcon = state?.icon;
         return (
           <li
             key={account.id ?? 'principal'}
             role="option"
             aria-selected={account.id === value}
+            aria-disabled={usable ? undefined : true}
             tabIndex={account.id === tabStop ? 0 : -1}
             className="account-choice__option"
             onClick={() => {
-              if (!disabled) onChange(account.id);
+              if (!disabled && usable) onChange(account.id);
             }}
           >
             <span className="account-choice__mark" aria-hidden="true" />
             <span className="account-choice__name">{account.name}</span>
+            {account.kind === 'api' ? <ApiBadge /> : null}
             {account.isDefault ? (
               <span className="account-choice__tag">{TEXT.defaultTag}</span>
             ) : null}
-            {account.state === 'signed-out' ? (
+            {state === undefined || StateIcon === undefined ? null : (
               <span className="account-choice__state">
-                <CircleSlash {...ICON_PROPS} />
-                {TEXT.noLogin}
+                <StateIcon {...ICON_PROPS} />
+                {state.label}
               </span>
-            ) : null}
+            )}
             {detail === undefined || detail === null ? null : (
               <span className="account-choice__detail">{detail}</span>
             )}

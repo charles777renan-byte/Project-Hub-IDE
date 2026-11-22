@@ -12,9 +12,9 @@ describe('LOGIN_HOSTS', () => {
 
 describe('stripAnsi', () => {
   it('tira cores, movimentos de cursor e links do terminal', () => {
-    expect(stripAnsi('\u001b[1;32mok\u001b[0m\u001b[2K\u001b]8;;https://x.y\u0007link\u001b]8;;\u0007')).toBe(
-      'oklink',
-    );
+    expect(
+      stripAnsi('\u001b[1;32mok\u001b[0m\u001b[2K\u001b]8;;https://x.y\u0007link\u001b]8;;\u0007'),
+    ).toBe('oklink');
   });
 });
 
@@ -55,9 +55,9 @@ describe('findLoginUrl', () => {
   });
 
   it('pula o endereço recusado e acha o permitido que vem depois', () => {
-    expect(findLoginUrl('claude', 'docs: https://example.com/a\nhttps://claude.com/login?x=1')).toBe(
-      'https://claude.com/login?x=1',
-    );
+    expect(
+      findLoginUrl('claude', 'docs: https://example.com/a\nhttps://claude.com/login?x=1'),
+    ).toBe('https://claude.com/login?x=1');
   });
 
   it('sem endereço devolve undefined', () => {

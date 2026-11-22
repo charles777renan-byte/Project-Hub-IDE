@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -541,8 +541,10 @@ describe('adaptador do Claude Code: conta da missão', () => {
 
   function accountOption(asked: (string | null)[] = []) {
     return {
-      env: (accountId: string | null): Record<string, string> =>
-        accountId === null ? {} : { CLAUDE_CONFIG_DIR: join(dir, 'contas', accountId) },
+      env: (accountId: string | null): Promise<Record<string, string>> =>
+        Promise.resolve(
+          accountId === null ? {} : { CLAUDE_CONFIG_DIR: join(dir, 'contas', accountId) },
+        ),
       configDir: (accountId: string | null) => {
         asked.push(accountId);
         return accountId === null ? join(dir, 'claude') : join(dir, 'contas', accountId);
@@ -637,9 +639,7 @@ describe('adaptador do Claude Code: conta da missão', () => {
       env: {},
       account: {
         ...accountOption(),
-        env: () => {
-          throw new Error('A conta foi removida.');
-        },
+        env: () => Promise.reject(new Error('A conta foi removida.')),
       },
     });
 
@@ -652,6 +652,77 @@ describe('adaptador do Claude Code: conta da missão', () => {
 
     expect(f.opened).toEqual([]);
     expect(registered.filter((id) => !f.unregistered.includes(id))).toEqual([]);
+  });
+
+  it('a chave é pedida a cada start, e não guardada entre uma sessão e outra', async () => {
+    const f = fakes();
+    const keys = [
+      'sk-ant-api03-falsa-primeira-0123456789',
+      'sk-ant-api03-falsa-segunda-0123456789',
+    ];
+    let calls = 0;
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: { PATH: 'C:\\bin' },
+      account: {
+        ...accountOption(),
+        env: (accountId) => {
+          const key = keys[calls] ?? '';
+          calls += 1;
+          return Promise.resolve({
+            CLAUDE_CONFIG_DIR: join(dir, 'contas', accountId ?? ''),
+            ANTHROPIC_API_KEY: key,
+          });
+        },
+      },
+    });
+
+    for (let index = 0; index < 2; index += 1) {
+      await adapter.start(
+        { cwd: 'C:\\projeto', prompt: 'x', accountId: ACCOUNT },
+        new AbortController().signal,
+      );
+    }
+
+    expect(calls).toBe(2);
+    expect(f.opened.map((opened) => opened.env['ANTHROPIC_API_KEY'])).toEqual(keys);
+    // A chave vai só pelo ambiente do processo: nem na linha de comando, nem no arquivo de configuração.
+    for (const opened of f.opened) {
+      expect(opened.args.join(' ')).not.toContain('sk-ant-');
+    }
+    const files = readdirSync(dir).filter((name) => name.endsWith('.json'));
+    for (const name of files)
+      expect(readFileSync(join(dir, name), 'utf8')).not.toContain('sk-ant-');
+  });
+
+  it('o ambiente da conta recusa com código: o início rejeita com o mesmo código e a frase', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: {},
+      account: {
+        ...accountOption(),
+        env: () =>
+          Promise.reject(
+            Object.assign(new Error('Destranque o cofre para continuar.'), {
+              code: 'VAULT_LOCKED',
+            }),
+          ),
+      },
+    });
+
+    await expect(
+      adapter.start(
+        { cwd: 'C:\\projeto', prompt: 'x', accountId: ACCOUNT },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({
+      code: 'VAULT_LOCKED',
+      message: 'Destranque o cofre para continuar.',
+    });
+    expect(f.opened).toEqual([]);
   });
 
   it('o gasto da sessão é lido na pasta da conta', async () => {

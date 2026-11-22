@@ -1224,6 +1224,23 @@ describe('PaneView: a conta do painel', () => {
     expect(container.querySelector('.pane__head .pane__account')).toHaveTextContent('Trabalho');
   });
 
+  it('o cabeçalho do painel mostra o selo da conta API', () => {
+    const { container } = setup({
+      terminal: { ...session, accountId: X, accountName: 'Chave', accountKind: 'api' },
+    });
+
+    const chip = container.querySelector('.pane__head .pane__account');
+    expect(chip).toHaveTextContent('Chave');
+    expect(container.querySelector('.pane__head .api-badge')).toHaveTextContent('API');
+  });
+
+  it('conta de assinatura não leva o selo', () => {
+    const { container } = setup({
+      terminal: { ...session, accountId: X, accountName: 'Trabalho' },
+    });
+    expect(container.querySelector('.api-badge')).toBeNull();
+  });
+
   it('programa só com a Principal não mostra conta nenhuma', () => {
     const { container } = setup({ terminal: { ...session, accountId: null } });
 
@@ -1246,6 +1263,16 @@ describe('PaneView: a conta do painel', () => {
     });
 
     expect(container.querySelector('.pane__head .pane__account')).toHaveTextContent('Trabalho');
+  });
+
+  it('painel sem sessão, numa conta API, mostra o selo junto da conta', () => {
+    const { container } = setup({
+      leaf: { ...emptyLeaf, accountId: X },
+      terminal: undefined,
+      account: { name: 'Chave', kind: 'api' },
+    });
+
+    expect(container.querySelector('.pane__head .api-badge')).toHaveTextContent('API');
   });
 
   it('sessão que terminou também mostra a conta, e a removida diz isso', () => {

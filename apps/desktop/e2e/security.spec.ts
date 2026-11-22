@@ -94,6 +94,8 @@ test.describe('renderer isolado', () => {
         workspaces: names(api['workspaces']),
         providers: names(api['providers']),
         preview: names(api['preview']),
+        accounts: names(api['accounts']),
+        vault: names(api['vault']),
       };
     });
 
@@ -118,8 +120,29 @@ test.describe('renderer isolado', () => {
       'sessions',
       'system',
       'terminals',
+      'vault',
       'workspaces',
       'worktrees',
+    ]);
+    // A chave entra só pela área de transferência, lida no processo principal; a senha, só pela janela do cofre.
+    expect(surface?.accounts).toEqual([
+      'add',
+      'disconnect',
+      'list',
+      'login',
+      'pasteKey',
+      'remove',
+      'removeKey',
+      'rename',
+      'setDefault',
+    ]);
+    expect(surface?.vault).toEqual([
+      'changePassword',
+      'get',
+      'lock',
+      'reset',
+      'subscribe',
+      'unlock',
     ]);
     expect(surface?.limits).toEqual(['get', 'refresh', 'refreshAccount', 'subscribe']);
     expect(surface?.files).toEqual([

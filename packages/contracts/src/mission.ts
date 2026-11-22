@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ACCOUNT_NAME_MAX, accountRefSchema } from './accounts';
+import { ACCOUNT_NAME_MAX, accountKindSchema, accountRefSchema } from './accounts';
 
 /*
  * DTOs de missão que atravessam o IPC (seção 13.4). Os valores das enumerações espelham as listas do
@@ -154,10 +154,17 @@ export const missionDtoSchema = z.object({
   /** A conta do Claude Code em que o planejador e o agente rodam (`null`: a Principal), e o nome dela. */
   accountId: accountRefSchema,
   accountName: z.string().max(ACCOUNT_NAME_MAX),
+  /** A conta é por chave de API (cobra por uso). Ausente: assinatura. */
+  accountKind: accountKindSchema.optional(),
   /** A conta foi removida: a missão não planeja nem inicia até a pessoa escolher outra. */
   accountRemoved: z.boolean(),
   /** A missão já começou (ou está sendo planejada): a conta não troca mais. */
   accountLocked: z.boolean(),
+  /**
+   * A missão espera o cofre das chaves de API: na fila, ou pausada entre duas tarefas, numa conta por chave com o
+   * cofre trancado. Ausente: não espera.
+   */
+  vaultLocked: z.boolean().optional(),
 });
 export type MissionDto = z.infer<typeof missionDtoSchema>;
 

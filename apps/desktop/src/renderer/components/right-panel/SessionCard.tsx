@@ -3,6 +3,7 @@ import { ProviderIcon } from '../ProviderIcon';
 import { GitBranch, ICON_PROPS } from '../Icon';
 import { relativeTime, SESSION_PROVIDER_LABEL, sessionTitle } from './sessions-state';
 import { SESSIONS_TEXT } from './sessions-text';
+import { ApiBadge } from '../ApiBadge';
 
 /**
  * Um cartão da lista: o nome da sessão, a última fala do agente em duas linhas e, embaixo, o programa, a conta
@@ -29,6 +30,7 @@ export function SessionCard({ session, onOpen }: { session: SessionSummary; onOp
               title={SESSIONS_TEXT.account(session.accountName)}
             >
               {session.accountName}
+              {session.accountKind === 'api' ? <ApiBadge /> : null}
             </span>
           )}
           {session.messages === null ? null : (

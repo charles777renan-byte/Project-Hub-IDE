@@ -38,6 +38,8 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'apps/desktop/test/terminal-host/ensure.integration.test.ts': 2, // 0 s
   'apps/desktop/test/claude-limits.integration.test.ts': 2, // 0 s
   'apps/desktop/test/agent-server.integration.test.ts': 2, // 1 s (estimativa; medir no CI)
+  'apps/desktop/test/key-never-leaves.integration.test.ts': 2, // 1 s (estimativa; medir no CI)
+  'apps/desktop/test/key-on-disk.integration.test.ts': 2, // 1 s (estimativa; medir no CI)
 
   // Parte 3
   'packages/git-adapter/test/git-write.integration.test.ts': 3, // 60 s
@@ -52,6 +54,7 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'packages/agent-adapters/test/simulated-adapter.integration.test.ts': 3, // 0 s
   'packages/database/test/app-settings.integration.test.ts': 3, // 0 s
   'packages/database/test/account-repository.integration.test.ts': 3, // 0 s
+  'packages/database/test/account-secret-repository.integration.test.ts': 3, // 1 s (estimativa)
   'apps/desktop/test/accounts/account-paths.integration.test.ts': 3, // 0 s
   'packages/database/test/browser-tab-repository.integration.test.ts': 3, // 1 s
   'packages/database/test/project-preview-repository.integration.test.ts': 3, // 1 s (estimativa; medir no CI)

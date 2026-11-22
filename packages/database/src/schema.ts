@@ -16,7 +16,15 @@ import {
   type UsageSummary,
 } from '@project-hub/domain';
 import { sql } from 'drizzle-orm';
-import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  blob,
+  check,
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 /** Lista SQL dos valores de uma enumeração. Os valores vêm de constantes do domínio, nunca de entrada. */
 const oneOf = (values: readonly string[]) =>
@@ -299,6 +307,9 @@ export const projectPreviews = sqliteTable('project_previews', {
 /** Programas que aceitam mais de uma conta. A Principal de cada um não tem linha: é a conta nula. */
 export const ACCOUNT_PROVIDERS = ['claude', 'codex', 'github'] as const;
 
+/** Os tipos de conta: assinatura (login do programa) ou chave de API. */
+export const ACCOUNT_KINDS = ['subscription', 'api'] as const;
+
 /**
  * Contas extras de um programa. Guarda só o id (que dá nome à pasta de dados da conta), o programa e o nome que a
  * pessoa deu. E-mail, usuário e credencial nunca entram aqui.
@@ -311,11 +322,43 @@ export const accounts = sqliteTable(
     name: text('name').notNull(),
     createdAt: text('created_at').notNull(),
     removedAt: text('removed_at'),
+    /** Assinatura (login do programa) ou chave de API (no cofre). Não muda depois de criada. */
+    kind: text('kind', { enum: ACCOUNT_KINDS }).notNull().default('subscription'),
   },
   (table) => [
     index('accounts_provider_idx').on(table.provider),
     check('accounts_provider_check', sql`${table.provider} IN (${oneOf(ACCOUNT_PROVIDERS)})`),
+    check('accounts_kind_check', sql`${table.kind} IN (${oneOf(ACCOUNT_KINDS)})`),
   ],
+);
+
+/**
+ * A chave de API de uma conta, cifrada pelo cofre do processo principal. O banco nunca vê a chave: só o texto
+ * cifrado e os 4 últimos caracteres, que a tela mostra para a pessoa conferir.
+ */
+export const accountSecrets = sqliteTable(
+  'account_secrets',
+  {
+    accountId: text('account_id')
+      .primaryKey()
+      .references(() => accounts.id),
+    ciphertext: blob('ciphertext', { mode: 'buffer' }).notNull(),
+    last4: text('last4').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [check('account_secrets_last4_check', sql`length(${table.last4}) = 4`)],
+);
+
+/** O sal da senha do cofre e o verificador dela. Uma linha só; a senha nunca é gravada. */
+export const vaultMeta = sqliteTable(
+  'vault_meta',
+  {
+    id: integer('id').primaryKey(),
+    salt: blob('salt', { mode: 'buffer' }).notNull(),
+    verifier: blob('verifier', { mode: 'buffer' }).notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [check('vault_meta_single_check', sql`${table.id} = 1`)],
 );
 
 export const schema = {
@@ -332,4 +375,6 @@ export const schema = {
   browserTabs,
   projectPreviews,
   accounts,
+  accountSecrets,
+  vaultMeta,
 };

@@ -48,6 +48,11 @@ export default defineConfig({
   preload: {
     build: {
       rolldownOptions: {
+        input: {
+          index: join(import.meta.dirname, 'src/preload/index.ts'),
+          // Preload da janela da senha do cofre: expõe só `window.vaultPrompt`.
+          'vault-prompt': join(import.meta.dirname, 'src/preload/vault-prompt.ts'),
+        },
         // Preload com sandbox não carrega ES modules: a saída precisa ser CommonJS.
         output: { format: 'cjs' },
       },
@@ -58,6 +63,11 @@ export default defineConfig({
       // O preset do electron-vite força `minify: false` no renderer. Com `true`, o Vite 8 usa o oxc.
       minify: true,
       rolldownOptions: {
+        // A tela do app e a janela da senha do cofre: duas páginas na mesma pasta, servidas pelas mesmas regras.
+        input: {
+          index: join(import.meta.dirname, 'src/renderer/index.html'),
+          'vault-prompt': join(import.meta.dirname, 'src/renderer/vault-prompt.html'),
+        },
         onwarn(warning, defaultHandler) {
           // A diretiva "use client" é marca para bundlers de React Server Components. Este app é só
           // cliente e roda no Chromium do Electron, onde a diretiva é uma string sem efeito. Por isso o

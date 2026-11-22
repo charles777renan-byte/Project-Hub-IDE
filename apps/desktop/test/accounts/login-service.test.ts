@@ -296,6 +296,7 @@ describe('fim do processo', () => {
                 isDefault: true,
                 state: 'connected',
                 identity: 'EU@x.co',
+                kind: 'subscription',
               },
               {
                 id: A,
@@ -305,6 +306,7 @@ describe('fim do processo', () => {
                 isDefault: false,
                 state: 'connected',
                 identity: 'eu@x.co',
+                kind: 'subscription',
               },
             ],
           },

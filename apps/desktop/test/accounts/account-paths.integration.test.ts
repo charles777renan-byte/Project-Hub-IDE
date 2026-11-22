@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AccountRecord } from '@project-hub/database';
-import { accountsRoot, createAccountPaths, type AccountPaths } from '../../src/main/accounts/account-paths';
+import {
+  accountsRoot,
+  createAccountPaths,
+  type AccountPaths,
+} from '../../src/main/accounts/account-paths';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -14,14 +18,27 @@ let root: string;
 let paths: AccountPaths;
 
 const records: Record<string, AccountRecord> = {
-  [A]: { id: A, provider: 'claude', name: 'Trabalho', createdAt: '2026-11-21T10:00:00.000Z' },
-  [B]: { id: B, provider: 'codex', name: 'Trabalho', createdAt: '2026-11-21T10:00:00.000Z' },
+  [A]: {
+    id: A,
+    provider: 'claude',
+    name: 'Trabalho',
+    createdAt: '2026-11-21T10:00:00.000Z',
+    kind: 'subscription',
+  },
+  [B]: {
+    id: B,
+    provider: 'codex',
+    name: 'Trabalho',
+    createdAt: '2026-11-21T10:00:00.000Z',
+    kind: 'subscription',
+  },
   [REMOVED]: {
     id: REMOVED,
     provider: 'claude',
     name: 'Antiga',
     createdAt: '2026-11-21T10:00:00.000Z',
     removedAt: '2026-11-21T11:00:00.000Z',
+    kind: 'subscription',
   },
 };
 

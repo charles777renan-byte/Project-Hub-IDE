@@ -27,6 +27,8 @@ import {
 } from '@project-hub/application';
 import {
   createAccountRepository,
+  createAccountSecretRepository,
+  createVaultMetaRepository,
   createAppSettingsRepository,
   createMissionRepository,
   createProjectRepository,
@@ -38,6 +40,8 @@ import {
   migrateDatabase,
   openDatabase,
   type AccountRepository,
+  type AccountSecretRepository,
+  type VaultMetaRepository,
   type TerminalSessionRepository,
   type BrowserTabRepository,
   type ProjectPreviewRepository,
@@ -111,6 +115,9 @@ export type AppServices = AddProjectDeps & {
   profileDeps: ProfileDeps;
   /** Contas extras dos programas (Configurações). */
   accounts: AccountRepository;
+  /** O cofre das chaves de API: as chaves cifradas de cada conta e o verificador da senha. */
+  accountSecrets: AccountSecretRepository;
+  vaultMeta: VaultMetaRepository;
   /** Arquivos do projeto (painel direito): a pasta de cada projeto pelo id e a checagem de que ela existe. */
   fileDeps: ProjectFilesDeps;
   /** Painel de código-fonte (ADR 0010): o repositório de projetos, a porta de Git e a checagem de caminhos. */
@@ -136,6 +143,11 @@ export type AppServicesOptions = {
   planner?: Planner | undefined;
   /** As contas do Claude Code, para as missões: a padrão e o nome de cada uma. Sem elas, só existe a Principal. */
   accounts?: AccountDirectory | undefined;
+  /**
+   * Abre a janela da senha do cofre, para as ações da pessoa nas missões em conta por chave de API. Sem ela, o cofre
+   * trancado é só a falha com a frase dele.
+   */
+  unlockVault?: (() => Promise<'unlocked' | 'cancelled'>) | undefined;
   /**
    * Libera o `gh` falso dos testes (`PROJECT_HUB_GH_BIN`) no painel Checks. Sem valor, vale `false`. O
    * `index.ts` passa `!app.isPackaged`.
@@ -454,6 +466,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     diff,
     fs,
     ...(options.planner === undefined ? {} : { planner: options.planner }),
+    ...(options.unlockVault === undefined ? {} : { unlock: options.unlockVault }),
     now,
     newId,
   });
@@ -495,6 +508,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     },
     profileDeps: { settings: createAppSettingsRepository(db), now },
     accounts: createAccountRepository(db),
+    accountSecrets: createAccountSecretRepository(db),
+    vaultMeta: createVaultMetaRepository(db),
     fileDeps: {
       // Projeto removido conta como desconhecido; o arquivado segue com os arquivos acessíveis.
       rootOf: (projectId) => {
