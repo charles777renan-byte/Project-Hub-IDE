@@ -9,7 +9,6 @@ import type {
 import type { AccountCli, AccountStatus } from '../../src/main/accounts/account-cli';
 import type { AccountPaths } from '../../src/main/accounts/account-paths';
 import { VAULT_UNAVAILABLE } from '../../src/main/accounts/account-vault';
-import { API_KEY_ONLY_CLAUDE } from '../../src/main/accounts/api-key-service';
 import {
   AUTO_SWITCH_API_KEY,
   AUTO_SWITCH_KEY,
@@ -479,14 +478,15 @@ describe('conta por chave de API', () => {
     expect(accounts.get(NEW)?.kind).toBe('api');
   });
 
-  it('criar conta API do Codex é recusado', async () => {
+  it('cria conta API do Codex, sem chave ainda', async () => {
     const { service, accounts } = setup();
 
     const result = await service.add({ provider: 'codex', name: 'Chave', kind: 'api' });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.message).toBe(API_KEY_ONLY_CLAUDE);
-    expect(accounts.list('codex')).toEqual([]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toMatchObject({ kind: 'api', keyState: 'missing' });
+    expect(accounts.get(NEW)?.kind).toBe('api');
+    expect(accounts.get(NEW)?.provider).toBe('codex');
   });
 
   it('criar conta API sem safeStorage disponível é recusado', async () => {

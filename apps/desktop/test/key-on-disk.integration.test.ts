@@ -27,9 +27,14 @@ import { fileClipboard, passwordVaultWindow, testHooksOf } from '../src/main/tes
 const KEY = 'sk-ant-api03-CHAVE-FALSA-no-disco-0123456789abcdefghijKLMNOPQRST';
 const PASSWORD = 'senha-falsa-do-cofre-para-teste';
 const KEYED = '33333333-3333-4333-8333-333333333333';
+const OPENAI_KEY = 'sk-proj-CHAVE-FALSA-no-disco-0123456789abcdefghijKLMNOPCDEX';
+const CODEX_KEYED = '55555555-5555-4555-8555-555555555555';
 
 const providers: ProviderRegistry = {
-  list: () => [{ id: 'claude', label: 'Claude Code', available: true }],
+  list: () => [
+    { id: 'claude', label: 'Claude Code', available: true },
+    { id: 'codex', label: 'Codex', available: true },
+  ],
   resolve: (id) => ({ ok: true, launch: { command: `${id}.exe`, args: [] } }),
 };
 
@@ -66,6 +71,7 @@ let services: AppServices;
 let vault: AccountVault;
 let logged: string[];
 let opened: Record<string, string>[];
+let codexFolder: string;
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'project-hub-disco-'));
@@ -99,6 +105,13 @@ beforeEach(async () => {
     kind: 'api',
     createdAt: now(),
   });
+  services.accounts.insert({
+    id: CODEX_KEYED,
+    provider: 'codex',
+    name: 'Chave do Codex',
+    kind: 'api',
+    createdAt: now(),
+  });
   vault = createAccountVault({
     secrets: services.accountSecrets,
     meta: services.vaultMeta,
@@ -109,12 +122,14 @@ beforeEach(async () => {
   });
   const paths = createAccountPaths({ root: join(dir, 'contas'), accounts: services.accounts });
   mkdirSync(paths.folderOf('claude', KEYED), { recursive: true });
+  codexFolder = paths.folderOf('codex', CODEX_KEYED);
+  mkdirSync(codexFolder, { recursive: true });
   const accountUse = createAccountUse({
     accounts: services.accounts,
     settings: services.profileDeps.settings,
     paths,
     vault,
-    env: { CLAUDE_CONFIG_DIR: join(dir, 'claude') },
+    env: { CLAUDE_CONFIG_DIR: join(dir, 'claude'), CODEX_HOME: join(dir, 'codex') },
   });
   const window = passwordVaultWindow(vault, PASSWORD);
   const apiKeys = createApiKeyService({
@@ -167,6 +182,12 @@ beforeEach(async () => {
   const session = await terminals.openSession(project.data.id, 'claude', { accountId: KEYED });
   if (!session.ok) throw new Error('o painel deveria abrir');
   await terminals.closeSession(session.data.terminalId);
+  writeFileSync(clipboardFile, OPENAI_KEY);
+  const pastedCodex = await apiKeys.paste({ provider: 'codex', accountId: CODEX_KEYED });
+  expect(pastedCodex).toEqual({ ok: true, data: { last4: 'CDEX' } });
+  const codex = await terminals.openSession(project.data.id, 'codex', { accountId: CODEX_KEYED });
+  if (!codex.ok) throw new Error('o painel do Codex deveria abrir');
+  await terminals.closeSession(codex.data.terminalId);
   vault.lock();
 });
 
@@ -180,20 +201,31 @@ afterEach(() => {
 describe('o que o app escreve com uma conta por chave de API', () => {
   it('a chave não aparece em nenhum arquivo da pasta de dados, fora do texto cifrado', () => {
     // Sem isto, a prova seria vazia: a chave foi guardada, chegou ao painel, e a área de transferência foi limpa.
-    expect(opened.map((env) => env['ANTHROPIC_API_KEY'])).toEqual([KEY]);
+    expect(opened.map((env) => env['ANTHROPIC_API_KEY'])).toEqual([KEY, undefined]);
+    expect(opened.map((env) => env['OPENAI_API_KEY'])).toEqual([undefined, OPENAI_KEY]);
     expect(readFileSync(clipboardFile, 'utf8')).toBe('');
     expect(filesOf(dir).some((file) => file.endsWith('.sqlite'))).toBe(true);
 
     expect(filesContaining(dir, KEY)).toEqual([]);
+    expect(filesContaining(dir, OPENAI_KEY)).toEqual([]);
     // Com o banco fechado (o WAL despejado no arquivo principal), também não.
     services.close();
     expect(filesContaining(dir, KEY)).toEqual([]);
+    expect(filesContaining(dir, OPENAI_KEY)).toEqual([]);
+  });
+
+  it('a pasta da conta do Codex não recebe nada do app: nem .claude.json, nem trecho da chave', () => {
+    expect(filesOf(codexFolder)).toEqual([]);
+    // Nem em outra pasta com o id dela (a aprovação do Claude Code grava pela pasta do Claude).
+    expect(filesOf(join(dir, 'contas')).filter((file) => file.includes(CODEX_KEYED))).toEqual([]);
   });
 
   it('a chave não aparece no log do processo de terminais nem no console do app', () => {
     for (const line of logged) {
-      expect(line).not.toContain(KEY);
-      expect(line).not.toContain(KEY.slice(-20));
+      for (const key of [KEY, OPENAI_KEY]) {
+        expect(line).not.toContain(key);
+        expect(line).not.toContain(key.slice(-20));
+      }
     }
   });
 

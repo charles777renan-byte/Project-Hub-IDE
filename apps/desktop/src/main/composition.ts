@@ -329,6 +329,15 @@ export function resolvePanelClaudeScript(env: NodeJS.ProcessEnv): string | undef
 }
 
 /**
+ * Script que faz o papel do `codex` do painel de terminal nos testes de ponta a ponta. Só com `PROJECT_HUB_ENV=test`
+ * o gancho `APP_PANEL_CODEX_SCRIPT` vale; empacotado, as variáveis já foram retiradas por `applicationEnvironment`.
+ */
+export function resolvePanelCodexScript(env: NodeJS.ProcessEnv): string | undefined {
+  const script = env['PROJECT_HUB_ENV'] === 'test' ? env['APP_PANEL_CODEX_SCRIPT'] : undefined;
+  return script === undefined || script === '' ? undefined : script;
+}
+
+/**
  * Script que faz o papel do `claude` e do `codex` nos comandos de conta (entrar, estado, sair) nos testes de ponta
  * a ponta. Só com `PROJECT_HUB_ENV=test` o gancho `APP_ACCOUNT_CLI_SCRIPT` vale; empacotado, as variáveis já foram
  * retiradas por `applicationEnvironment`.

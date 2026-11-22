@@ -866,7 +866,7 @@ describe('AccountsSection: conta por chave de API', () => {
     ).toBeInTheDocument();
   });
 
-  it('adicionar conta no Claude Code pergunta o tipo e manda kind api; o Codex não pergunta', async () => {
+  it('nos dois programas, adicionar conta pergunta o tipo e manda kind api', async () => {
     const { api } = installApi({ data: WITH_API });
     installVault({ state: 'locked', available: true });
     render(<AccountsSection />);
@@ -884,7 +884,18 @@ describe('AccountsSection: conta por chave de API', () => {
     const codex = await group('Codex');
     await userEvent.click(within(codex).getByRole('button', { name: 'Adicionar conta' }));
     expect(within(codex).getByRole('form', { name: 'Nova conta do Codex' })).toBeVisible();
-    expect(within(codex).queryByRole('radiogroup', { name: 'Tipo da conta' })).toBeNull();
+    await userEvent.click(within(codex).getByRole('radio', { name: 'Chave de API' }));
+    await userEvent.type(
+      within(codex).getByRole('textbox', { name: 'Nome da conta' }),
+      'Codex por uso{Enter}',
+    );
+    await waitFor(() =>
+      expect(api.add).toHaveBeenCalledWith({
+        provider: 'codex',
+        name: 'Codex por uso',
+        kind: 'api',
+      }),
+    );
   });
 
   it('a linha da conta API não pede leitura de uso', async () => {

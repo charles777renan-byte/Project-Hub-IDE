@@ -3,23 +3,22 @@ import type { AppResult } from '@project-hub/contracts';
 import type { AccountRecord } from '@project-hub/database';
 import { DEFAULT_ACCOUNT_KEY } from '../../src/main/accounts/accounts-service';
 import { VAULT_LOCKED, VAULT_UNAVAILABLE } from '../../src/main/accounts/account-vault';
-import {
-  API_KEY_ONLY_CLAUDE,
-  createApiKeyService,
-  NOT_API_ACCOUNT,
-} from '../../src/main/accounts/api-key-service';
+import { createApiKeyService, NOT_API_ACCOUNT } from '../../src/main/accounts/api-key-service';
 
 const API = '11111111-1111-4111-8111-111111111111';
 const SUB = '22222222-2222-4222-8222-222222222222';
 const GONE = '33333333-3333-4333-8333-333333333333';
 const UNKNOWN = '44444444-4444-4444-8444-444444444444';
+const CODEX_API = '55555555-5555-4555-8555-555555555555';
 const T = '2026-11-21T10:00:00.000Z';
 const KEY = 'sk-ant-api03-chave-falsa-0123456789-abcdefghijKLMNOPWXYZ';
+const OPENAI_KEY = 'sk-proj-chave-falsa-0123456789-abcdefghijKLMNOPCDEX';
 
 const records: AccountRecord[] = [
   { id: API, provider: 'claude', name: 'API', createdAt: T, kind: 'api' },
   { id: SUB, provider: 'claude', name: 'Assinatura', createdAt: T, kind: 'subscription' },
   { id: GONE, provider: 'claude', name: 'Antiga', createdAt: T, removedAt: T, kind: 'api' },
+  { id: CODEX_API, provider: 'codex', name: 'API do Codex', createdAt: T, kind: 'api' },
 ];
 
 function setup(
@@ -153,7 +152,7 @@ describe('colar a chave de API', () => {
       'A conta foi removida.',
     );
     expect(messageOf(await h.service.paste({ provider: 'codex', accountId: API }))).toBe(
-      API_KEY_ONLY_CLAUDE,
+      'A conta foi removida.',
     );
     // Nada disso lê a área de transferência.
     expect(h.clipboard.readText).not.toHaveBeenCalled();
@@ -210,6 +209,39 @@ describe('colar a chave de API', () => {
       expect(message).not.toContain('segredo');
       expect(message).not.toContain('secreto');
     }
+  });
+});
+
+describe('a chave de API do Codex', () => {
+  it('guarda uma chave da OpenAI e devolve só os 4 últimos', async () => {
+    const h = setup({ clipboard: OPENAI_KEY });
+
+    const result = await h.service.paste({ provider: 'codex', accountId: CODEX_API });
+
+    expect(result).toEqual({ ok: true, data: { last4: 'CDEX' } });
+    expect(h.vault.put).toHaveBeenCalledWith(CODEX_API, OPENAI_KEY);
+    expect(h.clipboard.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('recusa uma chave da Anthropic, com a frase da OpenAI, sem guardar nada', async () => {
+    const h = setup({ clipboard: KEY });
+
+    const result = await h.service.paste({ provider: 'codex', accountId: CODEX_API });
+
+    expect(messageOf(result)).toBe('A área de transferência não tem uma chave de API da OpenAI.');
+    expect(h.vault.put).not.toHaveBeenCalled();
+    expect(h.clipboard.clear).not.toHaveBeenCalled();
+  });
+
+  it('colar e remover a chave de uma conta do Codex não chama a aprovação do Claude Code', async () => {
+    const h = setup({ clipboard: OPENAI_KEY });
+
+    await h.service.paste({ provider: 'codex', accountId: CODEX_API });
+    await h.service.remove({ provider: 'codex', accountId: CODEX_API });
+
+    expect(h.vault.remove).toHaveBeenCalledWith(CODEX_API);
+    expect(h.approval.grant).not.toHaveBeenCalled();
+    expect(h.approval.revoke).not.toHaveBeenCalled();
   });
 });
 

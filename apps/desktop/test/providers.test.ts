@@ -219,6 +219,24 @@ describe('gancho de teste do Claude do painel', () => {
   });
 });
 
+describe('gancho de teste do Codex do painel', () => {
+  it('o script de teste toma o lugar do codex do painel; o claude segue a busca normal', () => {
+    const script = 'C:/e2e/fake-codex-chave.mjs';
+    const registry = createProviderRegistry({
+      env: {},
+      platform: 'win32',
+      exists: () => false,
+      panelCodexScript: script,
+    });
+
+    expect(registry.resolve('codex')).toEqual({
+      ok: true,
+      launch: { command: 'node.exe', prefix: [script], args: [] },
+    });
+    expect(registry.resolve('claude').ok).toBe(false);
+  });
+});
+
 describe('shellStartArgs', () => {
   it('no Windows, o PowerShell roda o comando e continua aberto', () => {
     expect(shellStartArgs('pnpm run dev', 'win32')).toEqual([

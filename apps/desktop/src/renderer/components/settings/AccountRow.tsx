@@ -42,7 +42,7 @@ const TEXT = {
   keyEnd: (last4: string) => `Cobrança por uso · chave terminada em …${last4}`,
   storeKeyFirst: 'Guarde a chave antes',
   defaultApiQuestion:
-    'Esta conta cobra por uso, sem o teto de uma assinatura. Missões longas podem custar caro.',
+    'Esta conta cobra por uso, sem o teto de uma assinatura. Sessões e missões longas podem custar caro.',
   removeApiQuestion:
     'Remover a conta apaga, neste computador, a chave guardada, o histórico e os ajustes dela no programa. A chave continua valendo no serviço até ser revogada no site.',
   failed: 'Não foi possível concluir a ação.',

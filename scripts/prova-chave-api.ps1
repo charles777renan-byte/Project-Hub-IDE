@@ -18,6 +18,15 @@
 
 .EXAMPLE
   .\scripts\prova-chave-api.ps1 -Programa codex
+
+.EXAMPLE
+  .\scripts\prova-chave-api.ps1 -Programa codex -Provedor
+
+.EXAMPLE
+  .\scripts\prova-chave-api.ps1 -Programa codex -Provedor -Ambiente
+
+.EXAMPLE
+  .\scripts\prova-chave-api.ps1 -Programa codex -Provedor -Interativo
 #>
 [CmdletBinding()]
 param(
@@ -30,7 +39,15 @@ param(
 
   # Nome da variável que leva a chave. Padrão: ANTHROPIC_API_KEY (claude) ou OPENAI_API_KEY (codex).
   [ValidatePattern('^[A-Z][A-Z0-9_]{2,63}$')]
-  [string] $Variavel
+  [string] $Variavel,
+
+  # Codex: um provedor com `env_key`, passado por `-c` na linha do programa (o caminho da conta API do Codex,
+  # 2026-11-22). Sem ele, o Codex usa o provedor embutido, que exige login.
+  [switch] $Provedor,
+
+  # Codex com -Provedor: pede ao agente para rodar um comando que só diz se a variável da chave está visível
+  # (VISIVEL ou AUSENTE), sem mostrá-la.
+  [switch] $Ambiente
 )
 
 $ErrorActionPreference = 'Stop'
@@ -145,12 +162,32 @@ function Invoke-Prova {
     $trabalho = Join-Path $base 'trabalho'
     New-Item -ItemType Directory -Path $conta, $trabalho | Out-Null
 
+    # O provedor da conta API do Codex: só valores sem aspas, chaves nem `<`, para passar também por um `.cmd`.
+    $provedorArgs = @()
+    if ($Programa -eq 'codex' -and $Provedor) {
+      $provedorArgs = @(
+        '-c', 'model_provider=ph-openai',
+        '-c', 'model_providers.ph-openai.name=OpenAI',
+        '-c', 'model_providers.ph-openai.base_url=https://api.openai.com/v1',
+        '-c', "model_providers.ph-openai.env_key=$nomeVariavel",
+        '-c', 'model_providers.ph-openai.wire_api=responses',
+        '-c', 'model_providers.ph-openai.requires_openai_auth=false',
+        '-c', 'shell_environment_policy.ignore_default_excludes=false'
+      )
+    }
+    $pergunta = $PERGUNTA
+    if ($Ambiente) {
+      if ($Programa -ne 'codex' -or -not $Provedor) { throw '-Ambiente vale só para -Programa codex -Provedor.' }
+      $pergunta = "Rode exatamente este comando no PowerShell e responda apenas com a saida dele: " +
+        "if (`$env:$nomeVariavel) { 'VISIVEL' } else { 'AUSENTE' }"
+    }
+
     if ($Interativo) {
-      $argumentos = @()
+      $argumentos = $provedorArgs
     } elseif ($Programa -eq 'claude') {
-      $argumentos = @('-p', $PERGUNTA)
+      $argumentos = @('-p', $pergunta)
     } else {
-      $argumentos = @('exec', '--skip-git-repo-check', $PERGUNTA)
+      $argumentos = $provedorArgs + @('exec', '--skip-git-repo-check', $pergunta)
     }
     $lancamento = Get-Lancamento -Programa $Programa -Argumentos $argumentos
 
@@ -197,7 +234,8 @@ function Invoke-Prova {
     # O que importa fica no fim, perto da pergunta: a lista de arquivos vem antes e é cortada.
     Write-Host ''
     Write-Host '===== Relatorio ====='
-    Write-Host "Programa: $Programa ($nomeVariavel, $variavelDaPasta vazia)"
+    $comProvedor = if ($provedorArgs.Count -gt 0) { ', provedor com env_key' } else { '' }
+    Write-Host "Programa: $Programa ($nomeVariavel, $variavelDaPasta vazia$comProvedor)"
     Write-Host ("Arquivos criados ({0}):" -f $arquivos.Count)
     $arquivos | Select-Object -First $LISTA_MAX | ForEach-Object { Write-Host "  $_" }
     if ($arquivos.Count -gt $LISTA_MAX) { Write-Host ("  ... e mais {0}" -f ($arquivos.Count - $LISTA_MAX)) }

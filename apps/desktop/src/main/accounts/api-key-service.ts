@@ -5,17 +5,19 @@ import { ACCOUNT_REMOVED } from './account-use';
 import { VAULT_LOCKED, VAULT_UNAVAILABLE, type AccountVault } from './account-vault';
 import { DEFAULT_ACCOUNT_KEY } from './accounts-service';
 import {
-  API_KEY_ONLY_CLAUDE,
+  API_KEY_UNSUPPORTED,
   apiKeyProblem,
   isApiKeyProvider,
   keyProblemText,
+  type ApiKeyProviderId,
 } from './api-key-shape';
 import type { ClaudeKeyApproval } from './claude-key-approval';
 
-export { API_KEY_ONLY_CLAUDE } from './api-key-shape';
+export { API_KEY_UNSUPPORTED } from './api-key-shape';
 export const NOT_API_ACCOUNT = 'Esta conta não usa chave de API.';
 
 type KeyTarget = { provider: AccountProviderId; accountId: string };
+type ApiKeyTarget = { provider: ApiKeyProviderId; accountId: string };
 
 export type ApiKeyService = {
   /** Lê a chave da área de transferência e a guarda no cofre. Devolve só os 4 últimos caracteres. */
@@ -34,15 +36,16 @@ export function createApiKeyService(deps: {
   approval: Pick<ClaudeKeyApproval, 'grant' | 'revoke'>;
 }): ApiKeyService {
   /** A conta API de um programa com chave, ou a frase da recusa. */
-  function apiAccount(input: KeyTarget): AppResult<undefined> {
-    if (!isApiKeyProvider(input.provider)) return failure('VALIDATION_FAILED', API_KEY_ONLY_CLAUDE);
+  function apiAccount(input: KeyTarget): AppResult<ApiKeyTarget> {
+    const { provider } = input;
+    if (!isApiKeyProvider(provider)) return failure('VALIDATION_FAILED', API_KEY_UNSUPPORTED);
     const account = deps.accounts.get(input.accountId);
     if (account === undefined || account.removedAt !== undefined) {
       return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
     }
     if (account.provider !== input.provider) return failure('VALIDATION_FAILED', ACCOUNT_REMOVED);
     if (account.kind !== 'api') return failure('VALIDATION_FAILED', NOT_API_ACCOUNT);
-    return { ok: true, data: undefined };
+    return { ok: true, data: { provider, accountId: input.accountId } };
   }
 
   /** O texto da área de transferência. Imagem, vazio ou erro ao ler viram texto vazio. */
@@ -66,8 +69,10 @@ export function createApiKeyService(deps: {
       }
       const raw = await readClipboard();
       const key = raw.trim();
-      const problem = apiKeyProblem(key);
-      if (problem !== undefined) return failure('VALIDATION_FAILED', keyProblemText(problem));
+      const problem = apiKeyProblem(target.data.provider, key);
+      if (problem !== undefined) {
+        return failure('VALIDATION_FAILED', keyProblemText(target.data.provider, problem));
+      }
       const stored = deps.vault.put(input.accountId, key);
       if (!stored.ok) return stored;
       // Só limpa se a área de transferência ainda tem o mesmo texto: a pessoa pode ter copiado outra coisa.
@@ -78,6 +83,10 @@ export function createApiKeyService(deps: {
           // Sem limpar, a chave continua só onde a pessoa a pôs.
         }
       }
+      // A aprovação no `.claude.json` é só do Claude Code: o Codex não pergunta pela chave, e a pasta da conta dele
+      // não recebe nada.
+      if (target.data.provider !== 'claude')
+        return { ok: true, data: { last4: stored.data.last4 } };
       try {
         if (!(await deps.approval.grant(input.accountId, key))) {
           console.warn('A aprovação da chave não foi gravada: o .claude.json da conta não é JSON.');
@@ -92,10 +101,12 @@ export function createApiKeyService(deps: {
       const target = apiAccount(input);
       if (!target.ok) return target;
       deps.vault.remove(input.accountId);
-      try {
-        await deps.approval.revoke(input.accountId);
-      } catch {
-        console.warn('A aprovação da chave não foi tirada do .claude.json da conta.');
+      if (target.data.provider === 'claude') {
+        try {
+          await deps.approval.revoke(input.accountId);
+        } catch {
+          console.warn('A aprovação da chave não foi tirada do .claude.json da conta.');
+        }
       }
       // Conta API sem chave não abre nada: a padrão volta à Principal.
       const defaultKey = DEFAULT_ACCOUNT_KEY(input.provider);

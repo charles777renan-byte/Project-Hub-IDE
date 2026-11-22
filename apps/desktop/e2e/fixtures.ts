@@ -110,6 +110,11 @@ export type LaunchOptions = {
    */
   panelClaudeScript?: string;
   /**
+   * Caminho de um `.mjs` que faz o papel do `codex` aberto pelo menu "Abrir terminal" (`APP_PANEL_CODEX_SCRIPT`).
+   * Roda no Node do PATH. Sem esta opção, o Codex do painel é o da máquina, e nenhum teste o abre.
+   */
+  panelCodexScript?: string;
+  /**
    * Caminho de um `.mjs` que faz o papel do `claude -p` na leitura dos limites da assinatura
    * (`APP_LIMITS_SCRIPT`). Sem esta opção a leitura fica desligada no app de teste: cada leitura real gasta
    * a cota da assinatura de quem roda a suíte, então nada a liga por acidente.
@@ -397,6 +402,10 @@ export const test = base.extend<Fixtures>({
       delete env['APP_PANEL_CLAUDE_SCRIPT'];
       if (options.panelClaudeScript !== undefined) {
         env['APP_PANEL_CLAUDE_SCRIPT'] = options.panelClaudeScript;
+      }
+      delete env['APP_PANEL_CODEX_SCRIPT'];
+      if (options.panelCodexScript !== undefined) {
+        env['APP_PANEL_CODEX_SCRIPT'] = options.panelCodexScript;
       }
       // Nenhum gancho dos limites vem da máquina de quem roda: só a opção do teste liga o CLI falso.
       delete env['APP_LIMITS_SCRIPT'];

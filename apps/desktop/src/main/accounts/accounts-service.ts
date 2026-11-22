@@ -29,7 +29,7 @@ import {
   type CandidateFacts,
 } from './account-switch';
 import { VAULT_LOCKED, VAULT_UNAVAILABLE, type AccountVault } from './account-vault';
-import { API_KEY_ONLY_CLAUDE, isApiKeyProvider } from './api-key-shape';
+import { API_KEY_UNSUPPORTED, isApiKeyProvider } from './api-key-shape';
 
 /** Chave de `app_settings` com o id da conta padrão do programa. Sem a chave, a padrão é a Principal. */
 export const DEFAULT_ACCOUNT_KEY = (provider: AccountProviderId): string =>
@@ -246,7 +246,7 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
     async add(input) {
       if (input.kind === 'api') {
         if (!isApiKeyProvider(input.provider)) {
-          return failure('VALIDATION_FAILED', API_KEY_ONLY_CLAUDE);
+          return failure('VALIDATION_FAILED', API_KEY_UNSUPPORTED);
         }
         if (!vault.status().available) return failure('VALIDATION_FAILED', VAULT_UNAVAILABLE);
       }

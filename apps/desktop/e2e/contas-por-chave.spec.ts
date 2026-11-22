@@ -11,6 +11,9 @@ import { expectTerminalToContain } from './terminals';
 // falso que diz se recebeu a chave e mostra só os 4 últimos caracteres. Só chaves e senha falsas.
 
 const FAKE_CLAUDE = join(import.meta.dirname, 'fixtures', 'fake-claude-chave.mjs');
+const FAKE_CODEX = join(import.meta.dirname, 'fixtures', 'fake-codex-chave.mjs');
+const CODEX_KEY = 'sk-proj-CHAVE-FALSA-do-e2e-codex-0123456789abcdefghijklmnCDEX';
+const CODEX_ACCOUNT = 'API do Codex';
 const KEY_1 = 'sk-ant-api03-CHAVE-FALSA-do-e2e-um-0123456789abcdefghijklmnUMUM';
 const KEY_2 = 'sk-ant-api03-CHAVE-FALSA-do-e2e-dois-0123456789abcdefghijkDOIS';
 const ACCOUNT = 'API de teste';
@@ -53,10 +56,27 @@ async function quitProgram(page: Page, view: Locator, ended: number): Promise<vo
   await expect(page.getByText('A sessão terminou.')).toHaveCount(ended, { timeout: 20_000 });
 }
 
+/** Os painéis do Codex que mostram esta conta na etiqueta do cabeçalho. */
+function codexPanesOf(page: Page, account: string): Locator {
+  return page
+    .getByRole('region', { name: /^Painel Codex/ })
+    .filter({ has: page.locator('.pane__account', { hasText: account }) });
+}
+
+/** Abre um painel do Codex pelo menu, na conta pedida. */
+async function openCodexIn(page: Page, account: string): Promise<void> {
+  await page.getByRole('button', { name: 'Abrir terminal' }).click();
+  await page.getByRole('menuitem', { name: /Codex/ }).click();
+  await page
+    .getByRole('listbox', { name: 'Conta do Codex' })
+    .getByRole('option', { name: new RegExp(account) })
+    .click();
+}
+
 /** A chave falsa nunca aparece no texto da página. */
 async function expectNoKeyOnPage(page: Page): Promise<void> {
   const text = await page.evaluate(() => document.body.innerText);
-  for (const key of [KEY_1, KEY_2]) {
+  for (const key of [KEY_1, KEY_2, CODEX_KEY]) {
     expect(text).not.toContain(key);
     expect(text).not.toContain(key.slice(0, -4));
   }
@@ -169,6 +189,78 @@ test('a conta por chave guarda a chave, abre painéis com ela, tranca o cofre e 
   await page.keyboard.press('Escape');
 
   // 7. Em todo o caminho, nenhuma violação de CSP e nenhuma chave no texto da página.
+  await expectNoKeyOnPage(page);
+  await expectNoViolations(page, consoleCsp, { allowXterm: true });
+  await launched.close();
+});
+
+test('a conta do Codex por chave abre o painel com a chave e o provedor; a Principal, sem eles', async ({
+  launchApp,
+  gitRepo,
+  dataDir,
+}) => {
+  const clipboardFile = join(dataDir, 'area-de-transferencia.txt');
+  writeFileSync(clipboardFile, '');
+  const projectName = basename(gitRepo.path);
+  const launched = await launchApp({
+    dialogPath: gitRepo.path,
+    accountCliScript: FAKE_ACCOUNT_CLI,
+    panelCodexScript: FAKE_CODEX,
+    clipboardFile,
+    vaultPassword: 'senha-falsa-do-cofre-e2e',
+  });
+  const { page } = launched;
+  const consoleCsp = await watchCsp(page);
+
+  // 1. A conta API do Codex nasce sem chave, com o selo.
+  await openSettings(page);
+  const codex = page.getByRole('region', { name: 'Codex' });
+  await codex.getByRole('button', { name: 'Adicionar conta' }).click();
+  await codex.getByRole('radio', { name: 'Chave de API' }).click();
+  await codex.getByRole('textbox', { name: 'Nome da conta' }).fill(CODEX_ACCOUNT);
+  await page.keyboard.press('Enter');
+  const row = codex
+    .locator('li.acct')
+    .filter({ has: page.locator('.acct__name-text', { hasText: CODEX_ACCOUNT }) });
+  await expect(row).toContainText('Sem chave');
+  await expect(row.locator('.api-badge')).toHaveText('API');
+
+  // 2. Uma chave da Anthropic é recusada na conta do Codex, sem repetir o texto; a da OpenAI é guardada.
+  writeFileSync(clipboardFile, KEY_1);
+  await row.getByRole('button', { name: 'Colar chave da área de transferência' }).click();
+  await expect(row.getByRole('alert')).toHaveText(
+    'A área de transferência não tem uma chave de API da OpenAI.',
+  );
+  await expect(row).toContainText('Sem chave');
+  writeFileSync(clipboardFile, CODEX_KEY);
+  await row.getByRole('button', { name: 'Colar chave da área de transferência' }).click();
+  await expect(row).toContainText('chave terminada em …CDEX');
+  expect(readFileSync(clipboardFile, 'utf8')).toBe('');
+  await expectNoKeyOnPage(page);
+
+  // 3. O painel da conta API recebe a chave e o provedor; o da Principal, nenhum dos dois.
+  await addGitProject(page, projectName);
+  await openProject(page, projectName, 'Terminais');
+  await openCodexIn(page, CODEX_ACCOUNT);
+  const keyed = codexPanesOf(page, CODEX_ACCOUNT).locator('.terminal-view');
+  await expectTerminalToContain(keyed, 'chave: presente, fim=CDEX', { timeout: 30_000 });
+  await expectTerminalToContain(keyed, 'provedor: openai-chave-api');
+  await openCodexIn(page, 'Principal');
+  const main = codexPanesOf(page, 'Principal').locator('.terminal-view');
+  await expectTerminalToContain(main, 'chave: ausente', { timeout: 30_000 });
+  await expectTerminalToContain(main, 'provedor: embutido');
+  await quitProgram(page, keyed, 1);
+  await quitProgram(page, main, 2);
+
+  // 4. Remover a chave deixa a conta em "Sem chave".
+  await openSettings(page);
+  await row.getByRole('button', { name: 'Remover chave' }).click();
+  await row
+    .getByRole('group', { name: /Remover a chave apaga/ })
+    .getByRole('button', { name: 'Remover chave' })
+    .click();
+  await expect(row).toContainText('Sem chave');
+
   await expectNoKeyOnPage(page);
   await expectNoViolations(page, consoleCsp, { allowXterm: true });
   await launched.close();

@@ -15,7 +15,7 @@ import type { LoginControls } from '../../src/renderer/use-login';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const BILLING =
-  'Esta conta cobra por uso, sem o teto de uma assinatura. Missões longas podem custar caro.';
+  'Esta conta cobra por uso, sem o teto de uma assinatura. Sessões e missões longas podem custar caro.';
 
 const ok = <T,>(data: T): Promise<AppResult<T>> => Promise.resolve({ ok: true, data });
 
