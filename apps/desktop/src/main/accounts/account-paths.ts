@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { failure } from '@project-hub/application';
 import {
   accountIdSchema,
+  type AccountKind,
   type AccountProviderId,
   type AppResult,
   type ProviderId,
@@ -16,17 +17,45 @@ export const ACCOUNT_ENV_VARIABLE: Record<AccountProviderId, string> = {
 };
 
 /**
+ * O provedor do Codex de uma conta por chave de API. O provedor embutido (`openai`) exige login; um provedor próprio
+ * com `env_key` lê a chave do ambiente (`OPENAI_API_KEY`, posta por `launchEnv`) e abre sem login, no `exec` e no
+ * interativo (conferido com o Codex 0.169 e chave falsa, 2026-11-22). Vai por `-c` a cada abertura, sem gravar o
+ * `config.toml`: o `-c` vence o arquivo, então um `config.toml` alterado na pasta da conta não desvia a chave para
+ * outro endereço. A última opção força o filtro do Codex que tira as variáveis com `KEY`, `SECRET` e `TOKEN` do
+ * ambiente dos comandos que o agente roda. Os valores não têm aspas, chaves, `<` nem espaço: passam também por um
+ * `codex.cmd`. A chave nunca está aqui, só no ambiente.
+ */
+export const CODEX_API_PROVIDER_ARGS: readonly string[] = [
+  '-c',
+  'model_provider=openai-chave-api',
+  '-c',
+  'model_providers.openai-chave-api.name=OpenAI',
+  '-c',
+  'model_providers.openai-chave-api.base_url=https://api.openai.com/v1',
+  '-c',
+  'model_providers.openai-chave-api.env_key=OPENAI_API_KEY',
+  '-c',
+  'model_providers.openai-chave-api.wire_api=responses',
+  '-c',
+  'model_providers.openai-chave-api.requires_openai_auth=false',
+  '-c',
+  'shell_environment_policy.ignore_default_excludes=false',
+];
+
+/**
  * Opções que uma conta extra põe na linha do programa, antes dos extras do lançamento (a retomada). O Codex
  * interativo abre um servidor de fundo com um socket dentro da pasta da conta, e o caminho do socket tem limite
  * (108 caracteres no Windows): a pasta de uma conta extra, dentro da pasta de dados do app, passa dele, e o Codex
  * nem abre. Com `--no-daemon`, ele roda sem o servidor de fundo, como ele mesmo sugere no erro. A Principal
- * (`~/.codex`) fica como sempre.
+ * (`~/.codex`) fica como sempre. A conta por chave de API do Codex leva também o provedor (`CODEX_API_PROVIDER_ARGS`).
  */
 export function accountLaunchArgs(
   provider: ProviderId,
   accountId: string | null,
+  kind: AccountKind,
 ): readonly string[] {
-  return provider === 'codex' && accountId !== null ? ['--no-daemon'] : [];
+  if (provider !== 'codex' || accountId === null) return [];
+  return kind === 'api' ? ['--no-daemon', ...CODEX_API_PROVIDER_ARGS] : ['--no-daemon'];
 }
 
 /** A área das contas extras, dentro da pasta de dados do app. A Principal não mora aqui. */

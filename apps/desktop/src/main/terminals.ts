@@ -7,6 +7,7 @@ import {
 } from '@project-hub/application';
 import {
   providerIdSchema,
+  type AccountKind,
   type AppResult,
   type ProviderId,
   type TerminalEvent,
@@ -210,6 +211,15 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
     // Uma vez só: cancelada a senha, a falha é a do cofre trancado.
     if ((await deps.unlockVault()) !== 'unlocked') return first;
     return accounts.launchEnv(provider, accountId);
+  }
+
+  /** O tipo da conta de um lançamento. A Principal, e programa ou serviço sem contas: assinatura. */
+  function accountKindOf(provider: ProviderId, accountId: string | null): AccountKind {
+    const accounts = deps.accounts;
+    if (accountId === null || accounts === undefined || !accounts.isAccountProvider(provider)) {
+      return 'subscription';
+    }
+    return accounts.kindOf(provider, accountId);
   }
 
   /** A pasta de dados da conta de um terminal, para o leitor de gasto. A Principal usa a de `roots`. */
@@ -473,7 +483,7 @@ export function createTerminalService(deps: TerminalServiceDeps): TerminalServic
       // retomada); o token dele nunca está neles, só no ambiente. As opções da conta também vêm antes da retomada.
       args: [
         ...(browser?.args ?? []),
-        ...accountLaunchArgs(provider, accountId),
+        ...accountLaunchArgs(provider, accountId, accountKindOf(provider, accountId)),
         ...(options.args ?? []),
         ...(startCommand === undefined
           ? []

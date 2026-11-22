@@ -27,6 +27,8 @@ export type ProviderRegistryDeps = {
    * causa do PATH, e não liga nada.
    */
   panelClaudeScript?: string;
+  /** O mesmo gancho para o `codex` do painel (`resolvePanelCodexScript`). */
+  panelCodexScript?: string;
 };
 
 /** Executável de cada agente. O shell não passa pela busca no PATH. */
@@ -121,8 +123,9 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
       };
     }
     // O script de teste roda no Node do PATH, o mesmo que roda os hooks.
-    const fake = deps.panelClaudeScript;
-    if (id === 'claude' && fake !== undefined) {
+    const fake =
+      id === 'claude' ? deps.panelClaudeScript : id === 'codex' ? deps.panelCodexScript : undefined;
+    if (fake !== undefined) {
       return {
         ok: true,
         launch: { command: windows ? 'node.exe' : 'node', prefix: [fake], args: [] },

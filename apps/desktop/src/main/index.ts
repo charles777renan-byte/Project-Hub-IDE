@@ -42,6 +42,7 @@ import {
   resolveAccountCliScript,
   resolveDataDir,
   resolvePanelClaudeScript,
+  resolvePanelCodexScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolveLimitsCommand,
@@ -923,12 +924,14 @@ app
     registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);
     const panelClaudeScript = resolvePanelClaudeScript(env);
+    const panelCodexScript = resolvePanelCodexScript(env);
     const providers = createProviderRegistry({
       env: process.env,
       platform: process.platform,
       exists: existsSync,
       // Do ambiente filtrado (`env`), não do processo: empacotado, o gancho de teste não existe.
       ...(panelClaudeScript === undefined ? {} : { panelClaudeScript }),
+      ...(panelCodexScript === undefined ? {} : { panelCodexScript }),
     });
     // Contas dos programas (Configurações). A tela manda só o programa e o id: a pasta e a variável de ambiente de
     // cada conta saem de `accountPaths`, aqui. O login roda o comando oficial num terminal próprio, fora de

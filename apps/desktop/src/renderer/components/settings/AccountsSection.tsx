@@ -38,8 +38,8 @@ const TEXT = {
 
 const PROGRAMS: Record<AccountProviderId, string> = { claude: 'Claude Code', codex: 'Codex' };
 
-/** Os programas em que a conta pode ser por chave de API. O Codex fica de fora até aceitar a chave pelo ambiente. */
-const API_PROGRAMS: ReadonlySet<AccountProviderId> = new Set(['claude']);
+/** Os programas em que a conta pode ser por chave de API: os dois. O Codex lê a chave por um provedor próprio. */
+const API_PROGRAMS: ReadonlySet<AccountProviderId> = new Set(['claude', 'codex']);
 
 /** A entrada dos limites de uma conta. Sem ela, o app não tem como ler o uso daquele programa. */
 function usageOf(limits: LimitsDto | null, account: AccountDto): AccountLimitsDto | undefined {

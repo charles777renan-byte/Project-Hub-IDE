@@ -35,3 +35,16 @@ Data: 2026-11-21. Tarefa 1 do plano `docs/superpowers/plans/2026-11-21-contas-po
 - A mesma pasta sem `customApiKeyResponses`: apareceu "Detected a custom API key in your environment … Do you want to use this API key?", com "No (recommended)" marcado.
 - O programa manteve a aprovação no arquivo e não gravou a chave inteira.
 - Com a chave falsa, o programa avisou que as configurações gerenciadas remotas falharam (401). Nenhuma pergunta foi enviada, nada foi cobrado.
+
+## 2026-11-22: Codex com provedor próprio (chave falsa)
+
+Codex 0.169.0, `CODEX_HOME` vazio e curto, chave falsa no formato `sk-proj-` (o serviço responde 401, sem cobrança). O Codex interativo foi aberto num pseudo-terminal (`node-pty`) para ler a tela.
+
+- **Sem provedor** (como em 2026-11-21): tela de login ("Sign in with ChatGPT / Device Code / Sign in another way").
+- **Com um provedor próprio** (`model_provider` apontando para um provedor com `base_url = "https://api.openai.com/v1"`, `env_key = "OPENAI_API_KEY"`, `wire_api = "responses"`), no `config.toml` ou por `-c`: o interativo abre direto na tela principal, sem login, e ao mandar uma mensagem o serviço responde "Incorrect API key provided" (a chave foi enviada). O `codex exec` também.
+- **`-c` vence o `config.toml`:** com um `config.toml` que apontava o mesmo provedor para `http://127.0.0.1:9/v1`, a chamada foi para `https://api.openai.com/v1/responses`.
+- **Valores sem aspas** (`-c model_providers.x.base_url=https://api.openai.com/v1`) funcionam, então passam por um `codex.cmd`.
+- **Disco:** nenhum `auth.json`. A chave inteira, os 20 e os 8 últimos caracteres não aparecem em nenhum arquivo da pasta. Com chave errada, a sessão e o banco de histórico guardam a mensagem de erro do serviço, que traz os 4 últimos caracteres já mascarados.
+- **Filtro do ambiente dos comandos do agente:** o binário tem `shell_environment_policy` com o filtro padrão `*KEY*`, `*SECRET*`, `*TOKEN*`. Não foi possível ver o filtro em ação sem uma chave válida.
+
+A pessoa decidiu seguir sem a prova com a chave de verdade. Ficam sem confirmação: uma resposta com chave válida, o modelo padrão (`gpt-6.1-sol`) com chave de API e o filtro em ação. A prova está pronta em `scripts/prova-chave-api.ps1 -Programa codex -Provedor` (mais `-Ambiente` ou `-Interativo`).

@@ -25,12 +25,15 @@ import { createTerminalService, type TerminalService } from '../src/main/termina
 const KEY = 'sk-ant-api03-CHAVE-FALSA-de-teste-0123456789abcdefghijKLMNOPWXYZ';
 const PASSWORD = 'senha-falsa-do-cofre-para-teste';
 const KEYED = '33333333-3333-4333-8333-333333333333';
+const OPENAI_KEY = 'sk-proj-CHAVE-FALSA-de-teste-0123456789abcdefghijKLMNOPCDEX';
+const CODEX_KEYED = '55555555-5555-4555-8555-555555555555';
 const APP = 'file:///app/index.html';
 const isTrusted = (event: IpcMainInvokeEvent) => event.senderFrame?.url === APP;
 
 const providers: ProviderRegistry = {
   list: () => [
     { id: 'claude', label: 'Claude Code', available: true },
+    { id: 'codex', label: 'Codex', available: true },
     { id: 'shell', label: 'PowerShell', available: true },
   ],
   resolve: (id) => ({ ok: true, launch: { command: `${id}.exe`, args: [] } }),
@@ -65,7 +68,8 @@ let terminals: TerminalService;
 let call: (channel: string, payload?: unknown) => Promise<unknown>;
 let responses: unknown[];
 let events: unknown[];
-let opened: Record<string, string>[];
+let opened: { env: Record<string, string>; args: string[] }[];
+let clipboardText: string;
 let failSecretWrite: boolean;
 let grantThrows: boolean;
 
@@ -76,6 +80,7 @@ beforeEach(async () => {
   responses = [];
   events = [];
   opened = [];
+  clipboardText = KEY;
   failSecretWrite = false;
   grantThrows = false;
   services = createAppServices({
@@ -89,6 +94,13 @@ beforeEach(async () => {
     id: KEYED,
     provider: 'claude',
     name: 'Chave',
+    kind: 'api',
+    createdAt: now(),
+  });
+  services.accounts.insert({
+    id: CODEX_KEYED,
+    provider: 'codex',
+    name: 'Chave do Codex',
     kind: 'api',
     createdAt: now(),
   });
@@ -113,7 +125,7 @@ beforeEach(async () => {
     settings: services.profileDeps.settings,
     paths,
     vault,
-    env: { CLAUDE_CONFIG_DIR: join(dir, 'claude') },
+    env: { CLAUDE_CONFIG_DIR: join(dir, 'claude'), CODEX_HOME: join(dir, 'codex') },
   });
   const accounts = createAccountsService({
     accounts: services.accounts,
@@ -138,7 +150,7 @@ beforeEach(async () => {
     accounts: services.accounts,
     settings: services.profileDeps.settings,
     vault,
-    clipboard: { readText: () => Promise.resolve(KEY), clear: () => undefined },
+    clipboard: { readText: () => Promise.resolve(clipboardText), clear: () => undefined },
     ensureUnlocked: () => Promise.resolve('unlocked'),
     approval: {
       // Uma biblioteca que repete a entrada na mensagem de erro: o serviço não pode gravar esse erro no console.
@@ -150,7 +162,7 @@ beforeEach(async () => {
   terminals = createTerminalService({
     port: {
       open: (input) => {
-        opened.push({ ...input.env });
+        opened.push({ env: { ...input.env }, args: [...input.args] });
         return Promise.resolve();
       },
       write: () => Promise.resolve(),
@@ -166,7 +178,11 @@ beforeEach(async () => {
     providers,
     publish: (event: TerminalEvent) => events.push(event),
     countChanges: () => Promise.resolve(undefined),
-    env: { PATH: 'C:/Windows', ANTHROPIC_API_KEY: 'chave-da-maquina-falsa' },
+    env: {
+      PATH: 'C:/Windows',
+      ANTHROPIC_API_KEY: 'chave-da-maquina-falsa',
+      OPENAI_API_KEY: 'chave-da-maquina-falsa',
+    },
     newId: () => `terminal-${String(opened.length + 1)}`,
     now,
     hooks: {
@@ -222,6 +238,15 @@ beforeEach(async () => {
   await call(CHANNELS.accountsSetDefault, { provider: 'claude', accountId: KEYED });
   await call(CHANNELS.missionsSetAccount, { missionId, accountId: KEYED });
   responses.push(await terminals.openSession(project.data.id, 'claude', { accountId: KEYED }));
+  clipboardText = OPENAI_KEY;
+  await call(CHANNELS.accountsPasteKey, { provider: 'codex', accountId: CODEX_KEYED });
+  clipboardText = KEY;
+  responses.push(
+    await terminals.openSession(project.data.id, 'codex', {
+      accountId: CODEX_KEYED,
+      args: ['resume', 'abc'],
+    }),
+  );
   for (const channel of [CHANNELS.accountsList, CHANNELS.vaultGet, CHANNELS.terminalsList]) {
     await call(channel);
   }
@@ -243,22 +268,34 @@ afterEach(() => {
 describe('a chave nunca sai do processo principal', () => {
   it('a chave chega só ao ambiente do programa da conta', () => {
     // Sem isto, a prova seria vazia: a chave de fato foi guardada e usada.
-    expect(opened.map((env) => env['ANTHROPIC_API_KEY'])).toEqual([KEY]);
+    expect(opened.map(({ env }) => env['ANTHROPIC_API_KEY'])).toEqual([KEY, undefined]);
     expect(responses).toContainEqual({ ok: true, data: { last4: 'WXYZ' } });
+  });
+
+  it('a chave da OpenAI chega só ao ambiente do Codex da conta, e nunca à linha do programa', () => {
+    expect(opened.map(({ env }) => env['OPENAI_API_KEY'])).toEqual([undefined, OPENAI_KEY]);
+    expect(responses).toContainEqual({ ok: true, data: { last4: 'CDEX' } });
+    expect(opened[1]?.args).toContain('model_provider=openai-chave-api');
+    for (const { args } of opened) {
+      for (const key of [KEY, OPENAI_KEY]) expect(args.join(' ')).not.toContain(key.slice(-20));
+    }
   });
 
   it('a chave não aparece em nenhuma resposta serializada', () => {
     expect(responses.length).toBeGreaterThan(10);
-    for (const response of responses) expect(JSON.stringify(response)).not.toContain(KEY);
-    // Nem um pedaço grande dela: só os 4 últimos caracteres saem.
-    for (const response of responses)
-      expect(JSON.stringify(response)).not.toContain(KEY.slice(-20));
+    for (const key of [KEY, OPENAI_KEY]) {
+      for (const response of responses) expect(JSON.stringify(response)).not.toContain(key);
+      // Nem um pedaço grande dela: só os 4 últimos caracteres saem.
+      for (const response of responses)
+        expect(JSON.stringify(response)).not.toContain(key.slice(-20));
+    }
   });
 
   it('a senha do cofre não aparece em nenhuma resposta nem evento', () => {
     for (const item of [...responses, ...events]) {
       expect(JSON.stringify(item)).not.toContain(PASSWORD);
       expect(JSON.stringify(item)).not.toContain(KEY);
+      expect(JSON.stringify(item)).not.toContain(OPENAI_KEY);
     }
   });
 

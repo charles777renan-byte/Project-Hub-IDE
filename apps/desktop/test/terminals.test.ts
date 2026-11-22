@@ -20,6 +20,7 @@ import type { TerminalSessionRecord, TerminalSessionRepository } from '@project-
 import type { AgentBrowserAccess } from '../src/main/browser/agent/agent-launch';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderRegistry } from '../src/main/providers';
+import { CODEX_API_PROVIDER_ARGS } from '../src/main/accounts/account-paths';
 import { createTerminalService, type TerminalServiceDeps } from '../src/main/terminals';
 
 type Execution = NonNullable<ReturnType<MissionRepository['getExecution']>>;
@@ -1516,6 +1517,7 @@ describe('painel aberto numa conta do programa', () => {
   const GONE = '22222222-2222-4222-8222-222222222222';
   const KEYED = '33333333-3333-4333-8333-333333333333';
   const FAKE_KEY = 'sk-ant-api03-chave-falsa-0123456789-abcdefghijKLMNOPWXYZ';
+  const FAKE_OPENAI_KEY = 'sk-proj-chave-falsa-0123456789-abcdefghijKLMNOPCDEX';
   const LOCKED_TEXT = 'Destranque o cofre para continuar.';
   const MISSING_TEXT = 'A conta não tem uma chave de API guardada.';
   let workDir = '';
@@ -1564,6 +1566,9 @@ describe('painel aberto numa conta do programa', () => {
           }
           return { ok: true, data: { CLAUDE_CONFIG_DIR: workDir, ANTHROPIC_API_KEY: FAKE_KEY } };
         }
+        if (provider === 'codex' && accountId === KEYED) {
+          return { ok: true, data: { CODEX_HOME: workDir, OPENAI_API_KEY: FAKE_OPENAI_KEY } };
+        }
         return {
           ok: false,
           error: { code: 'VALIDATION_FAILED', message: 'A conta foi removida.', retryable: false },
@@ -1577,8 +1582,7 @@ describe('painel aberto numa conta do programa', () => {
         if (accountId === KEYED) return { name: 'Chave', removed: false };
         return { name: 'Antiga', removed: true };
       },
-      kindOf: (provider, accountId) =>
-        provider === 'claude' && accountId === KEYED ? 'api' : 'subscription',
+      kindOf: (_provider, accountId) => (accountId === KEYED ? 'api' : 'subscription'),
     };
   }
 
@@ -1671,6 +1675,32 @@ describe('painel aberto numa conta do programa', () => {
     expect(principal?.args).not.toContain('--no-daemon');
     expect(principal?.args.slice(-2)).toEqual(['resume', 'abc']);
     expect(claude?.args).not.toContain('--no-daemon');
+  });
+
+  it('o Codex de uma conta API abre com o provedor da chave antes da retomada; a de assinatura e a Principal, sem ele', async () => {
+    const codexInstalled: ProviderRegistry = {
+      ...providers,
+      resolve: (id) =>
+        id === 'codex'
+          ? { ok: true, launch: { command: 'C:/bin/codex.exe', args: [] } }
+          : providers.resolve(id),
+    };
+    const h = setup({ accounts: accounts(), providers: codexInstalled });
+
+    await h.service.openSession('p1', 'codex', { accountId: KEYED, args: ['resume', 'abc'] });
+    await h.service.openSession('p1', 'codex', { accountId: WORK });
+    await h.service.openSession('p1', 'codex');
+
+    const [keyed, subscription, principal] = h.opened;
+    const tail = ['--no-daemon', ...CODEX_API_PROVIDER_ARGS, 'resume', 'abc'];
+    expect(keyed?.args.slice(-tail.length)).toEqual(tail);
+    expect(keyed?.env['OPENAI_API_KEY']).toBe(FAKE_OPENAI_KEY);
+    expect(keyed?.env['CODEX_HOME']).toBe(workDir);
+    expect(keyed?.args.join(' ')).not.toContain(FAKE_OPENAI_KEY.slice(-20));
+    for (const other of [subscription, principal]) {
+      expect(other?.args).not.toContain('model_provider=openai-chave-api');
+      expect(other?.env).not.toHaveProperty('OPENAI_API_KEY');
+    }
   });
 
   it('programa sem contas não aceita conta', async () => {

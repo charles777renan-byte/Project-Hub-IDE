@@ -7,6 +7,7 @@ import {
   startsHidden,
   resolveAgentCommand,
   resolvePanelClaudeScript,
+  resolvePanelCodexScript,
   resolveDatabaseFile,
   resolveDirectoryChooser,
   resolveCodexLimitsHome,
@@ -425,6 +426,28 @@ describe('gancho de teste do Claude do painel', () => {
   });
 });
 
+describe('gancho de teste do Codex do painel', () => {
+  it('só vale em teste, e vazio não conta', () => {
+    const script = '/e2e/fake-codex-chave.mjs';
+    expect(
+      resolvePanelCodexScript({ PROJECT_HUB_ENV: 'test', APP_PANEL_CODEX_SCRIPT: script }),
+    ).toBe(script);
+    expect(resolvePanelCodexScript({ APP_PANEL_CODEX_SCRIPT: script })).toBeUndefined();
+    expect(
+      resolvePanelCodexScript({ PROJECT_HUB_ENV: 'test', APP_PANEL_CODEX_SCRIPT: '' }),
+    ).toBeUndefined();
+    expect(resolvePanelCodexScript({ PROJECT_HUB_ENV: 'test' })).toBeUndefined();
+  });
+
+  it('empacotado, o ambiente filtrado não traz o gancho', () => {
+    const env = applicationEnvironment(
+      { PROJECT_HUB_ENV: 'test', APP_PANEL_CODEX_SCRIPT: '/e2e/fake.mjs' },
+      true,
+    );
+    expect(resolvePanelCodexScript(env)).toBeUndefined();
+  });
+});
+
 describe('pasta do Codex para os limites (resolveCodexLimitsHome)', () => {
   it('em produção, sem CODEX_HOME vale ~/.codex', () => {
     expect(resolveCodexLimitsHome({}, {})).toMatch(/[\\/]\.codex$/);
@@ -468,9 +491,9 @@ describe('pasta do Codex para os limites (resolveCodexLimitsHome)', () => {
 describe('CLI falso das contas (APP_ACCOUNT_CLI_SCRIPT)', () => {
   it('só vale com PROJECT_HUB_ENV=test, e vazio não conta', () => {
     const script = '/e2e/fake-account-cli.mjs';
-    expect(resolveAccountCliScript({ PROJECT_HUB_ENV: 'test', APP_ACCOUNT_CLI_SCRIPT: script })).toBe(
-      script,
-    );
+    expect(
+      resolveAccountCliScript({ PROJECT_HUB_ENV: 'test', APP_ACCOUNT_CLI_SCRIPT: script }),
+    ).toBe(script);
     expect(resolveAccountCliScript({ APP_ACCOUNT_CLI_SCRIPT: script })).toBeUndefined();
     expect(
       resolveAccountCliScript({ PROJECT_HUB_ENV: 'test', APP_ACCOUNT_CLI_SCRIPT: '' }),

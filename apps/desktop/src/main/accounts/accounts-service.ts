@@ -29,7 +29,7 @@ import {
   type CandidateFacts,
 } from './account-switch';
 import { VAULT_LOCKED, VAULT_UNAVAILABLE, type AccountVault } from './account-vault';
-import { API_KEY_ONLY_CLAUDE, isApiKeyProvider } from './api-key-shape';
+import { API_KEY_UNSUPPORTED, isApiKeyProvider } from './api-key-shape';
 
 /** Chave de `app_settings` com o id da conta padrão do programa. Sem a chave, a padrão é a Principal. */
 export const DEFAULT_ACCOUNT_KEY = (provider: AccountProviderId): string =>
@@ -68,6 +68,7 @@ const GONE = 'A conta não existe mais.';
 const NEEDS_KEY = 'Cole a chave de API antes de tornar esta conta a padrão.';
 const NEEDS_ANOTHER_ACCOUNT = 'Adicione outra conta para usar a troca automática.';
 const NEEDS_AUTO_SWITCH = 'Ligue antes a troca de conta.';
+const AUTO_SWITCH_API_ONLY_CLAUDE = 'Incluir contas de chave de API vale só no Claude Code.';
 const API_NOT_SIGNED_IN =
   'Conta por chave de API não tem login: para deixar de usá-la, remova a chave.';
 /** O estado de uma conta API: o programa nunca é chamado para ela. */
@@ -231,8 +232,9 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
           return Promise.resolve(failure('VALIDATION_FAILED', NEEDS_ANOTHER_ACCOUNT));
         }
         if (input.option === 'includeApi') {
-          if (!isApiKeyProvider(input.provider)) {
-            return Promise.resolve(failure('VALIDATION_FAILED', API_KEY_ONLY_CLAUDE));
+          // A opção é uma só, do Claude Code (AUTO_SWITCH_API_KEY), mesmo com contas API no Codex.
+          if (input.provider !== 'claude') {
+            return Promise.resolve(failure('VALIDATION_FAILED', AUTO_SWITCH_API_ONLY_CLAUDE));
           }
           if (!autoSwitchSettingsOf(settings, input.provider).enabled) {
             return Promise.resolve(failure('VALIDATION_FAILED', NEEDS_AUTO_SWITCH));
@@ -246,7 +248,7 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
     async add(input) {
       if (input.kind === 'api') {
         if (!isApiKeyProvider(input.provider)) {
-          return failure('VALIDATION_FAILED', API_KEY_ONLY_CLAUDE);
+          return failure('VALIDATION_FAILED', API_KEY_UNSUPPORTED);
         }
         if (!vault.status().available) return failure('VALIDATION_FAILED', VAULT_UNAVAILABLE);
       }

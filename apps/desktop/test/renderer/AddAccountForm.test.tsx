@@ -10,7 +10,7 @@ import { AddAccountForm } from '../../src/renderer/components/settings/AddAccoun
 const RISK =
   'O programa e os comandos que ele executa têm acesso à chave. Use uma chave só para este computador, com limite de gasto definido no site do serviço. Se suspeitar de vazamento, revogue a chave no site.';
 const BILLING =
-  'Esta conta cobra por uso, sem o teto de uma assinatura. Missões longas podem custar caro.';
+  'Esta conta cobra por uso, sem o teto de uma assinatura. Sessões e missões longas podem custar caro.';
 const READY: VaultDto = { state: 'locked', available: true };
 
 function setup(
