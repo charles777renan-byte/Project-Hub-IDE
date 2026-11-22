@@ -321,6 +321,7 @@ describe('gasto de tokens por terminal', () => {
           latestCalls += 1;
           return context;
         },
+        takeLimitHits: () => [],
       }),
     });
     service.track('t1', 'claude');
@@ -519,6 +520,7 @@ describe('modelo dito pelo SessionStart', () => {
           },
           poll: () => Promise.resolve(undefined),
           latestContext: () => undefined,
+          takeLimitHits: () => [],
         };
       },
     });
@@ -563,6 +565,7 @@ describe('modelo dito pelo SessionStart', () => {
           addSession: () => undefined,
           poll: () => Promise.resolve(undefined),
           latestContext: () => undefined,
+          takeLimitHits: () => [],
         };
       },
     });

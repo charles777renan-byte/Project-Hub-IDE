@@ -2,6 +2,7 @@ import type {
   AgentAdapter,
   AgentApprovalDecision,
   AgentEvent,
+  AgentResumeInput,
   AgentSession,
 } from '@project-hub/agent-sdk';
 import type { AppResult } from '@project-hub/contracts';
@@ -18,6 +19,8 @@ import {
 } from '@project-hub/domain';
 import type {
   AccountDirectory,
+  AccountPick,
+  AccountSwitchNotice,
   DiffPort,
   FileSystemPort,
   MissionRepository,
@@ -33,9 +36,18 @@ import { planFromCriteria } from './plan';
 import { claimedCriteria, verificationPassed } from './criteria';
 import { applyPlanEdit, planEditAudit, type PlanEdit } from './plan-edit';
 import { tasksToSteps, validatePlan } from './plan-validation';
-import { nextTask, stepsOfExecution, taskPrompt, withVerification } from './tasks';
+import {
+  continuationPrompt,
+  nextTask,
+  RESUME_PROMPT,
+  stepsOfExecution,
+  taskPrompt,
+  withVerification,
+} from './tasks';
 import { failInterruptedExecution, openExecutionsAtStart } from './startup-recovery';
 import { expirePendingApprovals, moveMission } from './transitions';
+
+export type { AccountSwitchNotice } from '../ports';
 
 export type MissionPlan = { missionId: string; steps: MissionStep[] };
 
@@ -71,7 +83,18 @@ export type OrchestratorDeps = {
    * As contas do Claude Code. Com elas, missão de conta removida não planeja nem inicia. Sem elas, o orquestrador
    * não confere a conta, e o agente ou o planejador é que recusam.
    */
-  accounts?: Pick<AccountDirectory, 'labelOf' | 'vaultLocked'>;
+  accounts?: Pick<
+    AccountDirectory,
+    | 'labelOf'
+    | 'vaultLocked'
+    | 'autoSwitchEnabled'
+    | 'exhaustedUntil'
+    | 'markExhausted'
+    | 'pickAccount'
+    | 'limitMessage'
+  >;
+  /** A missão trocou de conta sozinha (o limite acabou, ou a conta estava esgotada na abertura): o aviso. */
+  onAccountSwitched?: (notice: AccountSwitchNotice) => void;
   /**
    * Abre a janela da senha do cofre. Só as ações da pessoa (planejar, iniciar, tentar de novo, pedir ajustes,
    * retomar a pausa do cofre) a usam, antes de mudar o estado da missão. O que começa sem a pessoa (a fila, a
@@ -166,6 +189,11 @@ const ENDED_MISSION: readonly MissionStatus[] = ['succeeded', 'failed', 'cancell
 const CANCEL_REASON = 'Cancelado pelo usuário.';
 const CANCELLED_PLANNING = 'O planejamento foi cancelado.';
 const REJECTED_REASON = 'Ação protegida recusada pelo usuário.';
+const LIMIT_STOP_REASON = 'Limite da conta.';
+/** Sem a hora de renovação na linha de limite, a conta fica marcada como esgotada por 5 horas (a janela da sessão). */
+const FALLBACK_LIMIT_MS = 5 * 60 * 60 * 1000;
+/** As missões que esperam a renovação: só a tentativa em `running` ou esperando resposta troca de conta. */
+const SWITCHABLE: readonly MissionStatus[] = ['running', 'waiting_input'];
 
 /**
  * Uma execução em curso, ou um início em andamento. `aborted` resolve quando o `AbortController`
@@ -227,6 +255,8 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const vaultNoticed = new Set<string>();
   /** Missões da fila cujo início o cofre recusou: a fila as pula até o cofre destrancar. */
   const vaultHeld = new Set<string>();
+  /** Tentativas que já gravaram o limite sem troca: a linha repetida só marca a conta de novo. */
+  const limitNoted = new Set<string>();
 
   function startRun(missionId: string): ActiveRun {
     const controller = new AbortController();
@@ -729,8 +759,20 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     executionId: string,
     event: AgentEvent,
     summary?: WorkspaceSummary,
-  ): 'continue' | 'wait' | 'done' | 'chain' {
+  ): 'continue' | 'wait' | 'done' | 'chain' | 'limit' {
     switch (event.type) {
+      case 'limit.reached': {
+        // O id da sessão e o caminho do transcript servem só para levar a conversa: não vão para a auditoria.
+        const recorded: AgentEvent = {
+          type: 'limit.reached',
+          window: event.window,
+          ...(event.resetsAt === undefined ? {} : { resetsAt: event.resetsAt }),
+          at: event.at,
+        };
+        recordEvent(executionId, recorded);
+        return 'limit';
+      }
+
       case 'approval.requested':
         repo.transaction(() => {
           const approval: ApprovalRequest = {
@@ -765,7 +807,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       case 'input.requested':
         repo.transaction(() => {
           recordEvent(executionId, event);
-          moveMission(repo, run.missionId, 'waiting_input', { actor: 'agent', at: event.at });
+          // A missão já espera resposta (o limite da conta a deixou assim): só o evento é gravado.
+          if (repo.getMission(run.missionId)?.status !== 'waiting_input') {
+            moveMission(repo, run.missionId, 'waiting_input', { actor: 'agent', at: event.at });
+          }
         });
         return 'wait';
 
@@ -945,6 +990,16 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         persistCursor(run, executionId);
         return result;
       });
+      if (outcome === 'limit' && pulled.event.type === 'limit.reached') {
+        const next = await onLimit(run, executionId, iterator, pulled.event);
+        if (next === 'stop' || run.iterator === undefined || run.executionId === undefined) {
+          return requireExecution(executionId);
+        }
+        // Trocou de conta: a nova tentativa tem iterador e execução próprios.
+        iterator = run.iterator;
+        executionId = run.executionId;
+        continue;
+      }
       if (outcome === 'chain') {
         if (
           !(await startNextTask(run)) ||
@@ -972,11 +1027,39 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * quando não seguiu: a missão foi cancelada ou a tarefa não pôde começar (e então a missão falha).
    */
   async function startNextTask(run: ActiveRun): Promise<boolean> {
-    const mission = repo.getMission(run.missionId);
+    const found = repo.getMission(run.missionId);
     const steps = repo.listSteps(run.missionId);
     const task = nextTask(steps);
-    const cwd = mission?.worktreePath;
-    if (mission === undefined || task === undefined || cwd === undefined) {
+    if (found === undefined || task === undefined) {
+      failChain(run);
+      return false;
+    }
+    // Sem conta livre, a tarefa segue na conta atual: se o limite vier, a regra A cuida.
+    let mission = found;
+    if (exhaustedFor(found) !== undefined) {
+      const avoided = await avoidExhausted(found);
+      if (run.controller.signal.aborted) {
+        await run.finalized;
+        return false;
+      }
+      if (avoided.ok) mission = avoided.data;
+    }
+    return beginSession(run, mission, task, { prompt: taskPrompt(mission, task, steps) });
+  }
+
+  /**
+   * Começa o agente no worktree da missão, na conta dela, e abre a tentativa seguinte (da tarefa, ou da missão
+   * inteira sem tarefa). Liga a sessão nova ao `run`. Devolve `false` quando não seguiu: cancelada no meio, o cofre
+   * pausou a missão, ou o agente não abriu (e então a missão falha).
+   */
+  async function beginSession(
+    run: ActiveRun,
+    mission: Mission,
+    task: MissionStep | undefined,
+    input: { prompt: string; resume?: AgentResumeInput },
+  ): Promise<boolean> {
+    const cwd = mission.worktreePath;
+    if (cwd === undefined) {
       failChain(run);
       return false;
     }
@@ -987,13 +1070,22 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     let session: AgentSession;
     try {
       session = await agent.start(
-        { cwd, prompt: taskPrompt(mission, task, steps), ...accountOf(mission) },
+        {
+          cwd,
+          prompt: input.prompt,
+          ...accountOf(mission),
+          ...(input.resume === undefined ? {} : { resume: input.resume }),
+        },
         run.controller.signal,
       );
     } catch (error) {
       const code = errorCode(error);
       if (code === 'VAULT_LOCKED' && !run.controller.signal.aborted) {
         pauseForVault(run);
+        return false;
+      }
+      if (run.controller.signal.aborted) {
+        await run.finalized;
         return false;
       }
       console.error('Não foi possível iniciar o agente da próxima tarefa:', error);
@@ -1015,19 +1107,21 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
           id: newId(),
           missionId: mission.id,
           attempt,
-          stepId: task.id,
+          ...(task === undefined ? {} : { stepId: task.id }),
           status: 'running',
           startedAt: at,
         };
         repo.insertExecution(opened);
-        repo.updateStep(task.id, { status: 'running', startedAt: at });
+        for (const step of stepsOfExecution(repo.listSteps(mission.id), task?.id)) {
+          repo.updateStep(step.id, { status: 'running', startedAt: at });
+        }
         repo.appendAudit({
           aggregateType: 'execution',
           aggregateId: opened.id,
           eventType: 'execution.started',
           severity: 'info',
           actor: 'system',
-          payload: { attempt, stepId: task.id },
+          payload: { attempt, ...(task === undefined ? {} : { stepId: task.id }) },
           createdAt: at,
         });
         return opened;
@@ -1042,6 +1136,243 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     run.iterator = session.events()[Symbol.asyncIterator]();
     run.executionId = execution.id;
     return true;
+  }
+
+  /** O nome da conta para a auditoria e o aviso (`null` é a Principal). */
+  function accountName(accountId: string | null): string {
+    return deps.accounts?.labelOf('claude', accountId).name ?? '';
+  }
+
+  /**
+   * Até quando a conta da missão está sem limite, quando a troca automática pode agir; `undefined` caso contrário.
+   * É síncrono: quem abre só espera a troca quando ela é necessária, e o resto do início segue no mesmo passo.
+   */
+  function exhaustedFor(mission: Mission): string | undefined {
+    const accounts = deps.accounts;
+    if (accounts?.autoSwitchEnabled?.() !== true || accounts.pickAccount === undefined) {
+      return undefined;
+    }
+    return accounts.exhaustedUntil?.(mission.accountId ?? null);
+  }
+
+  /**
+   * A abertura evita a conta esgotada (a regra C). Com a troca ligada e a conta da missão marcada sem limite, a missão
+   * passa para a próxima conta que serve, com o registro e o aviso, antes de o agente ou o planejador abrir. Sem conta
+   * que sirva, devolve a frase da cota, e nada muda.
+   */
+  async function avoidExhausted(mission: Mission): Promise<AppResult<Mission>> {
+    const accounts = deps.accounts;
+    const pickAccount = accounts?.pickAccount;
+    const until = exhaustedFor(mission);
+    if (accounts === undefined || pickAccount === undefined || until === undefined) {
+      return { ok: true, data: mission };
+    }
+    const current = mission.accountId ?? null;
+    const pick = await pickAccount({ exclude: current });
+    if (pick.kind !== 'account') {
+      return failure(
+        'AGENT_UNAVAILABLE',
+        accounts.limitMessage?.(current) ??
+          'O limite da conta acabou. Tente de novo quando renovar.',
+      );
+    }
+    const notice: AccountSwitchNotice = {
+      missionId: mission.id,
+      cause: 'opening',
+      fromName: accountName(current),
+      toName: accountName(pick.accountId),
+      resetsAt: until,
+    };
+    repo.transaction(() => {
+      const at = now();
+      repo.setMissionAccount(mission.id, pick.accountId, at);
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: mission.id,
+        eventType: 'mission.account_switched',
+        severity: 'info',
+        actor: 'system',
+        payload: {
+          cause: notice.cause,
+          fromName: notice.fromName,
+          toName: notice.toName,
+          resetsAt: until,
+        },
+        createdAt: at,
+      });
+    });
+    deps.onAccountSwitched?.(notice);
+    const switched = repo.getMission(mission.id);
+    return switched === undefined
+      ? failure('MISSION_NOT_FOUND', MISSION_NOT_FOUND)
+      : { ok: true, data: switched };
+  }
+
+  /** Grava, uma vez por tentativa, que o limite acabou e a missão espera; leva a missão a `waiting_input`. */
+  function waitForLimit(
+    run: ActiveRun,
+    executionId: string,
+    current: string | null,
+    event: Extract<AgentEvent, { type: 'limit.reached' }>,
+    pick: AccountPick | undefined,
+  ): void {
+    limitNoted.add(executionId);
+    repo.transaction(() => {
+      const at = now();
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: run.missionId,
+        eventType: 'mission.account_limit',
+        severity: 'warning',
+        actor: 'system',
+        payload: {
+          accountName: accountName(current),
+          ...(event.resetsAt === undefined ? {} : { resetsAt: event.resetsAt }),
+          allExhausted: pick?.kind === 'none',
+          ...(pick?.kind === 'none' && pick.resetsAt !== undefined
+            ? { firstResetAt: pick.resetsAt }
+            : {}),
+        },
+        createdAt: at,
+      });
+      // O terminal fica aberto: a pessoa pode responder nele (ou esperar a renovação) e a missão segue.
+      if (repo.getMission(run.missionId)?.status === 'running') {
+        moveMission(repo, run.missionId, 'waiting_input', { actor: 'system', at });
+      }
+    });
+  }
+
+  /**
+   * O limite da conta acabou no meio da tentativa (a regra A). A conta fica marcada como esgotada. Com a troca
+   * ligada e outra conta que sirva, a tentativa fecha como `account_limit` e a mesma tarefa continua na conta nova,
+   * no mesmo worktree, levando a conversa quando dá. Sem isso, a missão espera resposta com o motivo gravado.
+   * Devolve `switched` quando a nova tentativa abriu, `stop` quando o laço deve parar, e `continue` para seguir
+   * lendo a mesma sessão.
+   */
+  async function onLimit(
+    run: ActiveRun,
+    executionId: string,
+    iterator: AsyncIterator<AgentEvent>,
+    event: Extract<AgentEvent, { type: 'limit.reached' }>,
+  ): Promise<'continue' | 'switched' | 'stop'> {
+    const mission = repo.getMission(run.missionId);
+    if (mission === undefined) return 'continue';
+    const current = mission.accountId ?? null;
+    const until = event.resetsAt ?? new Date(Date.parse(now()) + FALLBACK_LIMIT_MS).toISOString();
+    deps.accounts?.markExhausted?.(current, until);
+    if (!SWITCHABLE.includes(mission.status) || limitNoted.has(executionId)) return 'continue';
+
+    const accounts = deps.accounts;
+    const pickAccount = accounts?.pickAccount;
+    let pick: AccountPick | undefined;
+    if (accounts?.autoSwitchEnabled?.() === true && pickAccount !== undefined) {
+      pick = await pickAccount({ exclude: current });
+      if (run.controller.signal.aborted) {
+        await run.finalized;
+        return 'stop';
+      }
+    }
+    if (!SWITCHABLE.includes(repo.getMission(run.missionId)?.status ?? 'failed')) return 'continue';
+    if (pick?.kind !== 'account') {
+      waitForLimit(run, executionId, current, event, pick);
+      return 'continue';
+    }
+
+    const toAccount = pick.accountId;
+    const fromName = accountName(current);
+    const toName = accountName(toAccount);
+    const oldSession = run.session;
+    if (oldSession !== undefined) {
+      await tryAgent('Não foi possível encerrar a sessão sem limite:', () =>
+        oldSession.stop(LIMIT_STOP_REASON),
+      );
+    }
+    // A leitura da sessão antiga termina sem esperar: o adaptador já parou o terminal.
+    void Promise.resolve(iterator.return?.()).catch(() => undefined);
+    if (run.controller.signal.aborted) {
+      await run.finalized;
+      return 'stop';
+    }
+
+    const notice: AccountSwitchNotice = {
+      missionId: run.missionId,
+      cause: 'limit',
+      fromName,
+      toName,
+      ...(event.resetsAt === undefined ? {} : { resetsAt: event.resetsAt }),
+    };
+    const stepId = repo.transaction(() => {
+      const at = now();
+      repo.updateExecution(executionId, {
+        status: 'failed',
+        exitReason: 'account_limit',
+        finishedAt: at,
+      });
+      const ended = repo.getExecution(executionId)?.stepId;
+      // A tarefa não falhou: ela continua na próxima tentativa.
+      for (const step of stepsOfExecution(repo.listSteps(run.missionId), ended)) {
+        if (step.status === 'running') repo.updateStep(step.id, { status: 'pending' });
+      }
+      expirePendingApprovals(repo, executionId, at);
+      failedAudit(executionId, 'account_limit', 'system')();
+      if (repo.getMission(run.missionId)?.status === 'waiting_input') {
+        moveMission(repo, run.missionId, 'running', { actor: 'system', at });
+      }
+      repo.setMissionAccount(run.missionId, toAccount, at);
+      repo.appendAudit({
+        aggregateType: 'mission',
+        aggregateId: run.missionId,
+        eventType: 'mission.account_switched',
+        severity: 'info',
+        actor: 'system',
+        payload: {
+          cause: notice.cause,
+          fromName,
+          toName,
+          ...(notice.resetsAt === undefined ? {} : { resetsAt: notice.resetsAt }),
+        },
+        createdAt: at,
+      });
+      return ended;
+    });
+    deps.onAccountSwitched?.(notice);
+
+    const switched = repo.getMission(run.missionId);
+    if (switched === undefined) {
+      failChain(run);
+      return 'stop';
+    }
+    const steps = repo.listSteps(run.missionId);
+    const task = stepId === undefined ? undefined : steps.find((step) => step.id === stepId);
+    const base = task === undefined ? promptFor(switched) : taskPrompt(switched, task, steps);
+    const resume: AgentResumeInput | undefined =
+      event.sessionId !== undefined && event.transcriptPath !== undefined
+        ? {
+            sessionId: event.sessionId,
+            transcriptPath: event.transcriptPath,
+            fromAccountId: current,
+            prompt: RESUME_PROMPT,
+          }
+        : undefined;
+    const opened = await beginSession(run, switched, task, {
+      prompt: continuationPrompt(base),
+      ...(resume === undefined ? {} : { resume }),
+    });
+    if (!opened) return 'stop';
+    if (run.session?.resumed !== true) {
+      repo.transaction(() => {
+        repo.appendAudit({
+          aggregateType: 'mission',
+          aggregateId: run.missionId,
+          eventType: 'mission.resume_failed',
+          severity: 'warning',
+          actor: 'system',
+          payload: {},
+          createdAt: now(),
+        });
+      });
+    }
+    return 'switched';
   }
 
   /**
@@ -1136,10 +1467,23 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
   async function launch(
     run: ActiveRun,
-    mission: Mission,
+    asked: Mission,
     project: ProjectRecord,
     queued?: Execution,
   ): Promise<AppResult<Execution>> {
+    let mission = asked;
+    if (exhaustedFor(asked) !== undefined) {
+      const avoided = await avoidExhausted(asked);
+      if (!avoided.ok) {
+        forget(run);
+        return avoided;
+      }
+      if (run.controller.signal.aborted) {
+        forget(run);
+        return failure('MISSION_INVALID_STATE', 'A missão foi cancelada antes de iniciar.');
+      }
+      mission = avoided.data;
+    }
     let workspace: Workspace;
     try {
       workspace = await prepareWorkspace(mission, project);
@@ -1661,10 +2005,16 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
           );
         }
       }
+      let planned = repo.getMission(missionId) ?? mission;
+      if (exhaustedFor(planned) !== undefined) {
+        const avoided = await avoidExhausted(planned);
+        if (!avoided.ok) return avoided;
+        planned = avoided.data;
+      }
       const instruction = options.instruction?.trim();
       return planWithPlanner(
         planner,
-        mission,
+        planned,
         criteria,
         instruction === '' ? undefined : instruction,
       );

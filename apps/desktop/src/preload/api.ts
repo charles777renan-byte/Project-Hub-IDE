@@ -16,6 +16,7 @@ import {
   type LoginDto,
   type LoginEvent,
   type RemoveAccountInput,
+  type SetAutoSwitchInput,
   type RenameAccountInput,
   type AlertNotifyInput,
   type AlertOpenEvent,
@@ -494,6 +495,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       pasteKey: (input: ApiKeyTargetInput) =>
         call<PasteKeyResult>(CHANNELS.accountsPasteKey, input),
       removeKey: (input: ApiKeyTargetInput) => call<void>(CHANNELS.accountsRemoveKey, input),
+      setAutoSwitch: (input: SetAutoSwitchInput) =>
+        call<void>(CHANNELS.accountsSetAutoSwitch, input),
       login: {
         start: (input: AccountTargetInput) => call<LoginDto>(CHANNELS.accountsLoginStart, input),
         get: () => call<LoginDto | null>(CHANNELS.accountsLoginGet),

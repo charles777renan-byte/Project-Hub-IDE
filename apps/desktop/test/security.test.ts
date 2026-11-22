@@ -572,6 +572,7 @@ describe('buildProjectHubApi', () => {
       'remove',
       'removeKey',
       'rename',
+      'setAutoSwitch',
       'setDefault',
     ]);
     // O cofre não tem método que leve senha: destrancar e trocar só abrem a janela do cofre.

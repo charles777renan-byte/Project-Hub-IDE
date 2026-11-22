@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -532,6 +540,131 @@ describe('adaptador do Claude Code: gasto de tokens', () => {
 
     const events = await collect(session.events());
     expect(events.map((event) => event.type)).toEqual(['session.completed']);
+  });
+});
+
+describe('adaptador do Claude Code: limite de uso', () => {
+  const SESSION = '11111111-2222-3333-4444-555555555555';
+  const RESETS_AT = new Date(1792441800_000).toISOString();
+
+  function limitLine(timestamp: string): string {
+    return JSON.stringify({
+      type: 'assistant',
+      timestamp,
+      error: 'rate_limit',
+      isApiErrorMessage: true,
+      apiError: 'usage_limit_reached',
+      apiErrorParams: {
+        rate_limit_info: { status: 'rejected', resetsAt: 1792441800, rateLimitType: 'five_hour' },
+      },
+      message: {
+        model: '<synthetic>',
+        content: [{ type: 'text', text: "You've hit your session limit · resets 5:30pm" }],
+      },
+    });
+  }
+
+  const answer = JSON.stringify({
+    type: 'assistant',
+    message: { id: 'msg_1', model: 'claude-sonnet-5-5', usage: { input_tokens: 1, output_tokens: 3 } },
+  });
+
+  function transcript(lines: string[]): string {
+    const folder = join(dir, 'claude', 'projects', 'C--projeto');
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, `${SESSION}.jsonl`);
+    writeFileSync(file, lines.map((line) => `${line}
+`).join(''));
+    return file;
+  }
+
+  function adapterOf(f: ReturnType<typeof fakes>) {
+    return createClaudeCodeAdapter({
+      ...f,
+      settingsDir: dir,
+      env: {},
+      pollMs: 5,
+      claudeConfigDir: join(dir, 'claude'),
+      usageIntervalMs: 0,
+      usageDrainDelayMs: 0,
+    });
+  }
+
+  async function nextUntil(
+    iterator: AsyncIterator<AgentEvent>,
+    type: AgentEvent['type'],
+  ): Promise<AgentEvent[]> {
+    const seen: AgentEvent[] = [];
+    for (let next = await iterator.next(); next.done !== true; next = await iterator.next()) {
+      seen.push(next.value);
+      if (next.value.type === type) return seen;
+    }
+    return seen;
+  }
+
+  it('emite limit.reached com a janela, a hora, a sessão e o caminho, depois do gasto', async () => {
+    const f = fakes();
+    const session = await adapterOf(f).start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    const file = transcript([answer, limitLine(new Date(Date.now() + 60_000).toISOString())]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION, transcript_path: file });
+
+    const iterator = session.events()[Symbol.asyncIterator]();
+    const seen = await nextUntil(iterator, 'limit.reached');
+    expect(seen.map((event) => event.type)).toEqual([
+      'session.started',
+      'usage.updated',
+      'limit.reached',
+    ]);
+    const limit = seen[2];
+    expect(limit).toMatchObject({
+      type: 'limit.reached',
+      window: 'session',
+      resetsAt: RESETS_AT,
+      sessionId: SESSION,
+      at: expect.any(String) as unknown,
+    });
+    expect(limit?.type === 'limit.reached' ? limit.transcriptPath?.toLowerCase() : '').toBe(
+      realpathSync.native(file).toLowerCase(),
+    );
+    f.push({ hook_event_name: 'SessionEnd' });
+    await nextUntil(iterator, 'session.completed');
+  });
+
+  it('volta a esperar resposta e libera na próxima atividade', async () => {
+    const f = fakes();
+    const session = await adapterOf(f).start(
+      { cwd: 'C:\\projeto', prompt: 'x' },
+      new AbortController().signal,
+    );
+    const file = transcript([limitLine(new Date(Date.now() + 60_000).toISOString())]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION, transcript_path: file });
+    const iterator = session.events()[Symbol.asyncIterator]();
+    await nextUntil(iterator, 'limit.reached');
+
+    f.push({ hook_event_name: 'PostToolUse', tool_use_id: 't1' });
+    f.push({ hook_event_name: 'SessionEnd' });
+    const rest = await nextUntil(iterator, 'session.completed');
+    expect(rest.map((event) => event.type)).toEqual([
+      'input.received',
+      'tool.completed',
+      'session.completed',
+    ]);
+  });
+
+  it('não repete o limite antigo na reanexação', async () => {
+    const f = fakes();
+    const file = transcript([answer, limitLine(new Date(Date.now() - 60_000).toISOString())]);
+    f.push({ hook_event_name: 'SessionStart', session_id: SESSION, transcript_path: file });
+    f.push({ hook_event_name: 'Stop' });
+    f.push({ hook_event_name: 'SessionEnd' });
+    const attached = await adapterOf(f).attach?.('exec-1', '2');
+    if (attached === undefined) throw new Error('a reanexação deveria acontecer');
+
+    const events = await collect(attached.events());
+    expect(events.map((event) => event.type)).toEqual(['usage.updated', 'session.completed']);
   });
 });
 

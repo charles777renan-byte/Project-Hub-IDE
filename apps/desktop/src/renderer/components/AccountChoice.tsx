@@ -2,14 +2,15 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import type { AccountDto } from '@project-hub/contracts';
 import { ApiBadge } from './ApiBadge';
-import { CircleAlert, CircleSlash, ICON_PROPS, Lock, type LucideIcon } from './Icon';
+import { clockOf } from '../limit-time';
+import { CircleAlert, CircleSlash, Clock, ICON_PROPS, Lock, type LucideIcon } from './Icon';
 
 /**
  * O que a lista precisa saber de cada conta: o id (`null` é a Principal), o nome, se é a padrão e o estado. Na conta
  * por chave de API, o tipo e o estado da chave dizem se ela pode ser escolhida.
  */
 export type AccountChoiceItem = Pick<AccountDto, 'id' | 'name' | 'isDefault' | 'state'> &
-  Partial<Pick<AccountDto, 'kind' | 'keyState'>>;
+  Partial<Pick<AccountDto, 'kind' | 'keyState' | 'exhaustedUntil'>>;
 
 const TEXT = {
   defaultTag: 'Padrão',
@@ -17,6 +18,7 @@ const TEXT = {
   noKey: 'Sem chave',
   badKey: 'Chave ilegível',
   locked: 'Cofre trancado',
+  exhausted: (time: string) => `Sem limite até ${time}`,
 } as const;
 
 /** O estado que aparece ao lado da conta, quando há algo a dizer. */
@@ -27,9 +29,13 @@ function stateOf(account: AccountChoiceItem): { label: string; icon: LucideIcon 
     }
     if (account.keyState === 'unreadable') return { label: TEXT.badKey, icon: CircleAlert };
     if (account.keyState === 'locked') return { label: TEXT.locked, icon: Lock };
-    return undefined;
+  } else if (account.state === 'signed-out') {
+    return { label: TEXT.noLogin, icon: CircleSlash };
   }
-  return account.state === 'signed-out' ? { label: TEXT.noLogin, icon: CircleSlash } : undefined;
+  // O limite vem depois da chave e do login: a conta continua escolhível, só avisa até quando.
+  return account.exhaustedUntil === undefined
+    ? undefined
+    : { label: TEXT.exhausted(clockOf(account.exhaustedUntil, new Date())), icon: Clock };
 }
 
 /**

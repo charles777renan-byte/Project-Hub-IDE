@@ -10,6 +10,7 @@ import {
   type AppResult,
   type RemoveAccountInput,
   type RenameAccountInput,
+  type SetAutoSwitchInput,
 } from '@project-hub/contracts';
 import type {
   AccountRecord,
@@ -19,6 +20,14 @@ import type {
 import type { ProviderRegistry } from '../providers';
 import type { AccountCli, AccountStatus } from './account-cli';
 import type { AccountPaths } from './account-paths';
+import {
+  AUTO_SWITCH_API_KEY,
+  AUTO_SWITCH_KEY,
+  autoSwitchSettingsOf,
+  candidateOrder,
+  preferredAccount,
+  type CandidateFacts,
+} from './account-switch';
 import { VAULT_LOCKED, VAULT_UNAVAILABLE, type AccountVault } from './account-vault';
 import { API_KEY_ONLY_CLAUDE, isApiKeyProvider } from './api-key-shape';
 
@@ -35,6 +44,7 @@ export type AccountsService = {
   setDefault(input: AccountTargetInput): Promise<AppResult<undefined>>;
   disconnect(input: AccountTargetInput): Promise<AppResult<undefined>>;
   remove(input: RemoveAccountInput): Promise<AppResult<undefined>>;
+  setAutoSwitch(input: SetAutoSwitchInput): Promise<AppResult<undefined>>;
 };
 
 export type AccountsServiceDeps = {
@@ -49,11 +59,15 @@ export type AccountsServiceDeps = {
   now: () => string;
   /** Títulos dos painéis abertos com a conta. Enquanto houver algum, ela não é desconectada nem removida. */
   liveSessionsOf: (provider: AccountProviderId, accountId: string | null) => Promise<string[]>;
+  /** Até quando o limite de uso da conta está esgotado (ISO); `undefined` se não está. */
+  exhaustedUntil(provider: AccountProviderId, accountId: string | null): string | undefined;
 };
 
 const DONE: AppResult<undefined> = { ok: true, data: undefined };
 const GONE = 'A conta não existe mais.';
 const NEEDS_KEY = 'Cole a chave de API antes de tornar esta conta a padrão.';
+const NEEDS_ANOTHER_ACCOUNT = 'Adicione outra conta para usar a troca automática.';
+const NEEDS_AUTO_SWITCH = 'Ligue antes a troca de conta.';
 const API_NOT_SIGNED_IN =
   'Conta por chave de API não tem login: para deixar de usá-la, remova a chave.';
 /** O estado de uma conta API: o programa nunca é chamado para ela. */
@@ -105,6 +119,7 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
     record: AccountRecord | null,
     isDefault: boolean,
     status: AccountStatus,
+    exhaustedUntil?: string,
   ): AccountDto {
     return {
       id: record?.id ?? null,
@@ -118,6 +133,7 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
       // A Principal é sempre de assinatura.
       kind: record?.kind ?? 'subscription',
       ...(record?.kind === 'api' ? keyOf(record) : {}),
+      ...(exhaustedUntil === undefined ? {} : { exhaustedUntil }),
     };
   }
 
@@ -155,17 +171,44 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
                 : cli.status(provider, record?.id ?? null),
             ),
           );
+          const autoSwitch = autoSwitchSettingsOf(settings, provider);
+          const facts = new Map<string | null, CandidateFacts>();
+          const dtos = records.map((record, index) => {
+            const accountId = record?.id ?? null;
+            const status = statuses[index] ?? { state: 'unknown' };
+            const exhaustedUntil = deps.exhaustedUntil(provider, accountId);
+            const dto = toDto(
+              provider,
+              record,
+              record === null ? defaultId === undefined : record.id === defaultId,
+              status,
+              exhaustedUntil,
+            );
+            facts.set(accountId, {
+              accountId,
+              removed: false,
+              kind: dto.kind,
+              ...(dto.keyState === undefined ? {} : { keyState: dto.keyState }),
+              connected: status.state === 'connected',
+              ...(exhaustedUntil === undefined ? {} : { exhaustedUntil }),
+            });
+            return dto;
+          });
+          const defaultRef = defaultId ?? null;
           return {
             provider,
             installed: providers.resolve(provider).ok,
-            accounts: records.map((record, index) =>
-              toDto(
-                provider,
-                record,
-                record === null ? defaultId === undefined : record.id === defaultId,
-                statuses[index] ?? { state: 'unknown' },
+            accounts: dtos,
+            autoSwitch,
+            preferredId: preferredAccount({
+              defaultId: defaultRef,
+              order: candidateOrder(
+                defaultRef,
+                extras.map((account) => account.id),
               ),
-            ),
+              facts,
+              settings: autoSwitch,
+            }),
           };
         }),
       );
@@ -177,6 +220,27 @@ export function createAccountsService(deps: AccountsServiceDeps): AccountsServic
         }),
       );
       return { ok: true, data: { groups, others } };
+    },
+
+    setAutoSwitch(input) {
+      const key =
+        input.option === 'enabled' ? AUTO_SWITCH_KEY(input.provider) : AUTO_SWITCH_API_KEY;
+      if (input.value) {
+        // A Principal conta: com uma extra, já são duas.
+        if (accounts.list(input.provider).length === 0) {
+          return Promise.resolve(failure('VALIDATION_FAILED', NEEDS_ANOTHER_ACCOUNT));
+        }
+        if (input.option === 'includeApi') {
+          if (!isApiKeyProvider(input.provider)) {
+            return Promise.resolve(failure('VALIDATION_FAILED', API_KEY_ONLY_CLAUDE));
+          }
+          if (!autoSwitchSettingsOf(settings, input.provider).enabled) {
+            return Promise.resolve(failure('VALIDATION_FAILED', NEEDS_AUTO_SWITCH));
+          }
+        }
+      }
+      settings.set(key, input.value ? 'true' : 'false', deps.now());
+      return Promise.resolve(DONE);
     },
 
     async add(input) {

@@ -1,6 +1,11 @@
 import type { AlertNotifyInput, AlertOpenEvent } from '@project-hub/contracts';
-import type { MissionRepository, ProjectRepository } from '@project-hub/application';
+import type {
+  AccountSwitchNotice,
+  MissionRepository,
+  ProjectRepository,
+} from '@project-hub/application';
 import type { Mission } from '@project-hub/domain';
+import { accountSwitchText } from './quota-message';
 import type { TerminalService } from './terminals';
 
 /** A parte do `Notification` do Electron que o serviço usa. Os testes trocam por um dublê. */
@@ -33,11 +38,18 @@ export type AlertServiceDeps = {
    * Ausente: nenhuma missão espera o cofre.
    */
   vaultWaiting?: (mission: Mission) => boolean;
+  /** O relógio da frase da troca (a hora da renovação). Ausente: a hora atual. */
+  now?: () => Date;
 };
 
 export type AlertService = {
   /** Mostra a notificação do item, se ele ainda espera, se o projeto não está silenciado e se a janela está sem foco. */
   notify(input: AlertNotifyInput): Promise<void>;
+  /**
+   * A missão trocou de conta sozinha. Avisa com as duas contas (e a hora da renovação, quando se sabe), nas mesmas
+   * regras do `notify`: projeto silenciado ou janela atenta não recebem nada.
+   */
+  notifyAccountSwitch(notice: AccountSwitchNotice): void;
   /** A janela ganhou o foco: para de piscar. */
   windowFocused(): void;
 };
@@ -128,7 +140,56 @@ export function createAlertService(deps: AlertServiceDeps): AlertService {
     deps.publishOpen(event);
   }
 
+  /** Mostra o aviso, substituindo o anterior do mesmo item, e pisca a janela. */
+  function show(
+    win: AlertWindow,
+    key: string,
+    content: { title: string; body: string },
+    event: AlertOpenEvent,
+  ): void {
+    shown.get(key)?.close();
+    const notification = deps.createNotification(content);
+    notification.on('click', () => open(key, event, notification));
+    notification.on('close', () => {
+      if (shown.get(key) === notification) shown.delete(key);
+    });
+    shown.set(key, notification);
+    notification.show();
+    win.flashFrame(true);
+  }
+
+  function switchReason(notice: AccountSwitchNotice): string {
+    if (notice.cause === 'opening') {
+      return `A conta ${notice.fromName} está sem limite. A missão vai rodar na conta ${notice.toName}.`;
+    }
+    return accountSwitchText(
+      {
+        fromName: notice.fromName,
+        toName: notice.toName,
+        ...(notice.resetsAt === undefined ? {} : { resetsAt: notice.resetsAt }),
+      },
+      deps.now?.() ?? new Date(),
+    );
+  }
+
   return {
+    notifyAccountSwitch(notice) {
+      const win = deps.window();
+      if (win === undefined || win.isDestroyed() || attentive(win)) return;
+      const mission = deps.missions.getMission(notice.missionId);
+      if (mission === undefined) return;
+      const project = deps.projects.get(mission.projectId);
+      if (project === undefined || project.muted === true) return;
+      show(
+        win,
+        `mission:${mission.id}`,
+        {
+          title: mission.title,
+          body: `${project.nickname ?? project.name} · ${switchReason(notice)}`,
+        },
+        { kind: 'mission', projectId: mission.projectId, id: mission.id },
+      );
+    },
     async notify(input) {
       const before = deps.window();
       if (before === undefined || before.isDestroyed() || attentive(before)) return;
@@ -140,20 +201,12 @@ export function createAlertService(deps: AlertServiceDeps): AlertService {
       const win = deps.window();
       if (win === undefined || win.isDestroyed() || attentive(win)) return;
 
-      const key = `${input.kind}:${input.id}`;
-      shown.get(key)?.close();
-      const notification = deps.createNotification({
-        title: alert.title,
-        body: `${project.nickname ?? project.name} · ${alert.reason}`,
-      });
-      const event: AlertOpenEvent = { kind: input.kind, projectId: alert.projectId, id: input.id };
-      notification.on('click', () => open(key, event, notification));
-      notification.on('close', () => {
-        if (shown.get(key) === notification) shown.delete(key);
-      });
-      shown.set(key, notification);
-      notification.show();
-      win.flashFrame(true);
+      show(
+        win,
+        `${input.kind}:${input.id}`,
+        { title: alert.title, body: `${project.nickname ?? project.name} · ${alert.reason}` },
+        { kind: input.kind, projectId: alert.projectId, id: input.id },
+      );
     },
     windowFocused() {
       const win = deps.window();

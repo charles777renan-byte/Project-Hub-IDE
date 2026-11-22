@@ -511,6 +511,32 @@ describe('WorkspaceToolbar: escolha da conta', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('marca a conta preferida em vez da padrão', async () => {
+    setup({ accounts: duas, preferred: { claude: null } });
+
+    await abrirClaude();
+
+    expect(screen.getByRole('option', { name: /Principal/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('option', { name: /Trabalho/ })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
+
+  it('sem preferida para o programa, marca a padrão', async () => {
+    setup({ accounts: duas, preferred: {} });
+
+    await abrirClaude();
+
+    expect(screen.getByRole('option', { name: /Trabalho/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
   it('a conta API mostra o selo no seletor do painel; sem chave, não abre', async () => {
     const K = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     const { onOpen } = setup({

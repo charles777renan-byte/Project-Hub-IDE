@@ -106,6 +106,42 @@ describe('AccountChoice', () => {
   });
 });
 
+describe('AccountChoice: conta sem limite', () => {
+  const soon = () => new Date(Date.now() + 2 * 3_600_000).toISOString();
+  const clock = (iso: string) =>
+    new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  it('mostra "Sem limite até" a hora, com ícone, e deixa escolher', async () => {
+    const until = soon();
+    const { onChange } = setup({
+      accounts: [
+        { id: null, name: 'Principal', isDefault: true, state: 'connected' },
+        { id: X, name: 'Trabalho', isDefault: false, state: 'connected', exhaustedUntil: until },
+      ],
+    });
+
+    const option = screen.getByRole('option', { name: /Trabalho/ });
+    expect(option).toHaveTextContent(`Sem limite até ${clock(until)}`);
+    expect(option.querySelector('.account-choice__state svg')).not.toBeNull();
+    expect(option).not.toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(option);
+    expect(onChange).toHaveBeenCalledWith(X);
+  });
+
+  it('o estado do login vem antes do limite', () => {
+    setup({
+      accounts: [
+        { id: Y, name: 'Cliente', isDefault: false, state: 'signed-out', exhaustedUntil: soon() },
+      ],
+      value: Y,
+    });
+
+    const option = screen.getByRole('option', { name: /Cliente/ });
+    expect(option).toHaveTextContent('Sem login');
+    expect(option).not.toHaveTextContent('Sem limite');
+  });
+});
+
 describe('AccountChoice: conta por chave de API', () => {
   const K = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const L = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';

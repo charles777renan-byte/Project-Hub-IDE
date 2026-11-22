@@ -59,6 +59,7 @@ export const PARTES_DA_INTEGRACAO: Readonly<Record<string, 1 | 2 | 3>> = {
   'packages/database/test/browser-tab-repository.integration.test.ts': 3, // 1 s
   'packages/database/test/project-preview-repository.integration.test.ts': 3, // 1 s (estimativa; medir no CI)
   'packages/database/test/migrate-review.integration.test.ts': 3, // 0 s
+  'packages/database/test/migrate-exit-reason.integration.test.ts': 3, // 1 s (estimativa)
   'apps/desktop/test/terminal-host/claude-agent.integration.test.ts': 3, // 0 s
   'apps/desktop/test/terminal-host/hook-receiver.integration.test.ts': 3, // 0 s
   'packages/git-adapter/test/missing-git.integration.test.ts': 3, // 0 s

@@ -134,6 +134,7 @@ test.describe('renderer isolado', () => {
       'remove',
       'removeKey',
       'rename',
+      'setAutoSwitch',
       'setDefault',
     ]);
     expect(surface?.vault).toEqual([

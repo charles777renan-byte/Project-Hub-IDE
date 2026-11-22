@@ -11,6 +11,10 @@ import type { AccountPaths } from '../../src/main/accounts/account-paths';
 import { VAULT_UNAVAILABLE } from '../../src/main/accounts/account-vault';
 import { API_KEY_ONLY_CLAUDE } from '../../src/main/accounts/api-key-service';
 import {
+  AUTO_SWITCH_API_KEY,
+  AUTO_SWITCH_KEY,
+} from '../../src/main/accounts/account-switch';
+import {
   createAccountsService,
   DEFAULT_ACCOUNT_KEY,
 } from '../../src/main/accounts/accounts-service';
@@ -77,6 +81,7 @@ function setup(
     extraRows?: AccountRecord[];
     keyStates?: Record<string, KeyState>;
     vaultAvailable?: boolean;
+    exhausted?: Record<string, string>;
   } = {},
 ) {
   const accounts = memoryAccounts([
@@ -143,6 +148,8 @@ function setup(
     newId: () => NEW,
     now: () => NOW,
     liveSessionsOf: () => Promise.resolve(options.live ?? []),
+    exhaustedUntil: (provider, accountId) =>
+      options.exhausted?.[`${provider}:${accountId ?? 'principal'}`],
   });
   return { service, accounts, settings, log, vault, statusCalls };
 }
@@ -207,6 +214,8 @@ describe('list', () => {
                 kind: 'subscription',
               },
             ],
+            autoSwitch: { enabled: false, includeApi: false },
+            preferredId: A,
           },
           {
             provider: 'codex',
@@ -222,6 +231,8 @@ describe('list', () => {
                 kind: 'subscription',
               },
             ],
+            autoSwitch: { enabled: false, includeApi: false },
+            preferredId: null,
           },
         ],
         others: [
@@ -595,5 +606,91 @@ describe('conta por chave de API', () => {
 
     expect((await h.service.remove({ accountId: API, force: false })).ok).toBe(false);
     expect(h.vault.remove).not.toHaveBeenCalled();
+  });
+});
+
+const LATER = '2026-11-21T20:10:00.000Z';
+
+describe('troca automática de conta', () => {
+  function groupOf(result: Awaited<ReturnType<ReturnType<typeof setup>['service']['list']>>) {
+    if (!result.ok) throw new Error('a lista deveria funcionar');
+    const group = result.data.groups.find((item) => item.provider === 'claude');
+    if (group === undefined) throw new Error('o grupo do Claude deveria existir');
+    return group;
+  }
+
+  it('lista a opção desligada e a padrão como preferida, sem nada gravado', async () => {
+    const { service } = setup();
+    expect(groupOf(await service.list())).toMatchObject({
+      autoSwitch: { enabled: false, includeApi: false },
+      preferredId: null,
+    });
+  });
+
+  it('com a opção ligada e a padrão esgotada, a preferida é a próxima conectada', async () => {
+    const { service, settings } = setup({
+      statuses: {
+        'claude:principal': { state: 'connected' },
+        [`claude:${A}`]: { state: 'signed-out' },
+        [`claude:${B}`]: { state: 'connected' },
+      },
+      exhausted: { 'claude:principal': LATER },
+    });
+    settings.set(AUTO_SWITCH_KEY('claude'), 'true', NOW);
+    expect(groupOf(await service.list())).toMatchObject({
+      autoSwitch: { enabled: true, includeApi: false },
+      preferredId: B,
+    });
+  });
+
+  it('com a opção desligada, a preferida é a padrão mesmo esgotada', async () => {
+    const { service } = setup({
+      statuses: { [`claude:${B}`]: { state: 'connected' } },
+      exhausted: { 'claude:principal': LATER },
+    });
+    expect(groupOf(await service.list()).preferredId).toBeNull();
+  });
+
+  it('mostra exhaustedUntil só na conta esgotada', async () => {
+    const { service } = setup({ exhausted: { [`claude:${A}`]: LATER } });
+    const accounts = groupOf(await service.list()).accounts;
+    expect(accounts.find((account) => account.id === A)?.exhaustedUntil).toBe(LATER);
+    expect(accounts.find((account) => account.id === null)).not.toHaveProperty('exhaustedUntil');
+    expect(accounts.find((account) => account.id === B)).not.toHaveProperty('exhaustedUntil');
+  });
+
+  it('recusa ligar com uma conta só', async () => {
+    const { service, settings } = setup();
+    expect(await service.setAutoSwitch({ provider: 'codex', option: 'enabled', value: true })).toEqual(
+      failure('VALIDATION_FAILED', 'Adicione outra conta para usar a troca automática.'),
+    );
+    expect(settings.values.has(AUTO_SWITCH_KEY('codex'))).toBe(false);
+  });
+
+  it('liga e grava a opção', async () => {
+    const { service, settings } = setup();
+    expect(
+      await service.setAutoSwitch({ provider: 'claude', option: 'enabled', value: true }),
+    ).toEqual({ ok: true, data: undefined });
+    expect(settings.values.get(AUTO_SWITCH_KEY('claude'))).toBe('true');
+  });
+
+  it('recusa incluir API com a troca desligada; desligar sempre vale', async () => {
+    const { service, settings } = setup();
+    expect(
+      await service.setAutoSwitch({ provider: 'claude', option: 'includeApi', value: true }),
+    ).toEqual(failure('VALIDATION_FAILED', 'Ligue antes a troca de conta.'));
+    expect(settings.values.has(AUTO_SWITCH_API_KEY)).toBe(false);
+
+    await service.setAutoSwitch({ provider: 'claude', option: 'enabled', value: true });
+    expect(
+      await service.setAutoSwitch({ provider: 'claude', option: 'includeApi', value: true }),
+    ).toEqual({ ok: true, data: undefined });
+    expect(settings.values.get(AUTO_SWITCH_API_KEY)).toBe('true');
+
+    expect(
+      await service.setAutoSwitch({ provider: 'codex', option: 'enabled', value: false }),
+    ).toEqual({ ok: true, data: undefined });
+    expect(settings.values.get(AUTO_SWITCH_KEY('codex'))).toBe('false');
   });
 });

@@ -9,6 +9,7 @@ import {
   type MessageUsage,
   type UsageSummary,
 } from '@project-hub/domain';
+import { readLimitLine, type LimitHit } from './transcript-limit';
 
 /**
  * A pasta de dados do Claude Code que o terminal vai usar: `CLAUDE_CONFIG_DIR` do ambiente do terminal
@@ -149,6 +150,7 @@ function isFile(path: string): boolean {
 
 type Session = {
   path: string;
+  sessionId: string;
   /** `pending` até o arquivo existir; `ok` depois de conferido; `rejected` para sempre. */
   state: 'pending' | 'ok' | 'rejected';
 };
@@ -168,6 +170,11 @@ export type TranscriptUsageTracker = {
    * nunca conta. Sem nenhuma resposta com uso, `undefined`.
    */
   latestContext(): { model: string; usedTokens: number } | undefined;
+  /**
+   * As linhas de limite de uso lidas nos transcripts principais desde a última chamada (e esvazia a fila).
+   * Linha de subagente não conta, e a anterior a `limitsSince` também não.
+   */
+  takeLimitHits(): LimitHit[];
 };
 
 /**
@@ -179,11 +186,18 @@ export type TranscriptUsageTracker = {
 export function createTranscriptUsageTracker(options: {
   /** Pasta de dados do Claude Code (`CLAUDE_CONFIG_DIR`, ou `~/.claude`). */
   configDir: string;
+  /**
+   * Linhas de limite com `timestamp` anterior a este instante (epoch ms) são ignoradas: a reanexação e o
+   * transcript copiado de outra conta não disparam de novo um limite que já passou.
+   */
+  limitsSince?: number;
 }): TranscriptUsageTracker {
   const projectsRoot = join(options.configDir, 'projects');
   const sessions = new Map<string, Session>();
   const offsets = new Map<string, number>();
   const messages = new Map<string, MessageUsage>();
+  const limitHits: LimitHit[] = [];
+  const limitsSince = options.limitsSince ?? Number.NEGATIVE_INFINITY;
   let lastEmitted = '';
   /** A resposta principal mais recente. Sem `timestamp` em um dos lados, vale a ordem de leitura. */
   let latest: { id: string; at: number | undefined; usage: MessageUsage } | undefined;
@@ -242,7 +256,7 @@ export function createTranscriptUsageTracker(options: {
     if (newer) latest = { id: parsed.id, at: parsed.at, usage: parsed.usage };
   }
 
-  async function readNew(file: string, isMain: boolean): Promise<void> {
+  async function readNew(file: string, main: Session | undefined): Promise<void> {
     let handle;
     try {
       handle = await open(file, 'r');
@@ -263,7 +277,13 @@ export function createTranscriptUsageTracker(options: {
         const parsed = readUsageLine(line);
         if (parsed !== undefined) {
           messages.set(parsed.id, mergeUsage(messages.get(parsed.id), parsed.usage));
-          if (isMain) trackLatest(parsed);
+          if (main !== undefined) trackLatest(parsed);
+          continue;
+        }
+        if (main === undefined) continue;
+        const limit = readLimitLine(line);
+        if (limit !== undefined && limit.at >= limitsSince) {
+          limitHits.push({ ...limit, sessionId: main.sessionId, transcriptPath: main.path });
         }
       }
     } finally {
@@ -282,6 +302,7 @@ export function createTranscriptUsageTracker(options: {
         relative(projectsRoot, transcriptPath).split(sep).length === 2;
       sessions.set(transcriptPath, {
         path: transcriptPath,
+        sessionId,
         state: lexicallyValid ? 'pending' : 'rejected',
       });
     },
@@ -290,8 +311,8 @@ export function createTranscriptUsageTracker(options: {
       for (const session of sessions.values()) {
         verify(session);
         if (session.state !== 'ok') continue;
-        await readNew(session.path, true);
-        for (const file of subagentFiles(session.path)) await readNew(file, false);
+        await readNew(session.path, session);
+        for (const file of subagentFiles(session.path)) await readNew(file, undefined);
       }
       if (messages.size === 0) return undefined;
       const summary = summarizeUsage(messages.values());
@@ -306,6 +327,10 @@ export function createTranscriptUsageTracker(options: {
       if (latest === undefined || latest.usage.model.length > MODEL_NAME_MAX_LENGTH)
         return undefined;
       return { model: latest.usage.model, usedTokens: contextTokensOf(latest.usage) };
+    },
+
+    takeLimitHits() {
+      return limitHits.splice(0, limitHits.length);
     },
   };
 }

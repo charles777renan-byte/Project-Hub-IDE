@@ -10,6 +10,7 @@ import {
   decisionAnnouncement,
   decisionTextOf,
   lastInputPrompt,
+  limitNotice,
   primaryActionOf,
   verifiedCriteria,
   type PrimaryAction,
@@ -17,6 +18,7 @@ import {
 import { AccountChoice, type AccountChoiceItem } from '../AccountChoice';
 import { ApiBadge } from '../ApiBadge';
 import { ApprovalCard } from '../ApprovalCard';
+import { Clock, ICON_PROPS } from '../Icon';
 import { revealDecision, useDecisionOutOfView } from './decision-visibility';
 
 /** Limite da instrução do novo plano, o mesmo do contrato (`planMissionInputSchema`). */
@@ -221,6 +223,8 @@ export function DecisionBlock({
   /** Uma regra só: com qualquer chamada em curso, planejar inclusive, nada do bloco muda o plano. */
   const locked = busy || planning;
   const prompt = lastInputPrompt(events) ?? DECISION_TEXT.answerPromptFallback;
+  /** O limite da conta acabou sem troca: o motivo da espera e o que fazer, acima da resposta. */
+  const limit = waitingInput ? limitNotice(events, new Date()) : undefined;
   /** Critérios da missão comprovados pelas verificações que passaram na execução da conclusão (X de Y). */
   const verified = verifiedCriteria(eventsOfConclusion(events));
   const criteriaTotal = view.mission.acceptanceCriteria.length;
@@ -391,6 +395,13 @@ export function DecisionBlock({
             onDecide={(decision) => onDecide(approval.id, decision)}
           />
         ))}
+
+        {limit !== undefined ? (
+          <p className="decision-block__limit">
+            <Clock {...ICON_PROPS} />
+            <span>{limit}</span>
+          </p>
+        ) : null}
 
         {waitingInput ? (
           <form className="form" aria-label="Resposta ao agente" onSubmit={handleAnswer}>

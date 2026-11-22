@@ -120,7 +120,34 @@ export interface AccountDirectory {
   vaultLocked?(accountId: string): boolean;
   /** O tipo da conta: assinatura ou chave de API (cobra por uso). Ausente: todas são de assinatura. */
   kindOf?(accountId: string | null): 'subscription' | 'api';
+  /** A troca automática de conta está ligada para o Claude Code. Ausente: desligada. */
+  autoSwitchEnabled?(): boolean;
+  /** Até quando o limite da conta está esgotado (ISO); `undefined` se não está. */
+  exhaustedUntil?(accountId: string | null): string | undefined;
+  /** Marca a conta como esgotada até `until` (ISO): a linha de limite chegou antes da leitura do uso. */
+  markExhausted?(accountId: string | null, until: string): void;
+  /** A próxima conta que serve para a troca, fora `exclude`. */
+  pickAccount?(input: { exclude: string | null }): Promise<AccountPick>;
+  /** A frase da cota esgotada da conta (a do planejador, com a marcação); `undefined` se a conta tem limite. */
+  limitMessage?(accountId: string | null): string | undefined;
 }
+
+/** O aviso de uma troca automática de conta: pelo limite no meio da missão, ou na abertura de uma tarefa. */
+export type AccountSwitchNotice = {
+  missionId: string;
+  cause: 'limit' | 'opening';
+  fromName: string;
+  toName: string;
+  resetsAt?: string;
+};
+
+/**
+ * A próxima conta da troca automática, ou nenhuma. `resetsAt` (ISO): a renovação mais próxima entre as candidatas
+ * esgotadas, quando alguma tem hora conhecida.
+ */
+export type AccountPick =
+  | { kind: 'account'; accountId: string | null }
+  | { kind: 'none'; resetsAt?: string };
 
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
 export interface FileSystemPort {

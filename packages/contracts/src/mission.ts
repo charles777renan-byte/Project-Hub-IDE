@@ -45,6 +45,7 @@ export const EXIT_REASON_VALUES = [
   'approval_rejected',
   'cancelled_by_user',
   'interrupted_by_restart',
+  'account_limit',
 ] as const;
 export const APPROVAL_STATUS_VALUES = ['pending', 'approved', 'rejected', 'expired'] as const;
 export const AUDIT_SEVERITY_VALUES = ['debug', 'info', 'warning', 'error'] as const;

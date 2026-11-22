@@ -2,6 +2,7 @@ import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -457,5 +458,72 @@ describe('claudeConfigDirOf', () => {
     expect(claudeConfigDirOf({})).toBe(fallback);
     expect(claudeConfigDirOf({ CLAUDE_CONFIG_DIR: '' })).toBe(fallback);
     expect(claudeConfigDirOf({ CLAUDE_CONFIG_DIR: undefined })).toBe(fallback);
+  });
+});
+
+/** Linha de limite do Claude Code no formato novo, com o timestamp dado. */
+function limitLine(timestamp: string): string {
+  return JSON.stringify({
+    type: 'assistant',
+    timestamp,
+    error: 'rate_limit',
+    isApiErrorMessage: true,
+    apiError: 'usage_limit_reached',
+    apiErrorParams: {
+      rate_limit_info: { status: 'rejected', resetsAt: 1792441800, rateLimitType: 'five_hour' },
+    },
+    message: {
+      model: '<synthetic>',
+      content: [
+        { type: 'text', text: "You've hit your session limit · resets 5:30pm (America/Sao_Paulo)" },
+      ],
+    },
+  });
+}
+
+describe('takeLimitHits', () => {
+  it('devolve cada linha de limite do transcript principal uma vez, com a sessão e o caminho real', async () => {
+    writeFileSync(sessionFile(), `${assistantLine('msg_1', { output: 1 })}\n${limitLine(T2)}\n`);
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+    await tracker.poll();
+
+    const hits = tracker.takeLimitHits();
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      window: 'session',
+      resetsAt: new Date(1792441800_000).toISOString(),
+      at: Date.parse(T2),
+      sessionId: SESSION,
+    });
+    expect(hits[0]?.transcriptPath.toLowerCase()).toBe(
+      realpathSync.native(sessionFile()).toLowerCase(),
+    );
+    expect(tracker.takeLimitHits()).toEqual([]);
+    await tracker.poll();
+    expect(tracker.takeLimitHits()).toEqual([]);
+  });
+
+  it('ignora a linha de limite anterior ao início da leitura', async () => {
+    writeFileSync(sessionFile(), `${limitLine(T1)}\n`);
+    const tracker = createTranscriptUsageTracker({ configDir, limitsSince: Date.parse(T2) });
+    tracker.addSession(sessionFile(), SESSION);
+    await tracker.poll();
+    expect(tracker.takeLimitHits()).toEqual([]);
+
+    appendFileSync(sessionFile(), `${limitLine(T3)}\n`);
+    await tracker.poll();
+    expect(tracker.takeLimitHits()).toHaveLength(1);
+  });
+
+  it('ignora linha de limite em transcript de subagente', async () => {
+    writeFileSync(sessionFile(), `${assistantLine('msg_1', { output: 1 })}\n`);
+    const subagents = join(projectDir, SESSION, 'subagents');
+    mkdirSync(subagents, { recursive: true });
+    writeFileSync(join(subagents, 'agent-abc123.jsonl'), `${limitLine(T2)}\n`);
+    const tracker = createTranscriptUsageTracker({ configDir });
+    tracker.addSession(sessionFile(), SESSION);
+    await tracker.poll();
+    expect(tracker.takeLimitHits()).toEqual([]);
   });
 });

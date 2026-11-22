@@ -15,7 +15,11 @@ function setup() {
       listeners.set(channel, listener);
     },
   };
-  const service: AlertService = { notify: vi.fn(() => Promise.resolve()), windowFocused: vi.fn() };
+  const service: AlertService = {
+    notify: vi.fn(() => Promise.resolve()),
+    notifyAccountSwitch: vi.fn(),
+    windowFocused: vi.fn(),
+  };
   registerAlertHandlers(registry, isTrusted, service);
   const call = (payload: unknown, url = TRUSTED) =>
     listeners.get(CHANNELS.alertsNotify)?.(

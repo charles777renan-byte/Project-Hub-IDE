@@ -79,6 +79,7 @@ function harness(
     focused?: boolean;
     minimized?: boolean;
     vaultWaiting?: (mission: Mission) => boolean;
+    now?: Date;
   } = {},
 ) {
   const notifications: FakeNotification[] = [];
@@ -125,6 +126,7 @@ function harness(
     },
     publishOpen: (event) => opened.push(event),
     ...(options.vaultWaiting === undefined ? {} : { vaultWaiting: options.vaultWaiting }),
+    ...(options.now === undefined ? {} : { now: () => options.now as Date }),
   };
   return { service: createAlertService(deps), notifications, opened, win };
 }
@@ -252,6 +254,79 @@ describe('createAlertService', () => {
     service.windowFocused();
 
     expect(win.flashFrame).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('notifyAccountSwitch', () => {
+  const NOW = new Date('2026-11-17T12:00:00.000Z');
+  const RESET = '2026-11-17T14:10:00.000Z';
+  const clock = (iso: string) =>
+    new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  it('avisa a troca pelo limite com as duas contas e a hora', () => {
+    const { service, notifications, win } = harness({
+      mission: mission({ status: 'running' }),
+      now: NOW,
+    });
+
+    service.notifyAccountSwitch({
+      missionId: 'm1',
+      cause: 'limit',
+      fromName: 'Trabalho',
+      toName: 'Pessoal',
+      resetsAt: RESET,
+    });
+
+    expect(notifications.map((item) => item.options)).toEqual([
+      {
+        title: 'Corrigir login',
+        body: `Loja · Limite da conta Trabalho acabou (renova às ${clock(RESET)}). A missão continuou na conta Pessoal.`,
+      },
+    ]);
+    expect(notifications[0]?.shown).toBe(true);
+    expect(win.flashFrame).toHaveBeenCalledWith(true);
+  });
+
+  it('na abertura da tarefa, diz que a conta está sem limite e onde a missão vai rodar', () => {
+    const { service, notifications } = harness({
+      mission: mission({ status: 'running' }),
+      project: withoutNickname(),
+    });
+
+    service.notifyAccountSwitch({
+      missionId: 'm1',
+      cause: 'opening',
+      fromName: 'Trabalho',
+      toName: 'Pessoal',
+    });
+
+    expect(notifications[0]?.options.body).toBe(
+      'loja · A conta Trabalho está sem limite. A missão vai rodar na conta Pessoal.',
+    );
+  });
+
+  it('o clique abre a missão', () => {
+    const { service, notifications, opened } = harness({ mission: mission({ status: 'running' }) });
+    service.notifyAccountSwitch({ missionId: 'm1', cause: 'limit', fromName: 'A', toName: 'B' });
+
+    notifications[0]?.emit('click');
+
+    expect(opened).toEqual([{ kind: 'mission', projectId: 'p1', id: 'm1' }]);
+  });
+
+  it('não avisa projeto silenciado, janela atenta nem missão que sumiu', () => {
+    const notice = { missionId: 'm1', cause: 'limit' as const, fromName: 'A', toName: 'B' };
+    const muted = harness({ project: project({ muted: true }) });
+    muted.service.notifyAccountSwitch(notice);
+    expect(muted.notifications).toEqual([]);
+
+    const focused = harness({ focused: true, minimized: false });
+    focused.service.notifyAccountSwitch(notice);
+    expect(focused.notifications).toEqual([]);
+
+    const gone = harness({ mission: undefined });
+    gone.service.notifyAccountSwitch(notice);
+    expect(gone.notifications).toEqual([]);
   });
 });
 

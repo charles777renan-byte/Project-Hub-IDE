@@ -85,6 +85,7 @@ export function WorkspaceToolbar({
   onLayout,
   onOpen,
   accounts,
+  preferred,
   onMenuOpen,
 }: {
   providers: readonly ProviderInfo[];
@@ -112,6 +113,11 @@ export function WorkspaceToolbar({
   onOpen(provider: ProviderId, accountId?: string | null): void;
   /** As contas de cada programa que tem contas. Com duas ou mais, o menu pergunta a conta antes de abrir. */
   accounts?: Partial<Record<ProviderId, readonly AccountChoiceItem[]>> | undefined;
+  /**
+   * A conta que a lista marca em cada programa: a padrão, ou a próxima que serve quando a padrão está sem limite e a
+   * troca automática está ligada. Sem valor para o programa, marca a padrão.
+   */
+  preferred?: Partial<Record<ProviderId, string | null>> | undefined;
   /** O menu abriu: a página relê as contas, que podem ter mudado nas Configurações. */
   onMenuOpen?(): void;
 }) {
@@ -355,7 +361,11 @@ export function WorkspaceToolbar({
           <AccountChoice
             label={`Conta do ${picking.label}`}
             accounts={pickingAccounts}
-            value={pickingAccounts.find((account) => account.isDefault)?.id ?? null}
+            value={
+              picking !== null && preferred !== undefined && picking.id in preferred
+                ? (preferred[picking.id] ?? null)
+                : (pickingAccounts.find((account) => account.isDefault)?.id ?? null)
+            }
             autoFocus
             onChange={(accountId) => chooseAccount(picking, accountId)}
             onCancel={() => setPicking(null)}

@@ -221,6 +221,8 @@ export const CHANNELS = {
    */
   accountsPasteKey: 'accounts:paste-key:v1',
   accountsRemoveKey: 'accounts:remove-key:v1',
+  /** Liga ou desliga a troca automática de conta quando o limite acaba. */
+  accountsSetAutoSwitch: 'accounts:set-auto-switch:v1',
   /** O cofre das chaves. Nenhum destes leva senha: ela é digitada na janela própria do cofre. */
   vaultGet: 'vault:get:v1',
   vaultUnlock: 'vault:unlock:v1',

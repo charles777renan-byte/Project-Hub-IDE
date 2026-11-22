@@ -34,6 +34,8 @@ export type AccountLimitsDeps = {
   /** A janela principal existe e não está minimizada. O ciclo só lê enquanto isso vale. */
   isActive(): boolean;
   cycles: Record<LimitProviderId, LimitsCycle>;
+  /** O relógio da marcação de conta esgotada. Sem ele, o do sistema. */
+  now?: () => Date;
 };
 
 export type AccountLimits = {
@@ -52,9 +54,48 @@ export type AccountLimits = {
   emit(): void;
   /** Cria o serviço das contas novas e descarta o das removidas. Roda antes de toda leitura do estado. */
   sync(): void;
+  /**
+   * Marca a conta como esgotada até `until` (ISO): a linha de limite do agente chegou antes da leitura do uso.
+   * Fica só em memória, e vale também para conta sem serviço de limites (conta API).
+   */
+  markExhausted(provider: LimitProviderId, accountId: string | null, until: string): void;
+  /** Até quando a conta está esgotada, pela leitura do uso ou pela marcação; `undefined` se não está. */
+  exhaustedUntil(provider: LimitProviderId, accountId: string | null): string | undefined;
   start(): void;
   dispose(): void;
 };
+
+/** A marcação de conta esgotada: até quando, e quando foi feita. */
+export type ExhaustedMark = { until: string; markedAt: string };
+
+function timeOf(iso: string | undefined): number {
+  return iso === undefined ? Number.NaN : new Date(iso).getTime();
+}
+
+/**
+ * Até quando a conta está esgotada. Conta a janela em 100% que ainda não renovou, e a marcação ainda no
+ * futuro — a não ser que uma leitura posterior à marcação não tenha nenhuma janela em 100%: aí a cota voltou
+ * antes da hora marcada. Vale a mais tardia das que contam; nenhuma, `undefined`.
+ */
+export function exhaustedUntilOf(
+  snapshot: ProviderLimitsDto | undefined,
+  mark: ExhaustedMark | undefined,
+  now: Date,
+): string | undefined {
+  const full = (snapshot?.windows ?? []).filter((window) => window.usedPercent >= 100);
+  const candidates = full.map((window) => window.resetsAt);
+  if (mark !== undefined) {
+    const readAfter = timeOf(snapshot?.capturedAt) > timeOf(mark.markedAt);
+    if (!(readAfter && full.length === 0)) candidates.push(mark.until);
+  }
+  let latest: string | undefined;
+  for (const candidate of candidates) {
+    const time = timeOf(candidate);
+    if (!Number.isFinite(time) || time <= now.getTime()) continue;
+    if (latest === undefined || time > timeOf(latest)) latest = new Date(time).toISOString();
+  }
+  return latest;
+}
 
 type Entry = { provider: LimitProviderId; accountId: string | null; service: LimitsService };
 
@@ -70,6 +111,9 @@ function keyOf(provider: LimitProviderId, accountId: string | null): string {
 export function createAccountLimits(deps: AccountLimitsDeps): AccountLimits {
   const entries = new Map<string, Entry>();
   const timers = new Map<LimitProviderId, ReturnType<typeof setTimeout>>();
+  // Fora das entradas: a conta API não tem serviço, e também pode ser marcada.
+  const marks = new Map<string, ExhaustedMark>();
+  const now = deps.now ?? (() => new Date());
   let disposed = false;
 
   function sync(): void {
@@ -189,6 +233,16 @@ export function createAccountLimits(deps: AccountLimitsDeps): AccountLimits {
       sync();
       const entry = entries.get(keyOf(provider, accountId));
       return { providers: entry === undefined ? [] : [entry.service.snapshot()], accounts: [] };
+    },
+
+    markExhausted(provider, accountId, until) {
+      marks.set(keyOf(provider, accountId), { until, markedAt: now().toISOString() });
+    },
+
+    exhaustedUntil(provider, accountId) {
+      sync();
+      const key = keyOf(provider, accountId);
+      return exhaustedUntilOf(entries.get(key)?.service.snapshot(), marks.get(key), now());
     },
 
     emit() {

@@ -441,6 +441,39 @@ describe('DecisionBlock: aprovações do agente', () => {
   });
 });
 
+describe('DecisionBlock: limite da conta', () => {
+  function limitEvent(): MissionViewDto['events'][number] {
+    return {
+      id: 'ev2',
+      missionId: 'm1',
+      aggregateType: 'mission',
+      aggregateId: 'm1',
+      eventType: 'mission.account_limit',
+      severity: 'warning',
+      actor: 'system',
+      payload: { accountName: 'Trabalho', allExhausted: false },
+      sequence: 2,
+      createdAt: '2026-10-20T09:01:00.000Z',
+    };
+  }
+
+  it('mostra o motivo do limite acima da resposta', () => {
+    setup('waiting_input', {}, { events: [inputEvent('Continuar?'), limitEvent()] });
+
+    const notice = within(block()).getByText(
+      'O limite da conta Trabalho acabou. Quando renovar, peça para continuar. Ou pare a missão e tente de novo em outra conta.',
+    );
+    expect(notice.closest('.decision-block__limit')).not.toBeNull();
+    const form = within(block()).getByRole('form', { name: 'Resposta ao agente' });
+    expect(notice.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('sem limite registrado, nada aparece', () => {
+    setup('waiting_input', {}, { events: [inputEvent('Continuar?')] });
+    expect(block().querySelector('.decision-block__limit')).toBeNull();
+  });
+});
+
 describe('DecisionBlock: resposta ao agente', () => {
   it('a pergunta do agente nomeia a caixa; enviar chama onAnswer com o texto aparado e limpa a caixa', async () => {
     const user = userEvent.setup();
