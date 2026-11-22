@@ -106,7 +106,8 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
     expect(item.inside, `o contorno de "${item.label}" cabe dentro da barra`).toBe(true);
   }
 
-  // A ordem da tela: a busca, o aviso (Ir), Adicionar projeto, a troca Lista/Grade e o projeto.
+  // A ordem da tela: a busca, o aviso (Ir), Adicionar projeto, a troca Lista/Grade, o projeto e, no pé, a
+  // engrenagem das Configurações.
   expect(visited).toEqual([
     'Buscar projeto ou agente',
     `Ir para ${missionTitle}`,
@@ -115,6 +116,7 @@ test('o contorno de foco de cada item da barra cabe dentro dela', async ({
     'Grade',
     `Sessões de ${projectName}`,
     projectName,
+    'Configurações',
   ]);
 });
 
