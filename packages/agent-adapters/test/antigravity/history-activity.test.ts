@@ -112,10 +112,8 @@ describe('readAntigravityHistory', () => {
 
   it('ignora linha que não é JSON, inclusive a cortada no fim', () => {
     const text =
-      history(
-        'isto não é JSON',
-        line({ timestamp: ms(2026, 10, 30), conversationId: 'c1' }),
-      ) + '{"display":"texto","timest';
+      history('isto não é JSON', line({ timestamp: ms(2026, 10, 30), conversationId: 'c1' })) +
+      '{"display":"texto","timest';
 
     const sessions = readAntigravityHistory(text);
 

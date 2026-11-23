@@ -16,7 +16,11 @@ function at(year: number, month: number, day: number, hour = 12, minute = 0): st
 
 const SESSION_ID = '5f0c2a7e-8d1b-4c3a-9e2f-1a2b3c4d5e6f';
 
-function userLine(timestamp: string, content: unknown, extra: Record<string, unknown> = {}): string {
+function userLine(
+  timestamp: string,
+  content: unknown,
+  extra: Record<string, unknown> = {},
+): string {
   return JSON.stringify({
     type: 'user',
     timestamp,
@@ -26,12 +30,7 @@ function userLine(timestamp: string, content: unknown, extra: Record<string, unk
   });
 }
 
-function assistantLine(
-  timestamp: string,
-  id: string,
-  input: number,
-  output: number,
-): string {
+function assistantLine(timestamp: string, id: string, input: number, output: number): string {
   return JSON.stringify({
     type: 'assistant',
     timestamp,
@@ -75,7 +74,9 @@ describe('readClaudeTranscriptActivity', () => {
       userLine(at(2026, 10, 30, 9), 'real'),
       userLine(at(2026, 10, 30, 10), 'meta', { isMeta: true }),
       userLine(at(2026, 10, 30, 11), '<command-name>/model</command-name>'),
-      userLine(at(2026, 10, 30, 12), [{ type: 'text', text: '<local-command-stdout>ok</local-command-stdout>' }]),
+      userLine(at(2026, 10, 30, 12), [
+        { type: 'text', text: '<local-command-stdout>ok</local-command-stdout>' },
+      ]),
       userLine(at(2026, 10, 30, 13), [{ type: 'tool_result', tool_use_id: 'x', content: 'saída' }]),
     );
     const activity = readClaudeTranscriptActivity(text, CWD);
@@ -114,7 +115,10 @@ describe('readClaudeTranscriptActivity', () => {
   it('devolve undefined sem nenhum timestamp', () => {
     expect(readClaudeTranscriptActivity('', CWD)).toBeUndefined();
     expect(
-      readClaudeTranscriptActivity(JSON.stringify({ type: 'user', message: { content: 'x' } }), CWD),
+      readClaudeTranscriptActivity(
+        JSON.stringify({ type: 'user', message: { content: 'x' } }),
+        CWD,
+      ),
     ).toBeUndefined();
   });
 });
@@ -123,8 +127,18 @@ describe('transcriptCwd', () => {
   it('devolve o cwd da primeira linha que o traz', () => {
     const text = transcript(
       JSON.stringify({ type: 'summary' }),
-      JSON.stringify({ type: 'user', cwd: CWD, timestamp: at(2026, 10, 30, 9), message: { content: 'oi' } }),
-      JSON.stringify({ type: 'user', cwd: 'C:\\outro', timestamp: at(2026, 10, 30, 10), message: { content: 'x' } }),
+      JSON.stringify({
+        type: 'user',
+        cwd: CWD,
+        timestamp: at(2026, 10, 30, 9),
+        message: { content: 'oi' },
+      }),
+      JSON.stringify({
+        type: 'user',
+        cwd: 'C:\\outro',
+        timestamp: at(2026, 10, 30, 10),
+        message: { content: 'x' },
+      }),
     );
     expect(transcriptCwd(text)).toBe(CWD);
   });

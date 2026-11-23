@@ -4,19 +4,19 @@ import type {
   MissionDiffDeps,
   MissionQueryDeps,
   Orchestrator,
-  SetMissionAccountDeps,
 } from '@project-hub/application';
 import { CHANNELS, missionDtoSchema, missionViewSchema } from '@project-hub/contracts';
 import type { Mission } from '@project-hub/domain';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, it } from 'vitest';
-import { registerMissionHandlers } from '../src/main/ipc/missions';
+import { registerMissionHandlers, type MissionAccountIpcDeps } from '../src/main/ipc/missions';
 import type { IpcRegistry } from '../src/main/ipc/trusted-handler';
 
 const TRUSTED = 'file:///app/index.html';
 const T0 = '2026-10-20T09:00:00.000Z';
 const WORK = '11111111-1111-4111-8111-111111111111';
 const GONE = '22222222-2222-4222-8222-222222222222';
+const FAST = '33333333-3333-4333-8333-333333333333';
 
 const VALID = {
   projectId: 'p1',
@@ -27,7 +27,9 @@ const VALID = {
 };
 
 /** Os canais de missão ligados a um repositório em memória, com as contas `WORK` (viva) e `GONE` (removida). */
-function setup(options: { defaultAccount?: string | null; planning?: string[] } = {}) {
+function setup(
+  options: { defaultAccount?: string | null; defaultProfile?: string; planning?: string[] } = {},
+) {
   const missions = new Map<string, Mission>();
   let ids = 0;
   const repo = {
@@ -40,6 +42,12 @@ function setup(options: { defaultAccount?: string | null; planning?: string[] } 
     listExecutions: () => [],
     listPendingApprovals: () => [],
     listAudit: () => [],
+    setMissionProfile: (id: string, profileId: string, at: string) => {
+      const current = missions.get(id);
+      if (current !== undefined) {
+        missions.set(id, { ...current, executionProfileId: profileId, updatedAt: at });
+      }
+    },
     setMissionAccount: (id: string, accountId: string | null, at: string) => {
       const current = missions.get(id);
       if (current === undefined) return;
@@ -70,6 +78,11 @@ function setup(options: { defaultAccount?: string | null; planning?: string[] } 
       return { name: '', removed: true };
     },
   };
+  const profiles = {
+    defaultId: () => options.defaultProfile ?? 'padrao',
+    get: (id: string) =>
+      id === FAST ? { name: 'Rápido', options: { model: 'haiku' } } : undefined,
+  };
   const isPlanning = (id: string) => (options.planning ?? []).includes(id);
   const listeners = new Map<string, (event: IpcMainInvokeEvent, payload?: unknown) => unknown>();
   const registry: IpcRegistry = {
@@ -83,6 +96,7 @@ function setup(options: { defaultAccount?: string | null; planning?: string[] } 
       repo,
       projects,
       accounts,
+      profiles,
       now: () => T0,
       newId: () => `id-${++ids}`,
     } as unknown as CreateMissionDeps,
@@ -92,10 +106,11 @@ function setup(options: { defaultAccount?: string | null; planning?: string[] } 
     accountDeps: {
       repo,
       accounts,
+      profiles,
       isPlanning,
       isRunning: () => false,
       now: () => T0,
-    } as unknown as SetMissionAccountDeps,
+    } as unknown as MissionAccountIpcDeps,
   });
   const call = (channel: string, payload?: unknown, sender = TRUSTED) => {
     const listener = listeners.get(channel);
@@ -209,5 +224,62 @@ describe('missions:set-account:v1', () => {
 
     expect(result).toMatchObject({ ok: false });
     expect(h.missions.get('id-1')?.accountId).toBeUndefined();
+  });
+});
+
+describe('o perfil de execução nos canais de missão', () => {
+  it('a missão nasce com o perfil padrão e sai com o nome dele, na forma do contrato', async () => {
+    const h = setup({ defaultProfile: FAST });
+
+    const result = await h.call(CHANNELS.missionsCreate, VALID);
+
+    expect(missionDtoSchema.parse(result.data)).toMatchObject({
+      profileId: FAST,
+      profileName: 'Rápido',
+    });
+  });
+
+  it('com o perfil embutido, a missão sai sem perfil', async () => {
+    const h = setup();
+
+    const result = await h.call(CHANNELS.missionsCreate, VALID);
+
+    expect(missionDtoSchema.parse(result.data)).not.toHaveProperty('profileId');
+  });
+
+  it('trocar o perfil grava e devolve a missão; voltar ao embutido tira o perfil', async () => {
+    const h = setup();
+    const created = await h.call(CHANNELS.missionsCreate, VALID);
+    const missionId = (created.data as { id: string }).id;
+
+    const set = await h.call(CHANNELS.missionsSetProfile, { missionId, profileId: FAST });
+    expect(missionDtoSchema.parse(set.data)).toMatchObject({ profileId: FAST });
+    expect(h.missions.get(missionId)?.executionProfileId).toBe(FAST);
+
+    const back = await h.call(CHANNELS.missionsSetProfile, { missionId, profileId: 'padrao' });
+    expect(missionDtoSchema.parse(back.data)).not.toHaveProperty('profileId');
+  });
+
+  it('recusa entrada fora do contrato, perfil que não existe e remetente de outra origem', async () => {
+    const h = setup();
+    const created = await h.call(CHANNELS.missionsCreate, VALID);
+    const missionId = (created.data as { id: string }).id;
+
+    expect(
+      await h.call(CHANNELS.missionsSetProfile, { missionId, profileId: '--model x' }),
+    ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    expect(await h.call(CHANNELS.missionsSetProfile, { missionId, profileId: GONE })).toMatchObject(
+      { ok: false, error: { message: 'O perfil foi removido.' } },
+    );
+    expect(
+      (
+        await h.call(
+          CHANNELS.missionsSetProfile,
+          { missionId, profileId: FAST },
+          'https://outro.example',
+        )
+      ).ok,
+    ).toBe(false);
+    expect(h.missions.get(missionId)?.executionProfileId).toBe('padrao');
   });
 });

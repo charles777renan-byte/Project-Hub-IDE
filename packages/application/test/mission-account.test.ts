@@ -7,6 +7,11 @@ import {
   setMissionAccount,
   type SetMissionAccountDeps,
 } from '../src/missions/set-mission-account';
+import {
+  PROFILE_LOCKED,
+  PROFILE_UNAVAILABLE,
+  setMissionProfile,
+} from '../src/missions/set-mission-profile';
 import { fakeMissionRepository, type FakeMissionRepository } from './fakes-missions';
 
 const T0 = '2026-10-20T09:00:00.000Z';
@@ -278,5 +283,89 @@ describe('missão que falhou ou foi cancelada', () => {
       accountLocked: false,
     });
     expect(h.repo.getMission('m1')?.accountId).toBe(WORK);
+  });
+});
+
+describe('perfil de execução da missão', () => {
+  const FAST = '33333333-3333-4333-8333-333333333333';
+  const LOST = '44444444-4444-4444-8444-444444444444';
+  const profiles = {
+    get: (id: string) =>
+      id === FAST ? { name: 'Rápido', options: { model: 'haiku' as const } } : undefined,
+  };
+  const view = { accounts, profiles, isPlanning: () => false, isRunning: () => false };
+
+  it('a missão com perfil da pessoa sai com o id e o nome dele', () => {
+    expect(missionAccountOf(view, mission({ executionProfileId: FAST }))).toMatchObject({
+      profileId: FAST,
+      profileName: 'Rápido',
+    });
+  });
+
+  it('o perfil embutido, e o que foi removido, saem sem perfil', () => {
+    expect(missionAccountOf(view, mission())).not.toHaveProperty('profileId');
+    expect(missionAccountOf(view, mission({ executionProfileId: LOST }))).not.toHaveProperty(
+      'profileId',
+    );
+  });
+
+  it('troca o perfil antes de a missão começar', () => {
+    const h = harness();
+    h.repo.insertMission(mission());
+
+    const result = setMissionProfile(
+      { ...h.deps, repo: h.repo, profiles },
+      { missionId: 'm1', profileId: FAST },
+    );
+
+    expect(result.ok && result.data.profileName).toBe('Rápido');
+    expect(h.repo.getMission('m1')).toMatchObject({ executionProfileId: FAST, updatedAt: T1 });
+  });
+
+  it('volta ao perfil embutido', () => {
+    const h = harness();
+    h.repo.insertMission(mission({ executionProfileId: FAST }));
+
+    const result = setMissionProfile(
+      { ...h.deps, repo: h.repo, profiles },
+      { missionId: 'm1', profileId: 'padrao' },
+    );
+
+    expect(result.ok && result.data).not.toHaveProperty('profileId');
+    expect(h.repo.getMission('m1')?.executionProfileId).toBe('padrao');
+  });
+
+  it('recusa o perfil que não existe, e a missão fica como estava', () => {
+    const h = harness();
+    h.repo.insertMission(mission());
+
+    const result = setMissionProfile(
+      { ...h.deps, repo: h.repo, profiles },
+      { missionId: 'm1', profileId: LOST },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { message: PROFILE_UNAVAILABLE } });
+    expect(h.repo.getMission('m1')?.executionProfileId).toBe('padrao');
+  });
+
+  it('recusa a troca com a missão em andamento, e libera depois da falha', () => {
+    const h = harness();
+    h.repo.insertMission(mission({ status: 'running', startedAt: T0 }));
+    const deps = { ...h.deps, repo: h.repo, profiles };
+
+    expect(setMissionProfile(deps, { missionId: 'm1', profileId: FAST })).toMatchObject({
+      ok: false,
+      error: { message: PROFILE_LOCKED },
+    });
+
+    h.repo.updateMission('m1', { status: 'failed' });
+    expect(setMissionProfile(deps, { missionId: 'm1', profileId: FAST }).ok).toBe(true);
+  });
+
+  it('missão que não existe', () => {
+    const h = harness();
+    expect(
+      setMissionProfile({ ...h.deps, repo: h.repo, profiles }, { missionId: 'x', profileId: FAST }),
+    ).toMatchObject({ ok: false, error: { code: 'MISSION_NOT_FOUND' } });
   });
 });

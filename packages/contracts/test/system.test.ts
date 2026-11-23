@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHANNELS } from '../src/channels';
 import { responseSchemas } from '../src/responses';
-import { systemUsageDtoSchema } from '../src/system';
+import { environmentDtoSchema, systemUsageDtoSchema } from '../src/system';
 
 describe('systemUsageDtoSchema', () => {
   it('aceita o processador de 0 a 100 e nulo, e a memória em bytes', () => {
@@ -31,5 +31,40 @@ describe('systemUsageDtoSchema', () => {
       }).success,
     ).toBe(true);
     expect(schema.safeParse({ ok: true, data: { cpuPercent: 5 } }).success).toBe(false);
+  });
+});
+
+describe('environmentDtoSchema', () => {
+  const base = {
+    git: { installed: true, version: 'git version 2.47.0' },
+    worktreesRoot: 'C:\\dados',
+  };
+
+  it('aceita o Git instalado com ou sem versão, e o Git ausente', () => {
+    expect(environmentDtoSchema.safeParse(base).success).toBe(true);
+    expect(environmentDtoSchema.safeParse({ ...base, git: { installed: true } }).success).toBe(
+      true,
+    );
+    expect(environmentDtoSchema.safeParse({ ...base, git: { installed: false } }).success).toBe(
+      true,
+    );
+  });
+
+  it('recusa versão vazia ou com mais de 80 caracteres, pasta vazia e campo a mais', () => {
+    const git = (version: string) => ({ ...base, git: { installed: true, version } });
+    expect(environmentDtoSchema.safeParse(git('')).success).toBe(false);
+    expect(environmentDtoSchema.safeParse(git('9'.repeat(81))).success).toBe(false);
+    expect(environmentDtoSchema.safeParse({ ...base, worktreesRoot: '' }).success).toBe(false);
+    expect(environmentDtoSchema.safeParse({ ...base, path: 'C:\\git.exe' }).success).toBe(false);
+    expect(
+      environmentDtoSchema.safeParse({ ...base, git: { installed: true, path: 'C:\\git.exe' } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('o canal tem resposta conferida pelo schema', () => {
+    const schema = responseSchemas[CHANNELS.systemEnvironment];
+    expect(schema.safeParse({ ok: true, data: base }).success).toBe(true);
+    expect(schema.safeParse({ ok: true, data: { git: { installed: true } } }).success).toBe(false);
   });
 });

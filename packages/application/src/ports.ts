@@ -22,6 +22,7 @@ import type {
   NewAuditEvent,
   NewProject,
   ProjectRecord,
+  ExecutionOptions,
 } from '@project-hub/domain';
 import type { PlannedTask } from './missions/plan-validation';
 
@@ -132,6 +133,15 @@ export interface AccountDirectory {
   limitMessage?(accountId: string | null): string | undefined;
 }
 
+/**
+ * O que as missões precisam saber dos perfis de execução: o padrão das missões novas, e o nome e as opções de cada
+ * um. O perfil embutido e o que foi removido não têm entrada: `get` devolve `undefined`, e nada é passado ao agente.
+ */
+export interface ProfileDirectory {
+  defaultId(): string;
+  get(profileId: string): { name: string; options: ExecutionOptions } | undefined;
+}
+
 /** O aviso de uma troca automática de conta: pelo limite no meio da missão, ou na abertura de uma tarefa. */
 export type AccountSwitchNotice = {
   missionId: string;
@@ -146,8 +156,7 @@ export type AccountSwitchNotice = {
  * esgotadas, quando alguma tem hora conhecida.
  */
 export type AccountPick =
-  | { kind: 'account'; accountId: string | null }
-  | { kind: 'none'; resetsAt?: string };
+  { kind: 'account'; accountId: string | null } | { kind: 'none'; resetsAt?: string };
 
 /** Consultas ao sistema de arquivos que os casos de uso precisam. */
 export interface FileSystemPort {
@@ -236,6 +245,7 @@ export interface MissionRepository {
   updateMission(id: string, changes: MissionChanges): void;
   /** Troca a conta da missão (`null` é a Principal) e a data de atualização. */
   setMissionAccount(id: string, accountId: string | null, at: string): void;
+  setMissionProfile(id: string, profileId: string, at: string): void;
   insertSteps(steps: MissionStep[]): void;
   /** As etapas do plano da missão, na ordem. */
   listSteps(missionId: string): MissionStep[];

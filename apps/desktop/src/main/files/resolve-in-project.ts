@@ -50,11 +50,19 @@ async function realpathOfExistingAncestor(absolute: string): Promise<string> {
   let current = absolute;
   for (;;) {
     try {
-      return missing.length === 0 ? await realpath(current) : join(await realpath(current), ...missing);
+      return missing.length === 0
+        ? await realpath(current)
+        : join(await realpath(current), ...missing);
     } catch (error) {
       if (!MISSING_CODES.has(errorCode(error) as string)) throw error;
     }
-    if (await lstat(current).then(() => true, () => false)) throw outside();
+    if (
+      await lstat(current).then(
+        () => true,
+        () => false,
+      )
+    )
+      throw outside();
     const parent = dirname(current);
     if (parent === current) throw outside();
     missing.unshift(basename(current));

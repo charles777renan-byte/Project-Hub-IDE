@@ -30,7 +30,8 @@ function filesError(code: keyof typeof FILE_ERROR_MESSAGES): FilesError {
  */
 export function toFilesError(error: unknown): FilesError {
   if (error instanceof FilesError) return error;
-  const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
   switch (code) {
     case 'ENOENT':
     case 'ENOTDIR':
@@ -222,7 +223,10 @@ export async function writeProjectFile(
     }
   }
 
-  const temporary = join(dirname(absolute), `.${basename(absolute)}.${randomBytes(6).toString('hex')}.tmp`);
+  const temporary = join(
+    dirname(absolute),
+    `.${basename(absolute)}.${randomBytes(6).toString('hex')}.tmp`,
+  );
   try {
     // `wx` não sobrescreve; o modo do arquivo original (como o bit de execução) passa para o novo.
     await writeFile(temporary, bytes, { flag: 'wx', mode });

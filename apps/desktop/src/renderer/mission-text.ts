@@ -343,6 +343,12 @@ export const MISSION_ACCOUNT_TEXT = {
   removedLocked: 'A conta foi removida. A missão não pode continuar nela.',
 } as const;
 
+/** O perfil de execução da missão, em "Sua decisão". */
+export const MISSION_PROFILE_TEXT = {
+  label: 'Perfil de execução',
+  fixed: (name: string) => `Perfil: ${name}`,
+} as const;
+
 /** A missão que espera o cofre das chaves de API: a frase é a mesma do processo principal. */
 export const VAULT_TEXT = {
   locked: 'Destranque o cofre para continuar.',
@@ -463,10 +469,6 @@ export function textoDeBusca(texto: string): string {
 
 /** Textos do Início e das listas de missões com progresso. */
 export const HOME_TEXT = {
-  /** Início sem nenhum projeto: o título curto e os dois passos (o botão é "Adicionar projeto"). */
-  firstStepsTitle: 'Comece por um projeto',
-  firstSteps: ['1. Adicionar projeto', '2. Criar a primeira missão'],
-  addProject: 'Adicionar projeto',
   needsYou: 'Precisa de você',
   needsYouEmpty: 'Nada espera por você.',
   /** Detalhe da linha de uma sessão em espera ("Projeto · Sessão aguardando você"). */

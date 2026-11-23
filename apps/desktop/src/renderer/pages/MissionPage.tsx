@@ -23,6 +23,7 @@ import { needsDecision, primaryActionOf, verifiedCriteria } from '../mission-tex
 import { PROJECTS_CHANGED_EVENT } from '../projects-events';
 import { projectPath } from '../routes';
 import { useAccounts } from '../use-accounts';
+import { useAgents } from '../use-agents';
 import { useLimits } from '../use-limits';
 
 const GENERIC_ERROR = 'Não foi possível concluir a ação. Tente de novo.';
@@ -290,6 +291,8 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
   // As contas do Claude Code e o uso de cada uma, para a escolha da conta em "Sua decisão".
   const { state: accountsState } = useAccounts();
   const { limits } = useLimits();
+  // Os perfis de execução, para a escolha do perfil em "Sua decisão".
+  const { state: agentsState } = useAgents();
   const claudeAccounts =
     accountsState.status === 'ready'
       ? accountsState.data.groups.find((group) => group.provider === 'claude')?.accounts
@@ -488,6 +491,15 @@ function MissionWorkspace({ missionId }: { missionId: string }) {
                   onChange: (accountId) =>
                     void run(() => window.projectHub.missions.setAccount({ missionId, accountId })),
                 }
+          }
+          profile={
+            agentsState.status === 'ready'
+              ? {
+                  profiles: agentsState.data.profiles,
+                  onChange: (profileId) =>
+                    void run(() => window.projectHub.missions.setProfile({ missionId, profileId })),
+                }
+              : undefined
           }
           onGeneratePlan={() => void runPlan()}
           onApprovePlan={() => void run(() => window.projectHub.missions.approvePlan(missionId))}

@@ -32,6 +32,7 @@ export const CHANNELS = {
   /** Interrompe o planejamento em andamento da missão, sem cancelar a missão. */
   missionsCancelPlanning: 'missions:cancel-planning:v1',
   missionsSetAccount: 'missions:set-account:v1',
+  missionsSetProfile: 'missions:set-profile:v1',
   missionsStart: 'missions:start:v1',
   missionsCancel: 'missions:cancel:v1',
   missionsPause: 'missions:pause:v1',
@@ -87,6 +88,7 @@ export const CHANNELS = {
   profileSetDisplayName: 'profile:set-display-name:v1',
   /** Uso do processador e da memória do computador, para o cabeçalho. Só leitura. */
   systemUsage: 'system:usage:v1',
+  systemEnvironment: 'system:environment:v1',
   /** Limites da assinatura dos programas (cartão de uso do Início): a última leitura guardada. */
   limitsGet: 'limits:get:v1',
   /** Pede uma leitura nova dos limites. Devolve o estado depois da leitura (ou o de antes, se ela é recente). */
@@ -223,6 +225,13 @@ export const CHANNELS = {
   accountsRemoveKey: 'accounts:remove-key:v1',
   /** Liga ou desliga a troca automática de conta quando o limite acaba. */
   accountsSetAutoSwitch: 'accounts:set-auto-switch:v1',
+  /** Agentes (Configurações): os programas e os perfis de execução das missões. Só ids, nomes e opções de lista fixa. */
+  agentsGet: 'agents:get:v1',
+  agentsTestProgram: 'agents:test-program:v1',
+  agentsAddProfile: 'agents:add-profile:v1',
+  agentsUpdateProfile: 'agents:update-profile:v1',
+  agentsRemoveProfile: 'agents:remove-profile:v1',
+  agentsSetDefaultProfile: 'agents:set-default-profile:v1',
   /** O cofre das chaves. Nenhum destes leva senha: ela é digitada na janela própria do cofre. */
   vaultGet: 'vault:get:v1',
   vaultUnlock: 'vault:unlock:v1',

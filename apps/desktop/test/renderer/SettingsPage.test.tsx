@@ -42,7 +42,7 @@ afterEach(() => {
 describe('rota das configurações', () => {
   it('os endereços das seções', () => {
     expect(ROUTE_PATHS.settings).toBe('/settings/*');
-    expect(SETTINGS_SECTIONS).toEqual(['contas', 'geral']);
+    expect(SETTINGS_SECTIONS).toEqual(['contas', 'agentes', 'geral']);
     expect(settingsPath()).toBe('/settings/contas');
     expect(settingsPath('geral')).toBe('/settings/geral');
   });
@@ -76,6 +76,23 @@ describe('rota das configurações', () => {
       'page',
     );
     expect(screen.getByRole('heading', { level: 2, name: 'Geral' })).toBeInTheDocument();
+  });
+});
+
+describe('seção Agentes', () => {
+  it('fica entre Contas e Geral na navegação e abre pela rota', async () => {
+    renderRoutes('/settings/contas');
+    const nav = screen.getByRole('navigation', { name: 'Seções das configurações' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Contas', 'Agentes', 'Geral']);
+
+    await userEvent.click(within(nav).getByRole('link', { name: 'Agentes' }));
+
+    expect(where()).toBe('/settings/agentes');
+    expect(screen.getByRole('heading', { level: 2, name: 'Agentes' })).toBeInTheDocument();
   });
 });
 

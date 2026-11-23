@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ACCOUNT_NAME_MAX, accountKindSchema, accountRefSchema } from './accounts';
+import { customProfileIdSchema, profileIdSchema } from './agents';
 
 /*
  * DTOs de missão que atravessam o IPC (seção 13.4). Os valores das enumerações espelham as listas do
@@ -80,6 +81,13 @@ export const setMissionAccountInputSchema = z.strictObject({
 });
 export type SetMissionAccountInput = z.infer<typeof setMissionAccountInputSchema>;
 
+/** Entrada de `missions:set-profile:v1`: a missão e o perfil de execução. Só ids. */
+export const setMissionProfileInputSchema = z.strictObject({
+  missionId: z.string().min(1),
+  profileId: profileIdSchema,
+});
+export type SetMissionProfileInput = z.infer<typeof setMissionProfileInputSchema>;
+
 /** Entrada dos canais que agem numa missão só (plan, approve-plan, start, cancel, get). */
 export const missionIdInputSchema = z.object({ missionId: z.string().min(1) });
 
@@ -152,6 +160,12 @@ export const missionDtoSchema = z.object({
   finishedAt: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * O perfil de execução da missão, criado pela pessoa, e o nome dele. Ausentes: o perfil embutido (padrão do
+   * programa). Troca com a mesma trava da conta (`accountLocked`).
+   */
+  profileId: customProfileIdSchema.optional(),
+  profileName: z.string().max(ACCOUNT_NAME_MAX).optional(),
   /** A conta do Claude Code em que o planejador e o agente rodam (`null`: a Principal), e o nome dela. */
   accountId: accountRefSchema,
   accountName: z.string().max(ACCOUNT_NAME_MAX),

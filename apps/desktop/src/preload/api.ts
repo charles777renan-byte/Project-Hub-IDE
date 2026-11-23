@@ -4,6 +4,14 @@ import {
   vaultDtoSchema,
   type AccountDto,
   type AccountsDto,
+  type AddProfileInput,
+  type AgentsDto,
+  type ExecutionProfileDto,
+  type ProgramTestDto,
+  type RemoveProfileInput,
+  type SetDefaultProfileInput,
+  type TestProgramInput,
+  type UpdateProfileInput,
   type AccountTargetInput,
   type AddAccountInput,
   type ApiKeyTargetInput,
@@ -70,12 +78,14 @@ import {
   type MissionDiffDto,
   type MissionDto,
   type SetMissionAccountInput,
+  type SetMissionProfileInput,
   type MissionEventDto,
   type MissionPlanDto,
   type MissionUsageEventDto,
   type MissionViewDto,
   type NameSearchDto,
   type ProfileDto,
+  type EnvironmentDto,
   type SystemUsageDto,
   type ProjectHubApi,
   type ProjectSummary,
@@ -185,6 +195,8 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
         call<void>(CHANNELS.missionsCancelPlanning, { missionId }),
       setAccount: (input: SetMissionAccountInput) =>
         call<MissionDto>(CHANNELS.missionsSetAccount, input),
+      setProfile: (input: SetMissionProfileInput) =>
+        call<MissionDto>(CHANNELS.missionsSetProfile, input),
       start: (missionId: string) => call<ExecutionDto>(CHANNELS.missionsStart, { missionId }),
       cancel: (missionId: string) => call<void>(CHANNELS.missionsCancel, { missionId }),
       pause: (missionId: string) => call<void>(CHANNELS.missionsPause, { missionId }),
@@ -393,6 +405,7 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
     },
     system: {
       usage: () => call<SystemUsageDto>(CHANNELS.systemUsage),
+      environment: () => call<EnvironmentDto>(CHANNELS.systemEnvironment),
     },
     limits: {
       get: () => call<LimitsDto>(CHANNELS.limitsGet),
@@ -484,6 +497,17 @@ export function buildProjectHubApi(invoke: Invoke, subscribe: Subscribe): Projec
       comment: (input: GithubCommentInput) => call<void>(CHANNELS.githubComment, input),
       merge: (input: GithubMergeInput) => call<void>(CHANNELS.githubMerge, input),
       openUrl: (url: string) => call<void>(CHANNELS.githubOpenUrl, { url }),
+    },
+    agents: {
+      get: () => call<AgentsDto>(CHANNELS.agentsGet),
+      testProgram: (input: TestProgramInput) =>
+        call<ProgramTestDto>(CHANNELS.agentsTestProgram, input),
+      addProfile: (input: AddProfileInput) =>
+        call<ExecutionProfileDto>(CHANNELS.agentsAddProfile, input),
+      updateProfile: (input: UpdateProfileInput) => call<void>(CHANNELS.agentsUpdateProfile, input),
+      removeProfile: (input: RemoveProfileInput) => call<void>(CHANNELS.agentsRemoveProfile, input),
+      setDefaultProfile: (input: SetDefaultProfileInput) =>
+        call<void>(CHANNELS.agentsSetDefaultProfile, input),
     },
     accounts: {
       list: () => call<AccountsDto>(CHANNELS.accountsList),

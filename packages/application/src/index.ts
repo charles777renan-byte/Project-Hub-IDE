@@ -72,6 +72,12 @@ export {
   type SetMissionAccountDeps,
 } from './missions/set-mission-account';
 export {
+  PROFILE_LOCKED,
+  PROFILE_UNAVAILABLE,
+  setMissionProfile,
+  type SetMissionProfileDeps,
+} from './missions/set-mission-profile';
+export {
   getMissionDiff,
   getMissionView,
   listMissions,
@@ -86,6 +92,7 @@ export { recoverInterruptedExecutions } from './missions/startup-recovery';
 export { DISPLAY_NAME_KEY, getProfile, setDisplayName, type ProfileDeps } from './profile/profile';
 export type {
   AccountDirectory,
+  ProfileDirectory,
   AccountPick,
   AccountSwitchNotice,
   ApprovalChanges,

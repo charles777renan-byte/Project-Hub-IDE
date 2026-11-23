@@ -31,7 +31,7 @@ export const ROUTE_PATHS = {
 export const SETTINGS_ROOT = '/settings';
 
 /** As seções das Configurações, na ordem da navegação. */
-export const SETTINGS_SECTIONS = ['contas', 'geral'] as const;
+export const SETTINGS_SECTIONS = ['contas', 'agentes', 'geral'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** Endereço de uma seção das Configurações. Sem seção, a primeira. */

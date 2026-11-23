@@ -51,6 +51,8 @@ export interface MissionRepository {
   updateMission(id: string, changes: MissionChanges): void;
   /** Troca a conta da missão (`null` é a Principal) e a data de atualização. */
   setMissionAccount(id: string, accountId: string | null, at: string): void;
+  /** Troca o perfil de execução da missão e a data de atualização. */
+  setMissionProfile(id: string, profileId: string, at: string): void;
   insertSteps(steps: MissionStep[]): void;
   listSteps(missionId: string): MissionStep[];
   replaceSteps(missionId: string, steps: MissionStep[]): void;
@@ -261,6 +263,13 @@ export function createMissionRepository(db: AppDatabase): MissionRepository {
 
     setMissionAccount(id, accountId, at) {
       db.update(missions).set({ accountId, updatedAt: at }).where(eq(missions.id, id)).run();
+    },
+
+    setMissionProfile(id, profileId, at) {
+      db.update(missions)
+        .set({ executionProfileId: profileId, updatedAt: at })
+        .where(eq(missions.id, id))
+        .run();
     },
 
     updateMission(id, changes) {

@@ -52,13 +52,18 @@ describe('readClaudeTranscriptActivity: detalhe da sessão', () => {
   });
 
   it('sem sessionId nas linhas não há como retomar a sessão, então devolve undefined', () => {
-    const text = transcript(JSON.stringify({ type: 'user', timestamp: at(1), message: { content: 'oi' } }));
+    const text = transcript(
+      JSON.stringify({ type: 'user', timestamp: at(1), message: { content: 'oi' } }),
+    );
     expect(readClaudeTranscriptActivity(text, CWD)).toBeUndefined();
   });
 
   it('o título vem do ai-title quando existe', () => {
     const activity = readClaudeTranscriptActivity(
-      transcript(prompt(1, 'quero um painel'), rec({ type: 'ai-title', aiTitle: 'Painel de sessões' })),
+      transcript(
+        prompt(1, 'quero um painel'),
+        rec({ type: 'ai-title', aiTitle: 'Painel de sessões' }),
+      ),
       CWD,
     );
     expect(activity?.detail?.title).toBe('Painel de sessões');

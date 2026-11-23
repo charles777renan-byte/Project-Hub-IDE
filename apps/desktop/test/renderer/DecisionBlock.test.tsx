@@ -1,7 +1,7 @@
 import { createRef, type ComponentProps } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MissionViewDto } from '@project-hub/contracts';
+import type { ExecutionProfileDto, MissionViewDto } from '@project-hub/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { DecisionBlock } from '../../src/renderer/components/mission/DecisionBlock';
 import type { AccountChoiceItem } from '../../src/renderer/components/AccountChoice';
@@ -1191,5 +1191,87 @@ describe('DecisionBlock: a conta da missão', () => {
     const primary = within(block()).getByRole('button', { name: /Retomar/ });
     expect(primary).toBeDisabled();
     expect(primary).toHaveAccessibleDescription(/A conta foi removida/);
+  });
+});
+
+describe('DecisionBlock: o perfil de execução da missão', () => {
+  const P = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const profiles = [
+    { id: 'padrao', name: 'Padrão do programa', builtIn: true, isDefault: true },
+    {
+      id: P,
+      name: 'Rápido',
+      builtIn: false,
+      isDefault: false,
+      model: 'haiku' as const,
+      effort: 'low' as const,
+    },
+  ];
+
+  function setupProfile(
+    mission: Partial<MissionViewDto['mission']> = {},
+    list: readonly ExecutionProfileDto[] = profiles,
+    status: Status = 'draft',
+  ) {
+    const onChange = vi.fn();
+    const view = viewOf(status);
+    render(
+      <DecisionBlock
+        view={{ ...view, mission: { ...view.mission, ...mission } }}
+        busy={false}
+        planning={false}
+        controlBusy={false}
+        profile={{ profiles: list, onChange }}
+        {...handlersOf()}
+      />,
+    );
+    return { onChange };
+  }
+
+  it('antes de começar, com perfis criados: a escolha aparece com o perfil da missão marcado e o resumo dele', () => {
+    setupProfile({ profileId: P, profileName: 'Rápido' });
+
+    const group = within(block()).getByRole('radiogroup', { name: 'Perfil de execução' });
+    expect(within(group).getByRole('radio', { name: 'Rápido' })).toBeChecked();
+    expect(within(group).getByRole('radio', { name: 'Padrão do programa' })).not.toBeChecked();
+    expect(within(block()).getByText('Haiku · esforço baixo')).toBeInTheDocument();
+  });
+
+  it('a missão sem perfil gravado está no Padrão do programa', () => {
+    setupProfile();
+
+    expect(within(block()).getByRole('radio', { name: 'Padrão do programa' })).toBeChecked();
+  });
+
+  it('escolher outro perfil manda só o id dele', async () => {
+    const { onChange } = setupProfile();
+
+    await userEvent.click(within(block()).getByRole('radio', { name: 'Rápido' }));
+
+    expect(onChange.mock.calls).toEqual([[P]]);
+  });
+
+  it('as setas trocam o perfil e levam o foco junto', async () => {
+    const { onChange } = setupProfile();
+
+    within(block()).getByRole('radio', { name: 'Padrão do programa' }).focus();
+    await userEvent.keyboard('{ArrowRight}');
+
+    expect(onChange.mock.calls).toEqual([[P]]);
+    expect(within(block()).getByRole('radio', { name: 'Rápido' })).toHaveFocus();
+  });
+
+  it('só com o perfil embutido, nada de perfil aparece', () => {
+    setupProfile({}, [profiles[0]!]);
+
+    expect(within(block()).queryByRole('radiogroup')).toBeNull();
+    expect(within(block()).queryByText(/Perfil/)).toBeNull();
+  });
+
+  it('depois de a missão começar: só o texto "Perfil: Rápido", sem escolha', () => {
+    setupProfile({ profileId: P, profileName: 'Rápido', accountLocked: true }, profiles, 'running');
+
+    expect(within(block()).getByText('Perfil: Rápido')).toBeInTheDocument();
+    expect(within(block()).queryByRole('radiogroup')).toBeNull();
   });
 });

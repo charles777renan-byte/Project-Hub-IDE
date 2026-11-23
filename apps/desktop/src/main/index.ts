@@ -71,6 +71,8 @@ import { fileClipboard, passwordVaultWindow, testHooksOf } from './test-hooks';
 import { liveSessionsOfAccount } from './accounts/live-sessions';
 import { createLoginService } from './accounts/login-service';
 import { registerAccountsHandlers, registerAppHandlers } from './ipc/accounts';
+import { registerAgentsHandlers } from './ipc/agents';
+import { createAgentsService } from './agents/agents-service';
 import { createCodexLimitsReader } from './codex-limits';
 import { quotaExhaustedMessage } from './quota-message';
 import { registerLimitsHandlers } from './ipc/limits';
@@ -109,6 +111,7 @@ import { createLimitsService } from './limits';
 import { createLimitsStore } from './limits-store';
 import { registerSystemHandlers } from './ipc/system';
 import { createSystemUsageSampler } from './system-usage';
+import { createEnvironmentCheck } from './environment-check';
 import { buildTerminalEnv } from '../terminal-host/env';
 import { registerTerminalHandlers } from './ipc/terminals';
 import { registerWorkspaceHandlers } from './ipc/workspaces';
@@ -921,7 +924,12 @@ app
       saveBeforeClose?.finish(requestId, saved),
     );
     registerProfileHandlers(ipcMain, isTrustedSender, services.profileDeps);
-    registerSystemHandlers(ipcMain, isTrustedSender, createSystemUsageSampler());
+    registerSystemHandlers(
+      ipcMain,
+      isTrustedSender,
+      createSystemUsageSampler(),
+      createEnvironmentCheck({ worktreesRoot: resolveWorktreesRoot(env, homedir()) }),
+    );
     registerLimitsHandlers(ipcMain, isTrustedSender, limits);
     const panelClaudeScript = resolvePanelClaudeScript(env);
     const panelCodexScript = resolvePanelCodexScript(env);
@@ -1061,6 +1069,17 @@ app
       login: loginService,
       apiKeys: apiKeyService,
     });
+    registerAgentsHandlers(
+      ipcMain,
+      isTrustedSender,
+      createAgentsService({
+        ...services.agentsDeps,
+        // O mesmo gancho de teste dos comandos de conta: nos E2E, o teste do programa roda o CLI falso.
+        providers: accountCliProviders(providers, resolveAccountCliScript(env), process.platform),
+        newId: () => randomUUID(),
+        now: () => new Date().toISOString(),
+      }),
+    );
     registerVaultHandlers(ipcMain, isTrustedSender, { vault, window: vaultRef.window });
     registerAppHandlers(ipcMain, isTrustedSender, {
       version: app.getVersion(),

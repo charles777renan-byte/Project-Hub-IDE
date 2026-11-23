@@ -2,11 +2,10 @@ import { useId, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { MissionDto, TerminalSummary } from '@project-hub/contracts';
 import { useAttention, type AttentionEntry } from '../attention';
-import { EmptyState } from '../components/EmptyState';
-import { FolderPlus } from '../components/Icon';
 import { AgentOverview } from '../components/home/AgentOverview';
 import { AgentUsage } from '../components/home/AgentUsage';
 import { Greeting } from '../components/home/Greeting';
+import { Welcome } from '../components/home/Welcome';
 import { MissionProgressList } from '../components/MissionProgressList';
 import { TopographicBackground } from '../components/TopographicBackground';
 import { useListMotion } from '../list-motion';
@@ -20,7 +19,6 @@ import {
   textoDeBusca,
   type MissionStatusFilter,
 } from '../mission-text';
-import { ADD_PROJECT_REQUEST_EVENT, type AddProjectRequest } from '../projects-events';
 import { EDIT_NAME_PARAM, missionPath, workspacePath } from '../routes';
 import { useMissionsBoard } from '../use-missions-board';
 import { useOverview } from '../use-overview';
@@ -278,46 +276,11 @@ function Missions({
 }
 
 /**
- * Primeiro uso, sem nenhum projeto (carga pronta e lista vazia): o estado vazio com os dois passos e o botão
- * "Adicionar projeto", no lugar das faixas. O botão pede o cadastro pelo mesmo evento da barra lateral, com
- * `irParaMissoes`: depois de cadastrar, a visão Missões do projeto abre. Só este pedido leva para lá; o botão da
- * lateral, a paleta e o menu "+" ficam onde estão.
- */
-function FirstSteps() {
-  function requestAdd() {
-    const detail: AddProjectRequest = { irParaMissoes: true };
-    window.dispatchEvent(new CustomEvent(ADD_PROJECT_REQUEST_EVENT, { detail }));
-  }
-
-  return (
-    <EmptyState
-      className="home-empty"
-      icon={FolderPlus}
-      title={HOME_TEXT.firstStepsTitle}
-      hint={
-        <span className="home-empty__steps">
-          {HOME_TEXT.firstSteps.map((step) => (
-            <span key={step} className="home-empty__step">
-              {step}
-            </span>
-          ))}
-        </span>
-      }
-      action={
-        <button type="button" className="btn-primary" onClick={requestAdd}>
-          {HOME_TEXT.addProject}
-        </button>
-      }
-    />
-  );
-}
-
-/**
  * Início, o painel de abertura, de cima para baixo: a faixa do topo (a saudação numa linha, sobre o fundo
  * topográfico, que não aparece em mais nenhum ponto do Início), a "Visão geral" do uso dos agentes (uma linha
  * de largura toda) e as duas colunas: "Precisa de você" e Missões com progresso (e o filtro `?estado=`) à
  * esquerda, Uso dos agentes à direita. Os números vêm da carga compartilhada da visão geral e do canal de
- * atividade por agente; nada é simulado. Sem nenhum projeto, o estado vazio (`FirstSteps`) toma o lugar de
+ * atividade por agente; nada é simulado. Sem nenhum projeto, o painel de boas-vindas (`Welcome`) toma o lugar de
  * "Precisa de você" e Missões, e a Visão geral não aparece; o Uso dos agentes segue, porque não é uma faixa vazia.
  * `?editar-nome=1` (o item "Alterar meu nome" da paleta) abre o campo do nome na saudação, e o parâmetro sai
  * quando o campo fecha.
@@ -362,7 +325,7 @@ export function HomePage() {
       <div className="home-columns">
         <div className="home-main">
           {semProjetos ? (
-            <FirstSteps />
+            <Welcome />
           ) : (
             <>
               <NeedsYou />

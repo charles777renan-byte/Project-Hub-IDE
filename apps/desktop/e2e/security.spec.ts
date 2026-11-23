@@ -95,6 +95,7 @@ test.describe('renderer isolado', () => {
         providers: names(api['providers']),
         preview: names(api['preview']),
         accounts: names(api['accounts']),
+        agents: names(api['agents']),
         vault: names(api['vault']),
       };
     });
@@ -103,6 +104,7 @@ test.describe('renderer isolado', () => {
     expect(surface?.root).toEqual([
       'accounts',
       'activity',
+      'agents',
       'alerts',
       'app',
       'approvals',
@@ -136,6 +138,15 @@ test.describe('renderer isolado', () => {
       'rename',
       'setAutoSwitch',
       'setDefault',
+    ]);
+    // Os agentes: só o programa, o id do perfil, o nome e as opções das listas fixas atravessam.
+    expect(surface?.agents).toEqual([
+      'addProfile',
+      'get',
+      'removeProfile',
+      'setDefaultProfile',
+      'testProgram',
+      'updateProfile',
     ]);
     expect(surface?.vault).toEqual([
       'changePassword',
@@ -204,6 +215,7 @@ test.describe('renderer isolado', () => {
       ...(surface?.workspaces ?? []),
       ...(surface?.providers ?? []),
       ...(surface?.preview ?? []),
+      ...(surface?.agents ?? []),
     ];
     for (const generic of ['invoke', 'send', 'sendSync', 'on', 'once', 'ipcRenderer']) {
       expect(everyName).not.toContain(generic);

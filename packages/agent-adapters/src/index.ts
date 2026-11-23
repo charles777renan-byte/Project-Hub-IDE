@@ -3,6 +3,7 @@ export { createSimulatedAdapter, type SimulatedStep } from './simulated/simulate
 export {
   CLAUDE_CODE_CAPABILITIES,
   createClaudeCodeAdapter,
+  executionOptionArgs,
   type ClaudeCodeAdapterOptions,
   type ClaudeHooks,
   type ClaudeTerminal,

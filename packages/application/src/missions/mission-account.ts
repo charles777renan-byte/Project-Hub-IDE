@@ -1,5 +1,5 @@
 import type { Mission } from '@project-hub/domain';
-import type { AccountDirectory } from '../ports';
+import type { AccountDirectory, ProfileDirectory } from '../ports';
 
 /** A frase de toda ação de missão que pede uma conta que já não vale. Nunca vira "rodar na Principal". */
 export const ACCOUNT_UNAVAILABLE = 'A conta foi removida.';
@@ -25,10 +25,15 @@ export type MissionAccountView = {
    * trancado. Só aparece quando é verdade.
    */
   vaultLocked?: true;
+  /** O perfil de execução da missão, quando é um da pessoa que ainda existe. Ausentes: o perfil embutido. */
+  profileId?: string;
+  profileName?: string;
 };
 
 export type MissionAccountDeps = {
   accounts: Pick<AccountDirectory, 'labelOf' | 'vaultLocked' | 'kindOf'>;
+  /** Os perfis de execução. Sem eles, toda missão sai com o perfil embutido. */
+  profiles?: Pick<ProfileDirectory, 'get'>;
   /** O plano da missão está sendo gerado agora (o orquestrador sabe). */
   isPlanning(missionId: string): boolean;
   /**
@@ -40,7 +45,8 @@ export type MissionAccountDeps = {
 
 export function missionAccountOf(
   deps: MissionAccountDeps,
-  mission: Pick<Mission, 'id' | 'accountId' | 'startedAt' | 'status'>,
+  mission: Pick<Mission, 'id' | 'accountId' | 'startedAt' | 'status'> &
+    Partial<Pick<Mission, 'executionProfileId'>>,
 ): MissionAccountView {
   const accountId = mission.accountId ?? null;
   const label = deps.accounts.labelOf('claude', accountId);
@@ -50,6 +56,8 @@ export function missionAccountOf(
     mission.status === 'queued' || (mission.status === 'paused' && !deps.isRunning(mission.id));
   const vaultLocked =
     waiting && accountId !== null && deps.accounts.vaultLocked?.(accountId) === true;
+  const profileId = mission.executionProfileId;
+  const profile = profileId === undefined ? undefined : deps.profiles?.get(profileId);
   const api = accountId !== null && deps.accounts.kindOf?.(accountId) === 'api';
   return {
     accountId,
@@ -61,6 +69,9 @@ export function missionAccountOf(
       deps.isPlanning(mission.id) ||
       deps.isRunning(mission.id),
     ...(vaultLocked ? { vaultLocked: true as const } : {}),
+    ...(profileId === undefined || profile === undefined
+      ? {}
+      : { profileId, profileName: profile.name }),
   };
 }
 

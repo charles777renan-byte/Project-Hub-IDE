@@ -1,6 +1,11 @@
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ContentMatchDto, ContentSearchDto, FileEntryDto, NameSearchDto } from '@project-hub/contracts';
+import type {
+  ContentMatchDto,
+  ContentSearchDto,
+  FileEntryDto,
+  NameSearchDto,
+} from '@project-hub/contracts';
 import { BINARY_SCAN_BYTES, toFilesError } from './file-io';
 import { FilesError } from './files-error';
 import { resolveInProject } from './resolve-in-project';
@@ -107,7 +112,10 @@ interface WalkEntry {
  * simbólico: seguir link abriria a porta para sair da raiz e para ciclos. Cede a vez ao laço de eventos
  * a cada 50 entradas e termina quando o sinal é abortado. Pasta que não abre (permissão) é pulada.
  */
-async function* walkProject(realRoot: string, signal: AbortSignal | undefined): AsyncGenerator<WalkEntry> {
+async function* walkProject(
+  realRoot: string,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<WalkEntry> {
   const queue: string[] = [''];
   let sinceYield = 0;
   for (let next = 0; next < queue.length; next += 1) {
@@ -182,7 +190,8 @@ export async function searchNames(
       break;
     }
     seen += 1;
-    if (entry.kind === 'file' && isSubsequence(needle, entry.path.toLowerCase())) found.push(entry.path);
+    if (entry.kind === 'file' && isSubsequence(needle, entry.path.toLowerCase()))
+      found.push(entry.path);
   }
   if (signal?.aborted) truncated = true;
 

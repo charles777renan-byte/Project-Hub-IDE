@@ -65,6 +65,11 @@ export function fakeMissionRepository(): FakeMissionRepository {
       delete next.accountId;
       state.missions.set(id, accountId === null ? next : { ...next, accountId });
     },
+    setMissionProfile(id, profileId, at) {
+      const current = state.missions.get(id);
+      if (current === undefined) throw new Error(`missão ausente: ${id}`);
+      state.missions.set(id, { ...current, executionProfileId: profileId, updatedAt: at });
+    },
     insertSteps(steps) {
       state.steps.push(...copy(steps));
     },

@@ -542,6 +542,13 @@
   font-weight: var(--weight-label);
 }
 
+/* O que o perfil marcado fixa, embaixo da escolha. */
+.profile-choice__summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 /* O limite da conta acabou sem troca: o relógio e a frase dizem o motivo, não só a cor. */
 .decision-block__limit {
   display: flex;

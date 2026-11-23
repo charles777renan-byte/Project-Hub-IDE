@@ -31,9 +31,36 @@ const OPEN_REFUSED = 'Só arquivos comuns, que não executam programas, abrem no
  * projeto; por isso "Abrir no programa padrão" os recusa.
  */
 const BLOCKED_OPEN_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.exe', '.com', '.bat', '.cmd', '.lnk', '.js', '.jse', '.vbs', '.vbe', '.wsf', '.hta', '.msi',
-  '.scr', '.cpl', '.ps1', '.url', '.reg', '.dll', '.jar', '.sh',
-  '.pif', '.msc', '.msp', '.scf', '.inf', '.chm', '.wsh', '.psm1', '.application', '.appref-ms',
+  '.exe',
+  '.com',
+  '.bat',
+  '.cmd',
+  '.lnk',
+  '.js',
+  '.jse',
+  '.vbs',
+  '.vbe',
+  '.wsf',
+  '.hta',
+  '.msi',
+  '.scr',
+  '.cpl',
+  '.ps1',
+  '.url',
+  '.reg',
+  '.dll',
+  '.jar',
+  '.sh',
+  '.pif',
+  '.msc',
+  '.msp',
+  '.scf',
+  '.inf',
+  '.chm',
+  '.wsh',
+  '.psm1',
+  '.application',
+  '.appref-ms',
 ]);
 
 /** Extensão em minúsculas; o Windows ignora pontos e espaços no fim do nome, então `x.exe .` também é `.exe`. */
@@ -102,29 +129,44 @@ export function registerFilesHandlers(
     return respond(() => files.write(input.data));
   });
 
-  registerTrustedHandler(registry, CHANNELS.filesSearchNames, isTrusted, async (_event, payload) => {
-    const input = filesSearchNamesInputSchema.safeParse(payload);
-    if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
-    return respond(() => files.searchNames(input.data.projectId, input.data.query));
-  });
+  registerTrustedHandler(
+    registry,
+    CHANNELS.filesSearchNames,
+    isTrusted,
+    async (_event, payload) => {
+      const input = filesSearchNamesInputSchema.safeParse(payload);
+      if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
+      return respond(() => files.searchNames(input.data.projectId, input.data.query));
+    },
+  );
 
-  registerTrustedHandler(registry, CHANNELS.filesSearchContent, isTrusted, async (_event, payload) => {
-    const input = filesSearchContentInputSchema.safeParse(payload);
-    if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
-    return respond(() =>
-      files.searchContent(input.data.projectId, input.data.query, input.data.regex),
-    );
-  });
+  registerTrustedHandler(
+    registry,
+    CHANNELS.filesSearchContent,
+    isTrusted,
+    async (_event, payload) => {
+      const input = filesSearchContentInputSchema.safeParse(payload);
+      if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
+      return respond(() =>
+        files.searchContent(input.data.projectId, input.data.query, input.data.regex),
+      );
+    },
+  );
 
-  registerTrustedHandler(registry, CHANNELS.filesOpenDefault, isTrusted, async (_event, payload) => {
-    const input = filesPathInputSchema.safeParse(payload);
-    if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
-    return respond(async () => {
-      const absolute = await files.absolutePath(input.data.projectId, input.data.path);
-      if (!(await mayOpenByDefault(input.data.path, absolute))) {
-        throw new FilesError('PERMISSION_DENIED', OPEN_REFUSED);
-      }
-      if ((await deps.openPath(absolute)) !== '') throw new FilesError('UNKNOWN', OPEN_FAILED);
-    });
-  });
+  registerTrustedHandler(
+    registry,
+    CHANNELS.filesOpenDefault,
+    isTrusted,
+    async (_event, payload) => {
+      const input = filesPathInputSchema.safeParse(payload);
+      if (!input.success) return failure('VALIDATION_FAILED', INVALID_INPUT);
+      return respond(async () => {
+        const absolute = await files.absolutePath(input.data.projectId, input.data.path);
+        if (!(await mayOpenByDefault(input.data.path, absolute))) {
+          throw new FilesError('PERMISSION_DENIED', OPEN_REFUSED);
+        }
+        if ((await deps.openPath(absolute)) !== '') throw new FilesError('UNKNOWN', OPEN_FAILED);
+      });
+    },
+  );
 }

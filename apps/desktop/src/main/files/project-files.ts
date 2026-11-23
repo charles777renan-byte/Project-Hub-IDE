@@ -45,7 +45,8 @@ export function createProjectFiles(deps: ProjectFilesDeps): ProjectFiles {
 
   async function rootFor(projectId: string): Promise<string> {
     const root = deps.rootOf(projectId);
-    if (root === undefined) throw new FilesError('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
+    if (root === undefined)
+      throw new FilesError('PROJECT_NOT_FOUND', 'O projeto não foi encontrado.');
     if (!(await deps.isDirectory(root))) {
       throw new FilesError('PROJECT_PATH_UNAVAILABLE', 'A pasta do projeto não está disponível.');
     }
@@ -129,6 +130,7 @@ export function createProjectFiles(deps: ProjectFilesDeps): ProjectFiles {
       }
     },
 
-    absolutePath: (projectId, path) => inProject(projectId, path, (absolute) => Promise.resolve(absolute)),
+    absolutePath: (projectId, path) =>
+      inProject(projectId, path, (absolute) => Promise.resolve(absolute)),
   };
 }
