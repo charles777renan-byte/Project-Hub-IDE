@@ -1,11 +1,13 @@
 import { Navigate, NavLink, useParams } from 'react-router';
-import { SlidersHorizontal, Users, type LucideIcon } from '../components/Icon';
+import { Bot, SlidersHorizontal, Users, type LucideIcon } from '../components/Icon';
+import { AgentsSection } from '../components/settings/AgentsSection';
 import { AccountsSection } from '../components/settings/AccountsSection';
 import { GeneralSection } from '../components/settings/GeneralSection';
 import { SETTINGS_SECTIONS, settingsPath, type SettingsSection } from '../routes';
 
 const SECTIONS: Record<SettingsSection, { label: string; icon: LucideIcon }> = {
   contas: { label: 'Contas', icon: Users },
+  agentes: { label: 'Agentes', icon: Bot },
   geral: { label: 'Geral', icon: SlidersHorizontal },
 };
 
@@ -36,7 +38,9 @@ export function SettingsPage() {
           })}
         </nav>
         <div className="settings__body">
-          {section === 'contas' ? <AccountsSection /> : <GeneralSection />}
+          {section === 'contas' ? <AccountsSection /> : null}
+          {section === 'agentes' ? <AgentsSection /> : null}
+          {section === 'geral' ? <GeneralSection /> : null}
         </div>
       </div>
     </div>

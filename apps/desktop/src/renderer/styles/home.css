@@ -109,25 +109,165 @@
 }
 
 /*
- * Início sem nenhum projeto: o estado vazio (components/EmptyState.tsx) num cartão, com os dois passos e o botão.
- * `.home .home-empty` vence a regra do .empty-state (workspace.css, que carrega depois deste arquivo).
+ * Boas-vindas (Início sem projeto): um cartão com a explicação do fluxo, as conferências do ambiente, onde os dados
+ * ficam e o primeiro projeto. Largura de leitura, e não a da página toda.
  */
-.home .home-empty {
-  padding: var(--space-4) var(--space-3);
+.welcome {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 46rem;
+  padding: var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--surface);
 }
 
-.home-empty__steps {
+.welcome__head,
+.welcome__part {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.home-empty__step {
-  display: block;
+.home .welcome__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-heading);
+}
+
+.home .welcome__lead {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+.welcome__part-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+}
+
+.home .welcome__part-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-heading);
+}
+
+.welcome__recheck {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.welcome__checks {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  list-style: none;
+}
+
+.welcome__check {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.welcome__check + .welcome__check {
+  border-top: 1px solid var(--line);
+}
+
+.welcome__check-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-height: 32px;
+}
+
+.welcome__check-name {
+  flex: 1 1 10rem;
+  min-width: 0;
+  font-weight: var(--weight-heading);
+}
+
+/* O estado: ícone e palavra. O Início não usa cor de estado aqui: o que está pronto fica só mais claro. */
+.welcome__state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.welcome__state--ok {
+  color: var(--text);
+}
+
+.home .welcome__detail {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.home .welcome__detail.welcome__state--ok {
+  color: var(--text);
+}
+
+/* Versões e caminhos: dados, em fonte de largura fixa. */
+.welcome__detail--data,
+.welcome__path {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.welcome__path {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.welcome__link {
   color: var(--text);
   font-size: var(--text-sm);
+  font-weight: var(--weight-label);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.welcome__notes {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 62ch;
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.welcome__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.home .welcome__summary {
+  flex: 1 1 16rem;
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.welcome__add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /*

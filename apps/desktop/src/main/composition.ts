@@ -1,3 +1,5 @@
+import { createProfileDirectory } from './agents/agents-service';
+import type { MissionAccountIpcDeps } from './ipc/missions';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -23,13 +25,15 @@ import {
   type RemoveWorktreeDeps,
   type RepositoryInitializer,
   type AccountDirectory,
-  type SetMissionAccountDeps,
 } from '@project-hub/application';
 import {
   createAccountRepository,
   createAccountSecretRepository,
   createVaultMetaRepository,
   createAppSettingsRepository,
+  createExecutionProfileRepository,
+  type AppSettingsRepository,
+  type ExecutionProfileRepository,
   createMissionRepository,
   createProjectRepository,
   createTerminalSessionRepository,
@@ -83,7 +87,7 @@ export type MissionServices = {
   diffDeps: MissionDiffDeps;
   deleteDeps: DeleteMissionDeps;
   /** A conta de cada missão e a troca dela. */
-  accountDeps: SetMissionAccountDeps;
+  accountDeps: MissionAccountIpcDeps;
   /** Aba Worktrees: a lista derivada das missões e a remoção protegida. */
   worktreeDeps: { list: ListWorktreesDeps; remove: RemoveWorktreeDeps };
 };
@@ -113,6 +117,8 @@ export type AppServices = AddProjectDeps & {
   agentActivityDeps: { terminals(): AppTerminal[]; missions(): MissionTokens[] };
   /** Perfil local: o nome da saudação, guardado nas configurações do banco. */
   profileDeps: ProfileDeps;
+  /** O que o serviço dos agentes precisa do banco: os perfis de execução e as configurações. */
+  agentsDeps: { profiles: ExecutionProfileRepository; settings: AppSettingsRepository };
   /** Contas extras dos programas (Configurações). */
   accounts: AccountRepository;
   /** O cofre das chaves de API: as chaves cifradas de cada conta e o verificador da senha. */
@@ -464,10 +470,17 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const gitPanelPort = createGitPanelPort();
   const gitPanelDeps: GitPanelDeps = { repo: projects, git: gitPanelPort, fs };
   const accountDirectory: AccountDirectory = options.accounts ?? PRINCIPAL_ONLY;
+  const executionProfiles = createExecutionProfileRepository(db);
+  const appSettings = createAppSettingsRepository(db);
+  const profileDirectory = createProfileDirectory({
+    profiles: executionProfiles,
+    settings: appSettings,
+  });
   const orchestrator = createOrchestrator({
     repo,
     projects,
     accounts: accountDirectory,
+    profiles: profileDirectory,
     worktrees: { create: createWorktree, remove: removeWorktree },
     worktreeNames: ({ missionId, title, projectName }) =>
       buildWorktreeNames({ missionId, title, projectSlug: projectName }),
@@ -520,7 +533,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
         }),
       missions: () => listExecutionTokens(db),
     },
-    profileDeps: { settings: createAppSettingsRepository(db), now },
+    profileDeps: { settings: appSettings, now },
+    agentsDeps: { profiles: executionProfiles, settings: appSettings },
     accounts: createAccountRepository(db),
     accountSecrets: createAccountSecretRepository(db),
     vaultMeta: createVaultMetaRepository(db),
@@ -534,10 +548,18 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     },
     missions: {
       orchestrator,
-      createDeps: { repo, projects, accounts: accountDirectory, now, newId },
+      createDeps: {
+        repo,
+        projects,
+        accounts: accountDirectory,
+        profiles: profileDirectory,
+        now,
+        newId,
+      },
       accountDeps: {
         repo,
         accounts: accountDirectory,
+        profiles: profileDirectory,
         isPlanning: (missionId) => orchestrator.isPlanning(missionId),
         isRunning: (missionId) => orchestrator.isRunning(missionId),
         now,

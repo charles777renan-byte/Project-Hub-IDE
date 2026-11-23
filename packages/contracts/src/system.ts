@@ -20,3 +20,20 @@ export const appInfoDtoSchema = z.strictObject({
 });
 
 export type AppInfoDto = z.infer<typeof appInfoDtoSchema>;
+
+/** Tamanho máximo da versão de um programa que a conferência do ambiente devolve. */
+export const ENVIRONMENT_VERSION_MAX = 80;
+
+/**
+ * A conferência do ambiente da tela de boas-vindas: se o Git responde (e a primeira linha de `git --version`) e a
+ * pasta das cópias de trabalho. Os caminhos são só para exibição; o caminho do executável do Git não vem.
+ */
+export const environmentDtoSchema = z.strictObject({
+  git: z.strictObject({
+    installed: z.boolean(),
+    version: z.string().min(1).max(ENVIRONMENT_VERSION_MAX).optional(),
+  }),
+  worktreesRoot: z.string().min(1),
+});
+
+export type EnvironmentDto = z.infer<typeof environmentDtoSchema>;

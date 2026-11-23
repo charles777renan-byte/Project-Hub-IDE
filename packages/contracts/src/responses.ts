@@ -6,6 +6,7 @@ import {
   pasteKeyResultSchema,
 } from './accounts';
 import { agentActivityResponseSchema } from './agent-activity';
+import { agentsDtoSchema, executionProfileDtoSchema, programTestDtoSchema } from './agents';
 import { browserAgentAccessSchema, browserStateSchema } from './browser';
 import { CHANNELS } from './channels';
 import { previewStateSchema } from './preview';
@@ -30,7 +31,7 @@ import { githubPanelSchema } from './github';
 import { limitsDtoSchema } from './limits';
 import { profileDtoSchema } from './profile';
 import { sessionsListResultSchema } from './sessions';
-import { appInfoDtoSchema, systemUsageDtoSchema } from './system';
+import { appInfoDtoSchema, environmentDtoSchema, systemUsageDtoSchema } from './system';
 import { projectSummarySchema, repositoryInitPreviewSchema } from './project';
 import {
   MISSION_STATUS_VALUES,
@@ -107,6 +108,7 @@ export const responseSchemas = {
   [CHANNELS.missionsApprovePlan]: appResultSchema(z.undefined()),
   [CHANNELS.missionsCancelPlanning]: appResultSchema(z.undefined()),
   [CHANNELS.missionsSetAccount]: appResultSchema(missionDtoSchema),
+  [CHANNELS.missionsSetProfile]: appResultSchema(missionDtoSchema),
   [CHANNELS.missionsStart]: appResultSchema(executionDtoSchema),
   [CHANNELS.missionsCancel]: appResultSchema(z.undefined()),
   [CHANNELS.missionsPause]: appResultSchema(z.undefined()),
@@ -123,6 +125,7 @@ export const responseSchemas = {
   [CHANNELS.profileGet]: appResultSchema(profileDtoSchema),
   [CHANNELS.profileSetDisplayName]: appResultSchema(z.undefined()),
   [CHANNELS.systemUsage]: appResultSchema(systemUsageDtoSchema),
+  [CHANNELS.systemEnvironment]: appResultSchema(environmentDtoSchema),
   [CHANNELS.accountsList]: appResultSchema(accountsDtoSchema),
   [CHANNELS.accountsAdd]: appResultSchema(accountDtoSchema),
   [CHANNELS.accountsRename]: appResultSchema(z.undefined()),
@@ -140,6 +143,12 @@ export const responseSchemas = {
   [CHANNELS.accountsLoginResize]: appResultSchema(z.undefined()),
   [CHANNELS.accountsPasteKey]: appResultSchema(pasteKeyResultSchema),
   [CHANNELS.accountsRemoveKey]: appResultSchema(z.undefined()),
+  [CHANNELS.agentsGet]: appResultSchema(agentsDtoSchema),
+  [CHANNELS.agentsTestProgram]: appResultSchema(programTestDtoSchema),
+  [CHANNELS.agentsAddProfile]: appResultSchema(executionProfileDtoSchema),
+  [CHANNELS.agentsUpdateProfile]: appResultSchema(z.undefined()),
+  [CHANNELS.agentsRemoveProfile]: appResultSchema(z.undefined()),
+  [CHANNELS.agentsSetDefaultProfile]: appResultSchema(z.undefined()),
   [CHANNELS.accountsSetAutoSwitch]: appResultSchema(z.undefined()),
   [CHANNELS.vaultGet]: appResultSchema(vaultDtoSchema),
   [CHANNELS.vaultUnlock]: appResultSchema(unlockResultSchema),

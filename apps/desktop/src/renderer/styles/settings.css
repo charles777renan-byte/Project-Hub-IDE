@@ -945,3 +945,82 @@
   color: var(--muted);
   font-size: var(--text-xs);
 }
+
+/* Agentes -------------------------------------------------------------------------------------------------- */
+
+/* O resultado do teste de um programa: uma linha embaixo da linha dele, alinhada ao nome. */
+.app-main .agent-row__result {
+  margin: 0;
+  padding-left: calc(16px + var(--space-3));
+  white-space: normal;
+}
+
+/* Uma opção do perfil: o rótulo à esquerda e as escolhas numa linha (embaixo do rótulo, se a largura não der). */
+.agent-opt {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.agent-opt__label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-label);
+}
+
+.agent-opt__group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.agent-opt__choice {
+  min-height: 28px;
+  padding: 2px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.agent-opt__choice:hover {
+  color: var(--text);
+}
+
+/* A escolhida: preenchida, com contorno e texto mais forte. A forma diz o estado, a cor reforça. */
+.agent-opt__choice[aria-checked='true'] {
+  border-color: var(--field-line);
+  background: var(--line);
+  color: var(--text);
+  font-weight: var(--weight-heading);
+}
+
+.app-main .agent-opt__note {
+  max-width: 62ch;
+  margin: 0;
+  padding-left: calc(10rem + var(--space-3));
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+@media (width <= 900px) {
+  .agent-opt {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-main .agent-opt__note {
+    padding-left: 0;
+  }
+}

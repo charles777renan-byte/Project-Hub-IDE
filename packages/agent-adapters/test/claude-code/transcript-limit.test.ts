@@ -40,9 +40,7 @@ const ANSWER_LINE = JSON.stringify({
 });
 
 /** Linha antiga com campos trocados: `undefined` tira o campo. */
-function line(
-  change: { ts?: string; text?: string } & Record<string, unknown> = {},
-): string {
+function line(change: { ts?: string; text?: string } & Record<string, unknown> = {}): string {
   const { ts, text, ...rest } = change;
   const record = JSON.parse(OLD_LINE) as Record<string, unknown>;
   if (ts !== undefined) record['timestamp'] = ts;
@@ -94,7 +92,9 @@ describe('readLimitLine', () => {
     expect(
       readLimitLine(
         line({
-          apiErrorParams: { rate_limit_info: { resetsAt: 1792441800, rateLimitType: 'seven_day_opus' } },
+          apiErrorParams: {
+            rate_limit_info: { resetsAt: 1792441800, rateLimitType: 'seven_day_opus' },
+          },
         }),
       )?.window,
     ).toBe('weekly');

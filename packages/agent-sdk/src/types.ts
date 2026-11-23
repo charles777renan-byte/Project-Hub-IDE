@@ -1,5 +1,10 @@
 import type { ErrorCode } from '@project-hub/contracts';
-import type { ContextUsage, ProtectedAction, UsageSummary } from '@project-hub/domain';
+import type {
+  ContextUsage,
+  ExecutionOptions,
+  ProtectedAction,
+  UsageSummary,
+} from '@project-hub/domain';
 
 /** Configuração de um agente, como o perfil a guarda (seção 9.1). */
 export type AgentConfig = { model?: string; configuration: Record<string, unknown> };
@@ -42,6 +47,8 @@ export type AgentStartInput = {
   accountId?: string | null;
   /** A conversa a retomar, vinda de outra conta. Ausente: a sessão começa do zero com `prompt`. */
   resume?: AgentResumeInput;
+  /** As opções do perfil de execução da missão. Ausente: o programa abre com os padrões dele. */
+  options?: ExecutionOptions;
 };
 
 /** O que a reanexação precisa saber da missão: a conta em que a sessão nasceu. */

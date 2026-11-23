@@ -6,6 +6,7 @@ import {
   getMissionView,
   listMissions,
   setMissionAccount,
+  setMissionProfile,
   withMissionAccount,
   type CreateMissionDeps,
   type DeleteMissionDeps,
@@ -15,6 +16,7 @@ import {
   type Orchestrator,
   type PlanEdit,
   type SetMissionAccountDeps,
+  type SetMissionProfileDeps,
 } from '@project-hub/application';
 import {
   CHANNELS,
@@ -26,6 +28,7 @@ import {
   provideInputSchema,
   requestChangesInputSchema,
   setMissionAccountInputSchema,
+  setMissionProfileInputSchema,
   type AppResult,
 } from '@project-hub/contracts';
 import { registerTrustedHandler, type IpcRegistry, type SenderCheck } from './trusted-handler';
@@ -41,7 +44,7 @@ export type MissionsIpcDeps = {
   diffDeps: MissionDiffDeps;
   deleteDeps: DeleteMissionDeps;
   /** A conta de cada missão (nome, removida, travada) e a troca dela. Só ids e nomes passam por aqui. */
-  accountDeps: SetMissionAccountDeps;
+  accountDeps: MissionAccountIpcDeps;
 };
 
 const INVALID_MISSION = 'Confira os campos da missão: título, objetivo e um critério de aceite.';
@@ -49,6 +52,7 @@ const INVALID_PROJECT = 'Informe o projeto da missão.';
 const INVALID_MISSION_ID = 'Informe a missão.';
 const INVALID_INPUT = 'Confira a resposta antes de enviar.';
 const INVALID_ACCOUNT = 'Informe a missão e a conta.';
+const INVALID_PROFILE = 'Informe a missão e o perfil.';
 const INVALID_PLAN_REQUEST = 'Informe a missão e, se quiser, um pedido de até 1000 caracteres.';
 const INVALID_PLAN_EDIT =
   'Confira a edição da tarefa: o título tem de 1 a 120 caracteres, a descrição até 2000 e a posição começa em 1.';
@@ -102,6 +106,16 @@ export function handleSetMissionAccount(deps: SetMissionAccountDeps, payload: un
   const input = setMissionAccountInputSchema.safeParse(payload);
   if (!input.success) return failure('VALIDATION_FAILED', INVALID_ACCOUNT);
   return setMissionAccount(deps, input.data);
+}
+
+/** O que os canais da conta e do perfil da missão precisam: as duas trocas leem a mesma trava. */
+export type MissionAccountIpcDeps = SetMissionAccountDeps & SetMissionProfileDeps;
+
+/** Troca o perfil de execução da missão. Só o id da missão e o do perfil: a regra é do caso de uso. */
+export function handleSetMissionProfile(deps: SetMissionProfileDeps, payload: unknown) {
+  const input = setMissionProfileInputSchema.safeParse(payload);
+  if (!input.success) return failure('VALIDATION_FAILED', INVALID_PROFILE);
+  return setMissionProfile(deps, input.data);
 }
 
 /** Alterações do worktree da missão. Só lê; a missão sem worktree devolve a lista vazia. */
@@ -224,6 +238,7 @@ export function registerMissionHandlers(
   on(CHANNELS.missionsList, (payload) => handleListMissions(deps.queryDeps, payload, account));
   on(CHANNELS.missionsGet, (payload) => handleGetMission(deps.queryDeps, payload, account));
   on(CHANNELS.missionsSetAccount, (payload) => handleSetMissionAccount(account, payload));
+  on(CHANNELS.missionsSetProfile, (payload) => handleSetMissionProfile(account, payload));
   on(CHANNELS.missionsDiff, (payload) => handleMissionDiff(deps.diffDeps, payload));
   on(CHANNELS.missionsPlan, (payload) => handleMissionAction(orchestrator, 'plan', payload));
   on(CHANNELS.missionsEditPlan, (payload) => handleEditPlanStep(orchestrator, payload));

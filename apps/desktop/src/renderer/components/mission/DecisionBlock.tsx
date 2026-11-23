@@ -1,9 +1,10 @@
 import { useCallback, useId, useRef, useState, type FormEvent, type Ref } from 'react';
 import { createPortal } from 'react-dom';
-import type { MissionViewDto } from '@project-hub/contracts';
+import type { ExecutionProfileDto, MissionViewDto } from '@project-hub/contracts';
 import {
   DECISION_TEXT,
   MISSION_ACCOUNT_TEXT,
+  MISSION_PROFILE_TEXT,
   MISSION_TEXT,
   PLAN_TEXT,
   VAULT_TEXT,
@@ -19,6 +20,7 @@ import { AccountChoice, type AccountChoiceItem } from '../AccountChoice';
 import { ApiBadge } from '../ApiBadge';
 import { ApprovalCard } from '../ApprovalCard';
 import { Clock, ICON_PROPS } from '../Icon';
+import { ProfileChoice } from '../ProfileChoice';
 import { revealDecision, useDecisionOutOfView } from './decision-visibility';
 
 /** Limite da instrução do novo plano, o mesmo do contrato (`planMissionInputSchema`). */
@@ -33,6 +35,17 @@ export type DecisionAccount = {
   /** A pessoa escolheu outra conta: só o id (`null` é a Principal). */
   onChange(accountId: string | null): void;
 };
+
+/** O que o bloco precisa para mostrar e trocar o perfil de execução da missão. */
+export type DecisionProfile = {
+  /** Os perfis de execução. Só com o embutido, nada de perfil aparece. */
+  profiles: readonly ExecutionProfileDto[];
+  /** A pessoa escolheu outro perfil: só o id. */
+  onChange(profileId: string): void;
+};
+
+/** O id do perfil embutido, o da missão sem perfil gravado (`BUILT_IN_PROFILE_ID` do contrato). */
+const BUILT_IN_PROFILE = 'padrao';
 
 /** Rótulo da ação principal de cada situação. */
 const PRIMARY_LABEL: Record<PrimaryAction, string> = {
@@ -153,6 +166,7 @@ export function DecisionBlock({
   answerRef,
   barSlot = null,
   account,
+  profile,
 }: {
   view: MissionViewDto;
   /** Chamadas longas (planejar, aprovar, iniciar, decidir, responder e tentar de novo): desabilitam as ações. */
@@ -192,6 +206,7 @@ export function DecisionBlock({
   barSlot?: HTMLElement | null;
   /** As contas do Claude Code e a troca. Sem ele (a página ainda não leu as contas), só a conta removida aparece. */
   account?: DecisionAccount | undefined;
+  profile?: DecisionProfile | undefined;
 }) {
   const sectionRef = useRef<HTMLElement | null>(null);
   /** O bloco é do `decisionRef` da página e também daqui, para medir se ele saiu de vista. */
@@ -236,6 +251,9 @@ export function DecisionBlock({
   const accountRemoved = mission.accountRemoved;
   const accountShown = accountRemoved || (account?.accounts.length ?? 0) > 1;
   const accountChoice = accountShown && !mission.accountLocked && account !== undefined;
+  // O perfil só aparece quando a pessoa criou algum. Ele troca enquanto a conta troca: antes de a missão começar.
+  const profileShown = profile !== undefined && profile.profiles.length > 1;
+  const profileChoice = profileShown && !mission.accountLocked;
   // A missão espera o cofre (na fila, ou pausada sem agente): a frase diz isso e descreve a ação principal. Na fila,
   // a ação vira Destrancar; pausada, Retomar pede a senha.
   const vaultWaiting = mission.vaultLocked === true;
@@ -487,6 +505,24 @@ export function DecisionBlock({
             {accountChoice
               ? MISSION_ACCOUNT_TEXT.removedChoose
               : MISSION_ACCOUNT_TEXT.removedLocked}
+          </p>
+        ) : null}
+
+        {profileChoice ? (
+          <div className="decision-block__account">
+            <p className="decision-block__account-label">{MISSION_PROFILE_TEXT.label}</p>
+            <ProfileChoice
+              label={MISSION_PROFILE_TEXT.label}
+              profiles={profile.profiles}
+              value={mission.profileId ?? BUILT_IN_PROFILE}
+              disabled={locked}
+              onChange={profile.onChange}
+            />
+          </div>
+        ) : null}
+        {profileShown && !profileChoice && mission.profileName !== undefined ? (
+          <p className="decision-block__account-fixed">
+            {MISSION_PROFILE_TEXT.fixed(mission.profileName)}
           </p>
         ) : null}
 

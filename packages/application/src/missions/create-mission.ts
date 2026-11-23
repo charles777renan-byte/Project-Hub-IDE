@@ -1,17 +1,23 @@
 import type { AppResult } from '@project-hub/contracts';
-import type { Mission } from '@project-hub/domain';
-import type { AccountDirectory, MissionRepository, ProjectRepository } from '../ports';
+import { DEFAULT_EXECUTION_PROFILE_ID, type Mission } from '@project-hub/domain';
+import type {
+  AccountDirectory,
+  MissionRepository,
+  ProfileDirectory,
+  ProjectRepository,
+} from '../ports';
 import { failure } from '../result';
 
-/** Perfil de agente e de execução das missões até existirem perfis configuráveis. */
+/** Perfil de agente das missões até existirem perfis de agente configuráveis. */
 const DEFAULT_AGENT_PROFILE_ID = 'simulado';
-const DEFAULT_EXECUTION_PROFILE_ID = 'padrao';
 
 export type CreateMissionDeps = {
   repo: Pick<MissionRepository, 'insertMission' | 'appendAudit' | 'transaction'>;
   projects: Pick<ProjectRepository, 'get'>;
   /** As contas do Claude Code: a missão nasce na padrão. Sem elas, na Principal. */
   accounts?: Pick<AccountDirectory, 'defaultOf'>;
+  /** Os perfis de execução: a missão nasce com o padrão. Sem eles, com o embutido. */
+  profiles?: Pick<ProfileDirectory, 'defaultId'>;
   now: () => string;
   newId: () => string;
 };
@@ -63,7 +69,8 @@ export function createMission(
     status: 'draft',
     priority: 'normal',
     agentProfileId: DEFAULT_AGENT_PROFILE_ID,
-    executionProfileId: DEFAULT_EXECUTION_PROFILE_ID,
+    // O perfil fica gravado na criação: trocar o padrão depois não muda as missões que já existem.
+    executionProfileId: deps.profiles?.defaultId() ?? DEFAULT_EXECUTION_PROFILE_ID,
     altersCode: input.altersCode,
     createdAt: at,
     updatedAt: at,

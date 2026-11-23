@@ -63,7 +63,11 @@ export function readAntigravityHistory(text: string): SessionActivity[] {
     conversation.firstMs = Math.min(conversation.firstMs, timestamp);
     conversation.lastMs = Math.max(conversation.lastMs, timestamp);
     const display = record['display'];
-    if (conversation.firstPrompt === undefined && typeof display === 'string' && display.trim() !== '') {
+    if (
+      conversation.firstPrompt === undefined &&
+      typeof display === 'string' &&
+      display.trim() !== ''
+    ) {
       conversation.firstPrompt = display;
     }
     conversation.messagesByDay.set(date, (conversation.messagesByDay.get(date) ?? 0) + 1);
@@ -75,9 +79,9 @@ export function readAntigravityHistory(text: string): SessionActivity[] {
       .map(([date, messages]) => ({ date, messages, tokens: null }));
     const firstPrompt = conversation.firstPrompt;
     const detail: SessionDetail = {
-      title:
-        firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt),
-      firstPrompt: firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.firstPrompt),
+      title: firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt),
+      firstPrompt:
+        firstPrompt === undefined ? null : cutText(firstPrompt, DETAIL_LIMITS.firstPrompt),
       lastAgentText: null,
       lastTurns: null,
       model: null,

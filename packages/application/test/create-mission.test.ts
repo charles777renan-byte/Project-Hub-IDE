@@ -124,3 +124,23 @@ describe('conta da missão nova', () => {
     expect(without.ok && without.data).not.toHaveProperty('accountId');
   });
 });
+
+describe('perfil da missão nova', () => {
+  const FAST = '33333333-3333-4333-8333-333333333333';
+
+  it('nasce com o perfil padrão das missões', () => {
+    const h = harness();
+
+    const result = createMission({ ...h.deps, profiles: { defaultId: () => FAST } }, VALID);
+
+    expect(result.ok && result.data.executionProfileId).toBe(FAST);
+  });
+
+  it('sem perfis, nasce com o perfil embutido', () => {
+    const h = harness();
+
+    const result = createMission(h.deps, VALID);
+
+    expect(result.ok && result.data.executionProfileId).toBe('padrao');
+  });
+});

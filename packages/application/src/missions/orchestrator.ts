@@ -16,9 +16,11 @@ import {
   type MissionStatus,
   type MissionStep,
   type ProjectRecord,
+  type ExecutionOptions,
 } from '@project-hub/domain';
 import type {
   AccountDirectory,
+  ProfileDirectory,
   AccountPick,
   AccountSwitchNotice,
   DiffPort,
@@ -93,6 +95,8 @@ export type OrchestratorDeps = {
     | 'pickAccount'
     | 'limitMessage'
   >;
+  /** Os perfis de execução. Sem eles, o agente abre sempre com os padrões do programa. */
+  profiles?: Pick<ProfileDirectory, 'get'>;
   /** A missão trocou de conta sozinha (o limite acabou, ou a conta estava esgotada na abertura): o aviso. */
   onAccountSwitched?: (notice: AccountSwitchNotice) => void;
   /**
@@ -395,8 +399,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * não há como: adaptador sem reanexação, sem posição, sessão encerrada ou missão já encerrada.
    */
   /** A conta da missão como o agente e o planejador a recebem: só quando não é a Principal. */
-  function accountOf(mission: Mission): { accountId?: string } {
-    return mission.accountId === undefined ? {} : { accountId: mission.accountId };
+  /** A conta e as opções do perfil da missão, lidas na hora de abrir o agente. */
+  function accountOf(mission: Mission): { accountId?: string; options?: ExecutionOptions } {
+    const options = deps.profiles?.get(mission.executionProfileId)?.options;
+    return {
+      ...(mission.accountId === undefined ? {} : { accountId: mission.accountId }),
+      ...(options === undefined || Object.keys(options).length === 0 ? {} : { options }),
+    };
   }
 
   /** Missão de conta removida não roda: a falha sai antes de qualquer mudança de estado. */

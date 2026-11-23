@@ -76,7 +76,11 @@ function logout() {
   process.exit(0);
 }
 
-if (command === 'auth login --claudeai' || command === 'login') login();
+if (command === '--version') {
+  // O teste do programa na seção Agentes: a versão na primeira linha, como os programas de verdade.
+  process.stdout.write(provider === 'claude' ? '9.9.9 (Claude Code)\n' : 'codex-cli 9.9.9\n');
+  process.exit(0);
+} else if (command === 'auth login --claudeai' || command === 'login') login();
 else if (command === 'auth status --json' || command === 'login status') status();
 else if (command === 'auth logout' || command === 'logout') logout();
 else {

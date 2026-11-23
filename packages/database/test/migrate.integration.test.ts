@@ -91,6 +91,7 @@ describe('migrateDatabase', () => {
         '0016_conta_em_uso',
         '0017_contas_por_chave',
         '0018_motivo_limite_da_conta',
+        '0019_perfis_de_execucao',
       ],
       alreadyUpToDate: false,
     });
@@ -138,6 +139,7 @@ describe('migrateDatabase', () => {
       '0016_conta_em_uso',
       '0017_contas_por_chave',
       '0018_motivo_limite_da_conta',
+      '0019_perfis_de_execucao',
     ]);
     expect(existsSync(backupPath)).toBe(true);
     // O backup tem o estado de antes da migração: a tabela antiga e nenhuma projects.

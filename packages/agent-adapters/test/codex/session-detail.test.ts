@@ -47,7 +47,12 @@ describe('readCodexSessionActivity: detalhe da sessão', () => {
 
   it('o modelo é o do último turn_context', () => {
     const activity = readCodexSessionActivity(
-      transcript(meta(), turnContext(1, 'gpt-5.5-codex'), item(2, 'UserMessage', 'oi'), turnContext(3, 'gpt-5.6-codex')),
+      transcript(
+        meta(),
+        turnContext(1, 'gpt-5.5-codex'),
+        item(2, 'UserMessage', 'oi'),
+        turnContext(3, 'gpt-5.6-codex'),
+      ),
     );
     expect(activity?.detail?.model).toBe('gpt-5.6-codex');
   });
@@ -105,7 +110,8 @@ describe('readCodexSessionActivity: detalhe da sessão', () => {
   });
 
   it('a última linha pela metade não entra e as anteriores seguem', () => {
-    const cut = transcript(meta(), item(1, 'UserMessage', 'primeiro')) + '{"timestamp":"2026-10-30T12:0';
+    const cut =
+      transcript(meta(), item(1, 'UserMessage', 'primeiro')) + '{"timestamp":"2026-10-30T12:0';
     const activity = readCodexSessionActivity(cut);
     expect(activity?.detail?.firstPrompt).toBe('primeiro');
   });

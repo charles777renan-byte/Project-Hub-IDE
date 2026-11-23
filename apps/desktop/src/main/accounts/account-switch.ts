@@ -45,13 +45,7 @@ export type CandidateFacts = {
 };
 
 export type Eligibility =
-  | 'eligible'
-  | 'removed'
-  | 'api-excluded'
-  | 'vault-locked'
-  | 'no-key'
-  | 'signed-out'
-  | 'exhausted';
+  'eligible' | 'removed' | 'api-excluded' | 'vault-locked' | 'no-key' | 'signed-out' | 'exhausted';
 
 /** Se a candidata serve para a troca, e o porquê quando não serve. */
 export function eligibilityOf(facts: CandidateFacts, settings: AutoSwitchSettings): Eligibility {
@@ -111,7 +105,10 @@ export function createAccountSwitch(deps: {
     return facts;
   }
 
-  async function connected(provider: AccountProviderId, accountId: string | null): Promise<boolean> {
+  async function connected(
+    provider: AccountProviderId,
+    accountId: string | null,
+  ): Promise<boolean> {
     try {
       return (await deps.status(provider, accountId)).state === 'connected';
     } catch {

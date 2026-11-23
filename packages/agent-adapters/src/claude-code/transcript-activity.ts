@@ -186,7 +186,10 @@ export function transcriptCwd(text: string): string | undefined {
 }
 
 /** O título do ai-title; sem ele, o primeiro prompt cortado em 80. Sem nada, `null`. */
-export function detailTitle(aiTitle: string | undefined, firstPrompt: string | undefined): string | null {
+export function detailTitle(
+  aiTitle: string | undefined,
+  firstPrompt: string | undefined,
+): string | null {
   if (aiTitle !== undefined && aiTitle.trim() !== '') return cutText(aiTitle, DETAIL_LIMITS.title);
   if (firstPrompt !== undefined && firstPrompt.trim() !== '') {
     return cutText(firstPrompt, DETAIL_LIMITS.titleFromPrompt);

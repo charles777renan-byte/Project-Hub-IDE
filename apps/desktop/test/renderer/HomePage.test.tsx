@@ -838,15 +838,16 @@ describe('HomePage', () => {
 });
 
 describe('HomePage sem nenhum projeto', () => {
-  it('mostra os dois passos e o botão Adicionar projeto, no lugar das faixas', async () => {
+  it('mostra as boas-vindas e o botão Adicionar projeto, no lugar das faixas', async () => {
     installApi({});
 
     renderHome();
 
     expect(await screen.findByRole('button', { name: 'Adicionar projeto' })).toBeInTheDocument();
-    expect(screen.getByText('Comece por um projeto')).toBeInTheDocument();
-    expect(screen.getByText('1. Adicionar projeto')).toBeInTheDocument();
-    expect(screen.getByText('2. Criar a primeira missão')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Boas-vindas ao Project Hub' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Antes de começar' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Precisa de você' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Missões' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Visão geral' })).not.toBeInTheDocument();
@@ -872,7 +873,7 @@ describe('HomePage sem nenhum projeto', () => {
 
     expect(await screen.findByText('Nada espera por você.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Adicionar projeto' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Comece por um projeto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Boas-vindas ao Project Hub')).not.toBeInTheDocument();
     expect(panel('Precisa de você')).toBeInTheDocument();
   });
 

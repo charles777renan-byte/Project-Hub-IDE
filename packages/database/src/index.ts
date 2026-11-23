@@ -13,6 +13,10 @@ export {
   type AccountSecretRepository,
 } from './repositories/account-secret-repository';
 export {
+  createExecutionProfileRepository,
+  type ExecutionProfileRepository,
+} from './repositories/execution-profile-repository';
+export {
   createVaultMetaRepository,
   type VaultMetaRepository,
 } from './repositories/vault-meta-repository';

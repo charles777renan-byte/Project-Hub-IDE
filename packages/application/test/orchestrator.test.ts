@@ -1,5 +1,5 @@
 import type { AppResult, MissionDiffDto } from '@project-hub/contracts';
-import type { AuditEvent, Execution, Mission } from '@project-hub/domain';
+import type { AuditEvent, Execution, ExecutionOptions, Mission } from '@project-hub/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { createOrchestrator, type Orchestrator } from '../src/missions/orchestrator';
 import { failure } from '../src/result';
@@ -20,6 +20,8 @@ const T0 = '2026-10-20T09:00:00.000Z';
 
 type HarnessOptions = {
   scripts?: FakeStep[][];
+  /** Os perfis de execução que existem, por id. */
+  profiles?: Record<string, ExecutionOptions>;
   failStarts?: number;
   failDelivery?: boolean;
   failStop?: boolean;
@@ -114,6 +116,16 @@ function harness(options: HarnessOptions = {}): Harness {
             }),
             vaultLocked: (accountId: string) =>
               options.vault?.locked === true && options.vault.apiAccounts.includes(accountId),
+          },
+        }),
+    ...(options.profiles === undefined
+      ? {}
+      : {
+          profiles: {
+            get: (id: string) => {
+              const found = options.profiles?.[id];
+              return found === undefined ? undefined : { name: 'Perfil', options: found };
+            },
           },
         }),
     ...(options.unlock === undefined ? {} : { unlock: options.unlock }),
@@ -2243,6 +2255,27 @@ describe('conta da missão no orquestrador', () => {
 
     expect(h.agent.starts).toHaveLength(2);
     expect(h.agent.starts.map((start) => start.accountId)).toEqual([WORK, WORK]);
+  });
+
+  it('o agente recebe as opções do perfil da missão, lidas a cada tentativa', async () => {
+    const FAST = '33333333-3333-4333-8333-333333333333';
+    const h = harness({ profiles: { [FAST]: { model: 'haiku', permissionMode: 'auto' } } });
+    h.repo.insertMission(missionFixture({ executionProfileId: FAST }));
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.agent.starts[0]?.options).toEqual({ model: 'haiku', permissionMode: 'auto' });
+  });
+
+  it('sem perfil, ou com o perfil removido, o agente abre sem opções', async () => {
+    const h = harness({ profiles: {} });
+    h.repo.insertMission(
+      missionFixture({ executionProfileId: '44444444-4444-4444-8444-444444444444' }),
+    );
+
+    data(await h.orchestrator.startMission(MISSION));
+
+    expect(h.agent.starts[0]).not.toHaveProperty('options');
   });
 
   it('isRunning vale desde o pedido de início, antes de o agente abrir', async () => {

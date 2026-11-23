@@ -469,6 +469,7 @@ describe('buildProjectHubApi', () => {
     expect(Object.keys(api).sort()).toEqual([
       'accounts',
       'activity',
+      'agents',
       'alerts',
       'app',
       'approvals',
@@ -552,6 +553,7 @@ describe('buildProjectHubApi', () => {
       'resume',
       'retry',
       'setAccount',
+      'setProfile',
       'start',
       'subscribe',
       'subscribeUsage',
@@ -561,6 +563,15 @@ describe('buildProjectHubApi', () => {
       'refresh',
       'refreshAccount',
       'subscribe',
+    ]);
+    // Os agentes só mandam o programa, o id do perfil, o nome e as opções das listas fixas.
+    expect(Object.keys(api.agents).sort()).toEqual([
+      'addProfile',
+      'get',
+      'removeProfile',
+      'setDefaultProfile',
+      'testProgram',
+      'updateProfile',
     ]);
     // As contas só mandam o programa, o id e o nome; o login não tem método que receba endereço.
     expect(Object.keys(api.accounts).sort()).toEqual([

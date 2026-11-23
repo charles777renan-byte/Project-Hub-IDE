@@ -134,6 +134,13 @@
       "when": 1795317886351,
       "tag": "0018_motivo_limite_da_conta",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795392466345,
+      "tag": "0019_perfis_de_execucao",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,12 @@ import type {
   AgentStartInput,
 } from '@project-hub/agent-sdk';
 import {
+  PROFILE_EFFORTS,
+  PROFILE_MODELS,
+  PROFILE_PERMISSION_MODES,
+  type ExecutionOptions,
+} from '@project-hub/domain';
+import {
   isClearSessionEnd,
   mapHookEntry,
   writeHookScript,
@@ -112,6 +118,22 @@ export const CLAUDE_CODE_CAPABILITIES: Omit<AgentCapabilities, 'models'> = {
 };
 
 /**
+ * As opções do perfil de execução como argumentos do Claude Code. Cada valor é conferido de novo contra a lista
+ * fixa do domínio: o que não está nela não chega à linha de comando, venha de onde vier.
+ */
+export function executionOptionArgs(options: ExecutionOptions | undefined): string[] {
+  if (options === undefined) return [];
+  const { model, effort, permissionMode } = options;
+  return [
+    ...(model !== undefined && PROFILE_MODELS.includes(model) ? ['--model', model] : []),
+    ...(effort !== undefined && PROFILE_EFFORTS.includes(effort) ? ['--effort', effort] : []),
+    ...(permissionMode !== undefined && PROFILE_PERMISSION_MODES.includes(permissionMode)
+      ? ['--permission-mode', permissionMode]
+      : []),
+  ];
+}
+
+/**
  * Adaptador do Claude Code interativo. Cada execução roda o CLI num terminal do processo de terminais,
  * com os hooks passados por `--settings`. Os eventos vêm dos hooks, não da saída do terminal.
  */
@@ -170,6 +192,7 @@ export function createClaudeCodeAdapter(options: ClaudeCodeAdapterOptions): Agen
         ...prefix,
         '--settings',
         settingsFile,
+        ...executionOptionArgs(input.options),
         ...(input.prompt === '' ? [] : [input.prompt]),
       ];
       try {

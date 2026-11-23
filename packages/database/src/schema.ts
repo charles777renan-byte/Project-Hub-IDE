@@ -11,6 +11,9 @@ import {
   MISSION_ROLES,
   MISSION_STEP_KINDS,
   MISSION_STEP_STATUSES,
+  PROFILE_EFFORTS,
+  PROFILE_MODELS,
+  PROFILE_PERMISSION_MODES,
   PROTECTED_ACTIONS,
   type ContextUsage,
   type UsageSummary,
@@ -336,6 +339,38 @@ export const accounts = sqliteTable(
  * A chave de API de uma conta, cifrada pelo cofre do processo principal. O banco nunca vê a chave: só o texto
  * cifrado e os 4 últimos caracteres, que a tela mostra para a pessoa conferir.
  */
+/**
+ * Perfis de execução das missões: como o Claude Code abre (modelo, esforço e modo de permissão). Coluna nula quer
+ * dizer "padrão do programa". O perfil embutido (`padrao`) não tem linha. `missions.execution_profile_id` guarda o
+ * id sem chave estrangeira: o repositório devolve as missões ao perfil embutido quando um perfil é removido.
+ */
+export const executionProfiles = sqliteTable(
+  'execution_profiles',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    model: text('model', { enum: PROFILE_MODELS }),
+    effort: text('effort', { enum: PROFILE_EFFORTS }),
+    permissionMode: text('permission_mode', { enum: PROFILE_PERMISSION_MODES }),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    check(
+      'execution_profiles_model_check',
+      sql`${table.model} IS NULL OR ${table.model} IN (${oneOf(PROFILE_MODELS)})`,
+    ),
+    check(
+      'execution_profiles_effort_check',
+      sql`${table.effort} IS NULL OR ${table.effort} IN (${oneOf(PROFILE_EFFORTS)})`,
+    ),
+    check(
+      'execution_profiles_permission_mode_check',
+      sql`${table.permissionMode} IS NULL OR ${table.permissionMode} IN (${oneOf(PROFILE_PERMISSION_MODES)})`,
+    ),
+  ],
+);
+
 export const accountSecrets = sqliteTable(
   'account_secrets',
   {
@@ -376,5 +411,6 @@ export const schema = {
   projectPreviews,
   accounts,
   accountSecrets,
+  executionProfiles,
   vaultMeta,
 };

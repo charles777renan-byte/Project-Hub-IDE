@@ -1,5 +1,15 @@
 import type { AgentActivity } from './agent-activity';
 import type {
+  AddProfileInput,
+  AgentsDto,
+  ExecutionProfileDto,
+  ProgramTestDto,
+  RemoveProfileInput,
+  SetDefaultProfileInput,
+  TestProgramInput,
+  UpdateProfileInput,
+} from './agents';
+import type {
   AccountDto,
   AccountsDto,
   AccountTargetInput,
@@ -52,7 +62,7 @@ import type { LimitsDto } from './limits';
 import type { PreviewStateDto } from './preview';
 import type { ProfileDto } from './profile';
 import type { SessionsListInput, SessionsListResult, SessionsResumeInput } from './sessions';
-import type { AppInfoDto, SystemUsageDto } from './system';
+import type { AppInfoDto, EnvironmentDto, SystemUsageDto } from './system';
 import type {
   AddProjectInput,
   GitIdentity,
@@ -71,6 +81,7 @@ import type {
   MissionDiffDto,
   MissionDto,
   SetMissionAccountInput,
+  SetMissionProfileInput,
   MissionEventDto,
   MissionPlanDto,
   MissionUsageEventDto,
@@ -142,6 +153,8 @@ export type ProjectHubApi = {
     cancelPlanning(missionId: string): Promise<AppResult<void>>;
     /** Troca a conta do Claude Code da missão, antes de ela começar. `null` é a Principal. */
     setAccount(input: SetMissionAccountInput): Promise<AppResult<MissionDto>>;
+    /** Troca o perfil de execução da missão, com a mesma trava da conta. */
+    setProfile(input: SetMissionProfileInput): Promise<AppResult<MissionDto>>;
     /** Inicia a execução de uma missão aprovada. Devolve a tentativa no estado em que parou. */
     start(missionId: string): Promise<AppResult<ExecutionDto>>;
     /** Cancela a missão, encerrando o agente se ele estiver rodando (também a pausada). */
@@ -304,6 +317,8 @@ export type ProjectHubApi = {
   system: {
     /** Uso do processador e da memória do computador. O processador é medido entre duas leituras. */
     usage(): Promise<AppResult<SystemUsageDto>>;
+    /** Confere o ambiente para a tela de boas-vindas: o Git e a pasta das cópias de trabalho. Roda o Git a cada chamada. */
+    environment(): Promise<AppResult<EnvironmentDto>>;
   };
   limits: {
     /** Limites da assinatura dos programas, da última leitura guardada. Não faz leitura nova. */
@@ -392,6 +407,16 @@ export type ProjectHubApi = {
      * sem usuário, senha nem porta; o resto volta como erro, sem abrir. Abre direto, sem confirmação.
      */
     openUrl(url: string): Promise<AppResult<void>>;
+  };
+  agents: {
+    /** Os programas de agente e os perfis de execução das missões. */
+    get(): Promise<AppResult<AgentsDto>>;
+    /** Roda `<programa> --version`. Não faz chamada cobrada nem lê conta. */
+    testProgram(input: TestProgramInput): Promise<AppResult<ProgramTestDto>>;
+    addProfile(input: AddProfileInput): Promise<AppResult<ExecutionProfileDto>>;
+    updateProfile(input: UpdateProfileInput): Promise<AppResult<void>>;
+    removeProfile(input: RemoveProfileInput): Promise<AppResult<void>>;
+    setDefaultProfile(input: SetDefaultProfileInput): Promise<AppResult<void>>;
   };
   accounts: {
     /** As contas de cada programa, com o estado lido do próprio programa. */

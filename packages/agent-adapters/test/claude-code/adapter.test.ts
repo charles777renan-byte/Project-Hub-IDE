@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentEvent } from '@project-hub/agent-sdk';
 import {
   createClaudeCodeAdapter,
+  executionOptionArgs,
   type ClaudeHooks,
   type ClaudeTerminal,
 } from '../../src/claude-code/adapter';
@@ -143,6 +144,52 @@ describe('adaptador do Claude Code: início', () => {
       PATH: 'C:\\x',
       PROJECT_HUB_HOOK_TOKEN: `token-${opened?.id ?? ''}`,
     });
+  });
+
+  it('as opções do perfil viram --model, --effort e --permission-mode, antes do pedido', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({ ...f, settingsDir: dir, command: 'claude', env: {} });
+
+    await adapter.start(
+      {
+        cwd: 'C:\\projeto',
+        prompt: 'corrija o teste',
+        options: { model: 'haiku', effort: 'low', permissionMode: 'acceptEdits' },
+      },
+      new AbortController().signal,
+    );
+
+    const args = f.opened[0]?.args ?? [];
+    expect(args.slice(2)).toEqual([
+      '--model',
+      'haiku',
+      '--effort',
+      'low',
+      '--permission-mode',
+      'acceptEdits',
+      'corrija o teste',
+    ]);
+  });
+
+  it('sem opções, nada entra entre o --settings e o pedido', async () => {
+    const f = fakes();
+    const adapter = createClaudeCodeAdapter({ ...f, settingsDir: dir, command: 'claude', env: {} });
+
+    await adapter.start({ cwd: 'C:\\projeto', prompt: 'oi' }, new AbortController().signal);
+
+    expect(f.opened[0]?.args.slice(2)).toEqual(['oi']);
+  });
+
+  it('valor fora das listas do perfil não chega à linha de comando', () => {
+    expect(
+      executionOptionArgs({
+        model: '--dangerously-skip-permissions' as never,
+        effort: 'turbo' as never,
+        permissionMode: 'bypassPermissions' as never,
+      }),
+    ).toEqual([]);
+    expect(executionOptionArgs({ model: 'opus' })).toEqual(['--model', 'opus']);
+    expect(executionOptionArgs(undefined)).toEqual([]);
   });
 
   it('sem prompt, o CLI abre sem argumento de texto', async () => {
@@ -566,15 +613,26 @@ describe('adaptador do Claude Code: limite de uso', () => {
 
   const answer = JSON.stringify({
     type: 'assistant',
-    message: { id: 'msg_1', model: 'claude-sonnet-5-5', usage: { input_tokens: 1, output_tokens: 3 } },
+    message: {
+      id: 'msg_1',
+      model: 'claude-sonnet-5-5',
+      usage: { input_tokens: 1, output_tokens: 3 },
+    },
   });
 
   function transcript(lines: string[]): string {
     const folder = join(dir, 'claude', 'projects', 'C--projeto');
     mkdirSync(folder, { recursive: true });
     const file = join(folder, `${SESSION}.jsonl`);
-    writeFileSync(file, lines.map((line) => `${line}
-`).join(''));
+    writeFileSync(
+      file,
+      lines
+        .map(
+          (line) => `${line}
+`,
+        )
+        .join(''),
+    );
     return file;
   }
 

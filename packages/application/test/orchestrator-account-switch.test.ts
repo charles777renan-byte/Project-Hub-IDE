@@ -20,8 +20,13 @@ const T0 = '2026-10-20T09:00:00.000Z';
 const MISSION = 'missao-1-abcdef';
 const RESET = '2026-10-20T15:10:00.000Z';
 const SESSION = '11111111-2222-3333-4444-555555555555';
-const TRANSCRIPT = 'C:\\Users\\eu\\.claude\\projects\\C--app\\11111111-2222-3333-4444-555555555555.jsonl';
-const NAMES: Record<string, string> = { trabalho: 'Trabalho', pessoal: 'Pessoal', estudo: 'Estudo' };
+const TRANSCRIPT =
+  'C:\\Users\\eu\\.claude\\projects\\C--app\\11111111-2222-3333-4444-555555555555.jsonl';
+const NAMES: Record<string, string> = {
+  trabalho: 'Trabalho',
+  pessoal: 'Pessoal',
+  estudo: 'Estudo',
+};
 
 type Options = {
   scripts: FakeStep[][];
@@ -136,7 +141,9 @@ function task(id: string, position: number, dependsOn: string[] = []): MissionSt
   };
 }
 
-function limit(extra: { resetsAt?: string; sessionId?: string; transcriptPath?: string } = {}): FakeStep {
+function limit(
+  extra: { resetsAt?: string; sessionId?: string; transcriptPath?: string } = {},
+): FakeStep {
   return { kind: 'event', event: { type: 'limit.reached', window: 'session', ...extra } };
 }
 
@@ -156,7 +163,10 @@ function data<T>(result: AppResult<T>): T {
 
 describe('troca automática de conta na missão', () => {
   it('com a opção ligada, encerra a tentativa e continua a mesma tarefa na próxima conta', async () => {
-    const h = harness({ enabled: true, scripts: [[FULL_LIMIT, { kind: 'hold' }], [{ kind: 'hold' }]] });
+    const h = harness({
+      enabled: true,
+      scripts: [[FULL_LIMIT, { kind: 'hold' }], [{ kind: 'hold' }]],
+    });
     h.repo.insertMission(mission());
     h.repo.insertSteps([task('a', 1), task('b', 2, ['a'])]);
 
@@ -192,14 +202,23 @@ describe('troca automática de conta na missão', () => {
     // O agente falso não diz que levou a conversa.
     expect(audit(h, 'mission.resume_failed')).toHaveLength(1);
     expect(h.notices).toEqual([
-      { missionId: MISSION, cause: 'limit', fromName: 'Trabalho', toName: 'Pessoal', resetsAt: RESET },
+      {
+        missionId: MISSION,
+        cause: 'limit',
+        fromName: 'Trabalho',
+        toName: 'Pessoal',
+        resetsAt: RESET,
+      },
     ]);
     expect(h.marks.get('trabalho')).toBe(RESET);
     data(await h.orchestrator.cancelMission(MISSION));
   });
 
   it('a sessão que diz ter levado a conversa não grava resume_failed', async () => {
-    const h = harness({ enabled: true, scripts: [[FULL_LIMIT, { kind: 'hold' }], [{ kind: 'hold' }]] });
+    const h = harness({
+      enabled: true,
+      scripts: [[FULL_LIMIT, { kind: 'hold' }], [{ kind: 'hold' }]],
+    });
     const start = h.agent.start.bind(h.agent);
     h.agent.start = async (input, signal) => {
       const session = await start(input, signal);
@@ -324,7 +343,10 @@ describe('troca automática de conta na missão', () => {
   });
 
   it('não troca missão pausada pela pessoa', async () => {
-    const h = harness({ enabled: true, scripts: [[{ kind: 'hold' }, FULL_LIMIT, { kind: 'block' }]] });
+    const h = harness({
+      enabled: true,
+      scripts: [[{ kind: 'hold' }, FULL_LIMIT, { kind: 'block' }]],
+    });
     h.repo.insertMission(mission());
 
     void h.orchestrator.startMission(MISSION);
@@ -385,7 +407,12 @@ describe('troca automática de conta na missão', () => {
     await vi.waitFor(() => expect(h.repo.getMission(MISSION)?.status).toBe('waiting_input'));
     const recorded = h.repo.audit().filter((event) => event.eventType === 'limit.reached');
     expect(recorded.map((event) => event.payload)).toEqual([
-      { type: 'limit.reached', window: 'session', resetsAt: RESET, at: expect.any(String) as unknown },
+      {
+        type: 'limit.reached',
+        window: 'session',
+        resetsAt: RESET,
+        at: expect.any(String) as unknown,
+      },
     ]);
     const all = JSON.stringify(h.repo.audit());
     expect(all).not.toContain(SESSION);
@@ -442,7 +469,13 @@ describe('a abertura evita a conta esgotada', () => {
       }),
     ]);
     expect(h.notices).toEqual([
-      { missionId: MISSION, cause: 'opening', fromName: 'Trabalho', toName: 'Pessoal', resetsAt: RESET },
+      {
+        missionId: MISSION,
+        cause: 'opening',
+        fromName: 'Trabalho',
+        toName: 'Pessoal',
+        resetsAt: RESET,
+      },
     ]);
     data(await h.orchestrator.cancelMission(MISSION));
   });
@@ -490,7 +523,11 @@ describe('a abertura evita a conta esgotada', () => {
   });
 
   it('sem a frase da cota, a falha usa a frase geral', async () => {
-    const h = harness({ enabled: true, scripts: [[]], pick: () => Promise.resolve({ kind: 'none' }) });
+    const h = harness({
+      enabled: true,
+      scripts: [[]],
+      pick: () => Promise.resolve({ kind: 'none' }),
+    });
     h.marks.set('trabalho', RESET);
     h.repo.insertMission(mission());
 
